@@ -156,6 +156,18 @@ defmodule MCPEx.RequiredKeysValidator do
   def validate(_value, _schema), do: :ok
 end
 
+defmodule MCPEx.RejectingInputValidator do
+  @behaviour MCP.Schema.Validator
+
+  # Rejects any tool input, so a call carrying every required argument still
+  # exercises the plugged validator rather than the router's own check.
+  @impl true
+  def validate(value, %{"$id" => "https://example.test/schemas/echo"}) when is_map(value),
+    do: {:error, :rejected_by_application}
+
+  def validate(_value, _schema), do: :ok
+end
+
 defmodule MCPEx.TestTools.Trapping do
   use MCP.Tool, name: "trapping"
 

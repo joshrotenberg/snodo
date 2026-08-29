@@ -7,6 +7,7 @@ defmodule MCP.ProtocolAcceptanceTest do
   alias MCP.Test, as: MCPTest
   alias MCP.Transport.Context, as: TransportContext
   alias MCPEx.FutureDialect
+  alias MCPEx.RejectingInputValidator
   alias MCPEx.RequiredKeysValidator
   alias MCPEx.TestFixtures
   alias MCPEx.TestTools.ComplexSchema
@@ -298,13 +299,13 @@ defmodule MCP.ProtocolAcceptanceTest do
   end
 
   test "applications can plug input and output JSON Schema validation" do
-    input_runtime = TestFixtures.runtime(schema_validator: RequiredKeysValidator)
+    input_runtime = TestFixtures.runtime(schema_validator: RejectingInputValidator)
 
     assert {:ok, %{"error" => input_error}} =
              MCPTest.dispatch(input_runtime,
                protocol: "2026-07-28",
                method: "tools/call",
-               params: %{"name" => "echo", "arguments" => %{}}
+               params: %{"name" => "echo", "arguments" => %{"text" => "hello"}}
              )
 
     assert input_error == %{
@@ -329,6 +330,39 @@ defmodule MCP.ProtocolAcceptanceTest do
              "code" => -32_603,
              "message" => "Tool output failed schema validation"
            }
+  end
+
+  test "a missing required tool argument is rejected without a schema validator" do
+    # The advertised inputSchema is the contract. Enforcing it in the router
+    # means the pass-through default cannot turn a client's omission into an
+    # internal fault raised by the handler's own pattern match.
+    runtime = TestFixtures.runtime()
+
+    assert {:ok, %{"error" => error}} =
+             MCPTest.dispatch(runtime,
+               protocol: "2026-07-28",
+               method: "tools/call",
+               params: %{"name" => "echo", "arguments" => %{}}
+             )
+
+    assert error == %{
+             "code" => -32_602,
+             "message" => "Missing required tool arguments",
+             "data" => %{"missing" => ["text"]}
+           }
+  end
+
+  test "a plugged validator still sees arguments that satisfy the required list" do
+    runtime = TestFixtures.runtime(schema_validator: RequiredKeysValidator)
+
+    assert {:ok, %{"result" => result}} =
+             MCPTest.dispatch(runtime,
+               protocol: "2026-07-28",
+               method: "tools/call",
+               params: %{"name" => "echo", "arguments" => %{"text" => "hello"}}
+             )
+
+    assert result["isError"] == false
   end
 
   test "non-JSON handler escape-hatch data becomes a safe internal error" do

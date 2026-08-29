@@ -188,8 +188,8 @@ defmodule MCP.Router do
         _opts
       )
       when is_binary(uri) and is_map(params) do
-    with {:ok, resource} <- resolve_resource(router, uri) do
-      invoke_resource(resource, params, context)
+    with {:ok, {resource, variables}} <- resolve_resource(router, uri) do
+      invoke_resource(resource, Map.merge(params, variables), context)
     end
   end
 
@@ -205,6 +205,7 @@ defmodule MCP.Router do
 
     with {:ok, tool} <- fetch_tool(router, name),
          {:ok, arguments} <- fetch_arguments(params),
+         :ok <- validate_required_arguments(tool.input_schema(), arguments),
          :ok <- validate_input(validator, arguments, tool.input_schema()),
          {:ok, result} <- invoke(tool, arguments, context),
          :ok <- validate_output(validator, result, tool.output_schema()) do
@@ -347,10 +348,10 @@ defmodule MCP.Router do
       {:ok, []} ->
         :ok
 
-      {:ok, [existing | _rest]} when existing == resource ->
+      {:ok, [{existing, _variables} | _rest]} when existing == resource ->
         :ok
 
-      {:ok, [existing | _rest]} ->
+      {:ok, [{existing, _variables} | _rest]} ->
         raise ArgumentError,
               "resource URI #{inspect(uri)} is already matched by #{inspect(existing)}"
 
@@ -363,13 +364,13 @@ defmodule MCP.Router do
   defp reject_matching_resources!(resources, resource) do
     Enum.each(resources, fn {uri, existing} ->
       case safe_matches(resource, uri) do
-        {:ok, false} ->
+        {:ok, {false, _variables}} ->
           :ok
 
-        {:ok, true} when existing == resource ->
+        {:ok, {true, _variables}} when existing == resource ->
           :ok
 
-        {:ok, true} ->
+        {:ok, {true, _variables}} ->
           raise ArgumentError,
                 "resource template #{inspect(resource)} also matches URI owned by #{inspect(existing)}"
 
@@ -380,17 +381,19 @@ defmodule MCP.Router do
     end)
   end
 
+  # A route is a module plus the template variables its matcher bound, which is
+  # empty for direct resources and for matchers that answer with a bare boolean.
   defp resolve_resource(%__MODULE__{} = router, uri) do
     direct =
       case Map.fetch(router.resources, uri) do
-        {:ok, module} -> [module]
+        {:ok, module} -> [{module, %{}}]
         :error -> []
       end
 
     case matching_modules(router.resource_templates, uri) do
       {:ok, templates} ->
-        case Enum.uniq(direct ++ templates) do
-          [resource] -> {:ok, resource}
+        case Enum.uniq_by(direct ++ templates, &elem(&1, 0)) do
+          [route] -> {:ok, route}
           [] -> {:error, Error.invalid_params("Resource not found", %{"uri" => uri})}
           _many -> {:error, Error.internal("Multiple resource routes matched the requested URI")}
         end
@@ -403,8 +406,8 @@ defmodule MCP.Router do
   defp matching_modules(templates, uri) do
     Enum.reduce_while(templates, {:ok, []}, fn {_template, resource}, {:ok, matches} ->
       case safe_matches(resource, uri) do
-        {:ok, true} -> {:cont, {:ok, [resource | matches]}}
-        {:ok, false} -> {:cont, {:ok, matches}}
+        {:ok, {true, variables}} -> {:cont, {:ok, [{resource, variables} | matches]}}
+        {:ok, {false, _variables}} -> {:cont, {:ok, matches}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
@@ -412,8 +415,15 @@ defmodule MCP.Router do
 
   defp safe_matches(resource, uri) do
     case resource.matches?(uri) do
-      value when is_boolean(value) -> {:ok, value}
-      other -> {:error, {:invalid_matcher_return, resource, other}}
+      value when is_boolean(value) ->
+        {:ok, {value, %{}}}
+
+      {:ok, variables} ->
+        Resource.validate_variables!(resource, variables)
+        {:ok, {true, variables}}
+
+      other ->
+        {:error, {:invalid_matcher_return, resource, other}}
     end
   rescue
     exception -> {:error, {:matcher_raised, resource, exception, __STACKTRACE__}}
@@ -453,6 +463,27 @@ defmodule MCP.Router do
       _arguments -> {:error, Error.invalid_params("Tool arguments must be an object")}
     end
   end
+
+  # The schema the server itself published says these arguments are required,
+  # so their absence is the client's error regardless of which validator is
+  # installed. Without this, a missing argument reaches the handler, fails to
+  # match, and is reported as an internal fault. Prompts are checked the same
+  # way in validate_required_prompt_arguments/2.
+  defp validate_required_arguments(%{"required" => required}, arguments)
+       when is_list(required) do
+    case Enum.reject(required, &(is_binary(&1) and Map.has_key?(arguments, &1))) do
+      [] ->
+        :ok
+
+      missing ->
+        {:error,
+         Error.invalid_params("Missing required tool arguments", %{
+           "missing" => Enum.filter(missing, &is_binary/1)
+         })}
+    end
+  end
+
+  defp validate_required_arguments(_schema, _arguments), do: :ok
 
   defp fetch_prompt_arguments(params) do
     case Map.get(params, "arguments", %{}) do

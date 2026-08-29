@@ -3,12 +3,34 @@ defmodule MCP.Resource do
   Behaviour and compile-time convenience DSL for MCP resources.
 
   A resource module declares either one exact `:uri` or one `:uri_template`.
-  Template modules override `matches?/1` to provide application-owned URI
-  routing; the framework deliberately does not pretend to implement RFC 6570
-  expansion or authorization policy.
+  URI routing stays application-owned: the framework does not implement RFC
+  6570 expansion or authorization policy.
 
-  `read/2` receives the original request params and immutable request context.
-  It returns `MCP.Result.resource_read/2` containing text or blob content maps.
+  A template inside the simple-expansion subset described in
+  `MCP.Resource.Template` gets a generated `matches?/1`, so the common
+  `scheme://{var}/literal` shape needs no matcher at all. A template outside
+  that subset matches nothing until the module implements `matches?/1` itself.
+
+  `matches?/1` may answer in two ways. `true` and `false` route without saying
+  anything more. `{:ok, variables}`, a map of string keys to string values,
+  routes *and* hands the extracted template variables to `read/2`, so a
+  matcher never has to be paired with a second parse of the same URI. The
+  generated matcher uses this form. Variables may not shadow `"uri"` or
+  `"_meta"`, which the request itself owns.
+
+  `read/2` receives the request params, merged with any variables the matcher
+  bound, plus the immutable request context. It returns
+  `MCP.Result.resource_read/2` containing text or blob content maps.
+
+      defmodule PackageInfo do
+        use MCP.Resource, uri_template: "hex://{name}/info", name: "package_info"
+
+        @impl true
+        def read(%{"name" => name}, _context), do: fetch(name)
+      end
+
+  Content maps must contain only JSON values, which means string keys.
+  `MCP.JSONValue.encodable!/1` converts an atom-keyed domain value into one.
   """
 
   alias MCP.Completion
@@ -16,12 +38,13 @@ defmodule MCP.Resource do
   alias MCP.Error
   alias MCP.JSONValue
   alias MCP.Resource.Definition
+  alias MCP.Resource.Template
   alias MCP.Result
 
   @meta_key ~r/^(?:(?:[A-Za-z](?:[A-Za-z0-9-]*[A-Za-z0-9])?)(?:\.(?:[A-Za-z](?:[A-Za-z0-9-]*[A-Za-z0-9])?))*\/)?(?:[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)?$/
 
   @callback definition() :: Definition.t()
-  @callback matches?(uri :: String.t()) :: boolean()
+  @callback matches?(uri :: String.t()) :: boolean() | {:ok, Template.variables()}
   @callback read(params :: map(), Context.t()) ::
               {:ok, Result.t()} | {:error, Error.t() | term()}
   @callback complete(Completion.t(), Context.t()) ::
@@ -34,8 +57,11 @@ defmodule MCP.Resource do
 
     matches_body =
       case definition do
-        %Definition{kind: :resource, uri: expected} -> quote(do: uri == unquote(expected))
-        %Definition{kind: :template} -> quote(do: false)
+        %Definition{kind: :resource, uri: expected} ->
+          quote(do: uri == unquote(expected))
+
+        %Definition{kind: :template, uri_template: uri_template} ->
+          compile_template_matcher(uri_template)
       end
 
     quote do
@@ -124,12 +150,39 @@ defmodule MCP.Resource do
         value when is_boolean(value) ->
           :ok
 
+        {:ok, variables} ->
+          validate_variables!(resource, variables)
+
         _invalid ->
-          raise ArgumentError, "resource #{inspect(resource)} matches?/1 must return a boolean"
+          raise ArgumentError,
+                "resource #{inspect(resource)} matches?/1 must return a boolean or {:ok, variables}"
       end
     end
 
     :ok
+  end
+
+  @doc false
+  @spec validate_variables!(module(), term()) :: :ok
+  def validate_variables!(resource, variables) when is_map(variables) do
+    unless Enum.all?(variables, fn {key, value} -> is_binary(key) and is_binary(value) end) do
+      raise ArgumentError,
+            "resource #{inspect(resource)} matches?/1 must bind string variables to strings"
+    end
+
+    case Enum.filter(["uri", "_meta"], &Map.has_key?(variables, &1)) do
+      [] ->
+        :ok
+
+      reserved ->
+        raise ArgumentError,
+              "resource #{inspect(resource)} matches?/1 bound reserved request keys: " <>
+                Enum.join(reserved, ", ")
+    end
+  end
+
+  def validate_variables!(resource, _variables) do
+    raise ArgumentError, "resource #{inspect(resource)} matches?/1 must bind a map of variables"
   end
 
   @doc false
@@ -189,6 +242,24 @@ defmodule MCP.Resource do
       {key, value}, shaped ->
         Map.put(shaped, key, value)
     end)
+  end
+
+  # A template inside the simple-expansion subset gets a generated matcher that
+  # also returns its bound variables. Anything else keeps the previous
+  # behaviour of matching nothing, so the module must implement matches?/1.
+  defp compile_template_matcher(uri_template) do
+    case Template.compile(uri_template) do
+      {:ok, template} ->
+        quote do
+          case MCP.Resource.Template.match(unquote(Macro.escape(template)), uri) do
+            {:ok, variables} -> {:ok, variables}
+            :error -> false
+          end
+        end
+
+      :unsupported ->
+        quote(do: false)
+    end
   end
 
   defp compile_definition!(env, opts) do

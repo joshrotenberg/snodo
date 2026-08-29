@@ -1,5 +1,18 @@
 defmodule MCP.Result do
-  @moduledoc "A protocol-neutral handler result shaped later by the selected dialect."
+  @moduledoc """
+  A protocol-neutral handler result shaped later by the selected dialect.
+
+  `error/2` builds a *successful* `tools/call` response carrying
+  `isError: true`. That is what a failed upstream call, a rejected domain
+  precondition, or any other outcome the tool itself understands should
+  return. It is not the same as returning `{:error, %MCP.Error{}}` from a
+  handler, which makes the whole JSON-RPC request fail. See `MCP.Tool` for
+  which to reach for.
+
+  Values handed to `structured/2` and to the content builders must be JSON
+  values, meaning string keys and no atoms. `MCP.JSONValue.encodable!/1`
+  converts an atom-keyed domain value into one.
+  """
 
   alias MCP.Error
 

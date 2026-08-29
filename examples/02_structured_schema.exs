@@ -163,11 +163,28 @@ defmodule Examples.StructuredSchema.Runner do
           method: "tools/call",
           params: %{
             "name" => "normalize_labels",
-            "arguments" => %{"mode" => "compact"}
+            # Both required arguments are present, so the router admits the
+            # call and the application's own validator is what rejects it:
+            # the schema's minItems is a constraint the required list cannot
+            # express.
+            "arguments" => %{"labels" => [], "mode" => "compact"}
           }
         )
 
       assert_equal(invalid_response, expected_invalid(), "invalid tools/call response")
+
+      {:ok, missing_response} =
+        MCP.Test.dispatch(runtime,
+          id: "missing",
+          protocol: "2026-07-28",
+          method: "tools/call",
+          params: %{
+            "name" => "normalize_labels",
+            "arguments" => %{"mode" => "compact"}
+          }
+        )
+
+      assert_equal(missing_response, expected_missing(), "missing-argument tools/call response")
 
       assert_equal(
         NormalizeLabels.invocations(),
@@ -178,7 +195,7 @@ defmodule Examples.StructuredSchema.Runner do
       if check? do
         IO.puts("02_structured_schema: ok")
       else
-        print_walkthrough(listed_tool, valid_response, invalid_response)
+        print_walkthrough(listed_tool, valid_response, invalid_response, missing_response)
       end
     after
       NormalizeLabels.clear_invocations()
@@ -210,15 +227,29 @@ defmodule Examples.StructuredSchema.Runner do
     }
   end
 
-  defp print_walkthrough(tool, valid_response, invalid_response) do
+  defp expected_missing do
+    %{
+      "jsonrpc" => "2.0",
+      "id" => "missing",
+      "error" => %{
+        "code" => -32_602,
+        "message" => "Missing required tool arguments",
+        "data" => %{"missing" => ["labels"]}
+      }
+    }
+  end
+
+  defp print_walkthrough(tool, valid_response, invalid_response, missing_response) do
     IO.puts("Schemas remain application-owned JSON Schema documents.\n")
 
     IO.puts("Preserved vocabulary: #{inspect(Map.keys(tool["inputSchema"]) |> Enum.sort())}\n")
 
     IO.puts("Structured result (with text compatibility content):")
     IO.puts("#{inspect(valid_response, pretty: true)}\n")
-    IO.puts("Rejected before the handler was called again:")
-    IO.puts(inspect(invalid_response, pretty: true))
+    IO.puts("Rejected by the application validator before the handler ran again:")
+    IO.puts("#{inspect(invalid_response, pretty: true)}\n")
+    IO.puts("Rejected by the router, which enforces the schema's required list:")
+    IO.puts(inspect(missing_response, pretty: true))
   end
 
   defp assert_equal(actual, expected, label) do

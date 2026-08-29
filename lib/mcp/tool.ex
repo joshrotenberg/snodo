@@ -4,6 +4,40 @@ defmodule MCP.Tool do
 
   The DSL emits ordinary module functions, and schemas remain unmodified Elixir
   maps representing JSON Schema documents.
+
+  ## Failure has two shapes, and they are not interchangeable
+
+  `call/2` can fail in two ways, and they reach the client differently:
+
+      # The call succeeded; the tool is reporting a bad outcome.
+      # tools/call returns a result with isError: true.
+      {:ok, MCP.Result.error("hex.pm returned 503")}
+
+      # The request itself was wrong or could not be attempted.
+      # The JSON-RPC request fails with an error object and no result.
+      {:error, MCP.Error.invalid_params("version must be a semantic version")}
+
+  The first is for anything the tool understands: an upstream service failing,
+  a lookup finding nothing, a domain precondition being rejected. A client
+  sees a normal response it can show a model, and one failing tool does not
+  look like a broken server.
+
+  The second escalates to the protocol. Reserve it for a request that should
+  never have been dispatched. Note that arguments missing from the schema's
+  `required` list are already rejected this way by `MCP.Router` before
+  `call/2` runs, so a handler rarely needs to raise that case itself.
+
+  Returning `{:error, reason}` for anything that is not an `MCP.Error` becomes
+  `-32603`, an internal error, which tells the client the server broke. That is
+  almost never what a failed upstream call should say.
+
+  ## Schemas are advertised, and required arguments are enforced
+
+  `input_schema/1` is published verbatim in `tools/list`. The router enforces
+  its `required` list before dispatch, so a handler may pattern match on those
+  keys. Every other keyword is advertised but only enforced when the runtime
+  installs a `MCP.Schema.Validator`; the default is pass-through. See
+  `MCP.Schema.Validator.Basic` for the bundled common subset.
   """
 
   alias MCP.Context
@@ -16,7 +50,8 @@ defmodule MCP.Tool do
   @callback input_schema() :: map()
   @callback output_schema() :: map() | nil
   @callback annotations() :: map()
-  @callback call(map(), Context.t()) :: {:ok, Result.t() | term()} | {:error, term()}
+  @callback call(map(), Context.t()) ::
+              {:ok, Result.t() | term()} | {:error, MCP.Error.t() | term()}
 
   defmacro __using__(opts) do
     name = Keyword.fetch!(opts, :name)

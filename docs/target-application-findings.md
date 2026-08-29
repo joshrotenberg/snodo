@@ -27,6 +27,15 @@ The result compiles warning-free, passes strict Credo and Dialyzer with no
 ignore file, answers live `tools/call` and `resources/read` requests against
 hex.pm over both stdio and Bandit, and grew the suite from 123 tests to 160.
 
+## Status
+
+The four findings that could produce a wrong-looking server without the author
+noticing are fixed. Each entry below records what changed. Items 5 to 7 are
+documentation and remain as written.
+
+Fixing them removed 177 lines from the ported application, including the whole
+`HexpmMcp.MCP.Wire` module that existed only to work around items 1 and 3.
+
 ## Friction
 
 Ordered by how much work each one cost.
@@ -53,6 +62,17 @@ Worth considering: accept atom keys and convert at the boundary, or keep the
 strictness and export a documented conversion helper. Either way the rule
 belongs in the `MCP.Resource` and `MCP.Result` docs, since that is where an
 application meets it.
+
+**Fixed.** The strictness stays, because accepting atom keys would mean
+silently resolving a collision between `:name` and `"name"`. `MCP.JSONValue`
+is now a documented public module stating the rule, and `encodable!/1`
+converts an Elixir term into a JSON value under fixed, documented rules: atom
+keys and values become strings, date and time types and `URI` and `Version`
+become their canonical strings, any other struct becomes a map of its fields,
+and terms with no correct JSON form raise rather than guess. A map that would
+collide two keys onto one string raises instead of dropping either. The rule
+and the helper are referenced from the `MCP.Resource` and `MCP.Result`
+moduledocs.
 
 ### 2. Pass-through validation silently downgrades a client error to a server fault
 
@@ -83,6 +103,15 @@ that it is invisible. Worth considering: emit a compile-time note when a
 registered tool declares `required` and the runtime validator is
 `Passthrough`, or default to `Basic` when every registered schema falls inside
 its supported subset.
+
+**Fixed**, and neither of those ways. `MCP.Router` now enforces the `required`
+list of an object input schema before dispatch, unconditionally and
+independently of the validator, which is what it already did for prompt
+arguments. A missing argument is `-32602 Missing required tool arguments` with
+a `data.missing` list naming them. The guarantee needs no configuration and is
+easy to state: the schema a server publishes is enforced for the one thing a
+schema always says. Every other keyword still depends on the installed
+validator, which is unchanged.
 
 ### 3. Declining RFC 6570 leaves the application with more work than it needs
 
@@ -118,6 +147,26 @@ a template, and only the application's own matchers keep the first from being
 routed to the second. The router raises `-32603` on multiple matches, so
 getting this wrong is at least loud.
 
+**Fixed**, both suggestions. `matches?/1` may now answer `{:ok, variables}`,
+and the router merges those into the params handed to `read/2`, so a matcher
+is never paired with a second parse. Variables may not shadow `"uri"` or
+`"_meta"`, which is checked at registration.
+
+`MCP.Resource.Template` compiles a template at build time and `MCP.Resource`
+generates `matches?/1` from the result, so a template in the subset needs no
+matcher at all. The subset is exact and small: a literal scheme, an authority
+and path segments that are each one literal or one whole `{variable}`, and no
+operator, modifier, query, fragment, port, or userinfo. Anything else compiles
+to `:unsupported` and keeps the previous behavior of matching nothing until
+the module implements `matches?/1`, so a partly-recognised template never
+gets a matcher that is almost right.
+
+The overlap problem is unchanged and still the application's, which is
+correct: only the application knows that `toolbox://groups` is not a group
+named `groups`. The generated matchers get this particular case right because
+a variable binds exactly one whole segment, so a one-segment URI cannot reach
+a two-segment template.
+
 ### 4. Tool error semantics are easy to get wrong and are not spelled out
 
 From `call/2`, both of these are valid and they mean different things:
@@ -136,6 +185,13 @@ was reported as a malformed request.
 
 The distinction is correct and worth keeping. It needs a paragraph in the
 `MCP.Tool` moduledoc.
+
+**Fixed.** The `MCP.Tool` moduledoc now shows both forms side by side, says
+which to reach for, and notes that `{:error, reason}` for a non-`MCP.Error`
+becomes `-32603` and tells the client the server broke. The callback typespec
+names `MCP.Error.t()` in the error position. The same moduledoc records that
+required arguments are enforced by the router before `call/2` runs, so a
+handler may pattern match on them.
 
 ### 5. `MCP.Test` hides a mandatory client obligation
 
@@ -226,6 +282,29 @@ assert_raise ArgumentError, fn -> Router.call(conn(:get, "/mcp"), []) end
 ```
 
 That test is now a real request returning a real catalog.
+
+## Evidence that the fixes work
+
+The ported application was rewritten against the fixed framework, and the
+changes are subtractive:
+
+- `HexpmMcp.MCP.Wire`, 79 lines, deleted. It existed only for items 1 and 3.
+- Its 99-line test file, deleted.
+- All four template resources lost their `matches?/1` and their second URI
+  parse. `read/2` now destructures the bound variables directly.
+- All five resources build payloads as ordinary atom-keyed maps again, passed
+  through `MCP.JSONValue.encodable!/1`.
+
+Net 177 lines removed, with behavior unchanged: the same 148 tests pass, and
+live `tools/call` and `resources/read` against hex.pm return the same content
+over both stdio and Bandit.
+
+In mcp_ex, the core suite went from 167 tests to 216. All 18 examples, the 25
+internal contract evidence groups, the three extension packages, and Dialyzer
+with no ignore file still pass. `examples/02_structured_schema.exs` gained a
+second rejection case so it demonstrates both the router's required-argument
+check and the application validator that catches what a required list cannot
+express.
 
 ## Assessment
 
