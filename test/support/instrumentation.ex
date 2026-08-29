@@ -1,0 +1,22 @@
+defmodule MCPEx.TestInstrumentationSink do
+  @moduledoc false
+
+  @behaviour MCP.Instrumentation
+
+  @impl true
+  def handle_event(event_name, measurements, metadata, owner) when is_pid(owner) do
+    send(owner, {:instrumentation, event_name, measurements, metadata})
+    :ok
+  end
+end
+
+defmodule MCPEx.RaisingInstrumentationSink do
+  @moduledoc false
+
+  @behaviour MCP.Instrumentation
+
+  @impl true
+  def handle_event(_event_name, _measurements, _metadata, _options) do
+    raise "instrumentation failure"
+  end
+end

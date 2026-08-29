@@ -1,0 +1,72 @@
+defmodule MCP.MixProject do
+  use Mix.Project
+
+  def project do
+    [
+      app: :mcp_ex,
+      version: "0.1.0",
+      elixir: "~> 1.18",
+      start_permanent: Mix.env() == :prod,
+      description: "A router-first Model Context Protocol architecture spike",
+      elixirc_paths: elixirc_paths(Mix.env()),
+      dialyzer: [
+        plt_add_apps: [:mix],
+        plt_local_path: "priv/plts",
+        flags: [:unmatched_returns, :error_handling]
+      ],
+      aliases: aliases(),
+      deps: deps()
+    ]
+  end
+
+  def cli do
+    [
+      preferred_envs: [
+        examples: :dev,
+        quality: :test,
+        "quality.types": :dev,
+        "mcp.contract": :test
+      ]
+    ]
+  end
+
+  # Run "mix help compile.app" to learn about applications.
+  def application do
+    [
+      extra_applications: [:crypto, :logger],
+      mod: {MCP.Application, []}
+    ]
+  end
+
+  # Run "mix help deps" to learn about dependencies.
+  defp deps do
+    [
+      {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4.7", only: [:dev, :test], runtime: false}
+    ]
+  end
+
+  defp aliases do
+    [
+      quality: [
+        "format --check-formatted",
+        "compile --warnings-as-errors",
+        "credo --strict",
+        "test --warnings-as-errors",
+        "examples",
+        "cmd --cd extensions/tasks mix quality",
+        "cmd --cd extensions/tasks_postgres mix quality",
+        "cmd --cd extensions/tasks_sqlite mix quality"
+      ],
+      "quality.types": [
+        "dialyzer --format short --list-unused-filters",
+        "cmd --cd extensions/tasks mix quality.types",
+        "cmd --cd extensions/tasks_postgres mix quality.types",
+        "cmd --cd extensions/tasks_sqlite mix quality.types"
+      ]
+    ]
+  end
+
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_env), do: ["lib"]
+end

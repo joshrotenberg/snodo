@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "runDate": "2026-08-25",
+  "protocolVersion": "2026-07-28",
+  "runner": "@modelcontextprotocol/conformance@0.2.0-alpha.11",
+  "requirements": {
+    "attemptedScenarios": 37,
+    "requiredScenarios": 37,
+    "requirementsAnchor": "@modelcontextprotocol/conformance@0.2.0-alpha.10",
+    "requirementsCommit": "c321dd32035556e6769d3724a8ee97d87c3faaac",
+    "requirementsSha256": "ae2f4f6210fd729e2e318edd5bbfa31a43cee0bc608e48052fa26dbf1d939b57"
+  },
+  "score": {
+    "status": "partial",
+    "basis": "whole required scenarios with exercised fixtures and no FAILURE checks",
+    "passedScenarios": 22,
+    "requiredScenarios": 37,
+    "passedScenarioIds": [
+      "completion-complete",
+      "tools-list",
+      "tools-call-simple-text",
+      "tools-call-image",
+      "tools-call-audio",
+      "tools-call-embedded-resource",
+      "tools-call-mixed-content",
+      "tools-call-error",
+      "server-sse-multiple-streams",
+      "resources-list",
+      "resources-read-text",
+      "resources-read-binary",
+      "resources-templates-read",
+      "sep-2164-resource-not-found",
+      "prompts-list",
+      "prompts-get-simple",
+      "prompts-get-with-args",
+      "prompts-get-embedded-resource",
+      "prompts-get-with-image",
+      "dns-rebinding-protection",
+      "caching",
+      "input-required-result-unsupported-methods"
+    ]
+  },
+  "requiredCheckCounts": {
+    "success": 89,
+    "failure": 15,
+    "skipped": 5,
+    "warning": 2,
+    "info": 1
+  },
+  "rawRunnerNoFailure": {
+    "scenarios": 25,
+    "requiredScenarios": 37,
+    "scenarioIds": [
+      "completion-complete",
+      "tools-list",
+      "tools-call-simple-text",
+      "tools-call-image",
+      "tools-call-audio",
+      "tools-call-embedded-resource",
+      "tools-call-mixed-content",
+      "tools-call-error",
+      "server-sse-multiple-streams",
+      "resources-list",
+      "resources-read-text",
+      "resources-read-binary",
+      "resources-templates-read",
+      "sep-2164-resource-not-found",
+      "prompts-list",
+      "prompts-get-simple",
+      "prompts-get-with-args",
+      "prompts-get-embedded-resource",
+      "prompts-get-with-image",
+      "dns-rebinding-protection",
+      "caching",
+      "input-required-result-unsupported-methods",
+      "input-required-result-missing-input-response",
+      "input-required-result-ignore-extra-params",
+      "input-required-result-validate-input"
+    ],
+    "excludedFromScore": [
+      {
+        "scenario": "input-required-result-missing-input-response",
+        "reason": "required fixture absent; runner emitted a warning with no failure check"
+      },
+      {
+        "scenario": "input-required-result-ignore-extra-params",
+        "reason": "required fixture absent; runner emitted a warning with no failure check"
+      },
+      {
+        "scenario": "input-required-result-validate-input",
+        "reason": "required fixture absent; method-not-found produced a false-positive no-failure result"
+      }
+    ]
+  },
+  "notScoredPass": [
+    {
+      "scenario": "json-schema-2020-12",
+      "status": "pending",
+      "passedChecks": 8,
+      "totalChecks": 8
+    },
+    {
+      "scenario": "http-header-validation",
+      "status": "pending",
+      "passedChecks": 14,
+      "totalChecks": 14
+    }
+  ]
+}

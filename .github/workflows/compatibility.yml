@@ -1,0 +1,96 @@
+name: Compatibility
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compatibility-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  beam:
+    name: Elixir ${{ matrix.elixir }} / OTP ${{ matrix.otp }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - elixir: "1.18"
+            otp: "27"
+            lane: minimum
+          - elixir: "1.19"
+            otp: "28"
+            lane: intermediate
+          - elixir: "1.20"
+            otp: "29"
+            lane: current
+    env:
+      MIX_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ matrix.elixir }}
+          otp-version: ${{ matrix.otp }}
+      - name: Install package managers
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+      - name: Fetch all package dependencies
+        run: |
+          mix deps.get
+          mix cmd --cd extensions/tasks mix deps.get
+          mix cmd --cd extensions/tasks_postgres mix deps.get
+          mix cmd --cd extensions/tasks_sqlite mix deps.get
+      - name: Run aggregate quality
+        run: mix quality
+      - name: Run aggregate type analysis on the current lane
+        if: matrix.lane == 'current'
+        run: mix quality.types
+
+  postgres:
+    name: PostgreSQL ${{ matrix.postgres }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ["14", "16", "18"]
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres }}-alpine
+        env:
+          POSTGRES_DB: mcp_ex_tasks
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d mcp_ex_tasks"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      MCP_TASKS_DATABASE_URL: ecto://postgres:postgres@127.0.0.1:5432/mcp_ex_tasks
+      MIX_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.20"
+          otp-version: "29"
+      - name: Install package managers
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+      - name: Fetch PostgreSQL package dependencies
+        working-directory: extensions/tasks_postgres
+        run: mix deps.get
+      - name: Run live PostgreSQL contract and walkthrough
+        working-directory: extensions/tasks_postgres
+        run: mix quality.postgres

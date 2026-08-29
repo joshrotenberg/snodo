@@ -1,0 +1,83 @@
+{
+  "protocolVersion": "2026-07-28",
+  "extensionId": "io.modelcontextprotocol/tasks",
+  "extensionSpecificationCommit": "0d0a6bd4c258b35caa3c810a1dd506cf105b1501",
+  "conformanceRunner": "@modelcontextprotocol/conformance@0.2.0-alpha.11",
+  "conformanceCommit": "c321dd32035556e6769d3724a8ee97d87c3faaac",
+  "runAtUtc": "2026-08-25T03:43:27Z",
+  "scenarioCount": 10,
+  "substantiveChecks": {
+    "success": 35,
+    "failure": 0
+  },
+  "genericWireSchemaChecks": {
+    "success": 1,
+    "failure": 8
+  },
+  "skippedChecks": 1,
+  "runnerExitStatus": 1,
+  "claim": "All 35 Tasks-specific assertions passed. This is not a whole-scenario or full-revision conformance pass because eight generic wire-schema checks reject CreateTaskResult as a core CallToolResult.",
+  "scenarioResults": [
+    {
+      "scenario": "tasks-lifecycle",
+      "substantiveSuccess": 8,
+      "substantiveFailure": 0,
+      "wireSchema": "failure"
+    },
+    {
+      "scenario": "tasks-capability-negotiation",
+      "substantiveSuccess": 4,
+      "substantiveFailure": 0,
+      "wireSchema": "failure"
+    },
+    {
+      "scenario": "tasks-wire-fields",
+      "substantiveSuccess": 3,
+      "substantiveFailure": 0,
+      "wireSchema": "failure"
+    },
+    {
+      "scenario": "tasks-request-state-removal",
+      "substantiveSuccess": 2,
+      "substantiveFailure": 0,
+      "wireSchema": "failure"
+    },
+    {
+      "scenario": "tasks-mrtr-input",
+      "substantiveSuccess": 3,
+      "substantiveFailure": 0,
+      "wireSchema": "failure"
+    },
+    {
+      "scenario": "tasks-request-headers",
+      "substantiveSuccess": 4,
+      "substantiveFailure": 0,
+      "wireSchema": "failure"
+    },
+    {
+      "scenario": "tasks-dispatch-and-envelope",
+      "substantiveSuccess": 8,
+      "substantiveFailure": 0,
+      "wireSchema": "failure"
+    },
+    {
+      "scenario": "tasks-status-notifications",
+      "substantiveSuccess": 0,
+      "substantiveFailure": 0,
+      "wireSchema": "not-run",
+      "skipped": 1
+    },
+    {
+      "scenario": "tasks-required-task-error",
+      "substantiveSuccess": 2,
+      "substantiveFailure": 0,
+      "wireSchema": "success"
+    },
+    {
+      "scenario": "tasks-mrtr-composition",
+      "substantiveSuccess": 1,
+      "substantiveFailure": 0,
+      "wireSchema": "failure"
+    }
+  ]
+}

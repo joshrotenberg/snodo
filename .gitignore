@@ -1,0 +1,36 @@
+# The directories Mix will write compiled artifacts to.
+_build/
+
+# If you run "mix test --cover", coverage assets end up here.
+/cover/
+
+# The directories Mix downloads dependency sources to.
+deps/
+
+# Where third-party dependencies like ExDoc output generated docs.
+/doc/
+
+# Temporary files, for example, from tests.
+/tmp/
+
+# If the VM crashes, it generates a dump, let's ignore it too.
+erl_crash.dump
+
+# Also ignore archive artifacts (built via "mix archive.build").
+*.ez
+
+# Dialyxir PLTs are machine- and runtime-specific build artifacts.
+**/priv/plts/*.plt
+**/priv/plts/*.plt.hash
+
+# ElixirLS workspace state.
+/.elixir_ls/
+
+# The pinned interop harness installs the official client with "npm ci".
+node_modules/
+
+# Ignore package tarballs (built via "mix hex.build").
+mcp_ex-*.tar
+mcp_ex_tasks-*.tar
+mcp_ex_tasks_postgres-*.tar
+mcp_ex_tasks_sqlite-*.tar
