@@ -377,9 +377,14 @@ emits a versioned human or JSON report. It proves correctness and lifecycle
 balance without presenting local timings as a capacity claim. A checked-in
 BEAM/PostgreSQL matrix and genuine version-one-to-two migration chain now make
 compatibility and data-preserving rollback executable; unrun CI combinations
-remain policy rather than claimed evidence. The next bounded slice is the
-`hexpm-mcp` target-application rewrite, using only the public framework and
-extension APIs to expose integration friction before release packaging.
+remain policy rather than claimed evidence. The `hexpm-mcp` target-application rewrite is done, using only the public
+framework APIs. Its 1,233-line MCP layer was replaced without changing
+framework code, reaching a private module, or working around framework
+behavior, while the application's 3,178-line domain layer and its 117 tests
+were left untouched. The friction it exposed, and the four items worth
+addressing before release packaging, are in
+[target-application-findings.md](target-application-findings.md). The next
+bounded slice is release packaging itself.
 Raise the frozen
 official core score from its measured 22/37 baseline only by adding real
 fixtures and framework surfaces; preserve the checked-in exclusion reasons so

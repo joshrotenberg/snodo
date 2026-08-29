@@ -374,7 +374,9 @@ single-writer, and recovery model is documented in
 [extensions/tasks_sqlite/README.md](extensions/tasks_sqlite/README.md).
 
 See [docs/spike-findings.md](docs/spike-findings.md) for the acceptance evidence,
-architecture answers, and deliberate deferrals. The protocol evidence model is
+architecture answers, and deliberate deferrals. The public API is assessed
+against a real ported application in
+[docs/target-application-findings.md](docs/target-application-findings.md). The protocol evidence model is
 in [docs/protocol-compliance.md](docs/protocol-compliance.md), and the static
 analysis gates are in [docs/static-analysis-plan.md](docs/static-analysis-plan.md).
 The BEAM/PostgreSQL matrix and schema upgrade chain are in
