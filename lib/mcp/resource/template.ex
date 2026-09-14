@@ -7,11 +7,12 @@ defmodule MCP.Resource.Template do
   everything else so an application is never silently given a matcher that is
   almost right:
 
-    * the scheme is a literal;
+    * the scheme is a literal, matched case-insensitively;
     * the authority is one literal or one `{variable}`;
     * each path segment is one literal or one `{variable}`;
     * there is no query, fragment, userinfo, or port;
-    * no operator (`+ # . / ; ? & =`) or modifier (`* :n`) appears.
+    * no operator (`+ # . / ; ? & =`) or modifier (`* :n`) appears;
+    * variables do not use the reserved request keys `uri` or `_meta`.
 
   A variable therefore binds exactly one whole segment, which makes matching
   and extraction unambiguous. `MCP.Resource` compiles a template at build time
@@ -19,7 +20,11 @@ defmodule MCP.Resource.Template do
   compiles to `:unsupported`, and its module must implement `matches?/1`
   itself.
 
-  Matched values are percent-decoded. A variable never binds an empty segment.
+  Matched values are percent-decoded once and must be valid UTF-8. Malformed
+  percent escapes and empty segments do not match. Encoded separators stay
+  inside their original segment; `+` is not decoded as a space. Repeated
+  variables must bind the same decoded value. Literal authority and path
+  segments match exactly, without percent-decoding or slash normalization.
   """
 
   @type variables :: %{optional(String.t()) => String.t()}
@@ -29,8 +34,9 @@ defmodule MCP.Resource.Template do
   @enforce_keys [:scheme, :authority]
   defstruct [:scheme, :authority, segments: []]
 
-  @scheme ~r/^[A-Za-z][A-Za-z0-9+.-]*$/
-  @variable ~r/^\{([A-Za-z0-9_.-]+)\}$/
+  @scheme ~r/\A[A-Za-z][A-Za-z0-9+.-]*\z/
+  @variable ~r/\A\{([A-Za-z0-9_.-]+)\}\z/
+  @invalid_escape ~r/%(?![A-Fa-f0-9]{2})/
 
   # A port, userinfo, query, or fragment puts a template outside the subset.
   @reserved ["?", "#", "@", ":"]
@@ -38,17 +44,20 @@ defmodule MCP.Resource.Template do
   @doc """
   Compiles a URI template, or reports that it is outside the supported subset.
 
-  `URI.new/1` rejects the braces, so the template is parsed textually. Only the
-  concrete URIs handed to `match/2` go through `URI.new/1`.
+  `URI.new/1` rejects the braces, so the template is parsed textually. Its
+  literals are checked as a concrete URI with safe placeholders for variables,
+  so an invalid literal cannot produce an unreachable generated matcher.
   """
   @spec compile(String.t()) :: {:ok, t()} | :unsupported
   def compile(uri_template) when is_binary(uri_template) do
     with [scheme, rest] <- String.split(uri_template, "://", parts: 2),
          true <- Regex.match?(@scheme, scheme),
+         scheme = String.downcase(scheme),
          false <- String.contains?(rest, @reserved),
          [authority | segments] <- String.split(rest, "/"),
          {:ok, authority} <- compile_part(authority),
-         {:ok, segments} <- compile_segments(segments) do
+         {:ok, segments} <- compile_segments(segments),
+         :ok <- validate_literal_uri(scheme, authority, segments) do
       {:ok, %__MODULE__{scheme: scheme, authority: authority, segments: segments}}
     else
       _unsupported -> :unsupported
@@ -62,9 +71,9 @@ defmodule MCP.Resource.Template do
   def match(%__MODULE__{} = template, uri) when is_binary(uri) do
     with {:ok, parsed} <- URI.new(uri),
          :ok <- validate_uri(parsed, template.scheme),
-         segments = split_path(parsed.path),
+         {:ok, authority, segments} <- split_uri(uri, template.scheme),
          true <- length(segments) == length(template.segments),
-         {:ok, bound} <- bind(template.authority, parsed.host, %{}) do
+         {:ok, bound} <- bind(template.authority, authority, %{}) do
       bind_segments(template.segments, segments, bound)
     else
       _no_match -> :error
@@ -78,15 +87,24 @@ defmodule MCP.Resource.Template do
   end
 
   defp validate_uri(%URI{} = uri, scheme) do
-    # URI.new/1 fills in the well-known port for known schemes and leaves nil
-    # for the custom schemes resource templates use, so an explicitly given
-    # port is the one that differs from the scheme's default.
     if uri.scheme == scheme and is_binary(uri.host) and uri.host != "" and
-         is_nil(uri.query) and is_nil(uri.fragment) and is_nil(uri.userinfo) and
-         uri.port == URI.default_port(scheme) do
+         is_nil(uri.query) and is_nil(uri.fragment) and is_nil(uri.userinfo) do
       :ok
     else
       :error
+    end
+  end
+
+  defp validate_literal_uri(scheme, authority, segments) do
+    parts =
+      Enum.map([authority | segments], fn
+        {:literal, value} -> value
+        {:variable, _name} -> "mcp-variable"
+      end)
+
+    case URI.new(scheme <> "://" <> Enum.join(parts, "/")) do
+      {:ok, uri} -> validate_uri(uri, scheme)
+      {:error, _reason} -> :error
     end
   end
 
@@ -107,18 +125,33 @@ defmodule MCP.Resource.Template do
 
   defp compile_part(segment) when is_binary(segment) do
     case Regex.run(@variable, segment, capture: :all_but_first) do
+      [name] when name in ["uri", "_meta"] ->
+        :error
+
       [name] ->
         {:ok, {:variable, name}}
 
       nil ->
         # A segment that is only partly an expression, such as "v{version}",
         # or that carries an operator, is outside the subset.
-        if String.contains?(segment, ["{", "}"]), do: :error, else: {:ok, {:literal, segment}}
+        if String.contains?(segment, ["{", "}"]) or not valid_encoded?(segment),
+          do: :error,
+          else: {:ok, {:literal, segment}}
     end
   end
 
-  defp split_path(nil), do: []
-  defp split_path(path) when is_binary(path), do: String.split(path, "/", trim: true)
+  defp split_uri(uri, scheme) do
+    # URI.new/1 normalizes an absent port and an explicit default port to the
+    # same value. Check the original authority, and preserve empty path parts.
+    with [input_scheme, rest] <- String.split(uri, "://", parts: 2),
+         true <- String.downcase(input_scheme) == scheme,
+         [authority | segments] <- String.split(rest, "/"),
+         false <- String.contains?(authority, @reserved) do
+      {:ok, authority, segments}
+    else
+      _unsupported -> :error
+    end
+  end
 
   defp bind_segments(parts, segments, bound) do
     parts
@@ -136,8 +169,22 @@ defmodule MCP.Resource.Template do
   end
 
   defp bind({:variable, name}, value, bound) do
-    decoded = URI.decode(value)
+    if value != "" and valid_encoded?(value) do
+      bind_value(name, URI.decode(value), bound)
+    else
+      :error
+    end
+  end
 
-    if decoded == "", do: :error, else: {:ok, Map.put(bound, name, decoded)}
+  defp bind_value(name, decoded, bound) do
+    case Map.fetch(bound, name) do
+      :error -> {:ok, Map.put(bound, name, decoded)}
+      {:ok, ^decoded} -> {:ok, bound}
+      {:ok, _different} -> :error
+    end
+  end
+
+  defp valid_encoded?(value) do
+    not Regex.match?(@invalid_escape, value) and String.valid?(URI.decode(value))
   end
 end

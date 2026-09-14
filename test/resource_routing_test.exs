@@ -137,6 +137,15 @@ defmodule MCP.ResourceRoutingTest do
       assert error["code"] == -32_602
       assert error["message"] == "Resource not found"
     end
+
+    test "malformed or extra separators never route to the resource handler" do
+      for uri <- ["hex://jason//info", "hex://jason/info/", "hex://bad%GG/info"] do
+        error = read(uri, [PackageInfo])["error"]
+
+        assert error["code"] == -32_602
+        assert error["message"] == "Resource not found"
+      end
+    end
   end
 
   describe "matcher contract" do
