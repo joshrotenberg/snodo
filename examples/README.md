@@ -12,7 +12,9 @@ policy to every list surface. Example 16 adds an application-owned subscription
 source and the complete stream lifecycle; example 17 lets Tasks extend that
 lifecycle without entering the core profile; example 18 supplies an opt-in,
 bounded producer for application changes; and example 19 observes dispatch and
-subscription pressure without adding a metrics dependency. Run a core example as a walkthrough:
+subscription pressure without adding a metrics dependency. Example 20 adds
+ordinary multi-round elicitation and signed state for tools, resources, and
+prompts. Run a core example as a walkthrough:
 
 ```sh
 mix run examples/01_direct_tools.exs
@@ -26,7 +28,7 @@ mix run examples/01_direct_tools.exs --check
 
 Or run the complete no-external-service set, with every script launched in a
 fresh Elixir VM. The root task delegates examples 07–09 and 17 to Tasks and example
-11 to the SQLite sibling; examples 12–16 and 18–19 remain in core:
+11 to the SQLite sibling; examples 12–16 and 18–20 remain in core:
 
 ```sh
 mix examples
@@ -88,6 +90,7 @@ not have that requirement.
 | [`17_tasks_subscriptions.exs`](17_tasks_subscriptions.exs) | Negotiated extension-owned `taskIds`, authorization-scoped admission, complete `notifications/tasks` snapshots over the shared lifecycle |
 | [`18_subscription_hub.exs`](18_subscription_hub.exs) | Reusable application-supervised producer, bounded filter-aware queues, mutable resource update, fresh read, clean completion |
 | [`19_instrumentation.exs`](19_instrumentation.exs) | Dependency-free sink, dispatch timing/outcomes, subscription queue/drop measurements, bounded metadata |
+| [`20_mrtr_elicitation.exs`](20_mrtr_elicitation.exs) | Ordinary tools/resources/prompts, form/URL input, request-bound signed state, repeated retries, and state-only continuation |
 
 The unnumbered stdio files remain interoperability and subprocess acceptance
 fixtures. DETS in example 08 is deliberately a local single-node reference

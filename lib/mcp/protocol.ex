@@ -27,6 +27,8 @@ defmodule MCP.Protocol do
   @callback resolve_operation(Envelope.t()) ::
               {:ok, term()} | :not_handled | {:error, Error.t()}
   @callback validate_operation(term(), map(), Context.t()) :: :ok | {:error, Error.t()}
+  @doc "Optional post-handler admission for dialect-specific result variants and capabilities."
+  @callback validate_result(term(), Result.t(), Context.t()) :: :ok | {:error, Error.t()}
   @callback shape_result(term(), Result.t(), Context.t()) :: map()
   @callback shape_error(Error.t(), Context.t() | nil) :: map()
   @callback transport_policy(Envelope.t() | nil) :: Policy.t()
@@ -37,7 +39,8 @@ defmodule MCP.Protocol do
               map()
   @callback shape_subscription_result(MCP.Envelope.id(), Context.t()) :: map()
 
-  @optional_callbacks shape_subscription_ack: 3,
+  @optional_callbacks validate_result: 3,
+                      shape_subscription_ack: 3,
                       shape_subscription_event: 3,
                       shape_subscription_result: 2
 

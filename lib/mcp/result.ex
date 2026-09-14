@@ -28,6 +28,7 @@ defmodule MCP.Result do
           | :prompt_get
           | :completion
           | :subscription
+          | :input_required
           | :error
           | :raw
           | :wire
@@ -106,6 +107,35 @@ defmodule MCP.Result do
 
   @spec raw(term()) :: t()
   def raw(value), do: %__MODULE__{kind: :raw, value: value}
+
+  @doc """
+  Requests another round trip from an ordinary tool, resource, or prompt.
+
+  Provide `:input_requests` (a map of server-assigned IDs to bare input
+  requests), `:request_state` (an opaque string), or both. For example:
+
+      Result.input_required(input_requests: %{"approval" => request})
+
+  The current request ends when this result is sent. The client may retry with
+  a fresh ID and new `MCP.Context.input_responses` / `request_state` values, or
+  never retry. Keep side effects explicit and defer them until inputs are ready.
+  Use `MCP.MRTR.State` when state influences business logic; a plain string is
+  not integrity protection. The dialect validates placement and peer support.
+
+  Prefer a nonempty input map or a state-only continuation. The pinned official
+  TypeScript client rejects an empty `inputRequests` without state, even though
+  the protocol schema permits that field to be an empty map.
+  """
+  @spec input_required(keyword()) :: t()
+  def input_required(opts \\ []) when is_list(opts) do
+    value =
+      for {option, wire_key} <- [input_requests: "inputRequests", request_state: "requestState"],
+          Keyword.has_key?(opts, option),
+          into: %{},
+          do: {wire_key, Keyword.fetch!(opts, option)}
+
+    %__MODULE__{kind: :input_required, value: value, metadata: Keyword.get(opts, :metadata, %{})}
+  end
 
   @doc false
   @spec subscription(MCP.Subscription.t()) :: t()

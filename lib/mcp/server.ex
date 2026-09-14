@@ -368,6 +368,22 @@ defmodule MCP.Server do
   end
 
   defp shape_route_result(_runtime, protocol, {:protocol, operation}, result, context) do
+    with :ok <- validate_protocol_result(protocol, operation, result, context) do
+      shape_protocol_result(protocol, operation, result, context)
+    end
+  end
+
+  defp shape_route_result(runtime, _protocol, {:extension, route}, result, context) do
+    ExtensionRegistry.shape_result(runtime.extension_registry, route, result, context)
+  end
+
+  defp validate_protocol_result(protocol, operation, result, context) do
+    if function_exported?(protocol, :validate_result, 3),
+      do: protocol.validate_result(operation, result, context),
+      else: :ok
+  end
+
+  defp shape_protocol_result(protocol, operation, result, context) do
     case result do
       %Result{kind: :subscription, value: %Subscription{} = subscription} ->
         {:ok, {:subscription, subscription}}
@@ -375,10 +391,6 @@ defmodule MCP.Server do
       %Result{} ->
         {:ok, protocol.shape_result(operation, result, context)}
     end
-  end
-
-  defp shape_route_result(runtime, _protocol, {:extension, route}, result, context) do
-    ExtensionRegistry.shape_result(runtime.extension_registry, route, result, context)
   end
 
   defp shape_route_error(runtime, _protocol, envelope, {:extension, route}, context, error) do
@@ -469,6 +481,9 @@ defmodule MCP.Server do
       schema_validator: runtime.schema_validator
     )
   end
+
+  defp apply_cache_policy(%Result{kind: :input_required} = result, _cache, _label),
+    do: {:ok, result}
 
   defp apply_cache_policy(%Result{} = result, cache, label) do
     ttl_ms = Map.get(result.metadata, :ttl_ms, cache.ttl_ms)

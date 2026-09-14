@@ -433,6 +433,9 @@ defmodule MCP.Router do
 
   defp invoke_resource(resource, params, context) do
     case resource.read(params, context) do
+      {:ok, %Result{kind: :input_required} = result} ->
+        {:ok, result}
+
       {:ok, %Result{kind: :resource_read, value: contents} = result} when is_list(contents) ->
         Enum.each(contents, &Resource.validate_content!/1)
         {:ok, result}
@@ -521,6 +524,9 @@ defmodule MCP.Router do
 
   defp invoke_prompt(prompt, arguments, context) do
     case prompt.render(arguments, context) do
+      {:ok, %Result{kind: :input_required} = result} ->
+        {:ok, result}
+
       {:ok,
        %Result{
          kind: :prompt_get,
@@ -588,7 +594,7 @@ defmodule MCP.Router do
         {:ok, Result.normalize(result)}
 
       {:error, %Error{} = error} ->
-        {:ok, Result.error(error.message, error: error)}
+        {:error, error}
 
       {:error, reason} ->
         {:ok, Result.error(format_reason(reason), error: Error.execution(reason))}
@@ -618,6 +624,7 @@ defmodule MCP.Router do
   end
 
   defp validate_output(_validator, %Result{kind: :error}, _schema), do: :ok
+  defp validate_output(_validator, %Result{kind: :input_required}, _schema), do: :ok
   defp validate_output(_validator, %Result{}, nil), do: :ok
 
   defp validate_output(validator, %Result{kind: :structured, value: value}, schema) do

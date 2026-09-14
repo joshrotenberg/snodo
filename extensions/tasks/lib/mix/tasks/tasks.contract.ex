@@ -18,6 +18,7 @@ defmodule Mix.Tasks.Tasks.Contract do
 
   @contract_test_modules [
     MCP.TasksExtensionAcceptanceTest,
+    MCP.TasksOrdinaryMRTRBoundaryTest,
     MCP.TasksLifecycleRaceTest,
     MCP.TasksHTTPAcceptanceTest,
     MCP.TasksSubscriptionAcceptanceTest,
@@ -30,6 +31,7 @@ defmodule Mix.Tasks.Tasks.Contract do
 
   @contract_test_paths [
     "test/tasks_extension_acceptance_test.exs",
+    "test/ordinary_mrtr_boundary_test.exs",
     "test/tasks_lifecycle_race_test.exs",
     "test/tasks_http_acceptance_test.exs",
     "test/tasks_subscription_acceptance_test.exs",

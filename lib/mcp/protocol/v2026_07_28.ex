@@ -8,6 +8,7 @@ defmodule MCP.Protocol.V2026_07_28 do
   alias MCP.Envelope
   alias MCP.Error
   alias MCP.Extension.Registry, as: ExtensionRegistry
+  alias MCP.MRTR
   alias MCP.Prompt
   alias MCP.Protocol
   alias MCP.Protocol.Profile
@@ -42,7 +43,6 @@ defmodule MCP.Protocol.V2026_07_28 do
   ]
 
   @unsupported_embedded_requests [
-    {"elicitation/create", :required, :active},
     {"roots/list", :optional, :deprecated},
     {"sampling/createMessage", :required, :deprecated}
   ]
@@ -82,6 +82,14 @@ defmodule MCP.Protocol.V2026_07_28 do
              request_metadata: %{request: :required, notification: :optional},
              methods:
                [
+                 Method.new!(
+                   name: "elicitation/create",
+                   kind: :request,
+                   directions: [:server_to_client],
+                   params: :required,
+                   status: :implemented,
+                   placement: :mrtr_embedded
+                 ),
                  Method.new!(
                    name: "server/discover",
                    kind: :request,
@@ -224,7 +232,7 @@ defmodule MCP.Protocol.V2026_07_28 do
                official_server_conformance: :partial,
                schema_validation: :pluggable,
                subscriptions: :tested,
-               multi_round_trip_requests: :unsupported,
+               multi_round_trip_requests: :elicitation_and_state,
                list_pagination: :tested,
                transport_policy_enforcement: :tested,
                method_catalog: :complete,
@@ -288,6 +296,10 @@ defmodule MCP.Protocol.V2026_07_28 do
          auth: envelope.transport.metadata[:auth],
          transport: envelope.transport,
          request_id: envelope.id,
+         request_method: envelope.method,
+         request_params: envelope.params,
+         request_state: Map.get(envelope.params, "requestState"),
+         input_responses: Map.get(envelope.params, "inputResponses", %{}),
          cancellation: envelope.transport.metadata[:cancellation],
          progress: envelope.transport.metadata[:progress],
          extensions: negotiated_extensions(client_capabilities, runtime.capabilities),
@@ -441,6 +453,16 @@ defmodule MCP.Protocol.V2026_07_28 do
   end
 
   @impl true
+  def validate_result(operation, result, context),
+    do: MRTR.validate_result(operation, result, context)
+
+  @impl true
+  def shape_result(_operation, %Result{kind: :input_required, value: value} = result, context) do
+    value
+    |> Map.put("resultType", "input_required")
+    |> stamp_response_metadata(result, context)
+  end
+
   def shape_result(_operation, %Result{kind: :wire, value: value} = result, context)
       when is_map(value) do
     stamp_response_metadata(value, result, context)
@@ -739,7 +761,8 @@ defmodule MCP.Protocol.V2026_07_28 do
 
   @doc false
   def inspect_prompt_get_params(params) when is_map(params) do
-    with :ok <- inspect_prompt_name(params) do
+    with :ok <- inspect_prompt_name(params),
+         :ok <- MRTR.inspect_params(params) do
       inspect_prompt_arguments(params)
     end
   end
@@ -756,6 +779,12 @@ defmodule MCP.Protocol.V2026_07_28 do
 
   @doc false
   def inspect_resource_read_params(params) when is_map(params) do
+    with :ok <- MRTR.inspect_params(params) do
+      inspect_read_uri(params)
+    end
+  end
+
+  defp inspect_read_uri(params) do
     case Map.fetch(params, "uri") do
       {:ok, uri} when is_binary(uri) and uri != "" ->
         if valid_uri?(uri),
@@ -785,7 +814,8 @@ defmodule MCP.Protocol.V2026_07_28 do
 
   @doc false
   def inspect_tools_call_params(params) when is_map(params) do
-    with :ok <- inspect_tool_name(params) do
+    with :ok <- inspect_tool_name(params),
+         :ok <- MRTR.inspect_params(params) do
       inspect_tool_arguments(params)
     end
   end
@@ -1160,8 +1190,12 @@ defmodule MCP.Protocol.V2026_07_28 do
   end
 
   defp validate_elicitation_settings({:ok, elicitation}) do
-    with :ok <- validate_optional_object(elicitation, "form", "Elicitation form capability") do
-      validate_optional_object(elicitation, "url", "Elicitation URL capability")
+    with :ok <- validate_optional_object(elicitation, "form", "Elicitation form capability"),
+         :ok <- validate_optional_object(elicitation, "url", "Elicitation URL capability") do
+      if map_size(elicitation) == 0 or Map.has_key?(elicitation, "form") or
+           Map.has_key?(elicitation, "url"),
+         do: :ok,
+         else: {:error, Error.invalid_params("Elicitation capability requires a supported mode")}
     end
   end
 

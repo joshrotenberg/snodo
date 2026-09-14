@@ -151,7 +151,11 @@ defmodule MCP.Compliance do
     "subscriptions-http-sse",
     "subscriptions-disconnect",
     "extension-registration",
-    "extension-negotiation-dispatch"
+    "extension-negotiation-dispatch",
+    "mrtr-elicitation-wire",
+    "mrtr-capability-admission",
+    "mrtr-extension-composition",
+    "mrtr-state-integrity"
   ]
 
   if length(@official_server_requirements) != 37 do

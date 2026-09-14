@@ -16,7 +16,8 @@ defmodule Mix.Tasks.Examples do
     {"examples/15_pagination.exs", "15_pagination: ok"},
     {"examples/16_subscriptions.exs", "16_subscriptions: ok"},
     {"examples/18_subscription_hub.exs", "18_subscription_hub: ok"},
-    {"examples/19_instrumentation.exs", "19_instrumentation: ok"}
+    {"examples/19_instrumentation.exs", "19_instrumentation: ok"},
+    {"examples/20_mrtr_elicitation.exs", "20_mrtr_elicitation: ok"}
   ]
 
   @tasks_examples [

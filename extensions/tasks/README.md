@@ -17,7 +17,7 @@ mix examples
 mix tasks.stress
 ```
 
-The current package suite has 80 tests and 10 local contract groups. The root
+The package maintains 10 local contract groups. The root
 `mix quality`, `mix quality.types`, and `mix examples` commands delegate to the
 child package where appropriate.
 
@@ -260,16 +260,24 @@ crashes; that distinction is inherent in the at-least-once model.
 
 ## Mid-task input
 
+Ordinary MRTR and task-owned input are separate lifecycles. Complete ordinary
+`MCP.Result.input_required/1` exchanges synchronously before selecting task
+execution; once inside a task, use `Tasks.await_input/3` and `tasks/update`.
+Workers enforce the selected dialect's result admission and fail with a
+protocol error if they return ordinary `input_required` or another task handle
+as their final result. There is no automatic continuation bridge between the
+two lifecycles. `await_input/3` remains a low-level lifecycle API: applications
+must authorize the interaction and validate returned content before effects.
+
 A tool executing inside a Task can suspend on an input request:
 
 ```elixir
-request = %{
-  "method" => "elicitation/create",
-  "params" => %{
-    "message" => "Confirm export",
-    "requestedSchema" => %{"type" => "object"}
-  }
-}
+request =
+  MCP.Elicitation.form("Confirm export", %{
+    "type" => "object",
+    "properties" => %{"confirmed" => %{"type" => "boolean"}},
+    "required" => ["confirmed"]
+  })
 
 with {:ok, response} <- Tasks.await_input(context, "export-confirmation", request) do
   {:ok, MCP.Result.structured(%{"confirmation" => response})}

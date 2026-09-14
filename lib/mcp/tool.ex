@@ -27,9 +27,9 @@ defmodule MCP.Tool do
   `required` list are already rejected this way by `MCP.Router` before
   `call/2` runs, so a handler rarely needs to raise that case itself.
 
-  Returning `{:error, reason}` for anything that is not an `MCP.Error` becomes
-  `-32603`, an internal error, which tells the client the server broke. That is
-  almost never what a failed upstream call should say.
+  For compatibility, `{:error, reason}` without an `MCP.Error` is normalized
+  into a tool error result. Prefer an explicit `MCP.Result.error/2` for domain
+  outcomes and a typed `MCP.Error` when the JSON-RPC request must fail.
 
   ## Schemas are advertised, and required arguments are enforced
 

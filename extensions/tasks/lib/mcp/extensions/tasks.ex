@@ -21,6 +21,11 @@ defmodule MCP.Extensions.Tasks do
   return `-32021` when the per-request capability is absent. A policy value may
   also be an arity-2 function receiving `(params, context)`, allowing a server
   to decide per invocation.
+
+  Finish ordinary MRTR exchanges before selecting asynchronous execution, or
+  use `await_input/3` while a task is running. A worker cannot complete with an
+  ordinary input-required result or another task handle; these are failed as
+  protocol errors instead of storing a continuation as a terminal result.
   """
 
   @behaviour MCP.Extension
@@ -358,14 +363,7 @@ defmodule MCP.Extensions.Tasks do
   defp execute_task(operation, task_context, next) do
     case next.(task_context) do
       {:ok, %Result{} = result} ->
-        try do
-          wire = task_context.protocol.shape_result(operation, result, task_context)
-          {:completed, wire}
-        rescue
-          exception ->
-            error = Error.internal("Task result shaping failed", {exception, __STACKTRACE__})
-            {:failed, Error.to_json_rpc(error), error.message}
-        end
+        shape_task_result(operation, result, task_context)
 
       {:error, %Error{} = error} ->
         {:failed, Error.to_json_rpc(error), error.message}
@@ -375,6 +373,36 @@ defmodule MCP.Extensions.Tasks do
         {:failed, Error.to_json_rpc(error), error.message}
     end
   end
+
+  defp shape_task_result(operation, result, context) do
+    with :ok <- validate_task_result(operation, result, context),
+         wire = context.protocol.shape_result(operation, result, context),
+         :ok <- validate_terminal_result(wire) do
+      {:completed, wire}
+    else
+      {:error, %Error{} = error} -> {:failed, Error.to_json_rpc(error), error.message}
+    end
+  rescue
+    exception ->
+      error = Error.internal("Task result shaping failed", {exception, __STACKTRACE__})
+      {:failed, Error.to_json_rpc(error), error.message}
+  end
+
+  defp validate_task_result(operation, result, context) do
+    if function_exported?(context.protocol, :validate_result, 3),
+      do: context.protocol.validate_result(operation, result, context),
+      else: :ok
+  end
+
+  defp validate_terminal_result(%{"resultType" => type})
+       when type in ["input_required", "task"] do
+    {:error,
+     Error.internal(
+       "Task worker returned a continuation; use Tasks.await_input/3 or finish MRTR before creating a task"
+     )}
+  end
+
+  defp validate_terminal_result(_wire), do: :ok
 
   defp new_task(id, now, options, overrides) do
     task =

@@ -59,7 +59,7 @@ defmodule MCP.Compliance.ProfileAndInspectorTest do
      :implemented, :top_level, :active},
     {"notifications/tools/list_changed", :notification, :server_to_client, :optional, "tools",
      :implemented, :top_level, :active},
-    {"elicitation/create", :request, :server_to_client, :required, nil, :unsupported,
+    {"elicitation/create", :request, :server_to_client, :required, nil, :implemented,
      :mrtr_embedded, :active},
     {"roots/list", :request, :server_to_client, :optional, nil, :unsupported, :mrtr_embedded,
      :deprecated},
@@ -417,7 +417,7 @@ defmodule MCP.Compliance.ProfileAndInspectorTest do
         internal_pass: Compliance.internal_contracts()
       )
 
-    assert length(report["evidence"]["internalPass"]) == 25
+    assert length(report["evidence"]["internalPass"]) == 29
 
     assert report["evidence"]["officialPass"] == [
              "completion-complete",

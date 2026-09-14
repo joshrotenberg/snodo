@@ -370,6 +370,19 @@ drop, then observe graceful completion and cleanup.
 **Status:** implemented and included in root `mix examples`. Tasks runner/job
 and store-transition events are exercised by the independent package suite.
 
+### 20. `20_mrtr_elicitation.exs` — ordinary interactive requests
+
+Implements a read-only preference workflow using public `MCP.Elicitation`,
+`MCP.Result.input_required/1`, and `MCP.MRTR.State` APIs across ordinary tools,
+resources, and prompts. Demonstrates successive form answers, signed-state
+replacement, state-only and input-only continuations, and URL consent without
+claiming the external interaction completed. Runs in the default examples gate.
+
+The companion official TypeScript client harness verifies automatic retries over
+stdio and native HTTP, fresh request IDs, unchanged operation arguments, and
+rejection of request-state reuse on a different operation. See
+[the MRTR guide](mrtr-elicitation.md) for security and support boundaries.
+
 ## Explicit deferrals
 
 Do not publish examples for progress notifications or authorization yet. Each

@@ -7,6 +7,9 @@ defmodule Mix.Tasks.Mcp.Contract do
     MCP.PaginationProtocolAcceptanceTest,
     MCP.SubscriptionProtocolAcceptanceTest,
     MCP.ExtensionAcceptanceTest,
+    MCP.MRTR.ProtocolAcceptanceTest,
+    MCP.MRTR.ExtensionAcceptanceTest,
+    MCP.MRTR.StateTest,
     MCP.Transport.StdioAcceptanceTest,
     MCP.Transport.StreamableHTTP.AdapterAcceptanceTest,
     MCP.Transport.StreamableHTTP.ServerAcceptanceTest
@@ -17,6 +20,9 @@ defmodule Mix.Tasks.Mcp.Contract do
     "test/pagination_protocol_acceptance_test.exs",
     "test/subscription_protocol_acceptance_test.exs",
     "test/extension_acceptance_test.exs",
+    "test/mrtr_protocol_acceptance_test.exs",
+    "test/mrtr_extension_acceptance_test.exs",
+    "test/mrtr_state_test.exs",
     "test/stdio_acceptance_test.exs",
     "test/http_adapter_acceptance_test.exs",
     "test/http_server_acceptance_test.exs"
