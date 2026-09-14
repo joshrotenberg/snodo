@@ -12,9 +12,11 @@ code and reports:
 | Evidence lane | What it proves | Current status |
 |---|---|---|
 | Exact protocol profile | Which core methods exist in the pinned revision and which capabilities, methods, transports, and limitations this build implements | Complete catalog; implemented slice explicit |
-| Core internal contract | Literal wire requests plus HTTP and generic extension acceptance obey the declared core slice | 25 evidence groups passing |
+| Core internal contract | Literal wire requests plus HTTP and generic extension acceptance obey the declared core slice | 29 evidence groups passing |
 | Tasks package contract | The independent child package obeys its Tasks wire, lifecycle, subscriptions, HTTP, descriptor, durable-store, and recovery contract | 10 evidence groups passing |
 | Released-client interop | A real official TypeScript client can discover, list, call, cancel, and call again over stdio | Passing with client 2.0.0 |
+| Target application acceptance | The real Hex.pm server's catalog, tool outcomes, prompts, and resource reads work with seeded domain responses over stdio and HTTP | Passing with client 2.0.0; [scope and commands](target-application-findings.md) |
+| MRTR client acceptance | Ordinary tool/resource/prompt elicitation, signed state, automatic retries, and URL consent work over stdio and HTTP | Passing with client 2.0.0; [scope and commands](mrtr-elicitation.md) |
 | Official server requirements | The implementation passes the frozen upstream scenarios for the released revision | Partial: 22/37 exercised whole scenarios pass; all 37 attempted |
 | Full wire-schema validation | Every emitted message validates against the complete official schema | Not yet measured |
 
@@ -219,6 +221,20 @@ cd extensions/tasks
 mix tasks.contract
 ```
 
+## Ordinary MRTR evidence
+
+Four internal groups now cover ordinary elicitation wire behavior, result
+placement and peer-capability admission, request-bound signed state, and
+extension middleware composition. The profile marks `elicitation/create`
+implemented only in its embedded placement; roots/sampling remain unsupported.
+Literal requests cover malformed and partial input, repeated retries, and
+all three permitted core operations. An independent pinned TypeScript client
+exercises automatic round trips over stdio and native HTTP.
+
+These additions do not revise the historical external-runner score below.
+See [the MRTR guide](mrtr-elicitation.md) for supported schema limits, state
+security, the Tasks boundary, and the empty-input-map SDK caveat.
+
 ## Official conformance lane
 
 The native Streamable HTTP fixture has been exercised by the frozen official
@@ -294,7 +310,7 @@ visible and claims only the 35 Tasks assertions:
 
 ## Next compliance increments
 
-1. Preserve the checked-in honest core summary while filling the 22 remaining
+1. Preserve the checked-in honest core summary while filling the remaining
    required scenarios with real fixtures and framework surface; never promote a
    warning-only or missing-fixture result to a pass.
 2. Add a narrow per-check expected-failures baseline only when CI adoption needs

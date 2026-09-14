@@ -1,5 +1,13 @@
 defmodule MCP.Test do
-  @moduledoc "In-process request helpers for component and protocol tests."
+  @moduledoc """
+  In-process request helpers for component and protocol tests.
+
+  When `protocol:` is supplied, `dispatch/2` adds that dialect's required
+  request metadata, including protocol version and client capabilities. A real
+  client must send these fields itself. Use `MCP.Server.dispatch/3` with literal
+  request maps, transport tests, and an independent client to test wire admission;
+  passing component tests alone does not establish transport interoperability.
+  """
 
   alias MCP.Protocol.Registry
   alias MCP.Server

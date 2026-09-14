@@ -72,8 +72,8 @@ wrap core dispatch, and contribute exact-route HTTP policy. The Tasks extension
 uses those generic seams for `tools/call` augmentation and its three top-level
 methods without changing the core catalog or router.
 
-The package boundary is now exercised rather than aspirational: standalone
-`mcp_ex` has 154 tests and 25 core contract groups, while the independently
+The package boundary is now exercised rather than aspirational. At the initial
+package split, standalone `mcp_ex` had 154 tests and 25 core contract groups, while the independently
 compiled `:mcp_ex_tasks` child depends one-way on the core and has 80 tests and
 10 local contract groups. The optional `:mcp_ex_tasks_postgres` sibling adds 9
 database-independent tests plus 14 real-PostgreSQL tests across 7 live evidence

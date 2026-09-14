@@ -1,5 +1,9 @@
 # mcp_ex architecture spike
 
+Development follows the [application readiness plan](docs/application-readiness-plan.md),
+with `hexpm-mcp` as the first real application and independent protocol/client
+evidence as the acceptance boundary.
+
 `mcp_ex` is a router-first Elixir spike for the final MCP `2026-07-28`
 protocol. The protocol core is a standalone, runtime-dependency-free Mix
 library. The released Tasks proof is an independently buildable
@@ -134,7 +138,7 @@ No process is needed for direct dispatch:
   )
 ```
 
-Run the first standalone walkthrough, or check all eighteen no-external-service
+Run the first standalone walkthrough, or check all nineteen no-external-service
 examples in isolated Elixir VMs:
 
 ```sh
@@ -385,6 +389,28 @@ The runnable index is in [examples/README.md](examples/README.md), and the
 ordered plan—including both Ecto-backed walkthroughs—is in
 [docs/examples-roadmap.md](docs/examples-roadmap.md).
 
+## Interactive operations (MRTR)
+
+Ordinary tools, resources, and prompts can return `MCP.Result.input_required/1`
+with requests built by `MCP.Elicitation.form/2` or `url/2`. The current request
+ends; a client retry invokes the handler again with a fresh request context.
+Consume named answers with `MCP.Elicitation.response/3` and use `MCP.MRTR.State`
+for integrity-protected state bound to the principal and original operation.
+No suspended process or shared continuation store is required.
+
+[Example 20](examples/20_mrtr_elicitation.exs) exercises a multi-round, read-only
+workflow through all three feature families. The
+[MRTR guide](docs/mrtr-elicitation.md) covers partial answers, error handling,
+capability checks, state security, Tasks boundaries, and the pinned client check:
+
+```sh
+mix run examples/20_mrtr_elicitation.exs --check
+node interop/official_client/check_mrtr.mjs
+```
+
+This slice supports form/URL elicitation and state-only continuations;
+deprecated roots and sampling input requests remain unsupported.
+
 ## Verification
 
 ```sh
@@ -395,9 +421,9 @@ mix examples
 ```
 
 `mix quality` runs formatting, warning-free compilation, strict Credo, the
-154-test core ExUnit suite, all eighteen no-external-service example checks, and
+core ExUnit suite, all nineteen no-external-service example checks, and
 then delegates to Tasks, PostgreSQL, and SQLite package quality, including
-their 80, 9, and 19 tests. `mix quality.types` runs Dialyzer with
+their independent test suites. `mix quality.types` runs Dialyzer with
 unmatched-return and error-handling warnings enabled for all four packages.
 Dialyzer has no ignore file; Credo has only the documented naming and
 alias-policy exceptions. The default examples gate requires a POSIX host with
@@ -405,7 +431,7 @@ alias-policy exceptions. The default examples gate requires a POSIX host with
 07–09 and 17 are delegated to Tasks, example 11 is delegated to SQLite, and example 10
 stays in the opt-in PostgreSQL lane.
 
-`mix mcp.contract` runs 25 core evidence groups across literal direct/stdio
+`mix mcp.contract` runs 29 core evidence groups across literal direct/stdio
 vectors, native HTTP admission/listener behavior, and generic extension
 registration and negotiated dispatch, including Resources, Prompts, and
 Completion, Pagination, and Subscription routing and wire shapes. The
@@ -489,10 +515,16 @@ npm ci --ignore-scripts
 npm run check
 ```
 
+The companion `interop/official_client/check_hexpm.mjs` checks the real
+`hexpm-mcp` server's 24-tool catalog, tool outcomes, five prompts, and five
+resource reads over stdio and HTTP with seeded domain data. See
+[target application findings](docs/target-application-findings.md) for the
+build instructions, fresh evidence, and limits of that acceptance check.
+
 ## Scope boundaries
 
 This is a design spike, not a production MCP SDK. It intentionally defers a
-bundled JSON Schema 2020-12 engine, a general MRTR API,
+bundled JSON Schema 2020-12 engine, deprecated roots/sampling MRTR inputs,
 legacy sessions, authentication, and per-peer fairness. Resources
 cover paginated list/read/template routing and subscription event shaping, but
 not a general RFC 6570 inverse matcher or a bundled change detector. Prompts

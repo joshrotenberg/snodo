@@ -31,12 +31,15 @@ unreachable or unmatched branches.
 The recorded local verification environment is Elixir 1.20.3 on OTP 29. All
 four projects declare Elixir `~> 1.18`; the checked-in compatibility workflow
 now defines 1.18/OTP 27, 1.19/OTP 28, and 1.20/OTP 29 lanes. Combinations other
-than the local environment become evidence only after their jobs pass. The core suite currently has 154 tests
+than the local environment become evidence only after their jobs pass. At the
+initial package split, the core suite had 154 tests
 and 25 contract groups; the Tasks package has 80 tests and 10 local contract
 groups. The PostgreSQL package has 9 database-independent tests and 1 local
 contract group, plus 14 real-database tests across 7 live evidence groups. The
 SQLite package has 19 file-backed integration tests across 7 local evidence
-groups.
+groups. Current application reconciliation results are recorded in
+[target application findings](target-application-findings.md); the runner's
+output remains authoritative for current test counts.
 
 ## Commands
 
@@ -65,7 +68,7 @@ requires its exact one-line success marker. The root task runs examples 01–06
 and the Resources/Prompts/Completion/Pagination/Subscriptions examples 12–16
 plus the bounded producer and instrumentation examples 18–19 in the core,
 delegates examples 07–09 and 17 to `:mcp_ex_tasks`, and delegates embedded example 11 to
-`:mcp_ex_tasks_sqlite`, for eighteen no-external-service walkthroughs. The
+`:mcp_ex_tasks_sqlite`, for nineteen no-external-service walkthroughs. The
 present suite requires a POSIX host with `sh` and `mkfifo` for the real stdio
 subprocess half-close check.
 
@@ -127,7 +130,7 @@ Protocol evidence remains a separate lane:
 mix mcp.contract
 ```
 
-The core task covers its 15 groups. Tasks contract evidence remains local to
+The core task covers its 29 groups. Tasks contract evidence remains local to
 the one-way-dependent child and runs with `mix tasks.contract` from
 `extensions/tasks`. The PostgreSQL package similarly owns its database-free
 adapter group and 7 live transaction groups. The core compliance inventory
