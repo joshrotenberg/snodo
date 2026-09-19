@@ -23,7 +23,8 @@ servers or a complete JSON Schema validator themselves.
    - The user selected the official TypeScript client as the first acceptance
      target. Record its negotiated features and transport results. Additional
      hosts need their own evidence before claiming compatibility.
-   - Evidence: 228 core tests, 130 application tests, 25 contract groups,
+   - Initial reconciliation checkpoint: 228 core tests, 130 application tests,
+     25 contract groups,
      formatting/Credo/compile/Dialyzer gates, and client 2.0.0 over stdio and
      HTTP. See [target application findings](target-application-findings.md)
      for reproducible commands and the distinction from deployment/conformance.
@@ -38,21 +39,28 @@ servers or a complete JSON Schema validator themselves.
    - Landed public result/context APIs, form/URL elicitation, request-bound signed
      state, partial/multiple-input retries, extension guards, and example 20.
      [MRTR evidence and limits](mrtr-elicitation.md) record the current slice.
-     Local verification: 272 core tests, 85 Tasks tests, 29 core contract groups,
+     Initial MRTR checkpoint: 272 core tests, 85 Tasks tests, 29 core contract groups,
      core static-analysis gates, and official-client automatic retries over
      stdio/HTTP; the existing target application still passes its 130 tests.
-   - Remaining: wire these cases into the pinned external conformance fixtures
-     and rerun its lane; deprecated roots/sampling need separate validation and
-     client evidence before being advertised. Async Tasks continue using their
-     own input lifecycle rather than an implicit MRTR bridge.
-3. **Recommended application stack.**
+   - External fixture close-out is complete: the pinned alpha.11 run now passes
+     32/37 required scenarios, including nine newly exercised ordinary MRTR
+     scenarios. Official-client checks and a strict per-check external regression
+     baseline are wired into CI; local passes do not imply CI has run.
+   - Deprecated roots/sampling still need separate validation and client evidence
+     before being advertised. Async Tasks continue using their own input lifecycle
+     rather than an implicit MRTR bridge.
+3. **Recommended application stack — implemented locally.**
    - Provide a tested Plug/Bandit integration with streaming, disconnect cleanup,
      origin/header admission, and application authentication context.
    - Select an optional complete JSON Schema backend and document recommended
      validation defaults. Keep `Basic` explicitly bounded.
    - Add request progress and ordinary response streaming for the promised
      workflows, with bounded execution and graceful shutdown evidence.
-4. **Independent protocol regression evidence.**
+   - Implemented separate Plug/Bandit and JSV integration packages; examples
+     21/22 demonstrate public application setup and compiled validation. Core
+     remains dependency-free. Progress now works over stdio, native HTTP, and
+     Plug with request-scoped sinks. See [recommended stack and limits](application-stack.md).
+4. **Independent protocol regression evidence — implemented and exercised locally.**
    - Pin schema and runner provenance and validate representative emitted
      messages with a complete schema engine.
    - Translate tower-mcp failure cases into reusable protocol fixtures covering
@@ -62,12 +70,32 @@ servers or a complete JSON Schema validator themselves.
      resolve disagreements against the specification.
    - Keep failures, absent fixtures, deprecated features, and implementation
      gaps explicit. Historical conformance scores are dated observations.
-5. **Application workflows and release readiness.**
+   - Implemented pinned runner/provenance and regression CI with all 190 check
+     occurrences pinned across required and unscored scenarios, plus a
+     separate AJV corpus validating 78 actual emissions with 78 negative
+     mutations. Real-client progress checks document an SDK callback scheduling
+     race separately from the correct ordered wire behavior.
+5. **Application workflows — implemented locally; release readiness remains gated.**
    - Package discovery with prompts, completion, pagination, and cache hints.
    - A durable package audit using Tasks, SQLite, and subscription updates.
    - An ordinary operation that requests input through MRTR and resumes.
    - Run examples through the public API and supported transports, document
      actual host capabilities, and define a versioned feature/support profile.
+   - The real application now supplies package-name completion, eight-entry
+     catalog pages with public cache hints, and a read-only `package_review`
+     prompt with optional ordinary MRTR focus selection. Official-client 2.0.0
+     exercises all three tool pages, two completion paths, and automatic review
+     retry over both stdio and HTTP.
+   - The opt-in target `AuditWorkflow` composes Tasks, SQLite, the real domain
+     audit, and scoped snapshot subscriptions. Eleven focused tests cover
+     restart/recovery, cancellation, tenant isolation, reaping, and authenticated
+     Plug/Bandit HTTP/SSE. An offline executable demonstrates durable recovery
+     and terminal-state reconnect. This is not a production security audit
+     service: reports retain domain limitations, and deployment still needs
+     authentication policy, quotas, retention and operational acceptance.
+   - [Release gates and versioned support profile](release-readiness.md) define
+     what remains. License/distribution is a user decision; local changes do not
+     publish or deploy either repository.
 
 ## Working rules
 

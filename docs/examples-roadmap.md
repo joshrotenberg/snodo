@@ -1,9 +1,10 @@
 # Examples roadmap and status
 
-Examples 1–19 are implemented. Examples 1–9 and 11–19 run under root
-`mix examples`: the root task runs examples 1–6, 12–16, and 18–19 against standalone `mcp_ex`,
+Examples 1–22 are implemented. Examples 1–9 and 11–22 run under root
+`mix examples`: the root task runs examples 1–6, 12–16, and 18–20 against standalone `mcp_ex`,
 delegates examples 07–09 and 17 to the independent `:mcp_ex_tasks` child package, and
-delegates example 11 to `:mcp_ex_tasks_sqlite`. Example 10 is an opt-in
+delegates example 11 to `:mcp_ex_tasks_sqlite`, and examples 21/22 to the optional
+Plug and JSV integration packages. Example 10 is an opt-in
 live-database acceptance artifact owned by `:mcp_ex_tasks_postgres`. The set
 tells one architectural story: start with the process-free protocol core, add
 application-owned state and concurrent transports, then show that optional
@@ -19,8 +20,9 @@ Every numbered example:
   `cd extensions/tasks && mix examples`, and example 10 runs through
   `cd extensions/tasks_postgres && mix example.postgres` with
   `MCP_TASKS_DATABASE_URL` set; example 11 runs through
-  `cd extensions/tasks_sqlite && mix example.sqlite`; examples 12–16 and 18–19 run through
-  `mix run examples/NN_name.exs`;
+  `cd extensions/tasks_sqlite && mix example.sqlite`; examples 12–16 and 18–20 run through
+  `mix run examples/NN_name.exs`; examples 21/22 use `mix example.plug` and
+  `mix example.jsv` from their integration packages;
 - supports `--check`, makes its own assertions, prints one short success line, and
   exits non-zero on failure;
 - is deterministic: fixed inputs, explicit synchronization instead of sleeps,
@@ -29,7 +31,7 @@ Every numbered example:
 - owns and cleans up any processes, sockets, or temporary state it starts; and
 - remains small enough to read as a focused feature walkthrough.
 
-Root `mix examples` runs every default no-external-service example (1–9 and 11–19)
+Root `mix examples` runs every default no-external-service example (1–9 and 11–22)
 with `--check` in a fresh Elixir VM, delegates the Tasks and SQLite entries to
 their own dependency graphs, and stops on the first non-zero exit. The
 PostgreSQL package's separate live lane runs example 10.

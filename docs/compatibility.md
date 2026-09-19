@@ -12,7 +12,8 @@ its CI job completes successfully.
 
 ## BEAM matrix
 
-All four packages declare Elixir `~> 1.18`. The matrix exercises these supported
+All six packages declare Elixir `~> 1.18`: core, Tasks, two Tasks databases,
+Plug integration, and JSV validation integration. The matrix exercises these supported
 pairs:
 
 | Lane | Elixir | Erlang/OTP | Evidence |
@@ -29,6 +30,20 @@ rather than inference from the Elixir version requirement. The pairings follow
 Elixir's official [compatibility table](https://hexdocs.pm/elixir/main/compatibility-and-deprecations.html),
 and the workflow uses the Erlang Ecosystem Foundation's
 [`setup-beam`](https://github.com/erlef/setup-beam) action.
+
+## Independent protocol and client lanes
+
+The current BEAM lane also runs the lockfile-pinned official TypeScript client
+2.0.0 baseline, MRTR, and progress checks over stdio and native HTTP. Progress
+wire correctness and the SDK's callback scheduling limitation are recorded
+[separately](../interop/official_client/PROGRESS.md).
+
+[`protocol.yml`](../.github/workflows/protocol.yml) adds two independent jobs:
+the exact frozen alpha.11 conformance runner with a strict per-check regression
+baseline, and AJV validation of representative real emitted messages against a
+digest-pinned official schema. Both upload their local evidence as artifacts.
+A baseline pass is not full conformance, and a corpus pass is not a proof of all
+possible protocol output. No remote CI execution is inferred from local results.
 
 ## PostgreSQL matrix
 

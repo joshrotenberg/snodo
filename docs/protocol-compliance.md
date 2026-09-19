@@ -12,13 +12,14 @@ code and reports:
 | Evidence lane | What it proves | Current status |
 |---|---|---|
 | Exact protocol profile | Which core methods exist in the pinned revision and which capabilities, methods, transports, and limitations this build implements | Complete catalog; implemented slice explicit |
-| Core internal contract | Literal wire requests plus HTTP and generic extension acceptance obey the declared core slice | 29 evidence groups passing |
+| Core internal contract | Literal wire requests plus HTTP and generic extension acceptance obey the declared core slice | 31 evidence groups passing |
 | Tasks package contract | The independent child package obeys its Tasks wire, lifecycle, subscriptions, HTTP, descriptor, durable-store, and recovery contract | 10 evidence groups passing |
 | Released-client interop | A real official TypeScript client can discover, list, call, cancel, and call again over stdio | Passing with client 2.0.0 |
 | Target application acceptance | The real Hex.pm server's catalog, tool outcomes, prompts, and resource reads work with seeded domain responses over stdio and HTTP | Passing with client 2.0.0; [scope and commands](target-application-findings.md) |
 | MRTR client acceptance | Ordinary tool/resource/prompt elicitation, signed state, automatic retries, and URL consent work over stdio and HTTP | Passing with client 2.0.0; [scope and commands](mrtr-elicitation.md) |
-| Official server requirements | The implementation passes the frozen upstream scenarios for the released revision | Partial: 22/37 exercised whole scenarios pass; all 37 attempted |
-| Full wire-schema validation | Every emitted message validates against the complete official schema | Not yet measured |
+| Official server requirements | The implementation passes the frozen upstream scenarios for the released revision | Partial: 32/37 exercised whole scenarios pass (2026-09-14); all 37 attempted |
+| Ordinary progress | Correlated progress precedes normal/error/MRTR terminal messages; cancellation and no-token behavior are checked over stdio and HTTP | Passing wire and controlled client checks; [SDK callback caveat](../interop/official_client/PROGRESS.md) |
+| Independent wire-schema corpus | Representative real emissions validate against named definitions and concrete result branches in the pinned official schema using AJV | 78 emissions across direct/stdio/HTTP; 78 negative mutations and 7 unit controls; not every possible message |
 
 `mix mcp.contract` prints the core buckets without converting internal evidence
 or unsupported features into an official score. The one-way-dependent Tasks
@@ -158,10 +159,11 @@ effects. Accepted mid-task input is also durable: an identical recovered request
 replays the persisted response without another input event, while changing the
 request under an issued key is rejected. The DETS implementation proves reopen
 and boot-epoch fencing on one node; it is deliberately not evidence for
-distributed production claims. Both adapters choose to reap the entire
-aggregate at the `createdAt + ttlMs` boundary and preserve `ttlMs: nil`
-indefinitely. That is this project's permitted expiration policy, not a claim
-that the protocol mandates eager physical deletion for every server.
+distributed production claims. Both adapters make the entire aggregate eligible
+for reaping at `createdAt + ttlMs` and preserve `ttlMs: nil` indefinitely.
+Removal depends on explicit or scheduled cleanup; reads and claims are not an
+exact-deadline expiry fence. That is this project's permitted expiration policy,
+not a claim that the protocol mandates eager physical deletion for every server.
 
 This work reimplements the architecture in Elixir; no tower-mcp source was
 copied. tower-mcp is licensed MIT OR Apache-2.0.
@@ -231,7 +233,7 @@ Literal requests cover malformed and partial input, repeated retries, and
 all three permitted core operations. An independent pinned TypeScript client
 exercises automatic round trips over stdio and native HTTP.
 
-These additions do not revise the historical external-runner score below.
+The 2026-09-14 external run now exercises nine additional ordinary MRTR scenarios.
 See [the MRTR guide](mrtr-elicitation.md) for supported schema limits, state
 security, the Tasks boundary, and the empty-input-map SDK caveat.
 
@@ -239,17 +241,19 @@ security, the Tasks boundary, and the empty-input-map SDK caveat.
 
 The native Streamable HTTP fixture has been exercised by the frozen official
 server runner. All 37 required scenarios were attempted. The honest score is
-**22/37 exercised whole scenarios passed**. The raw runner had 25/37 scenarios
-without a `FAILURE` check; three are excluded because missing fixtures or
-warning-only paths did not exercise their intended behavior.
+**32/37 exercised whole scenarios passed** in the 2026-09-14 run. All 32 have
+semantic successes and no failure, warning, or skipped checks. Ordinary MRTR
+fixtures replace the three formerly unexercised false-positive paths.
 
-The required checks total 89 `SUCCESS`, 15 `FAILURE`, 5 `SKIPPED`, 2 `WARNING`,
+The required checks total 103 `SUCCESS`, 8 `FAILURE`, 5 `SKIPPED`, 0 `WARNING`,
 and 1 `INFO`. Two pending, not-scored scenarios pass completely:
 `json-schema-2020-12` (8/8) and `http-header-validation` (14/14). The remaining
 custom-header pending failure stays visible in the checked-in report. The exact
 pass list, raw no-failure list, and exclusion reasons are checked in as both
-[JSON](../conformance/results/2026-07-28-alpha.11-summary.json) and
-[Markdown](../conformance/results/2026-07-28-alpha.11-summary.md).
+[JSON](../conformance/results/2026-09-14-alpha.11-summary.json) and
+[Markdown](../conformance/results/2026-09-14-alpha.11-summary.md), with
+[per-check outcomes](../conformance/results/2026-09-14-alpha.11-checks.json).
+The August 25 summaries are retained as historical evidence, not current scores.
 
 The frozen `2026-07-28` requirement manifest contains 37 scored server
 scenarios. The manifest declares `conformance@0.2.0-alpha.10` as its historical
@@ -277,12 +281,18 @@ npx -y @modelcontextprotocol/conformance@0.2.0-alpha.11 server \
 fixes scenario membership and the wire revision. The upstream manifest is the
 canonical definition of the score.
 
-There is intentionally no expected-failures baseline in this project yet. The
-measured failures remain visible. When a baseline is introduced, use narrow
-`scenario:check-id` entries where possible and preserve both official rules:
+The [managed lane](../conformance/README.md) locks the runner and its complete
+dependency graph, verifies the frozen manifest digest, starts an ephemeral
+loopback fixture, retains raw artifacts, and applies a reviewed per-check
+[regression baseline](../conformance/expected-failures.json). The official runner
+still exits non-zero; failures remain failures in the report. The baseline pins
+all 190 check occurrences across 50 required and unscored scenarios:
 
 - an unexpected failure breaks CI;
-- a passing baselined check also breaks CI because the baseline is stale.
+- a passing baselined check also breaks CI because the baseline is stale;
+- any missing/new occurrence or changed status breaks CI, including a success
+  becoming skipped inside an already-failing or unscored scenario. Repeated
+  check IDs retain their ordered occurrences.
 
 An expected failure remains a conformance failure; the baseline only stages CI
 adoption.
@@ -308,16 +318,32 @@ visible and claims only the 35 Tasks assertions:
 - [human-readable Tasks summary](../conformance/results/2026-07-28-tasks-alpha.11-summary.md)
 - [machine-readable Tasks summary](../conformance/results/2026-07-28-tasks-alpha.11-summary.json)
 
+## Independent full-schema engine lane
+
+[`interop/schema_validation`](../interop/schema_validation/README.md) pins the
+official artifact and provenance, uses AJV 2020-12, and validates 78 actual
+serialized emissions from 60 operations over direct, stdio, and native HTTP.
+It selects 26 named definitions and concrete result branches: the generated
+schema's root is not an envelope validator, and its permissive MRTR union alone
+can accept malformed complete results. Negative controls demonstrate both traps.
+The original upstream schema bytes are retained unchanged with their license.
+
+This is independent of JSV application argument validation and of the client and
+external runner. The checked-in CI job executes the corpus; no remote CI pass is
+inferred. The corpus intentionally excludes Tasks and deprecated roots/sampling,
+among other paths documented in its README. It does not establish universal
+wire validity or encode every prose requirement in JSON Schema.
+
 ## Next compliance increments
 
 1. Preserve the checked-in honest core summary while filling the remaining
    required scenarios with real fixtures and framework surface; never promote a
    warning-only or missing-fixture result to a pass.
-2. Add a narrow per-check expected-failures baseline only when CI adoption needs
-   it, then fail both unexpected failures and stale passing baseline entries.
-3. Pin the released official schema with provenance and validate representative
-   messages using a complete JSON Schema 2020-12 engine; do not add a partial
-   validator.
+2. Maintain the exact per-check CI inventory: fail unexpected/stale failures,
+   missing/new occurrences, and all status drift. Never increase a conformance
+   score through baselining.
+3. Extend the pinned independent schema corpus as new response/notification
+   surfaces land, retaining concrete-branch checks and negative controls.
 4. Keep the implemented retry policy and optional PostgreSQL and SQLite Tasks
    adapters in their own evidence lanes. Run and retain the checked-in
    PostgreSQL-version and migration-upgrade matrix, and add database-specific
