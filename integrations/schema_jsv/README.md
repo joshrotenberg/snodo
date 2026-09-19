@@ -40,6 +40,12 @@ returns cast values, or rewrites the tool definitions advertised by the server.
   `http://json-schema.org/draft-07/schema` (with an optional trailing `#`) is
   supported too. Custom and mixed dialects fail admission. This is schema
   dialect support, **not** support for an older MCP protocol version.
+- Give `$id` an absolute form with an authority, such as
+  `https://example.test/schemas/thing`. JSV resolves each `$ref` against the
+  nearest `$id` using `URI.merge/2`, which before Elixir 1.19 rejected a base
+  without an authority. A `urn:` identifier therefore builds on 1.19 and later
+  and fails on 1.18 with "you must merge onto an absolute URI". This package
+  supports 1.18, so the restriction is real rather than theoretical.
 - The adapter validates schemas against JSV's bundled meta-schemas before
   building a root. Schema failures and unsupported policy features become
   `MCP.Schema.Validator.JSV.BuildError`; `validate/2` raises that error so the

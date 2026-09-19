@@ -6,7 +6,11 @@ defmodule Examples.FullSchema.Tool do
     description: "Validates a local package selection; performs no network requests"
 
   @input %{
-    "$id" => "urn:example:package-selection",
+    # An http(s) $id, not a urn:. JSV resolves a $ref against the nearest $id
+    # with URI.merge/2, which before Elixir 1.19 rejected a base without an
+    # authority. This project supports 1.18, so a urn: base would build here
+    # and fail there.
+    "$id" => "https://example.test/schemas/package-selection",
     "type" => "object",
     "$defs" => %{"package" => %{"type" => "string", "pattern" => "^[a-z][a-z0-9_]*$"}},
     "properties" => %{
@@ -21,6 +25,7 @@ defmodule Examples.FullSchema.Tool do
     "unevaluatedProperties" => false
   }
   @output %{
+    "$id" => "https://example.test/schemas/package-selection-result",
     "type" => "object",
     "properties" => %{"selection" => @input},
     "required" => ["selection"],
