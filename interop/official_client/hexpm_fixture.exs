@@ -62,6 +62,7 @@ projects = [
 
 for {key, value} <- [
       {{:package, "interop_package"}, {:ok, package}},
+      {{:search, "interop", [sort: "name", page: 1]}, {:ok, [package]}},
       {{:package, "missing_interop_package"}, {:error, :not_found}},
       {{:package, "limited_interop_package"}, {:error, :rate_limited}},
       {{:toolbox_groups}, {:ok, groups}},

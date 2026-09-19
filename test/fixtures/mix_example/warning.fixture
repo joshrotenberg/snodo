@@ -1,0 +1,6 @@
+defmodule MCP.MixExampleWarningFixture do
+  def run do
+    unused_example_value = :warning
+    :ok
+  end
+end

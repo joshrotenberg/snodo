@@ -1,0 +1,884 @@
+{
+  "caching": [
+    {
+      "id": "sep-2549-tools-list-caching-hints",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2549-prompts-list-caching-hints",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2549-resources-list-caching-hints",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2549-resources-templates-list-caching-hints",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2549-resources-read-caching-hints",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2549-ttl-non-negative",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2549-cache-scope-valid",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "completion-complete": [
+    {
+      "id": "completion-complete",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "dns-rebinding-protection": [
+    {
+      "id": "localhost-host-rebinding-rejected",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "localhost-host-valid-accepted",
+      "status": "SUCCESS"
+    }
+  ],
+  "http-custom-header-server-validation": [
+    {
+      "id": "sep-2243-server-no-xmcp-tool",
+      "status": "FAILURE",
+      "errorMessage": "Not testable: server exposes no tool with x-mcp-header annotations, so none of the custom-header validation requirements could be exercised"
+    },
+    {
+      "id": "sep-2243-server-decode-base64",
+      "status": "FAILURE",
+      "errorMessage": "Not testable: server exposes no tool with x-mcp-header annotations"
+    },
+    {
+      "id": "sep-2243-server-validate-param-match",
+      "status": "FAILURE",
+      "errorMessage": "Not testable: server exposes no tool with x-mcp-header annotations"
+    },
+    {
+      "id": "sep-2243-server-reject-invalid-param-chars",
+      "status": "FAILURE",
+      "errorMessage": "Not testable: server exposes no tool with x-mcp-header annotations"
+    },
+    {
+      "id": "sep-2243-server-reject-param-mismatch",
+      "status": "FAILURE",
+      "errorMessage": "Not testable: server exposes no tool with x-mcp-header annotations"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "http-header-validation": [
+    {
+      "id": "sep-2243-server-reject-invalid-headers",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-server-reject-error-code",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-server-reject-invalid-headers",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-server-reject-error-code",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-server-reject-invalid-headers",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-server-reject-error-code",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-server-accepts-whitespace-header-value",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-server-reject-invalid-headers",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-server-reject-error-code",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-header-name-case-insensitive",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-header-name-case-insensitive",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-server-reject-invalid-headers",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-server-reject-error-code",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "input-required-result-basic-elicitation": [
+    {
+      "id": "sep-2322-elicitation-incomplete",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2322-elicitation-complete",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "input-required-result-basic-list-roots": [
+    {
+      "id": "sep-2322-list-roots-incomplete",
+      "status": "FAILURE",
+      "errorMessage": "JSON-RPC error: Unknown tool: test_input_required_result_list_roots"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "input-required-result-basic-sampling": [
+    {
+      "id": "sep-2322-sampling-incomplete",
+      "status": "FAILURE",
+      "errorMessage": "JSON-RPC error: Unknown tool: test_input_required_result_sampling"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "input-required-result-capability-check": [
+    {
+      "id": "sep-2322-respect-client-capabilities",
+      "status": "FAILURE",
+      "errorMessage": "JSON-RPC error: Unknown tool: test_input_required_result_capabilities"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "input-required-result-ignore-extra-params": [
+    {
+      "id": "sep-2322-ignore-unexpected-params",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "input-required-result-missing-input-response": [
+    {
+      "id": "sep-2322-missing-response-rerequests",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "input-required-result-multi-round": [
+    {
+      "id": "sep-2322-multi-round-r1",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2322-multi-round-r2",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2322-multi-round-r3",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "input-required-result-multiple-input-requests": [
+    {
+      "id": "sep-2322-multiple-inputs-incomplete",
+      "status": "FAILURE",
+      "errorMessage": "JSON-RPC error: Unknown tool: test_input_required_result_multiple_inputs"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "input-required-result-non-tool-request": [
+    {
+      "id": "sep-2322-non-tool-incomplete",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2322-non-tool-complete",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "input-required-result-request-state": [
+    {
+      "id": "sep-2322-request-state-incomplete",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2322-request-state-complete",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "input-required-result-result-type": [
+    {
+      "id": "sep-2322-result-type-included",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "input-required-result-tampered-state": [
+    {
+      "id": "sep-2322-reject-tampered-state",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "input-required-result-unsupported-methods": [
+    {
+      "id": "sep-2322-not-on-unsupported-requests",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "input-required-result-validate-input": [
+    {
+      "id": "sep-2322-validate-input-responses",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2322-error-on-protocol-error",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "json-schema-2020-12": [
+    {
+      "id": "json-schema-2020-12-tool-found",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "json-schema-2020-12-$schema",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "json-schema-2020-12-$defs",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "json-schema-2020-12-additionalProperties",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2106-composition-keywords-preserved",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2106-conditional-keywords-preserved",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2106-anchor-keyword-preserved",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "prompts-get-embedded-resource": [
+    {
+      "id": "prompts-get-embedded-resource",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "prompts-get-simple": [
+    {
+      "id": "prompts-get-simple",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "prompts-get-with-args": [
+    {
+      "id": "prompts-get-with-args",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "prompts-get-with-image": [
+    {
+      "id": "prompts-get-with-image",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "prompts-list": [
+    {
+      "id": "prompts-list",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "resources-list": [
+    {
+      "id": "resources-list",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "resources-read-binary": [
+    {
+      "id": "resources-read-binary",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "resources-read-text": [
+    {
+      "id": "resources-read-text",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "resources-templates-read": [
+    {
+      "id": "resources-templates-read",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "sep-2164-resource-not-found": [
+    {
+      "id": "sep-2164-no-empty-contents",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2164-error-code",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2164-data-uri",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "server-sse-multiple-streams": [
+    {
+      "id": "server-accepts-multiple-post-streams",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "server-sse-streams-functional",
+      "status": "INFO"
+    }
+  ],
+  "server-stateless": [
+    {
+      "id": "sep-2575-request-meta-invalid-missing-meta",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-http-server-meta-invalid-400",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-request-meta-invalid-missing-protocol-version",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-http-server-meta-invalid-400",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-request-meta-invalid-missing-client-capabilities",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-http-server-meta-invalid-400",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-request-meta-client-info-optional",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-server-implements-discover",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-server-identifies-in-result-meta",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-server-declares-prompts-in-discover",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-discover-capabilities-match-handlers",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-server-unsupported-version-error",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-http-server-unsupported-version-400",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-http-server-header-mismatch-400",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-server-rejects-undeclared-capability",
+      "status": "FAILURE",
+      "errorMessage": "Not testable: server does not list the diagnostic tool 'test_missing_capability' in tools/list and the probe call did not exercise it (required for the undeclared-capability rejection)"
+    },
+    {
+      "id": "sep-2575-missing-capability-http-400",
+      "status": "FAILURE",
+      "errorMessage": "Not testable: server does not list the diagnostic tool 'test_missing_capability' in tools/list, so the -32021 HTTP status could not be validated"
+    },
+    {
+      "id": "sep-2575-http-server-method-not-found-404-initialize",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-http-server-method-not-found-404-ping",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-http-server-method-not-found-404-logging-setlevel",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-http-server-method-not-found-404-resources-subscribe",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-http-server-method-not-found-404-resources-unsubscribe",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-http-server-method-not-found-404",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-http-server-no-independent-requests-on-stream",
+      "status": "FAILURE",
+      "errorMessage": "Not testable: server does not list the diagnostic tool 'test_streaming_elicitation' in tools/list, so the response stream could not be exercised"
+    },
+    {
+      "id": "sep-2575-server-no-log-without-loglevel",
+      "status": "FAILURE",
+      "errorMessage": "Not testable: server does not list the diagnostic tool 'test_logging_tool' in tools/list, so the no-log-without-logLevel requirement could not be exercised"
+    },
+    {
+      "id": "sep-2575-server-sends-subscription-ack",
+      "status": "SKIPPED"
+    },
+    {
+      "id": "sep-2575-server-tags-subscription-id",
+      "status": "SKIPPED"
+    },
+    {
+      "id": "sep-2575-server-honors-notification-filter",
+      "status": "SKIPPED"
+    },
+    {
+      "id": "sep-2575-server-sends-prompts-list-changed-on-subscription",
+      "status": "SKIPPED"
+    },
+    {
+      "id": "sep-2575-server-sends-tools-list-changed-on-subscription",
+      "status": "SKIPPED"
+    },
+    {
+      "id": "sep-2575-http-server-error-jsonrpc-id",
+      "status": "SUCCESS"
+    }
+  ],
+  "tasks-capability-negotiation": [
+    {
+      "id": "tasks-extension-advertised",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2663-tasks-methods-non-declaring",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2663-server-rejects-undeclared-client",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "tasks-per-request-meta-opt-in",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "FAILURE",
+      "errorMessage": "[implementation] response to 'tools/call' (spec 2026-07-28): CallToolResult: must have required property 'content' (result of 'tools/call') — message: {\"id\":81,\"jsonrpc\":\"2.0\",\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mcp-ex-conformance\",\"version\":\"0.1.0\"}},\"createdAt\":\"2026-09-14T22:13:01.122Z\",\"lastUpdatedAt\":\"2026-09-14T22:13:01.122Z\",\"pollIntervalMs\":100,\"resultType\":\"task\",\"status\":\"working\",\"statusMessage\":\"Task accepted\",\"taskId\":\"uec1sPPhYxq0_kumVbzsbZYFO-xx-Kg8\",\"ttlMs\":3600000}}"
+    }
+  ],
+  "tasks-dispatch-and-envelope": [
+    {
+      "id": "sep-2663-tasks-result-removed-method-not-found",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "tasks-removed-tasks-list",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "tasks-server-directed-creation-no-hint",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2663-legacy-task-param-ignored",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "tasks-immediate-result-shortcut",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "tasks-result-type-complete-on-non-task-responses",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2663-durable-create-strong-consistency",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2663-tasks-get-invalid-task-id-32602",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "FAILURE",
+      "errorMessage": "[implementation] response to 'tools/call' (spec 2026-07-28): CallToolResult: must have required property 'content' (result of 'tools/call') — message: {\"id\":122,\"jsonrpc\":\"2.0\",\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mcp-ex-conformance\",\"version\":\"0.1.0\"}},\"createdAt\":\"2026-09-14T22:13:03.674Z\",\"lastUpdatedAt\":\"2026-09-14T22:13:03.674Z\",\"pollIntervalMs\":100,\"resultType\":\"task\",\"status\":\"working\",\"statusMessage\":\"Task accepted\",\"taskId\":\"kMZvQSEB5g-Dc8eWTZ2zJZ3uHMjsYntE\",\"ttlMs\":3600000}}\n[implementation] response to 'tools/call' (spec 2026-07-28): CallToolResult: must have required property 'content' (result of 'tools/call') — message: {\"id\":125,\"jsonrpc\":\"2.0\",\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mcp-ex-conformance\",\"version\":\"0.1.0\"}},\"createdAt\":\"2026-09-14T22:13:03.676Z\",\"lastUpdatedAt\":\"2026-09-14T22:13:03.676Z\",\"pollIntervalMs\":100,\"resultType\":\"task\",\"status\":\"working\",\"statusMessage\":\"Task accepted\",\"taskId\":\"yeQKXb03w7NsoK1-sEDLnA8SxpdIfwj2\",\"ttlMs\":3600000}}\n[implementation] response to 'tools/call' (spec 2026-07-28): CallToolResult: must have required property 'content' (result of 'tools/call') — message: {\"id\":127,\"jsonrpc\":\"2.0\",\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mcp-ex-conformance\",\"version\":\"0.1.0\"}},\"createdAt\":\"2026-09-14T22:13:03.677Z\",\"lastUpdatedAt\":\"2026-09-14T22:13:03.677Z\",\"pollIntervalMs\":100,\"resultType\":\"task\",\"status\":\"working\",\"statusMessage\":\"Task accepted\",\"taskId\":\"tzly8pNUPwTQWl7-eC8q33U0Zrp4oiYb\",\"ttlMs\":3600000}}\n[implementation] response to 'tools/call' (spec 2026-07-28): CallToolResult: must have required property 'content' (result of 'tools/call') — message: {\"id\":130,\"jsonrpc\":\"2.0\",\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mcp-ex-conformance\",\"version\":\"0.1.0\"}},\"createdAt\":\"2026-09-14T22:13:03.680Z\",\"lastUpdatedAt\":\"2026-09-14T22:13:03.680Z\",\"pollIntervalMs\":100,\"resultType\":\"task\",\"status\":\"working\",\"statusMessage\":\"Task accepted\",\"taskId\":\"6T5QkAO_g2wZ_yqCy-7rhQAboPA_YsTS\",\"ttlMs\":3600000}}\n[implementation] response to 'tools/call' (spec 2026-07-28): CallToolResult: must have required property 'content' (result of 'tools/call') — message: {\"id\":132,\"jsonrpc\":\"2.0\",\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mcp-ex-conformance\",\"version\":\"0.1.0\"}},\"createdAt\":\"2026-09-14T22:13:03.681Z\",\"lastUpdatedAt\":\"2026-09-14T22:13:03.681Z\",\"pollIntervalMs\":100,\"resultType\":\"task\",\"status\":\"working\",\"statusMessage\":\"Task accepted\",\"taskId\":\"zogq2V8Yf5c_T3jh6BM9p0matW5f5KMa\",\"ttlMs\":3600000}}\n[implementation] response to 'tools/call' (spec 2026-07-28): CallToolResult: must have required property 'content' (result of 'tools/call') — message: {\"id\":136,\"jsonrpc\":\"2.0\",\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mcp-ex-conformance\",\"version\":\"0.1.0\"}},\"createdAt\":\"2026-09-14T22:13:03.684Z\",\"lastUpdatedAt\":\"2026-09-14T22:13:03.684Z\",\"pollIntervalMs\":100,\"resultType\":\"task\",\"status\":\"working\",\"statusMessage\":\"Task accepted\",\"taskId\":\"-_2t1VT5iTplfoCAbeT9dUNqu6sBgt9F\",\"ttlMs\":3600000}}"
+    }
+  ],
+  "tasks-lifecycle": [
+    {
+      "id": "tasks-sync-tool-call",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2663-result-type-task-on-create",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2663-tasks-get-status-working",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2663-tasks-get-status-completed",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2663-tool-error-uses-completed-status",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2663-tasks-get-status-failed",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2663-cancel-ack-empty-result",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "tasks-cancel-terminal-idempotent-ack",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "FAILURE",
+      "errorMessage": "[implementation] response to 'tools/call' (spec 2026-07-28): CallToolResult: must have required property 'content' (result of 'tools/call') — message: {\"id\":48,\"jsonrpc\":\"2.0\",\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mcp-ex-conformance\",\"version\":\"0.1.0\"}},\"createdAt\":\"2026-09-14T22:12:58.067Z\",\"lastUpdatedAt\":\"2026-09-14T22:12:58.067Z\",\"pollIntervalMs\":100,\"resultType\":\"task\",\"status\":\"working\",\"statusMessage\":\"Task accepted\",\"taskId\":\"EWQjFisknmvT0j2-lRUGfq6BnGm4Z6hd\",\"ttlMs\":3600000}}\n[implementation] response to 'tools/call' (spec 2026-07-28): CallToolResult: must have required property 'content' (result of 'tools/call') — message: {\"id\":61,\"jsonrpc\":\"2.0\",\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mcp-ex-conformance\",\"version\":\"0.1.0\"}},\"createdAt\":\"2026-09-14T22:13:00.095Z\",\"lastUpdatedAt\":\"2026-09-14T22:13:00.095Z\",\"pollIntervalMs\":100,\"resultType\":\"task\",\"status\":\"working\",\"statusMessage\":\"Task accepted\",\"taskId\":\"CUjCs4shPSwLP45IBeeXwraBq5jC--VZ\",\"ttlMs\":3600000}}\n[implementation] response to 'tools/call' (spec 2026-07-28): CallToolResult: must have required property 'content' (result of 'tools/call') — message: {\"id\":63,\"jsonrpc\":\"2.0\",\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mcp-ex-conformance\",\"version\":\"0.1.0\"}},\"createdAt\":\"2026-09-14T22:13:00.097Z\",\"lastUpdatedAt\":\"2026-09-14T22:13:00.097Z\",\"pollIntervalMs\":100,\"resultType\":\"task\",\"status\":\"working\",\"statusMessage\":\"Task accepted\",\"taskId\":\"zSBbnB-h6KYDFW3vLAFry3LFx3sYiFs4\",\"ttlMs\":3600000}}\n[implementation] response to 'tools/call' (spec 2026-07-28): CallToolResult: must have required property 'content' (result of 'tools/call') — message: {\"id\":65,\"jsonrpc\":\"2.0\",\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mcp-ex-conformance\",\"version\":\"0.1.0\"}},\"createdAt\":\"2026-09-14T22:13:00.100Z\",\"lastUpdatedAt\":\"2026-09-14T22:13:00.100Z\",\"pollIntervalMs\":100,\"resultType\":\"task\",\"status\":\"working\",\"statusMessage\":\"Task accepted\",\"taskId\":\"bqcXJcGSvbrjFVrANW9h10io_-yW9ZFe\",\"ttlMs\":3600000}}\n[implementation] response to 'tools/call' (spec 2026-07-28): CallToolResult: must have required property 'content' (result of 'tools/call') — message: {\"id\":68,\"jsonrpc\":\"2.0\",\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mcp-ex-conformance\",\"version\":\"0.1.0\"}},\"createdAt\":\"2026-09-14T22:13:00.102Z\",\"lastUpdatedAt\":\"2026-09-14T22:13:00.102Z\",\"pollIntervalMs\":100,\"resultType\":\"task\",\"status\":\"working\",\"statusMessage\":\"Task accepted\",\"taskId\":\"29B3FMXSbkyUfWkv8gWJKO3sHcbAKuFe\",\"ttlMs\":3600000}}"
+    }
+  ],
+  "tasks-mrtr-composition": [
+    {
+      "id": "sep-2663-mrtr-synchronous-before-task-creation",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "FAILURE",
+      "errorMessage": "[implementation] response to 'tools/call' (spec 2026-07-28): CallToolResult: must have required property 'content' (result of 'tools/call') — message: {\"id\":142,\"jsonrpc\":\"2.0\",\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mcp-ex-conformance\",\"version\":\"0.1.0\"}},\"createdAt\":\"2026-09-14T22:13:03.690Z\",\"lastUpdatedAt\":\"2026-09-14T22:13:03.690Z\",\"pollIntervalMs\":100,\"resultType\":\"task\",\"status\":\"working\",\"statusMessage\":\"Task accepted\",\"taskId\":\"oV4meCQRvF_r8x8AAuHx4nVSPdaLNAdt\",\"ttlMs\":3600000}}"
+    }
+  ],
+  "tasks-mrtr-input": [
+    {
+      "id": "sep-2663-tasks-get-status-input-required",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "tasks-mrtr-tasks-update-resumes",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "tasks-mrtr-partial-fulfillment",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "FAILURE",
+      "errorMessage": "[implementation] response to 'tools/call' (spec 2026-07-28): CallToolResult: must have required property 'content' (result of 'tools/call') — message: {\"id\":101,\"jsonrpc\":\"2.0\",\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mcp-ex-conformance\",\"version\":\"0.1.0\"}},\"createdAt\":\"2026-09-14T22:13:03.654Z\",\"lastUpdatedAt\":\"2026-09-14T22:13:03.654Z\",\"pollIntervalMs\":100,\"resultType\":\"task\",\"status\":\"working\",\"statusMessage\":\"Task accepted\",\"taskId\":\"bMrfqbPuvRWwnRDFZ1Weiq_gw17iQwkG\",\"ttlMs\":3600000}}\n[implementation] response to 'tools/call' (spec 2026-07-28): CallToolResult: must have required property 'content' (result of 'tools/call') — message: {\"id\":104,\"jsonrpc\":\"2.0\",\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mcp-ex-conformance\",\"version\":\"0.1.0\"}},\"createdAt\":\"2026-09-14T22:13:03.657Z\",\"lastUpdatedAt\":\"2026-09-14T22:13:03.657Z\",\"pollIntervalMs\":100,\"resultType\":\"task\",\"status\":\"working\",\"statusMessage\":\"Task accepted\",\"taskId\":\"E6jpTMVEUIe-Lxd7j5U7Sa98o4GwHvlf\",\"ttlMs\":3600000}}\n[implementation] response to 'tools/call' (spec 2026-07-28): CallToolResult: must have required property 'content' (result of 'tools/call') — message: {\"id\":108,\"jsonrpc\":\"2.0\",\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mcp-ex-conformance\",\"version\":\"0.1.0\"}},\"createdAt\":\"2026-09-14T22:13:03.660Z\",\"lastUpdatedAt\":\"2026-09-14T22:13:03.660Z\",\"pollIntervalMs\":100,\"resultType\":\"task\",\"status\":\"working\",\"statusMessage\":\"Task accepted\",\"taskId\":\"VXm8LfqQ62umJNUGNVDXBXvdVTN_JG9B\",\"ttlMs\":3600000}}"
+    }
+  ],
+  "tasks-request-headers": [
+    {
+      "id": "tasks-headers-tolerate-mcp-method-on-tools-call",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2663-routing-headers-accepted-on-tasks-get",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "tasks-headers-reject-mismatched-method",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2663-server-rejects-mismatched-mcp-name-on-tasks-get",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "FAILURE",
+      "errorMessage": "[implementation] response to 'tools/call' (spec 2026-07-28): CallToolResult: must have required property 'content' (result of 'tools/call') — message: {\"id\":115,\"jsonrpc\":\"2.0\",\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mcp-ex-conformance\",\"version\":\"0.1.0\"}},\"createdAt\":\"2026-09-14T22:13:03.667Z\",\"lastUpdatedAt\":\"2026-09-14T22:13:03.667Z\",\"pollIntervalMs\":100,\"resultType\":\"task\",\"status\":\"working\",\"statusMessage\":\"Task accepted\",\"taskId\":\"ne7x5o-RdDW3gnq74em6DNz0QOP50V8w\",\"ttlMs\":3600000}}"
+    }
+  ],
+  "tasks-request-state-removal": [
+    {
+      "id": "tasks-create-result-no-request-state",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "tasks-get-detailed-no-request-state",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "FAILURE",
+      "errorMessage": "[implementation] response to 'tools/call' (spec 2026-07-28): CallToolResult: must have required property 'content' (result of 'tools/call') — message: {\"id\":98,\"jsonrpc\":\"2.0\",\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mcp-ex-conformance\",\"version\":\"0.1.0\"}},\"createdAt\":\"2026-09-14T22:13:03.651Z\",\"lastUpdatedAt\":\"2026-09-14T22:13:03.651Z\",\"pollIntervalMs\":100,\"resultType\":\"task\",\"status\":\"working\",\"statusMessage\":\"Task accepted\",\"taskId\":\"UyX0VmRS29U1LLf9z63MeHbrV-AZB2bK\",\"ttlMs\":3600000}}"
+    }
+  ],
+  "tasks-required-task-error": [
+    {
+      "id": "sep-2663-server-returns-missing-capability-when-required",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2663-server-returns-missing-capability-data-shape",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "tasks-status-notifications": [
+    {
+      "id": "tasks-status-notifications",
+      "status": "SKIPPED",
+      "errorMessage": "Skipped: SEP-2663 delivers notifications/tasks via the SEP-2575 subscriptions/listen stream, not via the tools/call POST SSE response that the prior harness observed. The harness needs a rewrite against the new channel; tracked as a follow-up."
+    }
+  ],
+  "tasks-wire-fields": [
+    {
+      "id": "tasks-wire-field-renames",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "tasks-no-early-ttl-expiry",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "tasks-no-related-task-meta-on-inlined-result",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "FAILURE",
+      "errorMessage": "[implementation] response to 'tools/call' (spec 2026-07-28): CallToolResult: must have required property 'content' (result of 'tools/call') — message: {\"id\":83,\"jsonrpc\":\"2.0\",\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mcp-ex-conformance\",\"version\":\"0.1.0\"}},\"createdAt\":\"2026-09-14T22:13:01.124Z\",\"lastUpdatedAt\":\"2026-09-14T22:13:01.124Z\",\"pollIntervalMs\":100,\"resultType\":\"task\",\"status\":\"working\",\"statusMessage\":\"Task accepted\",\"taskId\":\"wQOusXJpsPPxs3QgNegGUXNYJz8i1VXa\",\"ttlMs\":3600000}}\n[implementation] response to 'tools/call' (spec 2026-07-28): CallToolResult: must have required property 'content' (result of 'tools/call') — message: {\"id\":91,\"jsonrpc\":\"2.0\",\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"mcp-ex-conformance\",\"version\":\"0.1.0\"}},\"createdAt\":\"2026-09-14T22:13:02.638Z\",\"lastUpdatedAt\":\"2026-09-14T22:13:02.638Z\",\"pollIntervalMs\":100,\"resultType\":\"task\",\"status\":\"working\",\"statusMessage\":\"Task accepted\",\"taskId\":\"jptW43fV-e9vFT7AJrFaImWhykb_Ilr0\",\"ttlMs\":3600000}}"
+    }
+  ],
+  "tools-call-audio": [
+    {
+      "id": "tools-call-audio",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "tools-call-embedded-resource": [
+    {
+      "id": "tools-call-embedded-resource",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "tools-call-error": [
+    {
+      "id": "tools-call-error",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "tools-call-image": [
+    {
+      "id": "tools-call-image",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "tools-call-mixed-content": [
+    {
+      "id": "tools-call-mixed-content",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "tools-call-simple-text": [
+    {
+      "id": "tools-call-simple-text",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "tools-call-with-progress": [
+    {
+      "id": "tools-call-with-progress",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "tools-list": [
+    {
+      "id": "tools-list",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "tools-name-format",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ]
+}

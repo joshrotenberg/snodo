@@ -64,6 +64,7 @@ defmodule MCP.Compliance do
     "tools-call-embedded-resource",
     "tools-call-mixed-content",
     "tools-call-error",
+    "tools-call-with-progress",
     "server-sse-multiple-streams",
     "resources-list",
     "resources-read-text",
@@ -77,37 +78,26 @@ defmodule MCP.Compliance do
     "prompts-get-with-image",
     "dns-rebinding-protection",
     "caching",
-    "input-required-result-unsupported-methods"
+    "input-required-result-basic-elicitation",
+    "input-required-result-request-state",
+    "input-required-result-multi-round",
+    "input-required-result-missing-input-response",
+    "input-required-result-non-tool-request",
+    "input-required-result-result-type",
+    "input-required-result-unsupported-methods",
+    "input-required-result-tampered-state",
+    "input-required-result-ignore-extra-params",
+    "input-required-result-validate-input"
   ]
 
-  @official_runner_no_failure @official_exercised_pass ++
-                                [
-                                  "input-required-result-missing-input-response",
-                                  "input-required-result-ignore-extra-params",
-                                  "input-required-result-validate-input"
-                                ]
-
-  @excluded_runner_no_failure [
-    %{
-      "scenario" => "input-required-result-missing-input-response",
-      "reason" => "required fixture absent; runner emitted a warning with no failure check"
-    },
-    %{
-      "scenario" => "input-required-result-ignore-extra-params",
-      "reason" => "required fixture absent; runner emitted a warning with no failure check"
-    },
-    %{
-      "scenario" => "input-required-result-validate-input",
-      "reason" =>
-        "required fixture absent; method-not-found produced a false-positive no-failure result"
-    }
-  ]
+  @official_runner_no_failure @official_exercised_pass
+  @excluded_runner_no_failure []
 
   @required_check_counts %{
-    "success" => 89,
-    "failure" => 15,
+    "success" => 103,
+    "failure" => 8,
     "skipped" => 5,
-    "warning" => 2,
+    "warning" => 0,
     "info" => 1
   }
 
@@ -155,7 +145,9 @@ defmodule MCP.Compliance do
     "mrtr-elicitation-wire",
     "mrtr-capability-admission",
     "mrtr-extension-composition",
-    "mrtr-state-integrity"
+    "mrtr-state-integrity",
+    "request-progress",
+    "stdio-write-deadline"
   ]
 
   if length(@official_server_requirements) != 37 do
@@ -188,7 +180,9 @@ defmodule MCP.Compliance do
         "requirementsCommit" => @requirements_commit,
         "requirementsSha256" => @requirements_sha256,
         "currentRunner" => @official_runner,
-        "scoreBasis" => "whole required scenarios with exercised fixtures and no FAILURE checks",
+        "runDate" => "2026-09-14",
+        "scoreBasis" =>
+          "whole required scenarios with semantic success and no FAILURE, WARNING, or SKIPPED checks",
         "requiredCheckCounts" => @required_check_counts,
         "runnerNoFailureScenarios" => length(@official_runner_no_failure),
         "runnerNoFailureScenarioIds" => @official_runner_no_failure,

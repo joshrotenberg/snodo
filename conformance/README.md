@@ -1,75 +1,118 @@
 # Conformance workspace
 
-The executable internal wire contract lives under `test/compliance` and runs
-with `mix mcp.contract`. Its report keeps four buckets separate:
+The internal wire contract runs with `mix mcp.contract`. Its implementation,
+unsupported, unmeasured, and official evidence buckets stay separate.
 
-- `internalPass`;
-- `unsupported`;
-- `unmeasured`;
-- `officialPass`.
+## Latest external measurement
 
-The native Streamable HTTP fixture is in [`fixture_server.exs`](fixture_server.exs).
-The frozen official server run has now been measured. Its honest exercised
-whole-scenario score is **22/37**; the raw runner had 25/37 scenarios without a
-failure check, but three warning-only or missing-fixture paths are explicitly
-excluded from the score. See the checked-in
-[`human-readable summary`](results/2026-07-28-alpha.11-summary.md) and
-[`machine-readable summary`](results/2026-07-28-alpha.11-summary.json).
+The frozen alpha.11 runner passes **32/37 exercised whole required scenarios**
+on 2026-09-14, up from the August 25 measurement of 22/37. Nine newly exercised
+ordinary MRTR scenarios and ordinary progress now pass. All 37 required scenarios and 13 unscored
+extension/pending scenarios were attempted.
 
-There is no expected-failures baseline yet. Failures remain visible rather than
-being converted into a passing CI result.
+Required checks: **103 success, 8 failure, 5 skipped, 0 warning, 1 info**.
+The five remaining required scenarios concern deprecated sampling/roots, mixed
+inputs requiring those features and incomplete diagnostic
+fixtures. Internal and official-client elicitation capability tests do not
+substitute for the frozen runner's sampling-specific diagnostics.
+
+- [Current human-readable report](results/2026-09-14-alpha.11-summary.md)
+- [Current machine-readable report](results/2026-09-14-alpha.11-summary.json)
+- [Retained per-check outcomes](results/2026-09-14-alpha.11-checks.json)
+- [Historical August 25 report](results/2026-07-28-alpha.11-summary.md)
+
+## Reproducible regression lane
+
+From the repository root:
+
+```sh
+mix deps.get
+mix compile --warnings-as-errors
+cd extensions/tasks
+mix deps.get
+mix compile --warnings-as-errors
+cd ../../conformance
+npm ci --ignore-scripts
+npm test
+npm run check
+```
+
+The launcher uses the dev build and starts the combined fixture on an
+OS-assigned loopback port. Startup, runner execution, and shutdown are bounded;
+stdin EOF shuts down the fixture. No public application services are contacted.
+Each invocation creates a fresh directory under `tmp/conformance/`
+(override with `MCP_CONFORMANCE_OUTPUT`), keeping stale files out of the score.
 
 The frozen manifest is vendored at
-[`requirements/2026-07-28.yaml`](requirements/2026-07-28.yaml) from conformance
-commit `c321dd32035556e6769d3724a8ee97d87c3faaac`. `mix mcp.contract` verifies
-its SHA-256
-`ae2f4f6210fd729e2e318edd5bbfa31a43cee0bc608e48052fa26dbf1d939b57`
-and exact 37-scenario server inventory before it reports evidence.
+[requirements/2026-07-28.yaml](requirements/2026-07-28.yaml), from commit
+`c321dd32035556e6769d3724a8ee97d87c3faaac`. Both the internal contract and managed
+runner verify SHA-256
+`ae2f4f6210fd729e2e318edd5bbfa31a43cee0bc608e48052fa26dbf1d939b57`.
+The managed runner additionally verifies the installed manifest is byte-identical.
+The npm lockfile pins alpha.11 and its transitive dependencies; use `npm ci`,
+not a moving `npx` dependency resolution, for comparable runs.
 
-Start the combined fixture from the Tasks child package so both applications
-are on the code path, then run the same frozen revision requirements from the
-repository root:
+[Protocol CI](../.github/workflows/protocol.yml) runs this lane and uploads raw
+checks, runner/fixture logs, and the summary even when the regression check fails.
+The workflow being checked in does not mean its remote job has already passed.
+
+## Honest baseline policy
+
+[expected-failures.json](expected-failures.json) is a reviewed,
+`scenario:check-id` regression baseline, not a conformance waiver. It covers
+required and unscored failures separately by their exact keys. Where alpha.11
+repeats a check ID for parameterized cases, the report preserves each occurrence
+with a numbered suffix.
+
+Its human-readable `checkInventory` also pins every check ID and its ordered
+status occurrences across all 50 required and unscored scenarios. Repeated IDs
+retain every occurrence rather than collapsing to one status. This inventory is
+checked in from reviewed raw evidence; the runner never updates it automatically.
+
+The gate fails on new failures, stale expected failures, missing/extra scenario
+artifacts, empty or malformed checks, new/stale excluded required scenarios,
+and every missing, new, or changed check/status occurrence. This includes a
+success becoming skipped or warning inside an already-failing or unscored
+scenario. Even newly passing checks require a deliberate baseline review.
+A failure-free scenario counts only when it has semantic successes and no
+warnings or skipped checks; a schema-only success cannot stand in for a fixture.
+
+The official runner still exits **1** for this partial implementation. The managed
+lane can exit **0** only when those same failures match the reviewed baseline;
+the report retains the runner exit code, failures, and **32/37** score. Never
+call a passing regression gate full protocol conformance.
+
+## Manual runner
+
+To investigate a single case:
 
 ```sh
 cd extensions/tasks
 MCP_PORT=3001 mix run ../../conformance/fixture_server.exs
 ```
 
-```sh
-npx -y @modelcontextprotocol/conformance@0.2.0-alpha.11 server \
-  --url http://127.0.0.1:3001/mcp \
-  --requirements 2026-07-28 \
-  --output-dir conformance-results
-```
-
-The scored run attempted all 37 required scenarios and reported 89 success,
-15 failure, 5 skipped, 2 warning, and 1 info checks. Two not-scored pending
-scenarios also passed completely: `json-schema-2020-12` (8/8) and
-`http-header-validation` (14/14). The remaining custom-header pending failure
-stays visible in the checked-in summary.
-
-See [the compliance architecture](../docs/protocol-compliance.md) for the
-evidence boundary and rollout.
-
-## Tasks extension visibility run
-
-The same fixture now includes the released `io.modelcontextprotocol/tasks`
-extension tools. The ten frozen alpha.11 Tasks scenarios are extension-only and
-are intentionally kept separate from the 37 required core scenarios above.
-
-All 35 Tasks-specific assertions pass. The upstream notification check is
-skipped, and eight generic wire-schema checks reject the extension-defined flat
-`CreateTaskResult` as a core `CallToolResult`; the runner therefore remains
-non-zero. See the checked-in
-[Tasks summary](results/2026-07-28-tasks-alpha.11-summary.md) and
-[JSON companion](results/2026-07-28-tasks-alpha.11-summary.json).
-
-Run one frozen Tasks scenario explicitly:
+In another terminal, from `conformance`:
 
 ```sh
-npx -y @modelcontextprotocol/conformance@0.2.0-alpha.11 server \
+node node_modules/@modelcontextprotocol/conformance/dist/index.js server \
   --url http://127.0.0.1:3001/mcp \
-  --scenario tasks-lifecycle \
-  --spec-version 2026-07-28 \
-  --force
+  --scenario input-required-result-basic-elicitation \
+  --spec-version 2026-07-28 --force
 ```
+
+The managed lane runs `--requirements 2026-07-28`, never a moving `--suite all`.
+
+## Tasks and pending scenarios
+
+Tasks is extension-only: its scenarios do not increase the 37-scenario core score.
+The fresh run retains all **35 Tasks-specific assertions passing**, the upstream
+status-notification check skipped, and eight generic wire-schema failures.
+Those failures validate the extension-defined flat `CreateTaskResult` against
+the core `CallToolResult`, which requires `content`; they are not erased.
+
+The pending JSON Schema and standard HTTP-header probes pass 8/8 and 14/14,
+respectively. Five pending custom-header checks remain unexercised failures.
+These results do not establish general complete schema validation.
+
+See [protocol-compliance.md](../docs/protocol-compliance.md) for architecture and
+[MRTR documentation](../docs/mrtr-elicitation.md) for semantics and remaining limits.

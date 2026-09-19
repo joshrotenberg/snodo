@@ -18,6 +18,7 @@ const project = process.env.HEXPM_MCP_PROJECT ?? path.resolve(here, "../../../he
 const elixir = process.env.MCP_EX_ELIXIR ?? "elixir";
 const protocol = "2026-07-28";
 const requestOptions = { signal: AbortSignal.timeout(60_000) };
+const elicitationCounts = new WeakMap();
 const expectedTools = [
   "alternatives", "audit", "audit_mix_deps", "compare", "dep_tree", "dependencies",
   "doc_item", "docs", "downloads", "features", "health", "info", "owners", "readme",
@@ -29,14 +30,27 @@ const promptCases = [
   ["compare_packages", { names: "interop_package, other" }, "interop_package, other"],
   ["evaluate_dependencies", { deps: "interop_package" }, "interop_package"],
   ["migration_guide", { from: "old_package", to: "interop_package" }, "interop_package"],
+  ["package_review", { name: "interop_package", focus: "quality" }, "quality review"],
   ["recommend_packages", { use_case: "deterministic offline acceptance" }, "deterministic offline acceptance"],
 ];
 
 function newClient() {
-  return new Client(
+  const client = new Client(
     { name: "hexpm-mcp-official-client-check", version: "1.0.0" },
-    { versionNegotiation: { mode: { pin: protocol } } },
+    {
+      versionNegotiation: { mode: { pin: protocol } },
+      capabilities: { elicitation: { form: {} } },
+      inputRequired: { autoFulfill: true, maxRounds: 2 },
+    },
   );
+  elicitationCounts.set(client, 0);
+  client.setRequestHandler("elicitation/create", async (request) => {
+    elicitationCounts.set(client, elicitationCounts.get(client) + 1);
+    assert.equal(request.params.mode, "form");
+    assert.deepEqual(request.params.requestedSchema.properties.focus.enum, ["quality", "security", "upgrade"]);
+    return { action: "accept", content: { focus: "security" } };
+  });
+  return client;
 }
 
 function textResult(result) {
@@ -52,16 +66,41 @@ async function jsonResource(client, uri) {
   return JSON.parse(result.contents[0].text);
 }
 
-async function exercise(client, transportName) {
+function observeToolPages(transport) {
+  const ids = new Set();
+  const pages = [];
+  const send = transport.send.bind(transport);
+  const onmessage = transport.onmessage;
+  transport.send = (message, ...args) => {
+    if (message.method === "tools/list") ids.add(message.id);
+    return send(message, ...args);
+  };
+  transport.onmessage = (message, ...args) => {
+    if (ids.has(message.id) && message.result) pages.push(structuredClone(message.result));
+    return onmessage(message, ...args);
+  };
+  return pages;
+}
+
+async function exercise(client, transportName, pages) {
   assert.equal(client.getProtocolEra(), "modern");
   const discovery = await client.discover(requestOptions);
   assert.ok(discovery.supportedVersions.includes(protocol));
   assert.equal(client.getServerVersion().name, "hexpm-mcp");
-  for (const capability of ["tools", "resources", "prompts"]) {
+  for (const capability of ["tools", "resources", "prompts", "completions"]) {
     assert.ok(Object.hasOwn(discovery.capabilities, capability));
   }
 
-  const listed = await client.listTools(undefined, requestOptions);
+  // The official client auto-aggregates all pages when cursor is omitted.
+  const listed = await client.listTools(undefined, { ...requestOptions, cacheMode: "refresh" });
+  assert.equal(pages.length, 3);
+  for (const page of pages) {
+    assert.equal(page.tools.length, 8);
+    assert.equal(page.ttlMs, 60_000);
+    assert.equal(page.cacheScope, "public");
+  }
+  assert.equal(new Set(pages.slice(0, -1).map((page) => page.nextCursor)).size, 2);
+  assert.equal(pages.at(-1).nextCursor, undefined);
   assert.deepEqual(listed.tools.map((tool) => tool.name).sort(), expectedTools);
   for (const tool of listed.tools) assert.equal(tool.inputSchema.type, "object");
   assert.deepEqual(listed.tools.find((tool) => tool.name === "info").inputSchema.required, ["name"]);
@@ -100,6 +139,19 @@ async function exercise(client, transportName) {
     assert.ok(result.messages[0].content.text.includes(expectedText));
   }
 
+  const review = await client.getPrompt({ name: "package_review", arguments: { name: "interop_package" } }, requestOptions);
+  assert.equal(elicitationCounts.get(client), 1);
+  assert.match(review.messages[0].content.text, /security review/);
+
+  for (const ref of [
+    { type: "ref/prompt", name: "analyze_package" },
+    { type: "ref/resource", uri: "hex://{name}/info" },
+  ]) {
+    const result = await client.complete({ ref, argument: { name: "name", value: "interop" } }, requestOptions);
+    assert.deepEqual(result.completion.values, ["interop_package"]);
+    assert.equal(result.completion.hasMore, false);
+  }
+
   const resources = await client.listResources(undefined, requestOptions);
   assert.deepEqual(resources.resources.map((resource) => resource.uri), ["toolbox://groups"]);
   const templates = await client.listResourceTemplates(undefined, requestOptions);
@@ -127,7 +179,7 @@ async function exercise(client, transportName) {
     tools: listed.tools.length, successfulTools: 2, expectedToolFailures: 2,
     invalidArgumentsRejected: true, renderedPrompts: promptCases.length,
     resources: resources.resources.length, templates: templates.resourceTemplates.length,
-    resourceReads: 5,
+    resourceReads: 5, toolPages: pages.length, completions: 2, automaticMRTRReviews: 1,
   };
 }
 
@@ -141,7 +193,7 @@ async function checkStdio() {
   transport.stderr?.on("data", (chunk) => { diagnostics += chunk; });
   try {
     await client.connect(transport, requestOptions);
-    return await exercise(client, "stdio");
+    return await exercise(client, "stdio", observeToolPages(transport));
   } catch (error) {
     if (diagnostics) process.stderr.write(diagnostics);
     throw error;
@@ -167,7 +219,7 @@ async function checkHTTP() {
     ]);
     const transport = new StreamableHTTPClientTransport(new URL(readiness.url));
     await client.connect(transport, requestOptions);
-    const result = await exercise(client, "http");
+    const result = await exercise(client, "http", observeToolPages(transport));
     assert.equal(transport.sessionId, undefined, "modern HTTP must remain stateless");
     return result;
   } catch (error) {

@@ -220,6 +220,7 @@ defmodule MCP.ProtocolAcceptanceTest do
 
     invalid_metadata = [
       Map.put(TestFixtures.metadata(), "progressToken", %{}),
+      Map.put(TestFixtures.metadata(), "progressToken", 1.5),
       Map.put(TestFixtures.metadata(), "io.modelcontextprotocol/logLevel", "verbose"),
       Map.put(TestFixtures.metadata(), client_info_key, %{
         "name" => "client",
@@ -263,7 +264,7 @@ defmodule MCP.ProtocolAcceptanceTest do
         "icons" => [%{"src" => "data:image/png;base64,AA==", "theme" => "dark"}],
         "futureField" => %{"kept" => true}
       },
-      "progressToken" => 1.5,
+      "progressToken" => 1,
       "io.modelcontextprotocol/logLevel" => "debug",
       "io.modelcontextprotocol/futureField" => [1, true, nil],
       "com.example/trace" => %{"id" => "trace-1"}
