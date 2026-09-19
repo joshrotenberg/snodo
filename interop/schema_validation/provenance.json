@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/modelcontextprotocol/modelcontextprotocol",
+  "commit": "5f5440bb26a62e2cf3440b92da5a667efa03b267",
+  "protocolVersion": "2026-07-28",
+  "source": "https://raw.githubusercontent.com/modelcontextprotocol/modelcontextprotocol/5f5440bb26a62e2cf3440b92da5a667efa03b267/schema/2026-07-28/schema.json",
+  "sha256": "ef70b61f99b6d2e5e3b46863822eab08dff6a45bedc7a08914e0e5b133f40203",
+  "licenseSource": "https://raw.githubusercontent.com/modelcontextprotocol/modelcontextprotocol/5f5440bb26a62e2cf3440b92da5a667efa03b267/LICENSE",
+  "licenseSha256": "0382b0057770ca05e9c350a50aa3b1c1fea84da0bc81d723bf00b9aa841be58a"
+}
