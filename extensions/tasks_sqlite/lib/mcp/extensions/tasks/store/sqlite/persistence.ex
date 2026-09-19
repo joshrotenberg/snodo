@@ -57,8 +57,10 @@ defmodule MCP.Extensions.Tasks.Store.SQLite.Persistence do
          :ok <- equal(row.snapshot_format, projected.snapshot_format, :snapshot_format_mismatch),
          :ok <- equal(row.revision, projected.revision, :revision_projection_mismatch),
          :ok <- equal(row.status, projected.status, :status_projection_mismatch),
-         :ok <- equal(row.created_at_us, projected.created_at_us, :created_at_projection_mismatch),
-         :ok <- equal(row.expires_at_us, projected.expires_at_us, :expires_at_projection_mismatch),
+         :ok <-
+           equal(row.created_at_us, projected.created_at_us, :created_at_projection_mismatch),
+         :ok <-
+           equal(row.expires_at_us, projected.expires_at_us, :expires_at_projection_mismatch),
          :ok <- equal(row.retry_at_us, projected.retry_at_us, :retry_at_projection_mismatch),
          :ok <- validate_claim_projection(row) do
       {:ok, snapshot}
@@ -115,7 +117,8 @@ defmodule MCP.Extensions.Tasks.Store.SQLite.Persistence do
          {:ok, encoded_event} <- decode_json(row.event, :invalid_event_json),
          {:ok, event} <- Event.from_map(encoded_event),
          :ok <- equal(row.event_id, event.id, :event_id_projection_mismatch),
-         :ok <- equal(row.event_kind, Atom.to_string(event.kind), :event_kind_projection_mismatch),
+         :ok <-
+           equal(row.event_kind, Atom.to_string(event.kind), :event_kind_projection_mismatch),
          {:ok, revision} <- positive_integer(row.event_revision),
          {:ok, encoded_effects} <- decode_json(row.effects, :invalid_effects_json),
          {:ok, effects} <- EffectCodec.decode(encoded_effects),
