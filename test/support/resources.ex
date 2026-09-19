@@ -267,6 +267,8 @@ defmodule MCPEx.TestResources.Raising do
     uri: "test://errors/raise",
     name: "raising_resource"
 
+  # Raising is the point: the router must isolate a resource fault.
+  @spec read(map(), MCP.Context.t()) :: no_return()
   @impl true
   def read(_params, _context), do: raise("resource fixture exploded")
 end

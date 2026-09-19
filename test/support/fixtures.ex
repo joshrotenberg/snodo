@@ -79,6 +79,8 @@ end
 defmodule MCPEx.TestTools.Raising do
   use MCP.Tool, name: "raising"
 
+  # Raising is the point: the router must isolate a tool fault.
+  @spec call(map(), MCP.Context.t()) :: no_return()
   @impl true
   def call(_arguments, _context), do: raise("secret implementation detail")
 end

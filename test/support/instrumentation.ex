@@ -15,6 +15,8 @@ defmodule MCPEx.RaisingInstrumentationSink do
 
   @behaviour MCP.Instrumentation
 
+  # Raising is the point: a sink fault must not reach protocol behavior.
+  @spec handle_event(term(), map(), map(), term()) :: no_return()
   @impl true
   def handle_event(_event_name, _measurements, _metadata, _options) do
     raise "instrumentation failure"

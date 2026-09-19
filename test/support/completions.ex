@@ -125,6 +125,9 @@ defmodule MCPEx.TestCompletions.Raising do
   @impl true
   def render(_arguments, _context), do: {:ok, MCP.Result.prompt_get([])}
 
+  # Raising is the point: the router must isolate a fixture fault. The spec
+  # states that so Dialyzer does not report it as an accidental no_return.
+  @spec complete(MCP.Completion.t(), MCP.Context.t()) :: no_return()
   @impl true
   def complete(_completion, _context), do: raise("private completion fixture detail")
 end
