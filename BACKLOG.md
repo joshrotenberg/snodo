@@ -6,6 +6,29 @@ sessions; 1 and 2 are independent of each other (codex correction: the Plug
 adapter does not need the client). Each item is scoped to be a single
 branch/PR.
 
+## Status, 2026-09-19
+
+Work that had accumulated uncommitted in the working tree was landed on
+`feat/application-stack`. It already contained three of the items below.
+
+| Item | Status |
+|---|---|
+| 2. `:mcp_ex_plug` | **Done.** `integrations/plug`, 17 tests, example 21. |
+| 5. JSON Schema 2020-12 backend | **Done.** `integrations/schema_jsv` wrapping `jsv`, 29 tests, example 22. |
+| 6. Conformance + interop in CI | **Done.** `conformance/run.mjs` with a regression gate against `expected-failures.json`, plus `.github/workflows/protocol.yml`. The rerun the item asked for also happened. |
+| 1, 3, 4, 7, 8 | Open, unchanged. |
+
+The rerun answers item 6's second half: **32/37**, not the 22/37 these
+documents carry. The five that remain are four `server-stateless` SEP-2575
+checks plus `input-required-result-basic-sampling`, `-basic-list-roots`,
+`-multiple-input-requests`, and `-capability-check`. Sampling and roots are
+protocol-deprecated, so part of that gap is deliberate.
+
+Item 1's acceptance numbers below are stale as written. The current baseline is
+**329 tests** (one doctest, 328 tests) and **31 evidence groups**, not 272 and
+29. The intent holds unchanged: if the evidence-group count moves, a compliance
+test adopted the client and the change is wrong.
+
 ## 1. `MCP.Client.direct/1` — S, one sitting
 
 The library has a server and no client; every example and the README reach
