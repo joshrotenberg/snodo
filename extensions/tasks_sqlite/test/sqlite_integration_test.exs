@@ -80,7 +80,21 @@ defmodule MCP.Extensions.Tasks.SQLite.IntegrationTest do
   @migration_v1_version 2_026_082_601
   @migration_v2_version 2_026_082_602
   @lease_ms 10_000
-  @busy_timeout_ms 2_000
+  # How long a LiveRepo writer waits for the single write lock before Exqlite
+  # gives up. On SQLITE_BUSY the driver disconnects the connection, which
+  # surfaces as "connection is closed" in whichever racer was unlucky rather
+  # than as a lock error, so too short a value reads as an unrelated flake.
+  # These suites hold a writer on purpose and expect the others to WAIT, so the
+  # value only has to exceed how long a held writer can take on a loaded
+  # machine. The busy-boundary test does not use this: it has its own BusyRepo
+  # at 25ms and its own store at 1s, which is what provokes :database_busy.
+  @busy_timeout_ms 15_000
+
+  # A racer that is waiting out the busy timeout is behaving correctly, so any
+  # budget for awaiting one has to exceed it. Deriving this rather than writing
+  # a second literal keeps the two from drifting apart: the previous 5s await
+  # was shorter than the wait it was supposed to allow.
+  @race_await_ms @busy_timeout_ms + 5_000
   @retry_delay_ms 1_500
 
   setup_all do
@@ -788,8 +802,13 @@ defmodule MCP.Extensions.Tasks.SQLite.IntegrationTest do
       foreign_keys: :on,
       busy_timeout: busy_timeout,
       default_transaction_mode: :deferred,
-      queue_target: 50,
-      queue_interval: 1_000,
+      # DBConnection also sheds connections when checkout queueing stays above
+      # queue_target for queue_interval. With writers now waiting out the busy
+      # timeout above, queueing is longer by design, so these margins are
+      # widened to match. Both are test-harness values for deliberate
+      # contention and say nothing about production pool settings.
+      queue_target: 500,
+      queue_interval: 5_000,
       log: false
     )
   end
@@ -851,7 +870,7 @@ defmodule MCP.Extensions.Tasks.SQLite.IntegrationTest do
 
     assert ready |> Enum.map(&elem(&1, 1)) |> Enum.uniq() |> length() == length(ready)
     Enum.each(ready, fn {process, _marker} -> send(process, {:run_sqlite_race, gate}) end)
-    Enum.map(tasks, &Task.await(&1, 5_000))
+    Enum.map(tasks, &Task.await(&1, @race_await_ms))
   end
 
   defp start_probed_racer(function, parent, gate, marker) do
