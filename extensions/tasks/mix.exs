@@ -46,16 +46,17 @@ defmodule MCP.Extensions.Tasks.MixProject do
     [
       examples: [
         "compile --warnings-as-errors",
-        "cmd mix run --no-compile --no-deps-check ../../examples/07_tasks_memory.exs --check",
-        "cmd mix run --no-compile --no-deps-check ../../examples/08_tasks_durable.exs --check",
-        "cmd mix run --no-compile --no-deps-check ../../examples/09_tasks_retry.exs --check",
-        "cmd mix run --no-compile --no-deps-check ../../examples/17_tasks_subscriptions.exs --check"
+        "mcp.example ../../examples/07_tasks_memory.exs",
+        "mcp.example ../../examples/08_tasks_durable.exs",
+        "mcp.example ../../examples/09_tasks_retry.exs",
+        "mcp.example ../../examples/17_tasks_subscriptions.exs"
       ],
       quality: [
         "format --check-formatted",
         "compile --warnings-as-errors",
         "credo --strict",
-        "test --warnings-as-errors",
+        "test --warnings-as-errors --raise",
+        "tasks.contract",
         "examples"
       ],
       "quality.types": ["dialyzer --force-check --format short --list-unused-filters"]

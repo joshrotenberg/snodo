@@ -48,7 +48,7 @@ defmodule MCP.Extensions.Tasks.SQLite.MixProject do
     [
       "example.sqlite": [
         "compile --warnings-as-errors",
-        "cmd mix run --no-compile --no-deps-check ../../examples/11_tasks_sqlite.exs --check"
+        "mcp.example ../../examples/11_tasks_sqlite.exs"
       ],
       quality: [
         "format --check-formatted",
