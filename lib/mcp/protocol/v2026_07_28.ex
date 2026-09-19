@@ -9,6 +9,7 @@ defmodule MCP.Protocol.V2026_07_28 do
   alias MCP.Error
   alias MCP.Extension.Registry, as: ExtensionRegistry
   alias MCP.MRTR
+  alias MCP.Progress
   alias MCP.Prompt
   alias MCP.Protocol
   alias MCP.Protocol.Profile
@@ -38,8 +39,7 @@ defmodule MCP.Protocol.V2026_07_28 do
 
   @unsupported_server_notifications [
     {@cancel_method, nil, :required, :active},
-    {"notifications/message", "logging", :required, :deprecated},
-    {"notifications/progress", nil, :required, :active}
+    {"notifications/message", "logging", :required, :deprecated}
   ]
 
   @unsupported_embedded_requests [
@@ -187,6 +187,14 @@ defmodule MCP.Protocol.V2026_07_28 do
                    validator: {__MODULE__, :inspect_cancelled_params}
                  ),
                  Method.new!(
+                   name: "notifications/progress",
+                   kind: :notification,
+                   directions: [:server_to_client],
+                   params: :required,
+                   status: :implemented,
+                   validator: {__MODULE__, :inspect_progress_params}
+                 ),
+                 Method.new!(
                    name: "notifications/subscriptions/acknowledged",
                    kind: :notification,
                    directions: [:server_to_client],
@@ -284,27 +292,31 @@ defmodule MCP.Protocol.V2026_07_28 do
          :ok <- validate_request_metadata(envelope, metadata, runtime),
          {:ok, client_info} <- optional_client_info(metadata),
          {:ok, client_capabilities} <- client_capabilities(envelope, metadata) do
-      {:ok,
-       %Context{
-         protocol_version: @version,
-         protocol: __MODULE__,
-         client_info: client_info,
-         client_capabilities: client_capabilities,
-         server_info: runtime.server_info,
-         server_capabilities: runtime.capabilities,
-         session: nil,
-         auth: envelope.transport.metadata[:auth],
-         transport: envelope.transport,
-         request_id: envelope.id,
-         request_method: envelope.method,
-         request_params: envelope.params,
-         request_state: Map.get(envelope.params, "requestState"),
-         input_responses: Map.get(envelope.params, "inputResponses", %{}),
-         cancellation: envelope.transport.metadata[:cancellation],
-         progress: envelope.transport.metadata[:progress],
-         extensions: negotiated_extensions(client_capabilities, runtime.capabilities),
-         metadata: metadata
-       }}
+      context = %Context{
+        protocol_version: @version,
+        protocol: __MODULE__,
+        client_info: client_info,
+        client_capabilities: client_capabilities,
+        server_info: runtime.server_info,
+        server_capabilities: runtime.capabilities,
+        session: nil,
+        auth: envelope.transport.metadata[:auth],
+        transport: envelope.transport,
+        request_id: envelope.id,
+        request_method: envelope.method,
+        request_params: envelope.params,
+        request_state: Map.get(envelope.params, "requestState"),
+        input_responses: Map.get(envelope.params, "inputResponses", %{}),
+        cancellation: envelope.transport.metadata[:cancellation],
+        extensions: negotiated_extensions(client_capabilities, runtime.capabilities),
+        metadata: metadata
+      }
+
+      sink =
+        if envelope.method != "subscriptions/listen",
+          do: envelope.transport.metadata[:progress_sink]
+
+      {:ok, %{context | progress: Progress.bind(sink, context)}}
     end
   end
 
@@ -599,6 +611,15 @@ defmodule MCP.Protocol.V2026_07_28 do
   def shape_error(%Error{} = error, nil), do: Error.to_json_rpc(error)
 
   @impl true
+  def shape_progress(token, fields, %Context{}) do
+    %{
+      "jsonrpc" => "2.0",
+      "method" => "notifications/progress",
+      "params" => Map.put(fields, "progressToken", token)
+    }
+  end
+
+  @impl true
   def shape_subscription_ack(accepted_filter, id, %Context{}) do
     %{
       "jsonrpc" => "2.0",
@@ -824,6 +845,26 @@ defmodule MCP.Protocol.V2026_07_28 do
   def inspect_cancelled_params(params) when is_map(params) do
     with :ok <- inspect_cancelled_request_id(params) do
       inspect_cancelled_reason(params)
+    end
+  end
+
+  @doc false
+  def inspect_progress_params(params) when is_map(params) do
+    cond do
+      not (is_binary(params["progressToken"]) or is_integer(params["progressToken"])) ->
+        {:error, "progress notification requires a string or integer progressToken"}
+
+      not is_number(params["progress"]) ->
+        {:error, "progress notification requires numeric progress"}
+
+      Map.has_key?(params, "total") and not is_number(params["total"]) ->
+        {:error, "progress notification total must be numeric"}
+
+      Map.has_key?(params, "message") and not is_binary(params["message"]) ->
+        {:error, "progress notification message must be a string"}
+
+      true ->
+        :ok
     end
   end
 
@@ -1092,11 +1133,11 @@ defmodule MCP.Protocol.V2026_07_28 do
 
   defp validate_optional_progress_token(metadata) do
     case Map.fetch(metadata, "progressToken") do
-      {:ok, token} when is_binary(token) or is_number(token) ->
+      {:ok, token} when is_binary(token) or is_integer(token) ->
         :ok
 
       {:ok, _invalid} ->
-        {:error, Error.invalid_params("progressToken must be a string or number")}
+        {:error, Error.invalid_params("progressToken must be a string or integer")}
 
       :error ->
         :ok

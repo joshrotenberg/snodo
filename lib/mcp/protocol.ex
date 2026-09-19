@@ -31,6 +31,8 @@ defmodule MCP.Protocol do
   @callback validate_result(term(), Result.t(), Context.t()) :: :ok | {:error, Error.t()}
   @callback shape_result(term(), Result.t(), Context.t()) :: map()
   @callback shape_error(Error.t(), Context.t() | nil) :: map()
+  @doc "Optional shaping of an active request's progress notification, independent of subscriptions."
+  @callback shape_progress(String.t() | integer(), map(), Context.t()) :: map()
   @callback transport_policy(Envelope.t() | nil) :: Policy.t()
   @callback server_discovery(Runtime.t()) :: map() | :unsupported
   @callback request_metadata(map()) :: map()
@@ -40,6 +42,7 @@ defmodule MCP.Protocol do
   @callback shape_subscription_result(MCP.Envelope.id(), Context.t()) :: map()
 
   @optional_callbacks validate_result: 3,
+                      shape_progress: 3,
                       shape_subscription_ack: 3,
                       shape_subscription_event: 3,
                       shape_subscription_result: 2
