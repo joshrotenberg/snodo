@@ -10,6 +10,9 @@ end
 defmodule MCPEx.JSV.CastProbe do
   @moduledoc false
 
+  # Raising is the point: reaching this hook means the adapter failed to reject
+  # a cast, so the test asserts it is never called.
+  @spec __jsv__(term(), term()) :: no_return()
   def __jsv__(_request, _builder) do
     Process.put(:jsv_cast_probe_called, true)
     raise "the adapter must reject a cast before invoking this hook"

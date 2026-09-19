@@ -10,7 +10,8 @@ defmodule MCP.Extensions.Tasks.MixProject do
       description: "Tasks extension for mcp_ex",
       elixirc_paths: elixirc_paths(Mix.env()),
       dialyzer: [
-        plt_add_apps: [:mix],
+        # :ex_unit so the PLT knows ExUnit.AssertionError, which test/support raises.
+        plt_add_apps: [:mix, :ex_unit],
         plt_local_path: "priv/plts",
         flags: [:unmatched_returns, :error_handling]
       ],
