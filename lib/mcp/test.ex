@@ -41,10 +41,18 @@ defmodule MCP.Test do
 
     transport = %TransportContext{
       transport: :direct,
+      request_headers: protocol_headers(opts),
       metadata: Keyword.get(opts, :transport_metadata, %{})
     }
 
     Server.dispatch(runtime, raw, transport)
+  end
+
+  defp protocol_headers(opts) do
+    case Keyword.get(opts, :protocol) do
+      nil -> %{}
+      version -> %{"mcp-protocol-version" => version}
+    end
   end
 
   defp put_protocol_metadata(runtime, params, version, capabilities) do

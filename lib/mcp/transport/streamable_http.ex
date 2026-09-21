@@ -1,6 +1,9 @@
 defmodule MCP.Transport.StreamableHTTP do
   @moduledoc """
-  Protocol-driven adapter for the final, stateless Streamable HTTP binding.
+  Protocol-driven adapter for stateless Streamable HTTP requests.
+
+  The default dialect is 2026-07-28. Explicitly enabled initialize-era dialects
+  share admission and execution without creating HTTP sessions.
 
   `prepare/3` performs HTTP and mirrored-header admission without invoking an
   application handler. `execute/3` runs one prepared message through the shared

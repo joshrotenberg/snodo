@@ -531,6 +531,15 @@ reads over stdio and HTTP with seeded domain data. See
 [target application findings](docs/target-application-findings.md) for the
 build instructions, fresh evidence, and limits of that acceptance check.
 
+## Opt-in initialize-era HTTP clients
+
+The default remains `2026-07-28`. For clients that still initialize, explicitly
+configure `protocols: [MCP.Protocol.V2026_07_28, MCP.Protocol.V2025_11_25,
+MCP.Protocol.V2025_06_18]` on `MCP.Server` or `MCP.Server.Runtime.new/1`.
+See the [compatibility scope](docs/legacy-http-plan.md) for lifecycle, capability,
+identity and client evidence. This enables the HTTP tools/resources/prompts
+slice without adding session storage or changing the latest protocol.
+
 ## Scope boundaries
 
 This is a pre-release implementation, not a production-readiness claim. It defers

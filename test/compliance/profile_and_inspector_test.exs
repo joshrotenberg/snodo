@@ -163,8 +163,14 @@ defmodule MCP.Compliance.ProfileAndInspectorTest do
     registry = Registry.new([V2026_07_28])
     assert Registry.profiles(registry) == [profile]
     assert Registry.versions(registry) == ["2026-07-28"]
-    assert Protocol.builtin_profiles() == [profile]
-    assert Protocol.builtin_versions() == ["2026-07-28"]
+
+    assert Protocol.builtin_profiles() == [
+             profile,
+             MCP.Protocol.V2025_11_25.profile(),
+             MCP.Protocol.V2025_06_18.profile()
+           ]
+
+    assert Protocol.builtin_versions() == ["2026-07-28", "2025-11-25", "2025-06-18"]
   end
 
   @tag mcp_contract: [

@@ -74,6 +74,25 @@ defmodule MCP.Protocol.Registry do
   end
 
   @spec select(t(), Envelope.t()) :: {:ok, module()} | {:error, Error.t()}
+  def select(
+        %__MODULE__{} = registry,
+        %Envelope{kind: :request, method: "initialize", params: params} = envelope
+      ) do
+    candidates =
+      Enum.filter(registry.protocols, fn protocol ->
+        match?(
+          {:ok, %Profile.Method{status: :implemented}},
+          Profile.fetch_method(protocol.profile(), "initialize", :client_to_server)
+        )
+      end)
+
+    case Enum.find(candidates, &(&1.version() == params["protocolVersion"])) ||
+           List.first(candidates) do
+      nil -> detect(registry, envelope)
+      protocol -> {:ok, protocol}
+    end
+  end
+
   def select(%__MODULE__{} = registry, %Envelope{} = envelope) do
     detect(registry, envelope)
   end

@@ -297,14 +297,176 @@ defmodule MCP.Transport.PlugBanditTest do
     :gen_tcp.close(socket)
   end
 
+  for version <- ["2025-06-18", "2025-11-25"] do
+    @legacy_version version
+
+    test "#{version} native HTTP lifecycle omits sessions and modern mirrored headers" do
+      %{port: port} =
+        server(
+          capabilities: %{"tools" => %{}},
+          protocols: [
+            MCP.Protocol.V2026_07_28,
+            MCP.Protocol.V2025_11_25,
+            MCP.Protocol.V2025_06_18
+          ]
+        )
+
+      initialize = %{
+        "jsonrpc" => "2.0",
+        "id" => 1,
+        "method" => "initialize",
+        "params" => %{
+          "protocolVersion" => @legacy_version,
+          "capabilities" => %{},
+          "clientInfo" => %{"name" => "fixture", "version" => "1"}
+        }
+      }
+
+      socket = connect(port)
+      send_rpc(socket, initialize, legacy: true)
+      raw = read_all(socket)
+      assert raw =~ "HTTP/1.1 200"
+      refute String.downcase(raw) =~ "mcp-session-id"
+      [_, encoded] = String.split(raw, "\r\n\r\n", parts: 2)
+      result = JSON.decode!(encoded)["result"]
+      assert result["protocolVersion"] == @legacy_version
+      assert result["capabilities"] == %{"tools" => %{}}
+      options = [legacy: true, headers: [{"mcp-protocol-version", @legacy_version}]]
+      initialized = %{"jsonrpc" => "2.0", "method" => "notifications/initialized"}
+      assert {202, nil} = rpc(port, initialized, options)
+      listed = %{"jsonrpc" => "2.0", "id" => 2, "method" => "tools/list"}
+
+      assert {200, %{"result" => %{"tools" => [%{"name" => "inspect_context"}]}}} =
+               rpc(port, listed, options)
+
+      called = %{
+        "jsonrpc" => "2.0",
+        "id" => 3,
+        "method" => "tools/call",
+        "params" => %{
+          "name" => "inspect_context",
+          "arguments" => %{"text" => "legacy"}
+        }
+      }
+
+      for principal <- [:alpha, :beta, :alpha] do
+        expected = to_string(principal)
+
+        assert {200, %{"result" => %{"structuredContent" => %{"principal" => ^expected}}}} =
+                 rpc(port, called, Keyword.put(options, :auth, principal))
+      end
+
+      assert {400, _} = rpc(port, listed, legacy: true)
+
+      assert {400, _} =
+               rpc(port, listed, legacy: true, headers: [{"mcp-protocol-version", "1900-01-01"}])
+
+      assert {400, _} =
+               rpc(port, listed,
+                 legacy: true,
+                 headers: [
+                   {"mcp-protocol-version", @legacy_version},
+                   {"mcp-protocol-version", @legacy_version}
+                 ]
+               )
+
+      assert {405, _} = rpc(port, listed, Keyword.put(options, :method, "GET"))
+      assert {405, _} = rpc(port, listed, Keyword.put(options, :method, "DELETE"))
+    end
+
+    test "#{version} request progress uses SSE before the legacy result" do
+      %{port: port} =
+        server(
+          capabilities: %{"tools" => %{}},
+          protocols: [MCP.Protocol.V2025_11_25, MCP.Protocol.V2025_06_18]
+        )
+
+      socket = connect(port)
+
+      body = %{
+        "jsonrpc" => "2.0",
+        "id" => 1,
+        "method" => "tools/call",
+        "params" => %{
+          "name" => "inspect_context",
+          "arguments" => %{"progress" => true},
+          "_meta" => %{"progressToken" => "legacy-progress"}
+        }
+      }
+
+      send_rpc(socket, body,
+        legacy: true,
+        auth: :alpha,
+        headers: [{"mcp-protocol-version", @legacy_version}]
+      )
+
+      assert [first, second, result] = socket |> read_all() |> sse_messages()
+      assert first["method"] == "notifications/progress"
+
+      assert first["params"] == %{
+               "progressToken" => "legacy-progress",
+               "progress" => 1,
+               "total" => 2,
+               "message" => "first"
+             }
+
+      assert second["params"]["progress"] == 2
+      assert result["result"]["structuredContent"]["principal"] == "alpha"
+      refute Map.has_key?(result["result"], "resultType")
+    end
+
+    test "#{version} cancellation cannot cross authenticated principals in a mixed runtime" do
+      %{port: port} =
+        server(
+          capabilities: %{"tools" => %{}},
+          protocols: [
+            MCP.Protocol.V2026_07_28,
+            MCP.Protocol.V2025_11_25,
+            MCP.Protocol.V2025_06_18
+          ]
+        )
+
+      options = [legacy: true, headers: [{"mcp-protocol-version", @legacy_version}]]
+
+      body = %{
+        "jsonrpc" => "2.0",
+        "id" => 77,
+        "method" => "tools/call",
+        "params" => %{
+          "name" => "inspect_context",
+          "arguments" => %{"wait" => true}
+        }
+      }
+
+      socket = connect(port)
+      send_rpc(socket, body, Keyword.put(options, :auth, :alpha))
+      assert_receive {:tool_entered, 77, worker, token}, 1_000
+      monitor = Process.monitor(worker)
+
+      cancellation = %{
+        "jsonrpc" => "2.0",
+        "method" => "notifications/cancelled",
+        "params" => %{"requestId" => 77}
+      }
+
+      assert {202, nil} = rpc(port, cancellation, Keyword.put(options, :auth, :beta))
+      refute MCP.Cancellation.cancelled?(token)
+      assert {202, nil} = rpc(port, cancellation, Keyword.put(options, :auth, :alpha))
+      assert_receive {:DOWN, ^monitor, :process, ^worker, _}, 1_000
+      assert MCP.Cancellation.cancelled?(token)
+      assert read_all(socket) =~ "HTTP/1.1 204"
+    end
+  end
+
   defp server(opts \\ []) do
     hub = start_supervised!(Hub)
     executor_opts = Keyword.take(opts, [:max_concurrency, :max_queue])
     executor = start_supervised!({Executor, executor_opts})
-    transport_opts = Keyword.drop(opts, [:max_concurrency, :max_queue])
+    transport_opts = Keyword.drop(opts, [:max_concurrency, :max_queue, :protocols, :capabilities])
+    runtime = PlugFixtures.runtime(hub, Keyword.take(opts, [:protocols, :capabilities]))
 
     plug_opts =
-      [runtime: PlugFixtures.runtime(hub), executor: executor, observer: self()] ++ transport_opts
+      [runtime: runtime, executor: executor, observer: self()] ++ transport_opts
 
     listener =
       start_supervised!(
@@ -370,7 +532,13 @@ defmodule MCP.Transport.PlugBanditTest do
       {"content-length", to_string(byte_size(encoded))}
     ]
 
-    name = get_in(body, ["params", "name"])
+    headers =
+      if opts[:legacy],
+        do:
+          Enum.reject(headers, fn {key, _} -> key in ["mcp-protocol-version", "mcp-method"] end),
+        else: headers
+
+    name = if opts[:legacy], do: nil, else: get_in(body, ["params", "name"])
     headers = if name, do: headers ++ [{"mcp-name", name}], else: headers
 
     headers =
