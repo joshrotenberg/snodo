@@ -56,8 +56,9 @@ This is stacked on private PR #1's exact head
 `4a98d8393da586c039c173cfb80b07fcbc2ba961`. Keep the inherited SQLite Tasks failure
 separate from compatibility results; no gate is removed or weakened.
 
-The owner explicitly confirmed that mcp_ex remains private during development.
-Do not publish source or packages. This issue does not authorize a merge, a public
+Both Custode and mcp_ex are private repositories. The owner explicitly confirmed
+that mcp_ex remains private during development.
+Do not publish source or packages. This issue does not authorize a merge, a default
 Custode dependency migration, or a live fleet cutover. A later local-only pilot can
 use private path dependencies and narrow adapters around actual Custode callbacks,
 shared operations and existing declared schemas: identity, journal_read,

@@ -227,7 +227,9 @@ defmodule MCP.Protocol.Legacy do
         method: "notifications/cancelled",
         params: %{"requestId" => id} = params
       })
-      when is_binary(id) or is_integer(id), do: {:ok, {:cancel, id, params["reason"]}}
+      when is_binary(id) or is_integer(id) do
+    {:ok, {:cancel, id, params["reason"]}}
+  end
 
   def resolve_operation(%Envelope{method: method, params: params}) do
     cond do
@@ -268,7 +270,9 @@ defmodule MCP.Protocol.Legacy do
     do: :ok
 
   def validate_operation({:cancel, _id, reason}, _params, _context)
-      when is_nil(reason) or is_binary(reason), do: :ok
+      when is_nil(reason) or is_binary(reason) do
+    :ok
+  end
 
   def validate_operation({:cancel, _id, _reason}, _params, _context),
     do: {:error, Error.invalid_params("Cancellation reason must be a string")}
