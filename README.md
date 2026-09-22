@@ -60,8 +60,9 @@ The core runtime uses Elixir's built-in `JSON` module, available from Elixir
 1.18, and has no runtime dependencies. The Tasks package depends at runtime
 only on `mcp_ex`. Both database siblings depend inward on Tasks plus Ecto SQL
 and Jason; Postgrex and `ecto_sqlite3` are optional because the host application
-supplies and supervises its Repo. All four packages keep Credo and Dialyxir
-development/test-only. The framework preserves and advertises schemas.
+supplies and supervises its Repo. Optional Plug and JSV packages add application
+hosting and schema validation without changing that core graph. All six packages
+keep Credo and Dialyxir development/test-only. The framework preserves and advertises schemas.
 A custom validator can enforce inputs and structured outputs through
 `validate/2`. The dependency-free runtime default remains intentionally
 pass-through, while the included `MCP.Schema.Validator.Basic` enforces the
@@ -138,7 +139,7 @@ No process is needed for direct dispatch:
   )
 ```
 
-Run the first standalone walkthrough, or check all nineteen no-external-service
+Run the first standalone walkthrough, or check all twenty-one no-external-service
 examples in isolated Elixir VMs:
 
 ```sh
@@ -240,8 +241,8 @@ atomic writes while delegating generic execution policy to that reusable layer;
 applications may also inject and own the executor process.
 
 The `2026-07-28` profile contains all 22 directional core method rules from the
-pinned release schema: sixteen are implemented, and the remainder are explicitly
-unsupported, deprecated, or MRTR-embedded. A known core method such as
+pinned release schema: eighteen are implemented, including MRTR-embedded
+elicitation; four remain explicitly unsupported. A known core method such as
 `subscriptions/listen` is routed by the protocol profile and never mistaken for
 a vendor extension.
 Tasks remains extension-only and is not folded into the core catalog.
@@ -320,11 +321,14 @@ tests supply a `2099-01-01` dialect without changing framework code.
 Applications can install a complete JSON Schema 2020-12 backend per runtime:
 
 ```elixir
-EchoServer.runtime(schema_validator: MyApp.JSONSchemaValidator)
+EchoServer.runtime(schema_validator: MCP.Schema.Validator.JSV)
 ```
 
-The module implements `MCP.Schema.Validator` and receives the original instance
-and untouched schema map.
+The optional [`mcp_ex_jsv` package](integrations/schema_jsv/README.md) supplies
+this implementation without adding core dependencies. A custom module can still
+implement `MCP.Schema.Validator`, receiving the original instance and untouched
+schema map. See the [recommended stack](docs/application-stack.md) for validation
+policy, bounded progress, and version-support decisions.
 
 Applications that only need the included common subset can configure it on the
 server, as above, or per runtime:
@@ -345,10 +349,12 @@ The same immutable runtime can be served over native HTTP:
 MCP.Transport.StreamableHTTP.Server.url(http)
 ```
 
-Applications with Plug, Bandit, or Cowboy can instead translate requests into
-`MCP.Transport.StreamableHTTP.Request` and call the pure adapter. The built-in
-listener intentionally implements one request per connection and complete JSON
-responses or one request-scoped subscription SSE stream.
+Applications can use the optional [`mcp_ex_plug` integration](integrations/plug/README.md)
+with an application-owned Bandit/server and authentication pipeline. Other hosts
+can translate requests into `MCP.Transport.StreamableHTTP.Request` and call the
+pure adapter. The built-in listener intentionally implements one request per
+connection. Native HTTP and Plug support ordinary JSON results, request-progress
+SSE, and request-scoped subscription SSE; these lifecycles remain distinct.
 
 Out-of-tree modules implement `MCP.Extension`, declare exact-versioned
 `MCP.Extension.Method` values, and are installed with `extensions:` on the
@@ -421,17 +427,18 @@ mix examples
 ```
 
 `mix quality` runs formatting, warning-free compilation, strict Credo, the
-core ExUnit suite, all nineteen no-external-service example checks, and
-then delegates to Tasks, PostgreSQL, and SQLite package quality, including
-their independent test suites. `mix quality.types` runs Dialyzer with
-unmatched-return and error-handling warnings enabled for all four packages.
+core ExUnit suite and contract inventory, all twenty-one no-external-service
+example checks, and then delegates to Tasks, PostgreSQL, SQLite, Plug, and JSV
+package quality, including their independent test suites. `mix quality.types`
+runs Dialyzer with unmatched-return and error-handling warnings enabled for all
+six packages.
 Dialyzer has no ignore file; Credo has only the documented naming and
 alias-policy exceptions. The default examples gate requires a POSIX host with
 `sh` and `mkfifo` for its real stdio subprocess half-close check; examples
-07–09 and 17 are delegated to Tasks, example 11 is delegated to SQLite, and example 10
-stays in the opt-in PostgreSQL lane.
+07–09 and 17 are delegated to Tasks, example 11 to SQLite, example 21 to Plug,
+and example 22 to JSV. Example 10 stays in the opt-in PostgreSQL lane.
 
-`mix mcp.contract` runs 29 core evidence groups across literal direct/stdio
+`mix mcp.contract` runs 31 core evidence groups across literal direct/stdio
 vectors, native HTTP admission/listener behavior, and generic extension
 registration and negotiated dispatch, including Resources, Prompts, and
 Completion, Pagination, and Subscription routing and wire shapes. The
@@ -485,9 +492,11 @@ stdout/stderr isolation in a real OS subprocess. A separate pinned interop
 harness also passes with the released official TypeScript client 2.0.0 in modern
 mode for discovery, `tools/list`, `tools/call`, cancellation, and a follow-up
 call. The frozen official server suite has also been run against the native
-Streamable HTTP fixture: 22/37 exercised whole scenarios pass, with all 37
-attempted. The raw runner had 25/37 scenarios without a failure check; three
-unexercised or false-positive results are excluded from the honest score.
+Streamable HTTP fixture: **32/37** exercised whole scenarios pass in the
+2026-09-14 run, with all 37 attempted. Nine ordinary MRTR scenarios and the
+ordinary progress scenario now pass; roots/sampling and remaining diagnostics
+still limit the score. [Raw check outcomes and regression policy](conformance/README.md)
+remain separate from this partial conformance claim.
 
 The separate extension-only Tasks probe passes all 35 Tasks-specific alpha.11
 assertions. Start its combined fixture from the child package so both
@@ -516,15 +525,16 @@ npm run check
 ```
 
 The companion `interop/official_client/check_hexpm.mjs` checks the real
-`hexpm-mcp` server's 24-tool catalog, tool outcomes, five prompts, and five
-resource reads over stdio and HTTP with seeded domain data. See
+`hexpm-mcp` server's 24-tool catalog across three pages, tool outcomes, six prompts,
+package completions, an automatically resumed MRTR review, and five resource
+reads over stdio and HTTP with seeded domain data. See
 [target application findings](docs/target-application-findings.md) for the
 build instructions, fresh evidence, and limits of that acceptance check.
 
 ## Scope boundaries
 
-This is a design spike, not a production MCP SDK. It intentionally defers a
-bundled JSON Schema 2020-12 engine, deprecated roots/sampling MRTR inputs,
+This is a pre-release implementation, not a production-readiness claim. It defers
+deprecated roots/sampling MRTR inputs,
 legacy sessions, authentication, and per-peer fairness. Resources
 cover paginated list/read/template routing and subscription event shaping, but
 not a general RFC 6570 inverse matcher or a bundled change detector. Prompts
@@ -546,24 +556,25 @@ repeatable contention and Runner-soak baseline, but it is not evidence of
 database capacity, multi-node behavior, or operational endurance. Tasks status
 notifications are implemented through the generic subscription lifecycle; the
 application still owns publication from its store or domain process. The
-adapters' choice to remove an entire aggregate at
-`createdAt + ttlMs` is this
-implementation's allowed expiration policy, not a universal protocol mandate.
-The released-client check covers only the implemented stdio slice, while the
+adapters make the entire aggregate eligible for reaping at `createdAt + ttlMs`.
+Removal depends on explicit or scheduled cleanup; reads and claims are not an
+exact-deadline expiry fence. This is the implementation's allowed expiration
+policy, not a universal protocol mandate.
+Released-client checks cover the implemented stdio and native HTTP slices, while the
 separate frozen official server run exercises the native HTTP fixture. Its
-current honest score is partial: 22 of the 37 frozen `2026-07-28` server
+current honest score is partial: 32 of the 37 frozen `2026-07-28` server
 scenarios pass as exercised whole scenarios. This is not a full-revision
 conformance claim. Basic executor backpressure is implemented, but per-peer
-fairness, adaptive load shedding, general non-subscription response
-streaming, and graceful listener-wide subscription draining remain future
+fairness, adaptive load shedding, general content
+streaming beyond progress, and graceful listener-wide subscription draining remain future
 work. The stdio adapter's optional
 default-Logger redirection changes VM-global Logger configuration and is
 intended for the normal single-stdio-server process; restoration/lease
 coordination for multiple embedded stdio adapters is not implemented.
 
 The official run summary is available in
-[human-readable](conformance/results/2026-07-28-alpha.11-summary.md) and
-[machine-readable](conformance/results/2026-07-28-alpha.11-summary.json) forms.
+[human-readable](conformance/results/2026-09-14-alpha.11-summary.md) and
+[machine-readable](conformance/results/2026-09-14-alpha.11-summary.json) forms.
 The separate Tasks probe is also available in
 [human-readable](conformance/results/2026-07-28-tasks-alpha.11-summary.md) and
 [machine-readable](conformance/results/2026-07-28-tasks-alpha.11-summary.json)

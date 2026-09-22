@@ -2,7 +2,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node check.mjs"
+    "check": "npm run check:baseline && npm run check:mrtr && npm run check:progress",
+    "check:baseline": "node check.mjs",
+    "check:mrtr": "node check_mrtr.mjs",
+    "check:progress": "node check_progress.mjs",
+    "check:hexpm": "node check_hexpm.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "2.0.0"

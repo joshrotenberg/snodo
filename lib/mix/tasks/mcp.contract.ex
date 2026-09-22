@@ -10,6 +10,10 @@ defmodule Mix.Tasks.Mcp.Contract do
     MCP.MRTR.ProtocolAcceptanceTest,
     MCP.MRTR.ExtensionAcceptanceTest,
     MCP.MRTR.StateTest,
+    MCP.ProgressTest,
+    MCP.ProgressTransportAcceptanceTest,
+    MCP.HTTPRequestDeadlineTest,
+    MCP.Transport.StdioWriteTimeoutTest,
     MCP.Transport.StdioAcceptanceTest,
     MCP.Transport.StreamableHTTP.AdapterAcceptanceTest,
     MCP.Transport.StreamableHTTP.ServerAcceptanceTest
@@ -23,6 +27,10 @@ defmodule Mix.Tasks.Mcp.Contract do
     "test/mrtr_protocol_acceptance_test.exs",
     "test/mrtr_extension_acceptance_test.exs",
     "test/mrtr_state_test.exs",
+    "test/progress_test.exs",
+    "test/progress_transport_acceptance_test.exs",
+    "test/http_request_deadline_test.exs",
+    "test/stdio_write_timeout_test.exs",
     "test/stdio_acceptance_test.exs",
     "test/http_adapter_acceptance_test.exs",
     "test/http_server_acceptance_test.exs"

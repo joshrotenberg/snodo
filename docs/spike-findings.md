@@ -10,7 +10,7 @@ core. No request session is created for MCP `2026-07-28`.
 The released official TypeScript client 2.0.0 now exercises the implemented
 stdio slice in pinned modern mode: discovery, list, call, cancellation, and a
 successful call after cancellation. The frozen official server suite now also
-exercises the native HTTP fixture. Its honest result is partial: 22/37 exercised
+exercises the native HTTP fixture. Its honest result is partial: 32/37 exercised
 whole scenarios pass, with all 37 attempted.
 
 An exact `MCP.Protocol.Profile` now declares both the complete pinned core-method
@@ -20,9 +20,9 @@ Known-but-unsupported core methods are distinct from vendor extensions. Literal
 contract vectors run through direct and stdio dispatch without using the
 dialect's request-construction helper.
 `mix mcp.contract` reports those internal checks separately from the official
-HTTP server requirements. The raw runner had 25/37 required scenarios without a
-failure check, but three missing-fixture or false-positive paths are excluded
-from the 22/37 exercised score.
+HTTP server requirements. The September 14 run passes 32/37 required scenarios,
+with no warning-only or false-positive results counted. Nine newly exercised
+ordinary MRTR scenarios account for the increase from the August 25 baseline.
 
 The core Resources slice is now end to end rather than catalog-only.
 `resources/list`, `resources/templates/list`, and `resources/read` share the
@@ -128,7 +128,7 @@ shapes.
 | Execution policy is transport-neutral | Executor tests contain no JSON-RPC or STDIO behavior; STDIO accepts an injected executor and leaves its lifecycle application-owned. |
 | Stdio output remains valid | 100 admitted calls produce 100 independently decodable JSON lines under the configured concurrency bound; an OS subprocess test also keeps Logger and raw tool IO on stderr while stdout contains one protocol line. |
 | Released-client interop works | `@modelcontextprotocol/client` 2.0.0 negotiates the modern era over stdio, decodes the tool list, calls the echo tool, cancels a slow call, and successfully calls again. |
-| Frozen official conformance is measured honestly | All 37 required scenarios were attempted; 22 exercised whole scenarios pass. The report retains 89 success, 15 failure, 5 skipped, 2 warning, and 1 info required checks and excludes three unexercised runner no-failure results. |
+| Frozen official conformance is measured honestly | All 37 required scenarios were attempted; 32 exercised whole scenarios pass. The September 14 report retains 103 success, 8 failure, 5 skipped, 0 warning, and 1 info required checks. A strict per-check CI baseline preserves failures separately from the score. |
 | Native HTTP is protocol-driven | Pure adapter and live-listener tests cover final-era mirrored headers, Base64 names, origins, media types, status mapping, absent session state, normal 404/405 handling, bounded concurrency, disconnect cancellation, and executor ownership. |
 | HTTP reuses the execution layer | The listener admits requests before submitting application work to the same `MCP.Server.Executor` used by stdio. |
 | Cancellation is request-scoped | `notifications/cancelled` terminates the target worker, suppresses its response, and leaves another request unaffected. |
@@ -275,12 +275,12 @@ shapes.
 | Can a transport avoid protocol-version policy? | **Yes for execution and application routing.** Stdio and HTTP share the executor and server core. Each transport still owns its actual framing/admission, connection scope, cancellation signal, and response delivery. HTTP-specific protocol requirements remain data declared by the selected dialect. |
 | Can legacy sessions avoid changing component APIs? | **Not yet tested.** |
 | Can Tasks avoid core changes? | **Yes.** The independently compiled child package uses generic middleware, wire-result, extension-route, options, and HTTP-policy seams; Task method names remain absent from the core profile and router, and the core has no dependency on `:mcp_ex_tasks`. Its optional PostgreSQL and SQLite siblings depend inward on Tasks without introducing Ecto into either protocol package. |
-| Can MRTR suspend/resume without blocking shared processes? | **Yes for mid-task input.** Task workers park independently while the runner remains responsive, including two simultaneous inputs and partial fulfillment. A general framework MRTR API remains deferred; the frozen pre-task MRTR-to-Task composition fixture also passes. |
+| Can MRTR suspend/resume without blocking shared processes? | **Yes, through separate lifecycles.** Ordinary MRTR ends each request and resumes through a fresh request with validated answers and optional signed state. Tasks workers use their own mid-flight input lifecycle. Nine additional frozen ordinary-MRTR scenarios now pass. |
 | Can 1,000 requests avoid a central serialization bottleneck? | **Not yet proven at 1,000.** Tests show 100 handlers are not serialized and execution is bounded, but admission still passes through one executor coordinator and no benchmark exists. |
 | Do arbitrary schema and `_meta` keys survive? | **Yes.** Preservation and a custom validation seam are tested; a bundled full validator is deferred. |
 | Can the protocol core be tested without sockets? | **Yes.** Direct, stdio, and extension parity remain socket-free; the native listener has a separate localhost acceptance lane. |
 | Can applications own their state model? | **Yes.** The barrier fixture uses caller-owned process state; context is never mutated. |
-| Is full official `2026-07-28` server conformance measured? | **Partially.** All 37 frozen scenarios were attempted through native HTTP; 22 exercised whole scenarios pass, so full-revision conformance is not claimed. |
+| Is full official `2026-07-28` server conformance measured? | **Partially.** All 37 frozen scenarios were attempted through native HTTP; 32 exercised whole scenarios pass, so full-revision conformance is not claimed. |
 
 ## Deliberate limitations
 
@@ -338,7 +338,7 @@ shapes.
   SSE. General non-subscription response streaming and listener-wide graceful
   draining remain deferred.
 - The released official TypeScript client passes the checked stdio method
-  subset. The separate official server run passes 22/37 exercised whole
+  subset. The separate official server run passes 32/37 exercised whole
   scenarios and therefore does not support a full-revision conformance claim.
 - The frozen runner supplies generic wire-schema validation, but its core
   `CallToolResult` branch does not admit the extension-defined
@@ -377,20 +377,21 @@ emits a versioned human or JSON report. It proves correctness and lifecycle
 balance without presenting local timings as a capacity claim. A checked-in
 BEAM/PostgreSQL matrix and genuine version-one-to-two migration chain now make
 compatibility and data-preserving rollback executable; unrun CI combinations
-remain policy rather than claimed evidence. The `hexpm-mcp` target-application rewrite is done, using only the public
-framework APIs. Its 1,233-line MCP layer was replaced without changing
-framework code, reaching a private module, or working around framework
-behavior, while the application's 3,178-line domain layer and its 117 tests
-were left untouched. The friction it exposed, and the four items worth
-addressing before release packaging, are in
-[target-application-findings.md](target-application-findings.md). The next
-bounded slice is release packaging itself.
-Raise the frozen
-official core score from its measured 22/37 baseline only by adding real
-fixtures and framework surfaces; preserve the checked-in exclusion reasons so
-missing fixtures and warning-only behavior never become claimed passes. A
-general MRTR API and a legacy `2025-11-25` dialect remain later tests of
-execution and session boundaries.
+remain policy rather than claimed evidence. The `hexpm-mcp` target application
+has since been reconciled against fresh tests and official-client acceptance;
+see [target-application-findings.md](target-application-findings.md) for the
+actual scope, retained schemas, and separate uncommitted application checkout.
+
+General ordinary MRTR and elicitation are implemented, including signed state,
+partial answers, and retries across tools/resources/prompts. The September 14
+external fixture close-out raises the frozen exercised score to **32/37**.
+Official-client and per-check conformance regression lanes are now wired into
+CI. A passing baseline does not turn the remaining failures into conformance
+passes. Older initialization-based revisions remain deliberately unsupported.
+
+Follow [application-readiness-plan.md](application-readiness-plan.md) for the
+current order: recommended application stack, independent regression coverage,
+real workflows, and only then release readiness.
 
 The evidence architecture and official-runner boundary are documented in
 [protocol-compliance.md](protocol-compliance.md).

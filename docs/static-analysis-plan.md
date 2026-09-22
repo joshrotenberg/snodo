@@ -3,14 +3,14 @@
 ## Status
 
 Credo and Dialyxir are implemented as development/test-only quality gates for
-all four Mix packages. They do not change any runtime dependency graph:
+all six Mix packages. They do not change any runtime dependency graph:
 
 - [Credo 1.7.19](https://hex.pm/packages/credo/1.7.19) runs in strict mode over
   core `lib`, `test`, `examples`, and `conformance`, and over all three
-  extension packages' `lib` and `test` trees;
+  extension packages' and two integration packages' `lib` and `test` trees;
 - [Dialyxir 1.4.7](https://hex.pm/packages/dialyxir/1.4.7) runs in the development
   environment with `:unmatched_returns` and `:error_handling` enabled;
-- all four packages declare those tools with
+- all six packages declare those tools with
   `only: [:dev, :test], runtime: false`;
 - standalone core `mcp_ex` has no runtime dependency, while child
   `:mcp_ex_tasks` has a one-way runtime dependency only on `mcp_ex`;
@@ -20,6 +20,8 @@ all four Mix packages. They do not change any runtime dependency graph:
 - optional `:mcp_ex_tasks_sqlite` also depends one way on Tasks plus Ecto SQL
   and Jason; `ecto_sqlite3` remains optional because the host application
   supplies and supervises its SQLite-backed Repo;
+- optional `:mcp_ex_plug` and `:mcp_ex_jsv` depend inward on the core and add
+  Plug hosting and JSV validation respectively; they are not protocol extensions;
 - the current tree passes both gates without a Dialyzer ignore file; Credo's
   narrow naming and alias policies are documented beside their configuration.
 
@@ -28,8 +30,8 @@ It led to tighter return contracts, explicit executor outcome types, simpler
 profile validation, checked Logger configuration changes, and removal of
 unreachable or unmatched branches.
 
-The recorded local verification environment is Elixir 1.20.3 on OTP 29. All
-four projects declare Elixir `~> 1.18`; the checked-in compatibility workflow
+The current local verification environment is Elixir 1.20.4 on OTP 29.0.6. All
+six projects declare Elixir `~> 1.18`; the checked-in compatibility workflow
 now defines 1.18/OTP 27, 1.19/OTP 28, and 1.20/OTP 29 lanes. Combinations other
 than the local environment become evidence only after their jobs pass. At the
 initial package split, the core suite had 154 tests
@@ -55,22 +57,32 @@ It runs, in order:
 mix format --check-formatted
 mix compile --warnings-as-errors
 mix credo --strict
-mix test --warnings-as-errors
+mix test --warnings-as-errors --raise
+mix mcp.contract
 mix examples
 mix cmd --cd extensions/tasks mix quality
 mix cmd --cd extensions/tasks_postgres mix quality
 mix cmd --cd extensions/tasks_sqlite mix quality
+mix cmd --cd integrations/plug mix quality
+mix cmd --cd integrations/schema_jsv mix quality
 ```
 
 `mix examples` launches every numbered script in a fresh Mix/Elixir VM, starts
 runtime dependencies normally, promotes script compiler warnings to errors, and
 requires its exact one-line success marker. The root task runs examples 01–06
 and the Resources/Prompts/Completion/Pagination/Subscriptions examples 12–16
-plus the bounded producer and instrumentation examples 18–19 in the core,
+plus the bounded producer, instrumentation, and MRTR examples 18–20 in the core,
 delegates examples 07–09 and 17 to `:mcp_ex_tasks`, and delegates embedded example 11 to
-`:mcp_ex_tasks_sqlite`, for nineteen no-external-service walkthroughs. The
+`:mcp_ex_tasks_sqlite`. Examples 21/22 use the Plug and JSV integrations, for
+twenty-one no-external-service walkthroughs. The
 present suite requires a POSIX host with `sh` and `mkfifo` for the real stdio
 subprocess half-close check.
+
+Tasks, storage, and JSV example aliases use `mix mcp.example PATH` to preserve the active Mix
+environment and build path in an isolated VM. This matters when `quality`
+selects test through `preferred_envs` without an explicit `MIX_ENV` variable.
+Quality test steps use `--raise` to stop the alias immediately on a failure;
+compiler warnings and non-zero example exits also fail the gate.
 
 The child packages can also be checked directly:
 
@@ -108,20 +120,23 @@ MCP_TASKS_DATABASE_URL=ecto://postgres:postgres@127.0.0.1:55432/mcp_ex_tasks \
   mix quality.postgres
 ```
 
-The slower type gate stays separate so it can run in parallel locally or in CI:
+The slower type gate stays separate. Run it after quality locally to avoid
+competing dependency builds, or in an independent CI checkout:
 
 ```sh
 mix quality.types
 ```
 
 That root alias runs Dialyzer in short format, checks for stale filters, and
-then delegates the same gate to all three extension packages:
+then delegates the same gate to all three extension and two integration packages:
 
 ```sh
 mix dialyzer --format short --list-unused-filters
 mix cmd --cd extensions/tasks mix quality.types
 mix cmd --cd extensions/tasks_postgres mix quality.types
 mix cmd --cd extensions/tasks_sqlite mix quality.types
+mix cmd --cd integrations/plug mix quality.types
+mix cmd --cd integrations/schema_jsv mix quality.types
 ```
 
 Protocol evidence remains a separate lane:
@@ -130,7 +145,7 @@ Protocol evidence remains a separate lane:
 mix mcp.contract
 ```
 
-The core task covers its 29 groups. Tasks contract evidence remains local to
+The core task covers its 31 groups. Tasks contract evidence remains local to
 the one-way-dependent child and runs with `mix tasks.contract` from
 `extensions/tasks`. The PostgreSQL package similarly owns its database-free
 adapter group and 7 live transaction groups. The core compliance inventory
@@ -179,22 +194,24 @@ spiked; it is not part of the merge gate.
 
 ## CI shape
 
-When this spike moves into a repository, wire four independent jobs:
+The private repository now contains compatibility and protocol workflows:
 
-1. root `mix quality` for core format, compilation, Credo, 108 ExUnit tests, the
-   eleven default isolated examples, and delegated no-external-service child quality;
-2. root `mix quality.types` for all four Dialyzer gates with separately cached
-   PLTs;
-3. `mix mcp.contract` for 15 machine-readable core evidence groups and child
-   `mix tasks.contract` for its 8 local groups, plus
-   `mix tasks.sqlite.contract` for 7 embedded-database groups; and
-4. PostgreSQL-backed `mix quality.postgres` for 13 integration tests across 7
-   live evidence groups, with the service version recorded in CI.
+1. Root `mix quality` on minimum/intermediate/current BEAM combinations, with
+   `mix quality.types` on the current lane. Quality includes core and extension
+   contract inventories and all 21 default isolated examples.
+2. A PostgreSQL 14/16/18 service matrix running the live adapter contract and
+   walkthrough separately from database-independent quality.
+3. Pinned official TypeScript client baseline/MRTR/progress acceptance.
+4. Frozen external-runner regression and independent AJV emitted-wire validation,
+   retaining their evidence artifacts and distinct conformance claims.
 
-Each PLT cache key should include the project path, operating system, OTP
-version, Elixir version, Mix environment, corresponding `mix.exs`, and
-corresponding `mix.lock`. CI wiring is not included in this spike, so the
-aliases are active locally but are not yet protected branch checks.
+These workflow files have not been verified by a remote run in this slice, and
+their presence does not establish branch protection. The BEAM workflow sets
+`MIX_ENV=test`; the standalone local type alias defaults to dev when no explicit
+environment is supplied. Record the actual environment with each result.
+
+If PLT caching is introduced, each cache key should include project path,
+operating system, OTP, Elixir, Mix environment, `mix.exs`, and `mix.lock`.
 
 ## Suppression policy
 

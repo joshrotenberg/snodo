@@ -48,12 +48,15 @@ defmodule MCP.Extensions.Tasks.Postgres.MixProject do
 
   defp aliases do
     [
-      "example.postgres": "cmd mix run ../../examples/10_tasks_postgres.exs --check",
+      "example.postgres": [
+        "compile --warnings-as-errors",
+        "mcp.example ../../examples/10_tasks_postgres.exs"
+      ],
       quality: [
         "format --check-formatted",
         "compile --warnings-as-errors",
         "credo --strict",
-        "test --warnings-as-errors",
+        "test --warnings-as-errors --raise",
         "tasks.postgres.contract"
       ],
       "quality.postgres": [

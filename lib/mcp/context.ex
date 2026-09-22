@@ -28,7 +28,7 @@ defmodule MCP.Context do
           request_state: String.t() | nil,
           input_responses: map(),
           cancellation: term() | nil,
-          progress: term() | nil,
+          progress: MCP.Progress.t() | nil,
           extensions: map(),
           extension_options: %{optional(String.t()) => keyword() | map()},
           metadata: map()

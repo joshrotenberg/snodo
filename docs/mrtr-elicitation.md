@@ -93,8 +93,9 @@ is a returned user choice, separate from cancelling an active protocol request.
   embedded request registration.
 - Form schemas use the restricted flat primitive/enum subset, not arbitrary
   JSON Schema. Unsupported keywords are rejected. Formats have documented
-  syntactic checks, not full RFC or service validation. General JSON Schema
-  backend selection remains a separate application-stack milestone.
+  syntactic checks, not full RFC or service validation. The optional JSV backend
+  now provides general tool schema validation; it does not widen this
+  protocol-specific form subset. See the [application stack](application-stack.md).
 - Form mode must not collect credentials. URL helpers accept HTTP(S) navigation
   only. URL acceptance indicates consent, not completion of an external action;
   applications must check that independently.
@@ -107,7 +108,7 @@ is a returned user choice, separate from cancelling an active protocol request.
 - Official-client acceptance is not a fresh external conformance-runner score,
   full wire-schema validation, or evidence for every MCP host.
 
-## Verification — 2026-09-14
+## Initial MRTR checkpoint — 2026-09-14
 
 Verified on Elixir 1.20.4 / OTP 29.0.6 with `ERL_FLAGS='+S 4:4'`:
 
@@ -128,8 +129,15 @@ Verified on Elixir 1.20.4 / OTP 29.0.6 with `ERL_FLAGS='+S 4:4'`:
   and fifteen operation requests. Fresh IDs, state replacement/discarding,
   changed-argument rejection, and URL consent semantics are asserted.
 
-The external conformance runner, unchanged storage-adapter suites, and Tasks/
-storage-adapter development Dialyzer lanes were not rerun in this slice.
+The initial implementation did not rerun the external conformance runner,
+unchanged storage-adapter suites, or Tasks/storage-adapter development Dialyzer.
+The subsequent external fixture close-out passed **31/37** required scenarios,
+including nine newly exercised ordinary MRTR scenarios. The later progress
+slice raises the current score to **32/37**; the current aggregate evidence is
+in [target application findings](target-application-findings.md#verification--2026-09-14).
+See [conformance results](../conformance/results/2026-09-14-alpha.11-summary.md).
+The official-client and frozen external regression checks are now wired into CI;
+the checked-in workflow is policy until its remote job actually runs.
 
 The literal acceptance suite covers all three feature families over direct,
 stdio, and HTTP adapter boundaries; the independent client also uses a real

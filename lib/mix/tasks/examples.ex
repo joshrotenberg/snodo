@@ -27,7 +27,11 @@ defmodule Mix.Tasks.Examples do
     "17_tasks_subscriptions: ok"
   ]
   @sqlite_example "11_tasks_sqlite: ok"
-  @total_examples length(@examples) + length(@tasks_examples) + 1
+  @integration_examples [
+    {"plug", "example.plug", "21_plug_bandit: ok"},
+    {"schema_jsv", "example.jsv", "22_full_schema_validation: ok"}
+  ]
+  @total_examples length(@examples) + length(@tasks_examples) + 1 + length(@integration_examples)
 
   @check_expression """
   System.argv(["--check"])
@@ -68,6 +72,7 @@ defmodule Mix.Tasks.Examples do
     Enum.each(@examples, &run_example(mix, build_path, root, &1))
     run_tasks_examples(mix, root)
     run_sqlite_example(mix, root)
+    Enum.each(@integration_examples, &run_integration_example(mix, root, &1))
     Mix.shell().info("All #{@total_examples} examples passed")
   end
 
@@ -143,6 +148,26 @@ defmodule Mix.Tasks.Examples do
       Mix.shell().info(@sqlite_example)
     else
       Mix.raise("SQLite example failed with status #{status}:\n#{output}")
+    end
+  end
+
+  defp run_integration_example(mix, root, {name, task, expected}) do
+    package = Path.join([root, "integrations", name])
+
+    {output, status} =
+      System.cmd(mix, [task],
+        cd: package,
+        env: [
+          {"MIX_BUILD_PATH", Path.join([package, "_build", Atom.to_string(Mix.env())])},
+          {"MIX_ENV", Atom.to_string(Mix.env())}
+        ],
+        stderr_to_stdout: true
+      )
+
+    if status == 0 and String.contains?(output, expected) do
+      Mix.shell().info(expected)
+    else
+      Mix.raise("#{name} example failed with status #{status}:\n#{output}")
     end
   end
 

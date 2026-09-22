@@ -1,0 +1,12 @@
+{
+  "name": "mcp-ex-wire-schema-validation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --test validator.test.mjs && node check.mjs",
+    "test": "node --test validator.test.mjs"
+  },
+  "dependencies": {
+    "ajv": "8.20.0"
+  }
+}

@@ -34,3 +34,5 @@ mcp_ex-*.tar
 mcp_ex_tasks-*.tar
 mcp_ex_tasks_postgres-*.tar
 mcp_ex_tasks_sqlite-*.tar
+mcp_ex_plug-*.tar
+mcp_ex_jsv-*.tar

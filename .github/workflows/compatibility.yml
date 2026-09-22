@@ -48,11 +48,53 @@ jobs:
           mix cmd --cd extensions/tasks mix deps.get
           mix cmd --cd extensions/tasks_postgres mix deps.get
           mix cmd --cd extensions/tasks_sqlite mix deps.get
+          mix cmd --cd integrations/plug mix deps.get
+          mix cmd --cd integrations/schema_jsv mix deps.get
       - name: Run aggregate quality
         run: mix quality
       - name: Run aggregate type analysis on the current lane
         if: matrix.lane == 'current'
         run: mix quality.types
+
+  official-client:
+    name: Official TypeScript client 2.0.0
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      MIX_ENV: dev
+      ERL_FLAGS: "+S 4:4"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.20"
+          otp-version: "29"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.21.0"
+          cache: npm
+          cache-dependency-path: interop/official_client/package-lock.json
+      - name: Build framework public APIs
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+          mix compile --warnings-as-errors
+      - name: Install pinned official client
+        working-directory: interop/official_client
+        run: npm ci --ignore-scripts
+      - name: Run baseline, MRTR, and progress acceptance
+        working-directory: interop/official_client
+        shell: bash
+        run: npm run check 2>&1 | tee official-client.log
+      - name: Upload official-client evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-client-acceptance
+          path: interop/official_client/official-client.log
+          if-no-files-found: ignore
+          retention-days: 14
 
   postgres:
     name: PostgreSQL ${{ matrix.postgres }}

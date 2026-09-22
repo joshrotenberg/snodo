@@ -6,12 +6,21 @@ defmodule MCP.Transport.Stdio do
   is admitted through the optional, transport-neutral `MCP.Server.Executor`, so
   the coordinator never awaits a handler and execution policy is reusable by
   other transports.
+
+  `:write_timeout` is a positive millisecond limit, defaulting to 5,000. A single
+  linked, monitored helper performs each write while the coordinator waits
+  boundedly; there is no writer queue. Cancellation and EOF handling can wait
+  up to this limit during a blocked write. A timeout or output error is terminal:
+  the transport cancels its work and closes subscriptions, without attempting
+  further writes. A timed-out device may already have accepted some bytes, so
+  the transport never retries. Supplied I/O devices are never stopped or killed.
   """
 
   @behaviour MCP.Transport
   use GenServer
 
   alias MCP.Error
+  alias MCP.Progress
   alias MCP.Server
   alias MCP.Server.Executor
   alias MCP.Server.Runtime
@@ -23,6 +32,7 @@ defmodule MCP.Transport.Stdio do
           runtime: Runtime.t(),
           input: IO.device(),
           output: IO.device(),
+          writer: {IO.device(), pos_integer()},
           executor: pid(),
           executor_monitor: reference() | nil,
           serve_owner_monitor: reference() | nil,
@@ -82,6 +92,7 @@ defmodule MCP.Transport.Stdio do
     runtime = Keyword.fetch!(opts, :runtime)
     input = Keyword.get(opts, :input, :stdio)
     output = Keyword.get(opts, :output, :stdio)
+    write_timeout = validate_write_timeout!(Keyword.get(opts, :write_timeout, 5_000))
     connection_ref = Keyword.get_lazy(opts, :connection_ref, &make_ref/0)
     :ok = maybe_redirect_default_logger(opts, output)
     {:ok, executor, owns_executor?} = start_executor(opts)
@@ -98,6 +109,7 @@ defmodule MCP.Transport.Stdio do
        runtime: runtime,
        input: input,
        output: output,
+       writer: {output, write_timeout},
        executor: executor,
        executor_monitor: executor_monitor,
        serve_owner_monitor: serve_owner_monitor,
@@ -121,6 +133,19 @@ defmodule MCP.Transport.Stdio do
 
   def handle_call(:start_reader, _from, state), do: {:reply, :ok, state}
 
+  def handle_call({:mcp_progress, sink_ref, report}, from, state) do
+    case Enum.find(state.executions_by_ref, fn {_ref, entry} ->
+           entry.progress.sink.reference == sink_ref
+         end) do
+      {reference, entry} ->
+        handle_progress(state, reference, entry, from, report)
+
+      nil ->
+        :ok = Progress.reply(from, report, {:error, :closed})
+        {:noreply, state}
+    end
+  end
+
   @impl true
   def handle_info({:stdio_line, line}, state) do
     case Framing.decode_line(line) do
@@ -128,7 +153,7 @@ defmodule MCP.Transport.Stdio do
         handle_message(message, state)
 
       {:error, %Error{} = error} ->
-        write_error(state.output, error)
+        write_error(state.writer, error)
         {:noreply, state}
     end
   end
@@ -149,6 +174,8 @@ defmodule MCP.Transport.Stdio do
         {:noreply, state}
 
       {entry, executions_by_ref} ->
+        :ok = Progress.close(entry.progress.sink)
+
         state =
           state
           |> Map.put(:executions_by_ref, executions_by_ref)
@@ -166,7 +193,7 @@ defmodule MCP.Transport.Stdio do
   end
 
   def handle_info({:stdio_read_error, _reason}, state) do
-    write_error(state.output, Error.parse_error("Failed to read stdio input"))
+    write_error(state.writer, Error.parse_error("Failed to read stdio input"))
     {:noreply, state}
   end
 
@@ -184,7 +211,7 @@ defmodule MCP.Transport.Stdio do
       {:ok, id} ->
         case Map.fetch(state.subscriptions_by_id, id) do
           {:ok, %{monitor: ^monitor, subscription: subscription}} ->
-            write_response(state.output, Subscription.failure(subscription, reason))
+            write_response(state.writer, Subscription.failure(subscription, reason))
 
             state
             |> remove_subscription(id, {:error, reason}, false)
@@ -215,7 +242,7 @@ defmodule MCP.Transport.Stdio do
   end
 
   def handle_info({:EXIT, reader, _reason}, %{reader: reader} = state) do
-    write_error(state.output, Error.parse_error("Stdio reader terminated unexpectedly"))
+    write_error(state.writer, Error.parse_error("Stdio reader terminated unexpectedly"))
 
     state
     |> close_all_subscriptions(:disconnected)
@@ -227,6 +254,14 @@ defmodule MCP.Transport.Stdio do
 
   @impl true
   def terminate(_reason, state) do
+    Enum.each(state.executions_by_ref, fn {_reference, entry} ->
+      Progress.close(entry.progress.sink)
+    end)
+
+    Enum.each(state.executions_by_ref, fn {_reference, entry} ->
+      cancel_execution(state.executor, entry.key, :transport_closed)
+    end)
+
     demonitor_optional(state.executor_monitor)
     demonitor_optional(state.serve_owner_monitor)
 
@@ -242,8 +277,10 @@ defmodule MCP.Transport.Stdio do
 
   defp fail_pending_executions(state, reason) do
     Enum.each(state.executions_by_ref, fn {_reference, entry} ->
+      :ok = Progress.close(entry.progress.sink)
+
       write_execution_outcome(
-        state.output,
+        state.writer,
         state.runtime,
         entry,
         {:failed, {:executor_down, reason}}
@@ -265,7 +302,7 @@ defmodule MCP.Transport.Stdio do
              (is_map_key(state.executions_by_id, request_id) or
                 is_map_key(state.subscriptions_by_id, request_id)) ->
         write_rejection(
-          state.output,
+          state.writer,
           state.runtime,
           message,
           transport_context(state),
@@ -283,26 +320,39 @@ defmodule MCP.Transport.Stdio do
     key = execution_key(state.connection_ref, id)
     runtime = state.runtime
     output = state.output
-    transport = transport_context(state)
+    sink = Progress.sink(self())
+    transport = transport_context(state, %{progress_sink: sink})
 
     work = fn cancellation ->
       route_raw_io_to_stderr(output)
       transport = put_in(transport.metadata[:cancellation], cancellation)
-      Server.dispatch(runtime, message, transport)
+
+      try do
+        Server.dispatch(runtime, message, transport)
+      after
+        Progress.close(sink)
+      end
     end
 
     case submit_execution(state.executor, key, work, state.request_timeout) do
       {:ok, reference} ->
         state
         |> Map.update!(:executions_by_ref, fn executions ->
-          entry = %{id: id, key: key, message: message, transport: transport}
+          entry = %{
+            id: id,
+            key: key,
+            message: message,
+            transport: transport,
+            progress: Progress.state(sink)
+          }
+
           Map.put(executions, reference, entry)
         end)
         |> maybe_put_execution_id(id, reference)
 
       {:error, :overloaded} ->
         write_rejection(
-          state.output,
+          state.writer,
           runtime,
           message,
           transport,
@@ -313,7 +363,7 @@ defmodule MCP.Transport.Stdio do
 
       {:error, :duplicate_key} ->
         write_rejection(
-          state.output,
+          state.writer,
           runtime,
           message,
           transport,
@@ -324,7 +374,7 @@ defmodule MCP.Transport.Stdio do
 
       {:error, {:executor_unavailable, reason}} ->
         write_rejection(
-          state.output,
+          state.writer,
           runtime,
           message,
           transport,
@@ -342,8 +392,10 @@ defmodule MCP.Transport.Stdio do
 
       :error ->
         with {:ok, reference} <- Map.fetch(state.executions_by_id, request_id),
-             {:ok, %{key: key}} <- Map.fetch(state.executions_by_ref, reference),
+             {:ok, %{key: key} = entry} <- Map.fetch(state.executions_by_ref, reference),
              :ok <- cancel_execution(state.executor, key, reason) do
+          :ok = Progress.close(entry.progress.sink)
+
           state
           |> Map.update!(:executions_by_ref, &Map.delete(&1, reference))
           |> delete_execution_id(request_id, reference)
@@ -351,6 +403,34 @@ defmodule MCP.Transport.Stdio do
           _missing_or_already_finished -> state
         end
     end
+  end
+
+  defp handle_progress(state, reference, entry, from, report) do
+    case Progress.accept(entry.progress, from, report) do
+      {:ok, notification, progress} ->
+        case write_progress(state.writer, notification) do
+          :ok ->
+            :ok = Progress.reply(from, report, :ok)
+            entry = %{entry | progress: progress}
+            {:noreply, put_in(state.executions_by_ref[reference], entry)}
+
+          {:error, reason} ->
+            :ok = Progress.close(entry.progress.sink)
+            :ok = Progress.reply(from, report, {:error, :closed})
+            {:stop, {:output_failed, reason}, state}
+        end
+
+      {:error, reason} ->
+        :ok = Progress.reply(from, report, {:error, reason})
+        {:noreply, state}
+    end
+  end
+
+  defp write_progress(output, notification) do
+    write_response(output, notification)
+  catch
+    :exit, {:output_failed, reason} -> {:error, reason}
+    kind, reason -> {:error, {kind, reason}}
   end
 
   defp request_id(message) when is_map(message) do
@@ -443,7 +523,7 @@ defmodule MCP.Transport.Stdio do
   end
 
   defp handle_execution_outcome(state, entry, outcome) do
-    write_execution_outcome(state.output, state.runtime, entry, outcome)
+    write_execution_outcome(state.writer, state.runtime, entry, outcome)
     maybe_stop(state)
   end
 
@@ -457,7 +537,7 @@ defmodule MCP.Transport.Stdio do
       :ok = Subscription.close(subscription, {:error, :overloaded})
 
       write_rejection(
-        state.output,
+        state.writer,
         state.runtime,
         entry.message,
         entry.transport,
@@ -468,24 +548,34 @@ defmodule MCP.Transport.Stdio do
     else
       case Subscription.acknowledgement(subscription) do
         {:ok, acknowledgement} ->
-          write_response(state.output, acknowledgement)
-          {worker, monitor} = Subscription.start_worker(subscription, self())
-          :ok = Subscription.continue(worker)
-          id = subscription.id
-          subscription_entry = %{subscription: subscription, worker: worker, monitor: monitor}
-
-          state =
-            state
-            |> Map.update!(:subscriptions_by_id, &Map.put(&1, id, subscription_entry))
-            |> Map.update!(:subscriptions_by_worker, &Map.put(&1, worker, id))
-
-          {:noreply, state}
+          start_acknowledged_subscription(state, subscription, acknowledgement)
 
         {:error, error} ->
           :ok = Subscription.close(subscription, {:error, error})
-          write_response(state.output, Subscription.failure(subscription, error))
+          write_response(state.writer, Subscription.failure(subscription, error))
           maybe_stop(state)
       end
+    end
+  end
+
+  defp start_acknowledged_subscription(state, subscription, acknowledgement) do
+    case write_progress(state.writer, acknowledgement) do
+      :ok ->
+        {worker, monitor} = Subscription.start_worker(subscription, self())
+        :ok = Subscription.continue(worker)
+        id = subscription.id
+        entry = %{subscription: subscription, worker: worker, monitor: monitor}
+
+        state =
+          state
+          |> Map.update!(:subscriptions_by_id, &Map.put(&1, id, entry))
+          |> Map.update!(:subscriptions_by_worker, &Map.put(&1, worker, id))
+
+        {:noreply, state}
+
+      {:error, reason} ->
+        :ok = Subscription.close(subscription, {:error, {:output_failed, reason}})
+        {:stop, {:output_failed, reason}, state}
     end
   end
 
@@ -494,7 +584,7 @@ defmodule MCP.Transport.Stdio do
 
     case Subscription.notification(subscription, event) do
       {:ok, notification} ->
-        write_response(state.output, notification)
+        write_response(state.writer, notification)
         :ok = Subscription.continue(worker)
         {:noreply, state}
 
@@ -503,7 +593,7 @@ defmodule MCP.Transport.Stdio do
         {:noreply, state}
 
       {:error, error} ->
-        write_response(state.output, Subscription.failure(subscription, error))
+        write_response(state.writer, Subscription.failure(subscription, error))
 
         state
         |> remove_subscription(id, {:error, error})
@@ -515,8 +605,8 @@ defmodule MCP.Transport.Stdio do
     %{subscription: subscription} = Map.fetch!(state.subscriptions_by_id, id)
 
     case Subscription.completion(subscription) do
-      {:ok, completion} -> write_response(state.output, completion)
-      {:error, error} -> write_response(state.output, Subscription.failure(subscription, error))
+      {:ok, completion} -> write_response(state.writer, completion)
+      {:error, error} -> write_response(state.writer, Subscription.failure(subscription, error))
     end
 
     state
@@ -526,7 +616,7 @@ defmodule MCP.Transport.Stdio do
 
   defp handle_subscription_outcome(state, id, {:error, reason}) do
     %{subscription: subscription} = Map.fetch!(state.subscriptions_by_id, id)
-    write_response(state.output, Subscription.failure(subscription, reason))
+    write_response(state.writer, Subscription.failure(subscription, reason))
 
     state
     |> remove_subscription(id, {:error, reason})
@@ -570,8 +660,47 @@ defmodule MCP.Transport.Stdio do
     write_response(output, %{"jsonrpc" => "2.0", "id" => nil, "error" => Error.to_json_rpc(error)})
   end
 
-  defp write_response(output, response) do
-    IO.binwrite(output, Framing.encode_message(response))
+  defp write_response({output, timeout}, response) do
+    data = Framing.encode_message(response)
+    owner = self()
+
+    {writer, monitor} =
+      Process.spawn(
+        fn -> send(owner, {:stdio_write_result, self(), write_device(output, data)}) end,
+        [:link, :monitor]
+      )
+
+    try do
+      receive do
+        {:stdio_write_result, ^writer, :ok} ->
+          :ok
+
+        {:stdio_write_result, ^writer, {:error, reason}} ->
+          exit({:output_failed, reason})
+
+        {:DOWN, ^monitor, :process, ^writer, reason} ->
+          exit({:output_failed, {:writer_down, reason}})
+      after
+        timeout -> exit({:output_failed, :timeout})
+      end
+    after
+      Process.exit(writer, :kill)
+      Process.unlink(writer)
+      Process.demonitor(monitor, [:flush])
+
+      receive do
+        {:EXIT, ^writer, _reason} -> :ok
+      after
+        0 -> :ok
+      end
+    end
+  end
+
+  defp write_device(output, data) do
+    IO.binwrite(output, data)
+  catch
+    :error, reason -> {:error, reason}
+    kind, reason -> {:error, {kind, reason}}
   end
 
   defp start_reader(input) do
@@ -646,6 +775,12 @@ defmodule MCP.Transport.Stdio do
 
   defp validate_max_subscriptions!(_invalid) do
     raise ArgumentError, ":max_subscriptions must be a positive integer"
+  end
+
+  defp validate_write_timeout!(value) when is_integer(value) and value > 0, do: value
+
+  defp validate_write_timeout!(_invalid) do
+    raise ArgumentError, ":write_timeout must be a positive integer"
   end
 
   defp route_raw_io_to_stderr(:stdio) do

@@ -79,7 +79,8 @@ defmodule MCP.Extensions.Tasks.Store.Postgres.Persistence do
     with :ok <- equal(row.row_format, @row_format, :unsupported_event_row_format),
          {:ok, event} <- Event.from_map(row.event),
          :ok <- equal(row.event_id, event.id, :event_id_projection_mismatch),
-         :ok <- equal(row.event_kind, Atom.to_string(event.kind), :event_kind_projection_mismatch),
+         :ok <-
+           equal(row.event_kind, Atom.to_string(event.kind), :event_kind_projection_mismatch),
          {:ok, revision} <- positive_integer(row.event_revision),
          {:ok, effects} <- EffectCodec.decode(row.effects),
          {:ok, committed_at} <- timestamp_to_string(row.committed_at) do

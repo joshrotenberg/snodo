@@ -66,6 +66,8 @@ end
 defmodule MCPEx.TasksTestTools.ProtocolErrorJob do
   use MCP.Tool, name: "protocol_error_job"
 
+  # Raising is the point: the runner must isolate a job fault.
+  @spec call(map(), MCP.Context.t()) :: no_return()
   @impl true
   def call(_arguments, _context), do: raise("private task crash detail")
 end

@@ -236,19 +236,32 @@ defmodule Examples.TasksRetry.Runner do
     end
   end
 
-  defp await_snapshot!(store_ref, task_id, predicate, attempts \\ 100)
+  # A wall-clock budget with a yield between polls. The previous form recursed
+  # a fixed 100 times with no sleep, so the whole "wait" elapsed in microseconds
+  # and never gave the writer a chance to be scheduled. That read as a flake on
+  # a loaded machine while passing consistently on an idle one.
+  @await_timeout_ms 5_000
+  @await_interval_ms 5
 
-  defp await_snapshot!(_store_ref, task_id, _predicate, 0) do
-    raise "task #{task_id} did not reach the expected persisted state"
+  defp await_snapshot!(store_ref, task_id, predicate) do
+    deadline = System.monotonic_time(:millisecond) + @await_timeout_ms
+    await_snapshot!(store_ref, task_id, predicate, deadline)
   end
 
-  defp await_snapshot!(store_ref, task_id, predicate, attempts) do
+  defp await_snapshot!(store_ref, task_id, predicate, deadline) do
     snapshot = snapshot!(store_ref, task_id)
 
-    if predicate.(snapshot) do
-      snapshot
-    else
-      await_snapshot!(store_ref, task_id, predicate, attempts - 1)
+    cond do
+      predicate.(snapshot) ->
+        snapshot
+
+      System.monotonic_time(:millisecond) >= deadline ->
+        raise "task #{task_id} did not reach the expected persisted state " <>
+                "within #{@await_timeout_ms}ms"
+
+      true ->
+        Process.sleep(@await_interval_ms)
+        await_snapshot!(store_ref, task_id, predicate, deadline)
     end
   end
 

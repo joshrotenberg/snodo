@@ -47,7 +47,7 @@ defmodule MCP.Compliance.ProfileAndInspectorTest do
      :top_level, :active},
     {"notifications/message", :notification, :server_to_client, :required, "logging",
      :unsupported, :top_level, :deprecated},
-    {"notifications/progress", :notification, :server_to_client, :required, nil, :unsupported,
+    {"notifications/progress", :notification, :server_to_client, :required, nil, :implemented,
      :top_level, :active},
     {"notifications/prompts/list_changed", :notification, :server_to_client, :optional, "prompts",
      :implemented, :top_level, :active},
@@ -417,7 +417,7 @@ defmodule MCP.Compliance.ProfileAndInspectorTest do
         internal_pass: Compliance.internal_contracts()
       )
 
-    assert length(report["evidence"]["internalPass"]) == 29
+    assert length(report["evidence"]["internalPass"]) == 31
 
     assert report["evidence"]["officialPass"] == [
              "completion-complete",
@@ -428,6 +428,7 @@ defmodule MCP.Compliance.ProfileAndInspectorTest do
              "tools-call-embedded-resource",
              "tools-call-mixed-content",
              "tools-call-error",
+             "tools-call-with-progress",
              "server-sse-multiple-streams",
              "resources-list",
              "resources-read-text",
@@ -441,26 +442,36 @@ defmodule MCP.Compliance.ProfileAndInspectorTest do
              "prompts-get-with-image",
              "dns-rebinding-protection",
              "caching",
-             "input-required-result-unsupported-methods"
+             "input-required-result-basic-elicitation",
+             "input-required-result-request-state",
+             "input-required-result-multi-round",
+             "input-required-result-missing-input-response",
+             "input-required-result-non-tool-request",
+             "input-required-result-result-type",
+             "input-required-result-unsupported-methods",
+             "input-required-result-tampered-state",
+             "input-required-result-ignore-extra-params",
+             "input-required-result-validate-input"
            ]
 
     assert %{
              "status" => "partial",
              "measuredScenarios" => 37,
-             "passedScenarios" => 22,
+             "passedScenarios" => 32,
              "requiredScenarios" => 37,
-             "runnerNoFailureScenarios" => 25,
+             "runnerNoFailureScenarios" => 32,
              "requiredCheckCounts" => %{
-               "success" => 89,
-               "failure" => 15,
+               "success" => 103,
+               "failure" => 8,
                "skipped" => 5,
-               "warning" => 2,
+               "warning" => 0,
                "info" => 1
              }
            } = report["officialServerConformance"]
 
     assert length(report["officialServerConformance"]["requirements"]) == 37
-    assert length(report["officialServerConformance"]["excludedRunnerNoFailure"]) == 3
+    assert report["officialServerConformance"]["excludedRunnerNoFailure"] == []
+    assert report["officialServerConformance"]["runDate"] == "2026-09-14"
 
     assert report["officialServerConformance"]["notScoredPass"] == [
              %{
@@ -490,7 +501,7 @@ defmodule MCP.Compliance.ProfileAndInspectorTest do
 
     summary =
       Path.expand(
-        "../../conformance/results/2026-07-28-alpha.11-summary.json",
+        "../../conformance/results/2026-09-14-alpha.11-summary.json",
         __DIR__
       )
       |> File.read!()

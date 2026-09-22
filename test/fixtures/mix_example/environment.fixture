@@ -1,0 +1,14 @@
+unless Mix.env() == :test and System.get_env("MIX_ENV") == "test" do
+  raise "example child did not retain the parent Mix environment"
+end
+
+expected_path = System.fetch_env!("MCP_EX_EXPECTED_BUILD_PATH")
+
+unless Path.expand(Mix.Project.build_path()) == expected_path and
+         System.get_env("MIX_BUILD_PATH") == expected_path do
+  raise "example child did not retain the active project's build path"
+end
+
+unless System.argv() == ["--check"], do: raise("example child arguments changed")
+
+IO.puts("example environment: ok")

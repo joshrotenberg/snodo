@@ -52,17 +52,22 @@ defmodule MCP.MixProject do
         "format --check-formatted",
         "compile --warnings-as-errors",
         "credo --strict",
-        "test --warnings-as-errors",
+        "test --warnings-as-errors --raise",
+        "mcp.contract",
         "examples",
         "cmd --cd extensions/tasks mix quality",
         "cmd --cd extensions/tasks_postgres mix quality",
-        "cmd --cd extensions/tasks_sqlite mix quality"
+        "cmd --cd extensions/tasks_sqlite mix quality",
+        "cmd --cd integrations/plug mix quality",
+        "cmd --cd integrations/schema_jsv mix quality"
       ],
       "quality.types": [
         "dialyzer --format short --list-unused-filters",
         "cmd --cd extensions/tasks mix quality.types",
         "cmd --cd extensions/tasks_postgres mix quality.types",
-        "cmd --cd extensions/tasks_sqlite mix quality.types"
+        "cmd --cd extensions/tasks_sqlite mix quality.types",
+        "cmd --cd integrations/plug mix quality.types",
+        "cmd --cd integrations/schema_jsv mix quality.types"
       ]
     ]
   end

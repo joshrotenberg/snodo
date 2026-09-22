@@ -8,6 +8,11 @@ defmodule MCP.Transport.StreamableHTTP.Server do
   `MCP.Server.Executor`. A peer disconnect while work is pending cancels that
   execution and tears down its reply owner.
 
+  `:request_timeout` bounds queue wait plus execution after HTTP admission; the
+  transport's default ceiling is 30 seconds, including with an application-owned
+  executor. Progress does not extend the deadline. Explicit `:infinity` disables
+  this ceiling. Body reads and socket writes have their own transport bounds.
+
   Applications that already run Plug, Bandit, or Cowboy can translate their
   request into `MCP.Transport.StreamableHTTP.Request` and use the pure adapter
   directly instead of starting this listener.
@@ -17,6 +22,7 @@ defmodule MCP.Transport.StreamableHTTP.Server do
   use GenServer
 
   alias MCP.Error
+  alias MCP.Progress
   alias MCP.Server.Executor
   alias MCP.Subscription
   alias MCP.Transport.StreamableHTTP
@@ -30,6 +36,7 @@ defmodule MCP.Transport.StreamableHTTP.Server do
   @default_max_header_bytes 32_768
   @default_max_body_bytes 2_000_000
   @default_subscription_keepalive_ms 15_000
+  @default_request_timeout 30_000
 
   @impl true
   def start_link(opts) when is_list(opts) do
@@ -69,6 +76,8 @@ defmodule MCP.Transport.StreamableHTTP.Server do
       :binary,
       packet: :raw,
       active: false,
+      send_timeout: 5_000,
+      send_timeout_close: true,
       reuseaddr: true,
       ip: ip,
       backlog: Keyword.get(opts, :backlog, 128)
@@ -87,6 +96,7 @@ defmodule MCP.Transport.StreamableHTTP.Server do
         path: path,
         server_ref: server_ref,
         request_timeout: Keyword.get(opts, :request_timeout, :default),
+        deadline_timeout: deadline_timeout!(Keyword.get(opts, :request_timeout, :default)),
         read_timeout: Keyword.get(opts, :read_timeout, @default_read_timeout),
         max_header_bytes: Keyword.get(opts, :max_header_bytes, @default_max_header_bytes),
         max_body_bytes: Keyword.get(opts, :max_body_bytes, @default_max_body_bytes),
@@ -211,65 +221,139 @@ defmodule MCP.Transport.StreamableHTTP.Server do
         response
 
       {:ok, prepared} ->
+        sink = Progress.sink(self())
+        prepared = put_in(prepared.transport.metadata[:progress_sink], sink)
+        opts = Map.merge(opts, %{progress: Progress.state(sink), progress_started?: false})
+
         work = fn cancellation ->
-          StreamableHTTP.execute(opts.runtime, prepared, cancellation)
+          try do
+            StreamableHTTP.execute(opts.runtime, prepared, cancellation)
+          after
+            Progress.close(sink)
+          end
         end
 
         key = {:streamable_http, opts.server_ref, request.connection_ref}
+        timer = start_request_timer(key, opts.deadline_timeout)
 
-        case submit_execution(opts.executor, key, work, opts.request_timeout) do
-          {:ok, execution_ref} ->
-            await_execution(socket, opts.executor, execution_ref, key, prepared, opts)
+        try do
+          case submit_execution(opts.executor, key, work, opts.request_timeout) do
+            {:ok, execution_ref} ->
+              await_execution(socket, opts.executor, execution_ref, key, prepared, opts)
 
-          {:error, :overloaded} ->
-            StreamableHTTP.reject(
-              opts.runtime,
-              prepared,
-              Error.internal("Server execution capacity exhausted"),
-              503
-            )
+            {:error, :overloaded} ->
+              StreamableHTTP.reject(
+                opts.runtime,
+                prepared,
+                Error.internal("Server execution capacity exhausted"),
+                503
+              )
 
-          {:error, :duplicate_key} ->
-            StreamableHTTP.reject(
-              opts.runtime,
-              prepared,
-              Error.invalid_request("Duplicate in-flight HTTP request"),
-              400
-            )
+            {:error, :duplicate_key} ->
+              StreamableHTTP.reject(
+                opts.runtime,
+                prepared,
+                Error.invalid_request("Duplicate in-flight HTTP request"),
+                400
+              )
 
-          {:error, {:executor_unavailable, reason}} ->
-            StreamableHTTP.reject(
-              opts.runtime,
-              prepared,
-              Error.internal("Request executor unavailable", reason),
-              500
-            )
+            {:error, {:executor_unavailable, reason}} ->
+              StreamableHTTP.reject(
+                opts.runtime,
+                prepared,
+                Error.internal("Request executor unavailable", reason),
+                500
+              )
+          end
+        after
+          Progress.close(sink)
+          cancel_request_timer(timer, key)
         end
     end
   end
 
   defp await_execution(socket, executor, execution_ref, key, prepared, opts) do
     case :inet.setopts(socket, active: :once) do
-      :ok -> await_execution_message(socket, executor, execution_ref, key, prepared, opts)
-      {:error, reason} -> cancel_execution(executor, key, {:peer_unavailable, reason})
+      :ok ->
+        await_execution_message(socket, executor, execution_ref, key, prepared, opts)
+
+      {:error, reason} ->
+        cancel_execution(executor, key, {:peer_unavailable, reason}, opts.progress.sink)
     end
   end
 
   defp await_execution_message(socket, executor, execution_ref, key, prepared, opts) do
     receive do
       {:mcp_execution, ^executor, ^execution_ref, ^key, outcome} ->
-        execution_response(outcome, prepared, opts)
+        :ok = Progress.close(opts.progress.sink)
+        finish_execution(socket, execution_response(outcome, prepared, opts), opts)
+
+      {:mcp_http_deadline, ^key} ->
+        _cancelled = cancel_execution(executor, key, :request_timeout, opts.progress.sink)
+        response = execution_response({:timed_out, opts.deadline_timeout}, prepared, opts)
+        finish_execution(socket, response, opts)
+
+      {:"$gen_call", from, {:mcp_progress, reference, report}} ->
+        case receive_progress(socket, opts, reference, from, report) do
+          {:ok, opts} ->
+            await_execution_message(socket, executor, execution_ref, key, prepared, opts)
+
+          {:error, reason} ->
+            cancel_execution(executor, key, {:progress_write_failed, reason}, opts.progress.sink)
+        end
 
       {:tcp_closed, ^socket} ->
-        cancel_execution(executor, key, :peer_closed)
+        cancel_execution(executor, key, :peer_closed, opts.progress.sink)
 
       {:tcp_error, ^socket, reason} ->
-        cancel_execution(executor, key, {:peer_error, reason})
+        cancel_execution(executor, key, {:peer_error, reason}, opts.progress.sink)
 
       {:tcp, ^socket, _unexpected_data} ->
         await_execution(socket, executor, execution_ref, key, prepared, opts)
     end
   end
+
+  defp receive_progress(socket, opts, reference, from, report) do
+    result =
+      if opts.progress.sink.reference == reference,
+        do: Progress.accept(opts.progress, from, report),
+        else: {:error, :wrong_sink}
+
+    case result do
+      {:ok, notification, progress} ->
+        with :ok <- maybe_start_progress(socket, opts.progress_started?),
+             :ok <- send_sse_message(socket, notification) do
+          :ok = Progress.reply(from, report, :ok)
+          {:ok, %{opts | progress: progress, progress_started?: true}}
+        else
+          {:error, reason} ->
+            :ok = Progress.close(opts.progress.sink)
+            :ok = Progress.reply(from, report, {:error, :closed})
+            {:error, reason}
+        end
+
+      {:error, reason} ->
+        :ok = Progress.reply(from, report, {:error, reason})
+        {:ok, opts}
+    end
+  end
+
+  defp maybe_start_progress(_socket, true), do: :ok
+
+  defp maybe_start_progress(socket, false) do
+    send_stream_headers(socket, 200, [
+      {"content-type", "text/event-stream"},
+      {"cache-control", "no-cache"},
+      {"x-accel-buffering", "no"}
+    ])
+  end
+
+  defp finish_execution(socket, %Response{body: body}, %{progress_started?: true}) do
+    _send_result = :gen_tcp.send(socket, ["data: ", body, "\r\n\r\n"])
+    nil
+  end
+
+  defp finish_execution(_socket, response, _opts), do: response
 
   defp execution_response({:completed, %Response{} = response}, _prepared, _opts), do: response
 
@@ -603,7 +687,11 @@ defmodule MCP.Transport.StreamableHTTP.Server do
   end
 
   defp send_stream_headers(socket, %StreamResponse{} = response) do
-    headers = response.headers ++ [{"connection", "close"}]
+    send_stream_headers(socket, response.status, response.headers)
+  end
+
+  defp send_stream_headers(socket, status, headers) do
+    headers = headers ++ [{"connection", "close"}]
 
     lines =
       Enum.map(headers, fn {name, value} ->
@@ -612,9 +700,9 @@ defmodule MCP.Transport.StreamableHTTP.Server do
 
     :gen_tcp.send(socket, [
       "HTTP/1.1 ",
-      Integer.to_string(response.status),
+      Integer.to_string(status),
       " ",
-      reason_phrase(response.status),
+      reason_phrase(status),
       "\r\n",
       lines,
       "\r\n"
@@ -683,7 +771,34 @@ defmodule MCP.Transport.StreamableHTTP.Server do
     :exit, reason -> {:error, {:executor_unavailable, reason}}
   end
 
-  defp cancel_execution(executor, key, reason) do
+  defp start_request_timer(_key, :infinity), do: nil
+
+  defp start_request_timer(key, timeout),
+    do: Process.send_after(self(), {:mcp_http_deadline, key}, timeout)
+
+  defp cancel_request_timer(nil, _key), do: :ok
+
+  defp cancel_request_timer(timer, key) do
+    _remaining = Process.cancel_timer(timer)
+
+    receive do
+      {:mcp_http_deadline, ^key} -> :ok
+    after
+      0 -> :ok
+    end
+  end
+
+  defp deadline_timeout!(:default), do: @default_request_timeout
+  defp deadline_timeout!(:infinity), do: :infinity
+  defp deadline_timeout!(timeout) when is_integer(timeout) and timeout >= 0, do: timeout
+
+  defp deadline_timeout!(_invalid),
+    do: raise(ArgumentError, ":request_timeout must be non-negative, :default, or :infinity")
+
+  defp cancel_execution(executor, key, reason, sink) do
+    # Executor cancellation can kill the worker before this call returns. Close
+    # the transport-owned sink first; worker :kill bypasses its try/after.
+    :ok = Progress.close(sink)
     _result = Executor.cancel(executor, key, reason)
     nil
   catch

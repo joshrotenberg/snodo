@@ -1,3 +1,6 @@
+Code.require_file("mrtr.ex", __DIR__)
+Code.require_file("progress.ex", __DIR__)
+
 defmodule MCPEx.Conformance.Tools.SimpleText do
   use MCP.Tool,
     name: "test_simple_text",
@@ -311,6 +314,8 @@ defmodule MCPEx.Conformance.Fixture do
   alias MCP.Protocol.V2026_07_28
   alias MCP.Router
   alias MCP.Server.Runtime
+  alias MCPEx.Conformance.MRTR, as: MRTRFixture
+  alias MCPEx.Conformance.Progress.Tool, as: ProgressTool
   alias MCPEx.Conformance.Prompts.Simple
   alias MCPEx.Conformance.Prompts.WithArguments
   alias MCPEx.Conformance.Prompts.WithEmbeddedResource
@@ -336,13 +341,16 @@ defmodule MCPEx.Conformance.Fixture do
            EmbeddedResource,
            MixedContent,
            ErrorHandling,
-           JSONSchema2020
-         ] ++ TasksFixture.tools()
+           JSONSchema2020,
+           ProgressTool
+         ] ++ TasksFixture.tools() ++ MRTRFixture.tools()
 
-  @resources [StaticText, StaticBinary, TemplateData]
-  @prompts [Simple, WithArguments, WithEmbeddedResource, WithImage]
+  @resources [StaticText, StaticBinary, TemplateData] ++ MRTRFixture.resources()
+  @prompts [Simple, WithArguments, WithEmbeddedResource, WithImage] ++ MRTRFixture.prompts()
 
   def runtime do
+    MCPEx.Conformance.MRTR.Workflow.configure()
+
     router =
       @tools
       |> Enum.reduce(Router.new(), &Router.register_tool(&2, &1))
