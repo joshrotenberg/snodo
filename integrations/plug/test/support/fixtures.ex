@@ -57,12 +57,12 @@ defmodule MCPEx.PlugFixtures do
   @moduledoc false
   alias MCPEx.PlugFixtures.Tool
 
-  def runtime(hub) do
+  def runtime(hub, opts \\ []) do
     MCP.Server.Runtime.new(
       router: MCP.Router.new() |> MCP.Router.register_tool(Tool),
-      protocols: [MCP.Protocol.V2026_07_28],
+      protocols: Keyword.get(opts, :protocols, [MCP.Protocol.V2026_07_28]),
       server_info: %{"name" => "plug-acceptance", "version" => "0.1.0"},
-      capabilities: %{"tools" => %{"listChanged" => true}},
+      capabilities: Keyword.get(opts, :capabilities, %{"tools" => %{"listChanged" => true}}),
       subscription_source: MCP.Subscription.Hub.source(hub)
     )
   end

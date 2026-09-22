@@ -404,6 +404,25 @@ defmodule MCP.Server do
     shape_dispatch_error(runtime, envelope, error)
   end
 
+  defp execute(runtime, _protocol, :initialize, _params, context) do
+    result = %{
+      "protocolVersion" => context.protocol_version,
+      "capabilities" => context.server_capabilities,
+      "serverInfo" => context.server_info
+    }
+
+    result =
+      if runtime.instructions,
+        do: Map.put(result, "instructions", runtime.instructions),
+        else: result
+
+    {:ok, Result.raw(result)}
+  end
+
+  defp execute(_runtime, _protocol, operation, _params, _context)
+       when operation in [:initialized, :ping],
+       do: {:ok, Result.raw(%{})}
+
   defp execute(runtime, protocol, :server_discover, _params, _context) do
     case protocol.server_discovery(runtime) do
       :unsupported -> {:error, Error.method_not_found("server/discover")}

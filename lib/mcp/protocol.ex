@@ -49,7 +49,12 @@ defmodule MCP.Protocol do
 
   @doc "Returns the exact profiles bundled in-tree, independent of a runtime allowlist."
   @spec builtin_profiles() :: [Profile.t()]
-  def builtin_profiles, do: [MCP.Protocol.V2026_07_28.profile()]
+  def builtin_profiles,
+    do: [
+      MCP.Protocol.V2026_07_28.profile(),
+      MCP.Protocol.V2025_11_25.profile(),
+      MCP.Protocol.V2025_06_18.profile()
+    ]
 
   @doc "Returns the bundled profile versions in preference order."
   @spec builtin_versions() :: [String.t()]

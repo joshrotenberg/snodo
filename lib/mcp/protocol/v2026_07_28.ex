@@ -265,7 +265,11 @@ defmodule MCP.Protocol.V2026_07_28 do
   def era, do: :stateless
 
   @impl true
-  def detect(%Envelope{kind: :notification, method: @cancel_method}), do: :exact
+  def detect(%Envelope{kind: :notification, method: @cancel_method} = envelope) do
+    header = TransportContext.get_header(envelope.transport.request_headers, @protocol_header)
+    metadata = Map.get(Protocol.request_meta(envelope), @protocol_version_key)
+    if header in [nil, @version] and metadata in [nil, @version], do: :exact, else: false
+  end
 
   def detect(%Envelope{kind: :request, method: method} = envelope) do
     metadata_version = Map.get(Protocol.request_meta(envelope), @protocol_version_key)
