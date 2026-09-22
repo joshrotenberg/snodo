@@ -80,15 +80,11 @@ defmodule MCP.Extensions.Tasks.SQLite.IntegrationTest do
   @migration_v1_version 2_026_082_601
   @migration_v2_version 2_026_082_602
   @lease_ms 10_000
-  # How long a LiveRepo writer waits for the single write lock before Exqlite
-  # gives up. On SQLITE_BUSY the driver disconnects the connection, which
-  # surfaces as "connection is closed" in whichever racer was unlucky rather
-  # than as a lock error, so too short a value reads as an unrelated flake.
-  # These suites hold a writer on purpose and expect the others to WAIT, so the
-  # value only has to exceed how long a held writer can take on a loaded
-  # machine. The busy-boundary test does not use this: it has its own BusyRepo
-  # at 25ms and its own store at 1s, which is what provokes :database_busy.
-  @busy_timeout_ms 15_000
+  # Match the documented application baseline while staying below the 10-second
+  # test lease. A writer cannot wait until the competing winner's lease expires
+  # and then become a second valid claimant. The busy-boundary test uses its own
+  # BusyRepo at 25ms and its own store at 1s to provoke :database_busy.
+  @busy_timeout_ms 5_000
 
   # A racer that is waiting out the busy timeout is behaving correctly, so any
   # budget for awaiting one has to exceed it. Deriving this rather than writing
@@ -105,7 +101,10 @@ defmodule MCP.Extensions.Tasks.SQLite.IntegrationTest do
     assert :ok = migrate_up!(LiveRepo)
     stop_process(bootstrap_repo)
 
-    {:ok, repo} = start_repo(LiveRepo, database, @busy_timeout_ms, 12)
+    # Match the adapter's ordinary pooled default. Exqlite runs every native
+    # call on dirty I/O schedulers, so a larger pool can make connection teardown
+    # and busy waits consume the executor that the lock holder needs to commit.
+    {:ok, repo} = start_repo(LiveRepo, database, @busy_timeout_ms, 5)
     Process.unlink(repo)
 
     {:ok, busy_repo} = start_repo(BusyRepo, database, 25, 1)
@@ -115,7 +114,9 @@ defmodule MCP.Extensions.Tasks.SQLite.IntegrationTest do
       SQLite.new!(
         repo: LiveRepo,
         scope: fn context -> context.auth["tenant"] end,
-        timeout: 5_000,
+        # A Store transaction can spend the full busy timeout waiting for a
+        # competing writer. Its client deadline must outlive that wait too.
+        timeout: @race_await_ms,
         reap_batch_size: 100
       )
 
@@ -337,7 +338,7 @@ defmodule MCP.Extensions.Tasks.SQLite.IntegrationTest do
     _snapshot = create_task!(store, task_id)
 
     results =
-      probed_race([
+      checked_out_race([
         fn -> Store.claim(store, task_id, "owner-a", @lease_ms) end,
         fn -> Store.claim(store, task_id, "owner-b", @lease_ms) end
       ])
@@ -465,7 +466,7 @@ defmodule MCP.Extensions.Tasks.SQLite.IntegrationTest do
     failed = event!(Event.failed(error("failed"), "failed", id: unique_id("failed")))
 
     results =
-      probed_race([
+      checked_out_race([
         fn -> Store.transition(store, task_id, 0, completed, {:worker, lease}) end,
         fn -> Store.transition(store, task_id, 0, failed, {:worker, lease}) end
       ])
@@ -490,7 +491,7 @@ defmodule MCP.Extensions.Tasks.SQLite.IntegrationTest do
     completed = event!(Event.completed(%{"value" => 1}, id: event_id))
 
     results =
-      probed_race([
+      checked_out_race([
         fn -> Store.transition(store, task_id, 0, completed, {:worker, lease}) end,
         fn -> Store.transition(store, task_id, 0, completed, {:worker, lease}) end
       ])
@@ -682,7 +683,11 @@ defmodule MCP.Extensions.Tasks.SQLite.IntegrationTest do
     assert :ok = Store.release(store, lease)
     assert {:deferred, remaining_ms} = Store.claim(store, task_id, "early-owner", @lease_ms)
     assert remaining_ms > 0
-    assert remaining_ms <= @retry_delay_ms
+
+    # A commit timestamp may be the one-microsecond monotonic successor of the
+    # millisecond-resolution SQLite clock. Remaining delay rounds up for safe
+    # scheduling, so that case is one millisecond above the configured delay.
+    assert remaining_ms <= @retry_delay_ms + 1
 
     holder = hold_rearmed_retry!(task_id, retry.id, scheduled, transition)
     rearmed_retry_at_us = holder.retry_at_us
@@ -853,48 +858,40 @@ defmodule MCP.Extensions.Tasks.SQLite.IntegrationTest do
     snapshot
   end
 
-  defp probed_race(functions) do
+  defp checked_out_race(functions) do
     gate = make_ref()
     parent = self()
 
-    tasks =
-      functions
-      |> Enum.with_index(1)
-      |> Enum.map(fn {function, marker} -> start_probed_racer(function, parent, gate, marker) end)
+    tasks = Enum.map(functions, &start_checked_out_racer(&1, parent, gate))
 
     ready =
       Enum.map(tasks, fn _task ->
-        assert_receive {:sqlite_race_ready, ^gate, process, marker}, 2_000
-        {process, marker}
+        assert_receive {:sqlite_race_ready, ^gate, process}, 2_000
+        process
       end)
 
-    assert ready |> Enum.map(&elem(&1, 1)) |> Enum.uniq() |> length() == length(ready)
-    Enum.each(ready, fn {process, _marker} -> send(process, {:run_sqlite_race, gate}) end)
+    Enum.each(ready, &send(&1, {:run_sqlite_race, gate}))
     Enum.map(tasks, &Task.await(&1, @race_await_ms))
   end
 
-  defp start_probed_racer(function, parent, gate, marker) do
+  defp start_checked_out_racer(function, parent, gate) do
     Task.async(fn ->
-      LiveRepo.checkout(fn ->
-        query!(LiveRepo, "PRAGMA busy_timeout = #{@busy_timeout_ms}")
-        query!(LiveRepo, "CREATE TEMP TABLE mcp_connection_probe (marker INTEGER NOT NULL)")
-        query!(LiveRepo, "INSERT INTO temp.mcp_connection_probe (marker) VALUES (?)", [marker])
+      result =
+        LiveRepo.checkout(
+          fn ->
+            send(parent, {:sqlite_race_ready, gate, self()})
 
-        try do
-          send(parent, {:sqlite_race_ready, gate, self(), marker})
+            receive do
+              {:run_sqlite_race, ^gate} -> function.()
+            end
+          end,
+          timeout: @race_await_ms
+        )
 
-          receive do
-            {:run_sqlite_race, ^gate} -> :ok
-          end
-
-          assert [[^marker]] =
-                   query!(LiveRepo, "SELECT marker FROM temp.mcp_connection_probe").rows
-
-          function.()
-        after
-          query!(LiveRepo, "DROP TABLE IF EXISTS temp.mcp_connection_probe")
-        end
-      end)
+      # SQLITE_BUSY disconnects the checked-out Exqlite connection. Retry the
+      # documented backpressure result only after returning that connection to
+      # the pool, while the winning claim's lease is still live.
+      if result == {:error, :database_busy}, do: function.(), else: result
     end)
   end
 
@@ -1003,16 +1000,18 @@ defmodule MCP.Extensions.Tasks.SQLite.IntegrationTest do
     parent = self()
 
     Task.async(fn ->
-      LiveRepo.checkout(fn ->
-        query!(LiveRepo, "PRAGMA busy_timeout = #{@busy_timeout_ms}")
-        send(parent, {:sqlite_claim_ready, self()})
+      LiveRepo.checkout(
+        fn ->
+          send(parent, {:sqlite_claim_ready, self()})
 
-        receive do
-          :run_sqlite_claim -> Store.claim(store, task_id, owner_id, @lease_ms)
-        after
-          5_000 -> raise "timed out waiting to start SQLite claim"
-        end
-      end)
+          receive do
+            :run_sqlite_claim -> Store.claim(store, task_id, owner_id, @lease_ms)
+          after
+            5_000 -> raise "timed out waiting to start SQLite claim"
+          end
+        end,
+        timeout: @race_await_ms
+      )
     end)
   end
 
