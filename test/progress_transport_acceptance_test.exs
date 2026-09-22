@@ -121,7 +121,7 @@ defmodule MCP.ProgressTransportAcceptanceTest do
     TestInput.push(input, JSON.encode!(cancel) <> "\n")
     assert_receive {:DOWN, ^monitor, :process, ^worker, _}, 1_000
     assert Cancellation.cancelled?(context.cancellation)
-    assert :atomics.get(context.progress.sink.lifecycle, 1) == 1
+    assert eventually(fn -> :atomics.get(context.progress.sink.lifecycle, 1) == 1 end)
     TestInput.eof(input)
     assert Task.await(task) == :ok
     assert output_messages(output) == [first]
@@ -255,6 +255,19 @@ defmodule MCP.ProgressTransportAcceptanceTest do
     {_input, text} = StringIO.contents(output)
     text |> String.split("\n", trim: true) |> Enum.map(&JSON.decode!/1)
   end
+
+  defp eventually(function, attempts \\ 100)
+
+  defp eventually(function, attempts) when attempts > 0 do
+    if function.() do
+      true
+    else
+      Process.sleep(1)
+      eventually(function, attempts - 1)
+    end
+  end
+
+  defp eventually(_function, 0), do: false
 
   defp start_http(options \\ []) do
     server = start_supervised!({HTTPServer, [runtime: runtime(), port: 0] ++ options})
