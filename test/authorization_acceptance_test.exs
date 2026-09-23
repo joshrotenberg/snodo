@@ -11,6 +11,7 @@ defmodule MCP.AuthorizationAcceptanceTest do
   alias MCP.Transport.Stdio
   alias MCP.Transport.StreamableHTTP
   alias MCP.Transport.StreamableHTTP.Request
+  alias MCPEx.TestAuthorization.DenyAll
   alias MCPEx.TestAuthorization.InvalidDecision
   alias MCPEx.TestAuthorization.NotAPolicy
   alias MCPEx.TestAuthorization.Policy
@@ -310,6 +311,32 @@ defmodule MCP.AuthorizationAcceptanceTest do
     assert Map.has_key?(capabilities, "prompts")
     assert Map.has_key?(capabilities, "resources")
     assert names(dispatch(runtime, "alpha", "tools/list"), "tools") == []
+  end
+
+  defmodule DeclaredServer do
+    @moduledoc false
+
+    use MCP.Server,
+      name: "declared-authorization",
+      version: "1.0.0",
+      protocols: [MCP.Protocol.V2026_07_28],
+      authorization: MCPEx.TestAuthorization.DenyAll
+
+    tool(MCPEx.TestTools.Echo)
+  end
+
+  test "the server DSL carries a declared policy into every runtime" do
+    runtime = DeclaredServer.runtime()
+    assert runtime.authorization == {DenyAll, []}
+    assert names(dispatch(runtime, "alpha", "tools/list"), "tools") == []
+
+    assert dispatch(runtime, "alpha", "tools/call", %{
+             "name" => "echo",
+             "arguments" => %{"text" => "hi"}
+           })["error"]["code"] == -32_004
+
+    # A runtime override still replaces the declared policy.
+    assert DeclaredServer.runtime(authorization: nil).authorization == nil
   end
 
   test "a policy is validated when the runtime is built" do

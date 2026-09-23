@@ -47,6 +47,16 @@ defmodule MCPEx.TestAuthorization.Policy do
   defp label(%Component{kind: kind, name: name}), do: "#{kind}:#{name}"
 end
 
+defmodule MCPEx.TestAuthorization.DenyAll do
+  @moduledoc false
+  @behaviour MCP.Authorization
+
+  @impl true
+  def authorize(_phase, component, _context, _options) do
+    {:error, MCP.Error.authorization(-32_004, "Denied #{component.name}")}
+  end
+end
+
 defmodule MCPEx.TestAuthorization.Raising do
   @moduledoc false
   @behaviour MCP.Authorization

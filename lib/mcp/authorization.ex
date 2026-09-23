@@ -40,6 +40,10 @@ defmodule MCP.Authorization do
   an unknown name and gives the policy the one place to record an audit event.
   `MCP.Context.request_method` names the exact operation being refused.
 
+  The policy runs once per listed component during discovery and once per
+  invocation, so keep it allocation-light: pass a precomputed catalog through
+  the options rather than querying a store inside the callback.
+
   Only the enforcement seam lives here. Server capability advertisement stays
   catalog-wide, because it describes the server rather than one request.
   Application-owned subscription sources and negotiated extension routes
