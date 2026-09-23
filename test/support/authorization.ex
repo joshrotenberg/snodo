@@ -78,9 +78,11 @@ end
 
 defmodule MCPEx.TestAuthorization.InvalidDecision do
   @moduledoc false
-  @behaviour MCP.Authorization
 
-  @impl true
+  # Deliberately not a conforming policy: it exports authorize/4 and returns
+  # something the behaviour does not allow. Declaring the behaviour here would
+  # only tell Dialyzer about the violation this fixture exists to reproduce at
+  # runtime.
   def authorize(_phase, _component, _context, _options), do: :maybe
 end
 
