@@ -54,7 +54,8 @@ defmodule MCP.Server do
         schema_validator:
           unquote(Keyword.get(opts, :schema_validator, MCP.Schema.Validator.Passthrough)),
         subscription_source: unquote(Keyword.get(opts, :subscription_source)),
-        instrumentation: unquote(Keyword.get(opts, :instrumentation))
+        instrumentation: unquote(Keyword.get(opts, :instrumentation)),
+        authorization: unquote(Keyword.get(opts, :authorization))
       }
 
       @before_compile MCP.Server
@@ -153,7 +154,8 @@ defmodule MCP.Server do
             resources_cache: unquote(Macro.escape(options.resources_cache)),
             pagination: unquote(Macro.escape(options.pagination)),
             schema_validator: unquote(options.schema_validator),
-            instrumentation: unquote(Macro.escape(options.instrumentation))
+            instrumentation: unquote(Macro.escape(options.instrumentation)),
+            authorization: unquote(Macro.escape(options.authorization))
           ] ++ unquote(Macro.escape(optional_runtime))
 
         base
@@ -467,7 +469,8 @@ defmodule MCP.Server do
             ] do
     with {:ok, %Result{} = result} <-
            Router.dispatch(runtime.router, operation, params, context,
-             schema_validator: runtime.schema_validator
+             schema_validator: runtime.schema_validator,
+             authorization: runtime.authorization
            ),
          {:ok, %Result{} = result} <- apply_list_cache_policy(result, runtime, operation),
          {:ok, %Result{} = result} <-
@@ -485,7 +488,8 @@ defmodule MCP.Server do
        ) do
     with {:ok, %Result{} = result} <-
            Router.dispatch(runtime.router, operation, params, context,
-             schema_validator: runtime.schema_validator
+             schema_validator: runtime.schema_validator,
+             authorization: runtime.authorization
            ) do
       apply_cache_policy(result, runtime.resources_cache, "Resource")
     end
@@ -497,7 +501,8 @@ defmodule MCP.Server do
 
   defp execute(%Runtime{} = runtime, _protocol, operation, params, context) do
     Router.dispatch(runtime.router, operation, params, context,
-      schema_validator: runtime.schema_validator
+      schema_validator: runtime.schema_validator,
+      authorization: runtime.authorization
     )
   end
 

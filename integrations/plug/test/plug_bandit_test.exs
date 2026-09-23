@@ -4,6 +4,9 @@ defmodule MCP.Transport.PlugBanditTest do
   alias MCP.Server.Executor
   alias MCP.Subscription.Hub
   alias MCPEx.PlugFixtures
+  alias MCPEx.PlugFixtures.Policy
+  alias MCPEx.PlugFixtures.Probe
+  alias MCPEx.PlugFixtures.Tool
 
   @protocol "2026-07-28"
   @version_key "io.modelcontextprotocol/protocolVersion"
@@ -24,6 +27,43 @@ defmodule MCP.Transport.PlugBanditTest do
     assert result["result"]["structuredContent"] == %{"principal" => "alpha", "text" => "hello"}
     assert {200, anonymous} = rpc(port, body, headers: [{"x-user", "admin"}])
     assert anonymous["result"]["structuredContent"]["principal"] == nil
+  end
+
+  test "application authorization filters discovery and refuses calls below the Plug boundary" do
+    %{port: port} =
+      server(
+        tools: [Tool, Probe],
+        authorization:
+          {Policy,
+           %{
+             owner: self(),
+             allowed: %{
+               "alpha" => ["inspect_context"],
+               "beta" => ["probe_side_effect"]
+             }
+           }}
+      )
+
+    listed = request("tools/list", %{})
+    assert {200, alpha} = rpc(port, listed, auth: :alpha)
+    assert Enum.map(alpha["result"]["tools"], & &1["name"]) == ["inspect_context"]
+    assert {200, beta} = rpc(port, listed, auth: :beta)
+    assert Enum.map(beta["result"]["tools"], & &1["name"]) == ["probe_side_effect"]
+    assert {200, anonymous} = rpc(port, listed)
+    assert anonymous["result"]["tools"] == []
+
+    probe = request("tools/call", %{"name" => "probe_side_effect", "arguments" => %{}})
+
+    # A refusal is an application error inside a 200; HTTP-level authentication
+    # stays in the application's own Plug pipeline.
+    assert {200, refused} = rpc(port, probe, auth: :alpha)
+    assert refused["error"]["code"] == -32_003
+    assert_receive {:authorization_refused, "alpha", "probe_side_effect"}, 1_000
+    refute_receive :probe_side_effect_ran, 50
+
+    assert {200, allowed} = rpc(port, probe, auth: :beta)
+    assert allowed["result"]["content"] == [%{"type" => "text", "text" => "ran"}]
+    assert_receive :probe_side_effect_ran, 1_000
   end
 
   test "HTTP path, media, origin and mirrored headers are admitted before handlers" do
@@ -462,8 +502,9 @@ defmodule MCP.Transport.PlugBanditTest do
     hub = start_supervised!(Hub)
     executor_opts = Keyword.take(opts, [:max_concurrency, :max_queue])
     executor = start_supervised!({Executor, executor_opts})
-    transport_opts = Keyword.drop(opts, [:max_concurrency, :max_queue, :protocols, :capabilities])
-    runtime = PlugFixtures.runtime(hub, Keyword.take(opts, [:protocols, :capabilities]))
+    runtime_opts = [:protocols, :capabilities, :tools, :authorization]
+    transport_opts = Keyword.drop(opts, [:max_concurrency, :max_queue] ++ runtime_opts)
+    runtime = PlugFixtures.runtime(hub, Keyword.take(opts, runtime_opts))
 
     plug_opts =
       [runtime: runtime, executor: executor, observer: self()] ++ transport_opts

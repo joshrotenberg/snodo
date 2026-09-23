@@ -21,6 +21,38 @@ defmodule MCPEx.PlugFixtures.Tool do
   end
 end
 
+defmodule MCPEx.PlugFixtures.Probe do
+  @moduledoc false
+  use MCP.Tool, name: "probe_side_effect"
+
+  @impl true
+  def call(_arguments, context) do
+    if owner = context.auth[:observer], do: send(owner, :probe_side_effect_ran)
+    {:ok, MCP.Result.text("ran")}
+  end
+end
+
+defmodule MCPEx.PlugFixtures.Policy do
+  @moduledoc false
+  @behaviour MCP.Authorization
+
+  alias MCP.Authorization.Component
+
+  @impl true
+  def authorize(phase, %Component{} = component, context, options) do
+    principal = context.auth[:principal]
+
+    if component.name in Map.get(options.allowed, principal, []) do
+      :ok
+    else
+      if phase == :invocation,
+        do: send(options.owner, {:authorization_refused, principal, component.name})
+
+      {:error, MCP.Error.authorization(-32_003, "Application policy refused #{component.name}")}
+    end
+  end
+end
+
 defmodule MCPEx.PlugFixtures.Endpoint do
   @moduledoc false
   @behaviour Plug
@@ -59,11 +91,15 @@ defmodule MCPEx.PlugFixtures do
 
   def runtime(hub, opts \\ []) do
     MCP.Server.Runtime.new(
-      router: MCP.Router.new() |> MCP.Router.register_tool(Tool),
+      router:
+        opts
+        |> Keyword.get(:tools, [Tool])
+        |> Enum.reduce(MCP.Router.new(), &MCP.Router.register_tool(&2, &1)),
       protocols: Keyword.get(opts, :protocols, [MCP.Protocol.V2026_07_28]),
       server_info: %{"name" => "plug-acceptance", "version" => "0.1.0"},
       capabilities: Keyword.get(opts, :capabilities, %{"tools" => %{"listChanged" => true}}),
-      subscription_source: MCP.Subscription.Hub.source(hub)
+      subscription_source: MCP.Subscription.Hub.source(hub),
+      authorization: Keyword.get(opts, :authorization)
     )
   end
 end

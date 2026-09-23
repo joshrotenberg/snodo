@@ -3,8 +3,15 @@ defmodule MCP.Router do
   An immutable registry and synchronous protocol-neutral dispatcher.
 
   The router owns no process, connection, session, or application state.
+
+  `dispatch/5` accepts the immutable execution options the server holds:
+  `:schema_validator` and the optional `:authorization` policy. `MCP.Server`
+  supplies both from `MCP.Server.Runtime`; calling the router directly with
+  neither runs neither.
   """
 
+  alias MCP.Authorization
+  alias MCP.Authorization.Component
   alias MCP.Completion
   alias MCP.Context
   alias MCP.Error
@@ -133,20 +140,36 @@ defmodule MCP.Router do
           {:ok, Result.t()} | {:error, Error.t()}
   def dispatch(router, operation, params, context, opts \\ [])
 
-  def dispatch(%__MODULE__{} = router, :tools_list, _params, %Context{}, _opts) do
-    {:ok, Result.tools(list_tools(router))}
+  def dispatch(%__MODULE__{} = router, :tools_list, _params, %Context{} = context, opts) do
+    with {:ok, tools} <- discoverable(list_tools(router), context, authorization(opts)) do
+      {:ok, Result.tools(tools)}
+    end
   end
 
-  def dispatch(%__MODULE__{} = router, :prompts_list, _params, %Context{}, _opts) do
-    {:ok, Result.prompts(list_prompts(router))}
+  def dispatch(%__MODULE__{} = router, :prompts_list, _params, %Context{} = context, opts) do
+    with {:ok, prompts} <- discoverable(list_prompts(router), context, authorization(opts)) do
+      {:ok, Result.prompts(prompts)}
+    end
   end
 
-  def dispatch(%__MODULE__{} = router, :resources_list, _params, %Context{}, _opts) do
-    {:ok, Result.resources(list_resources(router))}
+  def dispatch(%__MODULE__{} = router, :resources_list, _params, %Context{} = context, opts) do
+    with {:ok, resources} <- discoverable(list_resources(router), context, authorization(opts)) do
+      {:ok, Result.resources(resources)}
+    end
   end
 
-  def dispatch(%__MODULE__{} = router, :resource_templates_list, _params, %Context{}, _opts) do
-    {:ok, Result.resource_templates(list_resource_templates(router))}
+  def dispatch(
+        %__MODULE__{} = router,
+        :resource_templates_list,
+        _params,
+        %Context{} = context,
+        opts
+      ) do
+    registered = list_resource_templates(router)
+
+    with {:ok, templates} <- discoverable(registered, context, authorization(opts)) do
+      {:ok, Result.resource_templates(templates)}
+    end
   end
 
   def dispatch(
@@ -154,11 +177,12 @@ defmodule MCP.Router do
         :completion_complete,
         params,
         %Context{} = context,
-        _opts
+        opts
       )
       when is_map(params) do
     with {:ok, completion} <- Completion.parse(params),
          {:ok, target} <- fetch_completion_target(router, completion),
+         :ok <- authorize_completion_target(target, context, authorization(opts)),
          :ok <- validate_completion_argument(target, completion),
          :ok <- validate_completion_context(target, completion) do
       invoke_completion(target, completion, context)
@@ -170,10 +194,11 @@ defmodule MCP.Router do
         {:prompt_get, name},
         params,
         %Context{} = context,
-        _opts
+        opts
       )
       when is_binary(name) and is_map(params) do
     with {:ok, prompt} <- fetch_prompt(router, name),
+         :ok <- authorize_invocation(context, authorization(opts), :prompt, prompt),
          {:ok, arguments} <- fetch_prompt_arguments(params),
          :ok <- validate_required_prompt_arguments(prompt.definition(), arguments) do
       invoke_prompt(prompt, arguments, context)
@@ -185,10 +210,11 @@ defmodule MCP.Router do
         {:resource_read, uri},
         params,
         %Context{} = context,
-        _opts
+        opts
       )
       when is_binary(uri) and is_map(params) do
-    with {:ok, {resource, variables}} <- resolve_resource(router, uri) do
+    with {:ok, {resource, variables}} <- resolve_resource(router, uri),
+         :ok <- authorize_invocation(context, authorization(opts), :resource, resource) do
       invoke_resource(resource, Map.merge(params, variables), context)
     end
   end
@@ -202,8 +228,10 @@ defmodule MCP.Router do
       )
       when is_binary(name) and is_map(params) and is_list(opts) do
     validator = Keyword.get(opts, :schema_validator, Passthrough)
+    authorization = authorization(opts)
 
     with {:ok, tool} <- fetch_tool(router, name),
+         :ok <- authorize_invocation(context, authorization, :tool, tool),
          {:ok, arguments} <- fetch_arguments(params),
          :ok <- validate_required_arguments(tool.input_schema(), arguments),
          :ok <- validate_input(validator, arguments, tool.input_schema()),
@@ -216,6 +244,62 @@ defmodule MCP.Router do
   def dispatch(%__MODULE__{}, _operation, _params, %Context{}, _opts) do
     {:error, Error.method_not_found("unregistered operation")}
   end
+
+  defp authorization(opts), do: Keyword.get(opts, :authorization)
+
+  # Discovery filtering runs before MCP.Pagination slices the catalog, so a
+  # cursor is always minted against the catalog this context can actually see.
+  defp discoverable(definitions, %Context{}, nil), do: {:ok, definitions}
+
+  defp discoverable(definitions, %Context{} = context, authorization) do
+    reduced =
+      Enum.reduce_while(definitions, {:ok, []}, fn definition, {:ok, kept} ->
+        case Authorization.decide(authorization, :discovery, component(definition), context) do
+          :ok -> {:cont, {:ok, [definition | kept]}}
+          {:refused, %Error{}} -> {:cont, {:ok, kept}}
+          {:fault, %Error{} = error} -> {:halt, {:error, error}}
+        end
+      end)
+
+    case reduced do
+      {:ok, kept} -> {:ok, Enum.reverse(kept)}
+      {:error, %Error{} = error} -> {:error, error}
+    end
+  end
+
+  defp authorize_invocation(%Context{}, nil, _kind, _module), do: :ok
+
+  defp authorize_invocation(%Context{} = context, authorization, kind, module) do
+    case Authorization.decide(authorization, :invocation, component(kind, module), context) do
+      :ok -> :ok
+      {:refused, %Error{} = error} -> {:error, error}
+      {:fault, %Error{} = error} -> {:error, error}
+    end
+  end
+
+  defp authorize_completion_target({:prompt, prompt}, context, authorization),
+    do: authorize_invocation(context, authorization, :prompt, prompt)
+
+  defp authorize_completion_target({:resource_template, resource}, context, authorization),
+    do: authorize_invocation(context, authorization, :resource, resource)
+
+  # The first argument names which definition accessor to use. The definition
+  # struct itself decides between a direct resource and a resource template.
+  defp component(:tool, module), do: component(Tool.definition(module))
+  defp component(:prompt, module), do: component(Prompt.definition(module))
+  defp component(:resource, module), do: component(Resource.definition(module))
+
+  defp component(%Definition{name: name}),
+    do: %Component{kind: :tool, name: name}
+
+  defp component(%PromptDefinition{name: name}),
+    do: %Component{kind: :prompt, name: name}
+
+  defp component(%ResourceDefinition{kind: :resource, name: name, uri: uri}),
+    do: %Component{kind: :resource, name: name, uri: uri}
+
+  defp component(%ResourceDefinition{kind: :template, name: name, uri_template: uri_template}),
+    do: %Component{kind: :resource_template, name: name, uri: uri_template}
 
   defp fetch_tool(%__MODULE__{tools: tools}, name) do
     case Map.fetch(tools, name) do

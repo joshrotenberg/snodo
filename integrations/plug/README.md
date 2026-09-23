@@ -76,6 +76,21 @@ does not prevent cancellation. Duplicate live IDs in a configured scope return
 disconnect, source completion/failure, or owner termination, not a later HTTP
 cancellation notification after their opening execution has completed.
 
+## Per-component authorization
+
+Admission to the endpoint is not admission to every component. Configure
+`authorization:` on the runtime you pass to this Plug and `mcp_ex` applies the
+policy inside the router, below this transport, using the same
+`MCP.Context.auth` value the assign above supplies. One policy therefore covers
+this binding, the native HTTP listener, stdio, and direct dispatch alike.
+
+Discovery refusals hide components from the list responses. An invocation
+refusal is the application's own JSON-RPC error inside a 200 response, because
+the request itself was authenticated and admitted; use HTTP 401/403 in the
+authentication Plug for the endpoint-level decision. See the core
+[application stack notes](../../docs/application-stack.md) for the policy
+contract.
+
 ## Bounds and lifecycle guarantees
 
 | Option | Default | Meaning |

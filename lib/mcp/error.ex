@@ -40,6 +40,17 @@ defmodule MCP.Error do
   def internal(message \\ "Internal error", cause \\ nil),
     do: %__MODULE__{code: -32_603, message: message, kind: :execution, cause: cause}
 
+  @doc """
+  Builds an application authorization refusal.
+
+  `code` is the application's own choice; JSON-RPC reserves -32000..-32099 for
+  implementation-defined server errors. `mcp_ex` never invents one.
+  """
+  @spec authorization(integer(), String.t(), term() | nil) :: t()
+  def authorization(code, message, data \\ nil)
+      when is_integer(code) and is_binary(message),
+      do: new(code, message, :authorization, data)
+
   @spec execution(term()) :: t()
   def execution(%__MODULE__{} = error), do: error
 

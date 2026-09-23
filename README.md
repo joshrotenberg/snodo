@@ -289,6 +289,25 @@ malformed or cross-method cursor returns `Invalid pagination cursor`. Every
 page preserves the list's `ttlMs` and `cacheScope`; `nextCursor` is omitted on
 the final page. See `examples/15_pagination.exs`.
 
+Application authorization is an optional seam rather than a role system. A
+runtime configured with `authorization: MyApp.Policy` or
+`authorization: {MyApp.Policy, options}` calls `authorize/4` with the phase,
+an `MCP.Authorization.Component` naming the registered component, and the
+derived `MCP.Context`. The seam sits inside the router, below every transport
+and enabled dialect, so direct, stdio, native HTTP, and Plug dispatch share one
+decision. A `:discovery` refusal removes the component from `tools/list`,
+`prompts/list`, `resources/list`, and `resources/templates/list`; an
+`:invocation` refusal ends `tools/call`, `prompts/get`, `resources/read`, and
+`completion/complete` before argument validation and before any application
+callback, returning the application's own `MCP.Error` rather than an
+indistinguishable unknown-name error. Because filtering happens before
+pagination, a cursor is minted against the catalog that context can actually
+see and expires when replayed against a different effective catalog. `mcp_ex`
+supplies no identity, role, credential, refusal code, or logging: the policy
+callback is the one place an application records a refusal. A policy that
+raises or returns something else is a fault, and fails the operation instead of
+silently emptying a catalog. See `examples/23_authorization.exs`.
+
 Subscriptions are request-scoped streams rather than router state.
 `MCP.Subscription.Source` opens an application handle, negotiates a subset of
 the capability-supported filter, blocks in `next/2`, and closes that handle on
@@ -427,7 +446,7 @@ mix examples
 ```
 
 `mix quality` runs formatting, warning-free compilation, strict Credo, the
-core ExUnit suite and contract inventory, all twenty-one no-external-service
+core ExUnit suite and contract inventory, all twenty-two no-external-service
 example checks, and then delegates to Tasks, PostgreSQL, SQLite, Plug, and JSV
 package quality, including their independent test suites. `mix quality.types`
 runs Dialyzer with unmatched-return and error-handling warnings enabled for all
@@ -544,7 +563,12 @@ slice without adding session storage or changing the latest protocol.
 
 This is a pre-release implementation, not a production-readiness claim. It defers
 deprecated roots/sampling MRTR inputs,
-legacy sessions, authentication, and per-peer fairness. Resources
+legacy sessions, authentication, and per-peer fairness. The optional
+authorization seam enforces an application's decision; it does not authenticate
+anyone, define roles or scopes, or supply a policy language, and it does not
+filter application-owned subscription streams, which receive the same context
+and enforce their own policy. Advertised server capabilities stay catalog-wide
+because they describe the server rather than one request. Resources
 cover paginated list/read/template routing and subscription event shaping, but
 not a general RFC 6570 inverse matcher or a bundled change detector. Prompts
 cover paginated list/get routing, required flat-string arguments, all five
