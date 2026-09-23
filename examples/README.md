@@ -15,7 +15,9 @@ bounded producer for application changes; and example 19 observes dispatch and
 subscription pressure without adding a metrics dependency. Example 20 adds
 ordinary multi-round elicitation and signed state for tools, resources, and
 prompts. Examples 21/22 demonstrate the optional Plug/Bandit and JSV integration
-packages; neither adds dependencies to the core. Run a core example as a walkthrough:
+packages; neither adds dependencies to the core. Example 23 returns to core and
+applies one application-owned authorization policy to discovery and invocation.
+Run a core example as a walkthrough:
 
 ```sh
 mix run examples/01_direct_tools.exs
@@ -29,8 +31,9 @@ mix run examples/01_direct_tools.exs --check
 
 Or run the complete no-external-service set, with every script launched in a
 fresh Elixir VM. The root task delegates examples 07–09 and 17 to Tasks and example
-11 to the SQLite sibling; examples 12–16 and 18–20 remain in core. Examples 21/22
-run in their integration packages. All 21 default scripts run without external services:
+11 to the SQLite sibling; examples 12–16, 18–20, and 23 remain in core. Examples
+21/22 run in their integration packages. All 22 default scripts run without
+external services:
 
 ```sh
 mix examples
@@ -95,6 +98,7 @@ not have that requirement.
 | [`20_mrtr_elicitation.exs`](20_mrtr_elicitation.exs) | Ordinary tools/resources/prompts, form/URL input, request-bound signed state, repeated retries, and state-only continuation |
 | [`21_plug_bandit.exs`](21_plug_bandit.exs) | Application-owned Bandit/executor, verified auth assigns, real HTTP tool call and finite subscription, lifecycle cleanup |
 | [`22_full_schema_validation.exs`](22_full_schema_validation.exs) | Optional JSV backend, compile-once catalog, local references/composition, non-mutating validation and fail-closed remote refs |
+| [`23_authorization.exs`](23_authorization.exs) | Application-owned catalog policy, per-context discovery filtering, pre-validation refusal with the application's own error, audit callback, cursor isolation |
 
 The unnumbered stdio files remain interoperability and subprocess acceptance
 fixtures. DETS in example 08 is deliberately a local single-node reference
@@ -131,3 +135,7 @@ Example 19 configures one sink on the immutable runtime and application-owned
 hub, verifies dispatch start/stop outcomes, and deliberately overflows a
 one-event listener queue to observe bounded pressure without exposing request
 payloads or adding a metrics dependency.
+Example 23 configures one policy module on the immutable runtime, serves three
+different effective catalogs from it, and proves that a guessed call keeps the
+application's own error, records an audit event, and never reaches the handler.
+The library supplies no roles, credentials, or refusal code.

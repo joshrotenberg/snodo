@@ -1,6 +1,7 @@
 defmodule MCP.Server.Runtime do
   @moduledoc "Immutable server configuration shared by direct and transport dispatch."
 
+  alias MCP.Authorization
   alias MCP.Extension.Registry, as: ExtensionRegistry
   alias MCP.Instrumentation
   alias MCP.Pagination
@@ -27,7 +28,8 @@ defmodule MCP.Server.Runtime do
           resources_cache: cache_policy(),
           pagination: Pagination.t(),
           subscription_source: Source.Config.t() | nil,
-          extension_registry: ExtensionRegistry.t()
+          extension_registry: ExtensionRegistry.t(),
+          authorization: Authorization.config()
         }
 
   @enforce_keys [:router, :protocol_registry, :server_info, :capabilities]
@@ -40,6 +42,7 @@ defmodule MCP.Server.Runtime do
     :extension_registry,
     :instrumentation,
     :subscription_source,
+    :authorization,
     :instructions,
     discovery_cache: %{ttl_ms: 0, scope: "private"},
     tools_cache: %{ttl_ms: 0, scope: "private"},
@@ -65,6 +68,7 @@ defmodule MCP.Server.Runtime do
     schema_validator = Keyword.get(opts, :schema_validator, Passthrough)
     subscription_source = opts |> Keyword.get(:subscription_source) |> Source.normalize!()
     instrumentation = opts |> Keyword.get(:instrumentation) |> Instrumentation.normalize!()
+    authorization = opts |> Keyword.get(:authorization) |> Authorization.normalize!()
 
     _validated_server_info = validate_server_info!(server_info)
     _validated_capabilities = validate_capabilities!(capabilities)
@@ -84,6 +88,7 @@ defmodule MCP.Server.Runtime do
       extension_registry: extension_registry,
       instrumentation: instrumentation,
       subscription_source: subscription_source,
+      authorization: authorization,
       instructions: instructions,
       discovery_cache: cache_policy(Keyword.get(opts, :discovery_cache, [])),
       tools_cache: cache_policy(Keyword.get(opts, :tools_cache, [])),

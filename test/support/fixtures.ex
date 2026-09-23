@@ -433,7 +433,8 @@ defmodule MCPEx.TestFixtures do
       resources_cache: Keyword.get(opts, :resources_cache, []),
       pagination: Keyword.get(opts, :pagination, []),
       subscription_source: Keyword.get(opts, :subscription_source),
-      instrumentation: Keyword.get(opts, :instrumentation)
+      instrumentation: Keyword.get(opts, :instrumentation),
+      authorization: Keyword.get(opts, :authorization)
     ]
 
     runtime_options =

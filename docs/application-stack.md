@@ -91,6 +91,39 @@ key is available; deduplicating external effects is application responsibility.
 Status notifications are observations, not a replacement for authoritative
 store reads or a durable event delivery guarantee.
 
+## Authorization at the component boundary
+
+Authentication stays in the application's Plug pipeline; only the verified
+identity reaches `MCP.Context.auth`. Authorization over the catalog is a
+separate, optional runtime option:
+
+```elixir
+MyApp.Server.runtime(authorization: {MyApp.Policy, catalog: MyApp.Catalog})
+```
+
+`MyApp.Policy.authorize/4` receives the phase, an `MCP.Authorization.Component`,
+the derived `MCP.Context`, and the configured options. Return `:ok` or
+`{:error, %MCP.Error{}}`. The router applies the decision before argument
+validation and before any tool, prompt, resource, or completion callback, so a
+guessed name cannot produce a side effect, and a refusal carries the
+application's own error instead of an unknown-name error.
+
+Keep the following in mind when writing a policy:
+
+* It runs on every listed component during discovery and once per invocation,
+  so keep it allocation-light and free of network or database calls; pass a
+  precomputed catalog through the options instead.
+* Discovery refusals are ordinary filtering. Record audit events on the
+  `:invocation` branch, which is the actual boundary violation.
+* Choose the refusal code. JSON-RPC reserves -32000..-32099 for
+  implementation-defined server errors, and `MCP.Error.authorization/3` builds
+  one. Over HTTP an application refusal is a JSON-RPC error inside a 200
+  response; HTTP status codes remain the authentication layer's concern.
+* Capability advertisement is catalog-wide. A context that can see no tools
+  still sees the `tools` capability, because capabilities describe the server.
+* Subscription sources are application-owned and receive the same context;
+  filter their events yourself.
+
 ## Protocol-version support
 
 Only the configured latest dialect is implemented and enabled. A client that
