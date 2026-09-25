@@ -17,6 +17,31 @@ defmodule MCP.ClientTest do
 
   @form_caps %{"elicitation" => %{"form" => %{}}}
 
+  defmodule CannedTransport do
+    @moduledoc false
+    @behaviour MCP.Client.Transport
+
+    @impl true
+    def connect(owner, _opts), do: {:ok, owner}
+
+    @impl true
+    def request(owner, message, opts) do
+      send(owner, {:canned_request, message, opts})
+
+      receive do
+        {:canned_response, response} -> {:ok, response}
+      after
+        0 -> {:ok, %{"jsonrpc" => "2.0", "id" => message["id"], "result" => %{"canned" => true}}}
+      end
+    end
+
+    @impl true
+    def close(owner) do
+      send(owner, :canned_closed)
+      :ok
+    end
+  end
+
   defp client(opts \\ [], client_opts \\ []) do
     {:ok, client} = opts |> TestFixtures.runtime() |> Client.direct(client_opts)
     client
@@ -215,6 +240,43 @@ defmodule MCP.ClientTest do
              Client.call_tool(anonymous, "echo", %{"text" => "hi"})
 
     assert code == Policy.refusal_code()
+  end
+
+  describe "custom transports" do
+    test "connect/2 accepts any MCP.Client.Transport and passes the dialect and timeout" do
+      {:ok, client} = Client.connect({CannedTransport, self()}, timeout: 1_234)
+
+      assert {:ok, %{"canned" => true}} = Client.call_tool(client, "anything", %{"a" => 1})
+      assert_receive {:canned_request, message, opts}
+      assert message["params"]["_meta"]["io.modelcontextprotocol/protocolVersion"] == "2026-07-28"
+      assert opts[:dialect] == V2026_07_28
+      assert opts[:timeout] == 1_234
+
+      assert {:ok, _result} = Client.discover(client)
+      assert_receive {:canned_request, _message, [dialect: V2026_07_28, timeout: 1_234]}
+
+      assert :ok = Client.close(client)
+      assert_receive :canned_closed
+    end
+
+    test "a response that is neither a result nor an error object is a transport error" do
+      {:ok, client} = Client.connect({CannedTransport, self()})
+      send(self(), {:canned_response, %{"jsonrpc" => "2.0", "id" => 1, "error" => "nope"}})
+
+      assert {:error, %Error{code: -32_000, kind: :transport}} = Client.discover(client)
+    end
+
+    test "rejects a target that is not a transport" do
+      assert_raise ArgumentError, ~r/got a tuple starting with :stdio/, fn ->
+        Client.connect({:stdio, "elixir"})
+      end
+    end
+
+    test "rejects an invalid timeout" do
+      assert_raise ArgumentError, ~r/:timeout must be/, fn ->
+        Client.connect({CannedTransport, self()}, timeout: 0)
+      end
+    end
   end
 
   test "request/4 refuses subscriptions/listen before dispatch" do
