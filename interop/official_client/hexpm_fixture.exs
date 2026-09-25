@@ -7,7 +7,7 @@ project =
 build_path = System.get_env("HEXPM_MCP_BUILD_PATH") || Path.join(project, "_build/dev")
 Code.prepend_paths(Path.wildcard(Path.join(build_path, "lib/*/ebin")))
 
-if framework_ebin = System.get_env("MCP_EX_EBIN") do
+if framework_ebin = System.get_env("SNODO_EBIN") do
   true = Code.prepend_path(framework_ebin)
 end
 
@@ -78,13 +78,13 @@ runtime = HexpmMcp.MCP.Server.runtime()
 
 case System.argv() do
   ["--stdio"] ->
-    :ok = MCP.Transport.Stdio.serve(runtime)
+    :ok = Snodo.Transport.Stdio.serve(runtime)
 
   ["--http"] ->
     {:ok, listener} =
-      MCP.Transport.StreamableHTTP.Server.start_link(runtime: runtime, port: 0)
+      Snodo.Transport.StreamableHTTP.Server.start_link(runtime: runtime, port: 0)
 
-    IO.puts(JSON.encode!(%{"url" => MCP.Transport.StreamableHTTP.Server.url(listener)}))
+    IO.puts(JSON.encode!(%{"url" => Snodo.Transport.StreamableHTTP.Server.url(listener)}))
     # Closing this pipe lets the parent cleanly stop the listener and BEAM.
     _input = IO.read(:stdio, :eof)
     :ok = GenServer.stop(listener)

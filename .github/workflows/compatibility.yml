@@ -107,18 +107,18 @@ jobs:
       postgres:
         image: postgres:${{ matrix.postgres }}-alpine
         env:
-          POSTGRES_DB: mcp_ex_tasks
+          POSTGRES_DB: snodo_tasks
           POSTGRES_PASSWORD: postgres
           POSTGRES_USER: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d mcp_ex_tasks"
+          --health-cmd "pg_isready -U postgres -d snodo_tasks"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12
     env:
-      MCP_TASKS_DATABASE_URL: ecto://postgres:postgres@127.0.0.1:5432/mcp_ex_tasks
+      SNODO_TASKS_DATABASE_URL: ecto://postgres:postgres@127.0.0.1:5432/snodo_tasks
       MIX_ENV: test
     steps:
       - uses: actions/checkout@v4

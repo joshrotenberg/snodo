@@ -11,11 +11,11 @@ import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 // Requires the sibling hexpm-mcp application's compiled runtime dependencies.
 //   node interop/official_client/check_hexpm.mjs [--stdio|--http]
 // Default: check both transports. HEXPM_MCP_BUILD_PATH selects another Mix
-// build directory; MCP_EX_EBIN optionally overrides its framework dependency.
+// build directory; SNODO_EBIN optionally overrides its framework dependency.
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fixture = path.join(here, "hexpm_fixture.exs");
 const project = process.env.HEXPM_MCP_PROJECT ?? path.resolve(here, "../../../hexpm-mcp");
-const elixir = process.env.MCP_EX_ELIXIR ?? "elixir";
+const elixir = process.env.SNODO_ELIXIR ?? "elixir";
 const protocol = "2026-07-28";
 const requestOptions = { signal: AbortSignal.timeout(60_000) };
 const elicitationCounts = new WeakMap();

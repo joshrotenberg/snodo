@@ -17,16 +17,16 @@ defmodule Mix.Tasks.Tasks.Contract do
   ]
 
   @contract_test_modules [
-    MCP.TasksExtensionAcceptanceTest,
-    MCP.TasksOrdinaryMRTRBoundaryTest,
-    MCP.TasksLifecycleRaceTest,
-    MCP.TasksHTTPAcceptanceTest,
-    MCP.TasksSubscriptionAcceptanceTest,
-    MCP.TasksStoreHardeningTest,
-    MCP.TasksWorkDescriptorTest,
-    MCP.TasksDurableStoreTest,
-    MCP.TasksRecoveryTest,
-    MCP.TasksRetryPolicyTest
+    Snodo.TasksExtensionAcceptanceTest,
+    Snodo.TasksOrdinaryMRTRBoundaryTest,
+    Snodo.TasksLifecycleRaceTest,
+    Snodo.TasksHTTPAcceptanceTest,
+    Snodo.TasksSubscriptionAcceptanceTest,
+    Snodo.TasksStoreHardeningTest,
+    Snodo.TasksWorkDescriptorTest,
+    Snodo.TasksDurableStoreTest,
+    Snodo.TasksRecoveryTest,
+    Snodo.TasksRetryPolicyTest
   ]
 
   @contract_test_paths [
@@ -44,7 +44,7 @@ defmodule Mix.Tasks.Tasks.Contract do
 
   @moduledoc """
   Runs the package-owned Tasks contract tests and verifies their local evidence
-  tags without coupling the extension package to `MCP.Compliance`.
+  tags without coupling the extension package to `Snodo.Compliance`.
 
       mix tasks.contract
   """

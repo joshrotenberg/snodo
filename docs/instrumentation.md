@@ -1,6 +1,6 @@
 # Instrumentation
 
-`MCP.Instrumentation` is a dependency-free, opt-in event sink. It keeps
+`Snodo.Instrumentation` is a dependency-free, opt-in event sink. It keeps
 observability outside protocol semantics and lets an application bridge the
 same events to `:telemetry`, OpenTelemetry, Logger, a metrics process, or a
 test collector.
@@ -9,7 +9,7 @@ A sink implements one callback:
 
 ```elixir
 defmodule MyApp.MCPTelemetry do
-  @behaviour MCP.Instrumentation
+  @behaviour Snodo.Instrumentation
 
   @impl true
   def handle_event(name, measurements, metadata, _options) do
@@ -24,7 +24,7 @@ Configure the server runtime, subscription hub, and Tasks runner explicitly:
 sink = {MyApp.MCPTelemetry, []}
 
 {:ok, hub} =
-  MCP.Subscription.Hub.start_link(
+  Snodo.Subscription.Hub.start_link(
     name: MyApp.SubscriptionHub,
     instrumentation: sink
   )
@@ -32,11 +32,11 @@ sink = {MyApp.MCPTelemetry, []}
 runtime =
   MyServer.runtime(
     instrumentation: sink,
-    subscription_source: MCP.Subscription.Hub.source(MyApp.SubscriptionHub)
+    subscription_source: Snodo.Subscription.Hub.source(MyApp.SubscriptionHub)
   )
 
 {:ok, runner} =
-  MCP.Extensions.Tasks.Runner.start_link(
+  Snodo.Extensions.Tasks.Runner.start_link(
     store: store_ref,
     instrumentation: sink
   )
@@ -55,17 +55,17 @@ Durations use the VM's native monotonic time unit. Convert them with
 
 | Event | Measurements | Metadata |
 |---|---|---|
-| `[:mcp_ex, :server, :dispatch, :start]` | `system_time` | `method`, `request_id`, `transport` |
-| `[:mcp_ex, :server, :dispatch, :stop]` | `duration` | start metadata plus `outcome`; errors add `error_code` |
-| `[:mcp_ex, :server, :dispatch, :exception]` | `duration` | start metadata plus `kind` and bounded `reason_class` |
-| `[:mcp_ex, :subscription, :open]` | current `subscriptions` | `request_id`, `transport`, sorted `filter_keys` |
-| `[:mcp_ex, :subscription, :publish]` | `matched`, `delivered`, `buffered`, `dropped`, total `queued` | `event_kind`; extension events add `extension_id` |
-| `[:mcp_ex, :subscription, :overflow]` | `dropped`, total `queued` | publish metadata plus overflow `policy` |
-| `[:mcp_ex, :subscription, :complete]` | current `subscriptions`, total `queued` | none |
-| `[:mcp_ex, :subscription, :close]` | remaining `subscriptions` | classified `reason` |
-| `[:mcp_ex, :tasks, :runner, :job, :start]` | current `jobs`, `system_time` | `task_id`, `revision`, `source` |
-| `[:mcp_ex, :tasks, :runner, :job, :stop]` | `duration`, remaining `jobs` | `task_id`, job `outcome`, `store_outcome`, `release_outcome` |
-| `[:mcp_ex, :tasks, :store, :transition]` | `duration` | `task_id`, `expected_revision`, `event_kind`, `authority`, `outcome` |
+| `[:snodo, :server, :dispatch, :start]` | `system_time` | `method`, `request_id`, `transport` |
+| `[:snodo, :server, :dispatch, :stop]` | `duration` | start metadata plus `outcome`; errors add `error_code` |
+| `[:snodo, :server, :dispatch, :exception]` | `duration` | start metadata plus `kind` and bounded `reason_class` |
+| `[:snodo, :subscription, :open]` | current `subscriptions` | `request_id`, `transport`, sorted `filter_keys` |
+| `[:snodo, :subscription, :publish]` | `matched`, `delivered`, `buffered`, `dropped`, total `queued` | `event_kind`; extension events add `extension_id` |
+| `[:snodo, :subscription, :overflow]` | `dropped`, total `queued` | publish metadata plus overflow `policy` |
+| `[:snodo, :subscription, :complete]` | current `subscriptions`, total `queued` | none |
+| `[:snodo, :subscription, :close]` | remaining `subscriptions` | classified `reason` |
+| `[:snodo, :tasks, :runner, :job, :start]` | current `jobs`, `system_time` | `task_id`, `revision`, `source` |
+| `[:snodo, :tasks, :runner, :job, :stop]` | `duration`, remaining `jobs` | `task_id`, job `outcome`, `store_outcome`, `release_outcome` |
+| `[:snodo, :tasks, :store, :transition]` | `duration` | `task_id`, `expected_revision`, `event_kind`, `authority`, `outcome` |
 
 The names and bounded metadata are framework API. A particular metrics backend,
 aggregation policy, sampling policy, and task-ID cardinality policy remain

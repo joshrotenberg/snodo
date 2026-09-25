@@ -1,29 +1,29 @@
-defmodule MCP.ExtensionAcceptanceTest do
+defmodule Snodo.ExtensionAcceptanceTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Server
-  alias MCP.Transport.Context, as: TransportContext
-  alias MCP.Transport.Stdio
-  alias MCPEx.ExtensionTestServer
-  alias MCPEx.FutureDialect
-  alias MCPEx.TestExtensions.AroundInner
-  alias MCPEx.TestExtensions.AroundOuter
-  alias MCPEx.TestExtensions.CoreEmbeddedCollision
-  alias MCPEx.TestExtensions.CoreImplementedCollision
-  alias MCPEx.TestExtensions.CoreUnsupportedCollision
-  alias MCPEx.TestExtensions.CrossCollisionA
-  alias MCPEx.TestExtensions.CrossCollisionB
-  alias MCPEx.TestExtensions.DuplicateId
-  alias MCPEx.TestExtensions.Echo
-  alias MCPEx.TestExtensions.Faulty
-  alias MCPEx.TestExtensions.FaultyAround
-  alias MCPEx.TestExtensions.FutureAround
-  alias MCPEx.TestExtensions.IncompleteSubscriptions
-  alias MCPEx.TestExtensions.NotNegotiated
-  alias MCPEx.TestExtensions.RequiredCapability
-  alias MCPEx.TestExtensions.UnavailableVersion
-  alias MCPEx.TestFixtures
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Server
+  alias Snodo.Transport.Context, as: TransportContext
+  alias Snodo.Transport.Stdio
+  alias SnodoTest.ExtensionTestServer
+  alias SnodoTest.FutureDialect
+  alias SnodoTest.TestExtensions.AroundInner
+  alias SnodoTest.TestExtensions.AroundOuter
+  alias SnodoTest.TestExtensions.CoreEmbeddedCollision
+  alias SnodoTest.TestExtensions.CoreImplementedCollision
+  alias SnodoTest.TestExtensions.CoreUnsupportedCollision
+  alias SnodoTest.TestExtensions.CrossCollisionA
+  alias SnodoTest.TestExtensions.CrossCollisionB
+  alias SnodoTest.TestExtensions.DuplicateId
+  alias SnodoTest.TestExtensions.Echo
+  alias SnodoTest.TestExtensions.Faulty
+  alias SnodoTest.TestExtensions.FaultyAround
+  alias SnodoTest.TestExtensions.FutureAround
+  alias SnodoTest.TestExtensions.IncompleteSubscriptions
+  alias SnodoTest.TestExtensions.NotNegotiated
+  alias SnodoTest.TestExtensions.RequiredCapability
+  alias SnodoTest.TestExtensions.UnavailableVersion
+  alias SnodoTest.TestFixtures
 
   @tag mcp_contract: ["extension-registration"]
   test "registration rejects collisions with every part of the exact core catalog" do

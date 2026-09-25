@@ -1,31 +1,31 @@
-defmodule MCP.ResourceAcceptanceTest do
+defmodule Snodo.ResourceAcceptanceTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Context
-  alias MCP.Error
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Resource
-  alias MCP.Resource.Definition
-  alias MCP.Result
-  alias MCP.Router
-  alias MCP.Transport.Context, as: TransportContext
-  alias MCPEx.TestResources.AmbiguousTemplateA
-  alias MCPEx.TestResources.AmbiguousTemplateB
-  alias MCPEx.TestResources.ArchiveTemplate
-  alias MCPEx.TestResources.ContextEcho
-  alias MCPEx.TestResources.DeclaredError
-  alias MCPEx.TestResources.PackageTemplate
-  alias MCPEx.TestResources.PackageTemplateCollision
-  alias MCPEx.TestResources.Raising
-  alias MCPEx.TestResources.RaisingMatcher
-  alias MCPEx.TestResources.StaticBlob
-  alias MCPEx.TestResources.StaticJSON
-  alias MCPEx.TestResources.StaticShadowTemplate
-  alias MCPEx.TestResources.StaticText
-  alias MCPEx.TestResources.StaticTextNameCollision
-  alias MCPEx.TestResources.StaticTextURICollision
-  alias MCPEx.TestResources.TermError
-  alias MCPEx.TestResources.WrongResultKind
+  alias Snodo.Context
+  alias Snodo.Error
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Resource
+  alias Snodo.Resource.Definition
+  alias Snodo.Result
+  alias Snodo.Router
+  alias Snodo.Transport.Context, as: TransportContext
+  alias SnodoTest.TestResources.AmbiguousTemplateA
+  alias SnodoTest.TestResources.AmbiguousTemplateB
+  alias SnodoTest.TestResources.ArchiveTemplate
+  alias SnodoTest.TestResources.ContextEcho
+  alias SnodoTest.TestResources.DeclaredError
+  alias SnodoTest.TestResources.PackageTemplate
+  alias SnodoTest.TestResources.PackageTemplateCollision
+  alias SnodoTest.TestResources.Raising
+  alias SnodoTest.TestResources.RaisingMatcher
+  alias SnodoTest.TestResources.StaticBlob
+  alias SnodoTest.TestResources.StaticJSON
+  alias SnodoTest.TestResources.StaticShadowTemplate
+  alias SnodoTest.TestResources.StaticText
+  alias SnodoTest.TestResources.StaticTextNameCollision
+  alias SnodoTest.TestResources.StaticTextURICollision
+  alias SnodoTest.TestResources.TermError
+  alias SnodoTest.TestResources.WrongResultKind
 
   defp context(overrides \\ []) do
     defaults = [

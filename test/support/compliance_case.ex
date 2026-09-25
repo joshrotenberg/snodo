@@ -1,4 +1,4 @@
-defmodule MCPEx.ComplianceCase do
+defmodule SnodoTest.ComplianceCase do
   @moduledoc false
 
   @enforce_keys [:id, :spec_ref, :transports, :request, :expected]

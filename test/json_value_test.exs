@@ -1,9 +1,9 @@
-defmodule MCP.JSONValueTest do
+defmodule Snodo.JSONValueTest do
   use ExUnit.Case, async: true
 
-  alias MCP.JSONValue
+  alias Snodo.JSONValue
 
-  doctest MCP.JSONValue
+  doctest Snodo.JSONValue
 
   defmodule Package do
     @moduledoc false
@@ -120,16 +120,16 @@ defmodule MCP.JSONValueTest do
   end
 
   describe "the boundary builders accept converted values" do
-    test "MCP.Resource.json/3 takes an encodable! result" do
+    test "Snodo.Resource.json/3 takes an encodable! result" do
       value = JSONValue.encodable!(%{name: "jason", downloads: %{all: 1}})
-      content = MCP.Resource.json("hex://jason/info", value)
+      content = Snodo.Resource.json("hex://jason/info", value)
 
       assert JSON.decode!(content["text"]) == %{"name" => "jason", "downloads" => %{"all" => 1}}
     end
 
     test "and rejects the unconverted value" do
       assert_raise ArgumentError, ~r/must be a JSON value/, fn ->
-        MCP.Resource.json("hex://jason/info", %{name: "jason"})
+        Snodo.Resource.json("hex://jason/info", %{name: "jason"})
       end
     end
   end

@@ -1,8 +1,8 @@
 # Package-local fixtures for the Tasks extension acceptance suite.
-defmodule MCPEx.TasksTestTools.Support do
+defmodule SnodoTest.TasksTestTools.Support do
   @moduledoc false
 
-  alias MCP.Extensions.Tasks
+  alias Snodo.Extensions.Tasks
 
   def owner(context) do
     options = Map.fetch!(context.extension_options, Tasks.id())
@@ -25,17 +25,17 @@ defmodule MCPEx.TasksTestTools.Support do
   end
 end
 
-defmodule MCPEx.TasksTestTools.Greet do
-  use MCP.Tool, name: "greet"
+defmodule SnodoTest.TasksTestTools.Greet do
+  use Snodo.Tool, name: "greet"
 
   @impl true
-  def call(%{"name" => name}, _context), do: {:ok, MCP.Result.text("Hello, #{name}!")}
+  def call(%{"name" => name}, _context), do: {:ok, Snodo.Result.text("Hello, #{name}!")}
 end
 
-defmodule MCPEx.TasksTestTools.SlowCompute do
-  use MCP.Tool, name: "slow_compute"
+defmodule SnodoTest.TasksTestTools.SlowCompute do
+  use Snodo.Tool, name: "slow_compute"
 
-  alias MCPEx.TasksTestTools.Support
+  alias SnodoTest.TasksTestTools.Support
 
   @impl true
   def call(arguments, context) do
@@ -52,31 +52,31 @@ defmodule MCPEx.TasksTestTools.SlowCompute do
       end
     end
 
-    {:ok, MCP.Result.structured(%{"label" => label, "computed" => true})}
+    {:ok, Snodo.Result.structured(%{"label" => label, "computed" => true})}
   end
 end
 
-defmodule MCPEx.TasksTestTools.FailingJob do
-  use MCP.Tool, name: "failing_job"
+defmodule SnodoTest.TasksTestTools.FailingJob do
+  use Snodo.Tool, name: "failing_job"
 
   @impl true
   def call(_arguments, _context), do: {:error, "Actionable task failure"}
 end
 
-defmodule MCPEx.TasksTestTools.ProtocolErrorJob do
-  use MCP.Tool, name: "protocol_error_job"
+defmodule SnodoTest.TasksTestTools.ProtocolErrorJob do
+  use Snodo.Tool, name: "protocol_error_job"
 
   # Raising is the point: the runner must isolate a job fault.
-  @spec call(map(), MCP.Context.t()) :: no_return()
+  @spec call(map(), Snodo.Context.t()) :: no_return()
   @impl true
   def call(_arguments, _context), do: raise("private task crash detail")
 end
 
-defmodule MCPEx.TasksTestTools.DetachedContext do
-  use MCP.Tool, name: "detached_context"
+defmodule SnodoTest.TasksTestTools.DetachedContext do
+  use Snodo.Tool, name: "detached_context"
 
-  alias MCP.Extensions.Tasks
-  alias MCPEx.TasksTestTools.Support
+  alias Snodo.Extensions.Tasks
+  alias SnodoTest.TasksTestTools.Support
 
   @impl true
   def call(_arguments, context) do
@@ -90,7 +90,7 @@ defmodule MCPEx.TasksTestTools.DetachedContext do
     end
 
     receive do
-      :release_detached -> {:ok, MCP.Result.structured(%{"detached" => true})}
+      :release_detached -> {:ok, Snodo.Result.structured(%{"detached" => true})}
     after
       5_000 -> raise "detached context release timed out"
     end
@@ -117,35 +117,35 @@ defmodule MCPEx.TasksTestTools.DetachedContext do
   end
 end
 
-defmodule MCPEx.TasksTestTools.InvalidRawResult do
-  use MCP.Tool, name: "invalid_raw_result"
+defmodule SnodoTest.TasksTestTools.InvalidRawResult do
+  use Snodo.Tool, name: "invalid_raw_result"
 
   @impl true
   def call(_arguments, _context) do
-    {:ok, MCP.Result.raw(%{"nested" => %{"pid" => self()}})}
+    {:ok, Snodo.Result.raw(%{"nested" => %{"pid" => self()}})}
   end
 end
 
-defmodule MCPEx.TasksTestTools.ConfirmDelete do
-  use MCP.Tool, name: "confirm_delete"
+defmodule SnodoTest.TasksTestTools.ConfirmDelete do
+  use Snodo.Tool, name: "confirm_delete"
 
-  alias MCP.Extensions.Tasks
-  alias MCPEx.TasksTestTools.Support
+  alias Snodo.Extensions.Tasks
+  alias SnodoTest.TasksTestTools.Support
 
   @impl true
   def call(_arguments, context) do
     with {:ok, response} <-
            Tasks.await_input(context, "confirmation", Support.input_request("Confirm delete")) do
-      {:ok, MCP.Result.structured(%{"confirmation" => response})}
+      {:ok, Snodo.Result.structured(%{"confirmation" => response})}
     end
   end
 end
 
-defmodule MCPEx.TasksTestTools.MultiInput do
-  use MCP.Tool, name: "multi_input"
+defmodule SnodoTest.TasksTestTools.MultiInput do
+  use Snodo.Tool, name: "multi_input"
 
-  alias MCP.Extensions.Tasks
-  alias MCPEx.TasksTestTools.Support
+  alias Snodo.Extensions.Tasks
+  alias SnodoTest.TasksTestTools.Support
 
   @impl true
   def call(_arguments, context) do
@@ -162,18 +162,18 @@ defmodule MCPEx.TasksTestTools.MultiInput do
     with {:ok, first_response} <- Task.await(first, 5_000),
          {:ok, second_response} <- Task.await(second, 5_000) do
       {:ok,
-       MCP.Result.structured(%{
+       Snodo.Result.structured(%{
          "responses" => %{"first" => first_response, "second" => second_response}
        })}
     end
   end
 end
 
-defmodule MCPEx.TasksTestTools.KeyReuse do
-  use MCP.Tool, name: "key_reuse"
+defmodule SnodoTest.TasksTestTools.KeyReuse do
+  use Snodo.Tool, name: "key_reuse"
 
-  alias MCP.Extensions.Tasks
-  alias MCPEx.TasksTestTools.Support
+  alias Snodo.Extensions.Tasks
+  alias SnodoTest.TasksTestTools.Support
 
   @impl true
   def call(_arguments, context) do
@@ -185,7 +185,7 @@ defmodule MCPEx.TasksTestTools.KeyReuse do
       send(owner, {:tasks_key_reuse_result, reuse})
 
       {:ok,
-       MCP.Result.structured(%{
+       Snodo.Result.structured(%{
          "firstResponse" => first_response,
          "reuseRejected" => match?({:error, :duplicate_input_key}, reuse)
        })}
@@ -193,29 +193,29 @@ defmodule MCPEx.TasksTestTools.KeyReuse do
   end
 end
 
-defmodule MCPEx.TasksTestSupport do
+defmodule SnodoTest.TasksTestSupport do
   @moduledoc false
 
-  alias MCP.Extensions.Tasks
-  alias MCP.Extensions.Tasks.Store.Memory
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Router
-  alias MCP.Server
-  alias MCP.Server.Runtime
-  alias MCP.Transport.Context, as: TransportContext
+  alias Snodo.Extensions.Tasks
+  alias Snodo.Extensions.Tasks.Store.Memory
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Router
+  alias Snodo.Server
+  alias Snodo.Server.Runtime
+  alias Snodo.Transport.Context, as: TransportContext
 
   @extension_id "io.modelcontextprotocol/tasks"
 
   @tools [
-    MCPEx.TasksTestTools.Greet,
-    MCPEx.TasksTestTools.SlowCompute,
-    MCPEx.TasksTestTools.FailingJob,
-    MCPEx.TasksTestTools.ProtocolErrorJob,
-    MCPEx.TasksTestTools.DetachedContext,
-    MCPEx.TasksTestTools.InvalidRawResult,
-    MCPEx.TasksTestTools.ConfirmDelete,
-    MCPEx.TasksTestTools.MultiInput,
-    MCPEx.TasksTestTools.KeyReuse
+    SnodoTest.TasksTestTools.Greet,
+    SnodoTest.TasksTestTools.SlowCompute,
+    SnodoTest.TasksTestTools.FailingJob,
+    SnodoTest.TasksTestTools.ProtocolErrorJob,
+    SnodoTest.TasksTestTools.DetachedContext,
+    SnodoTest.TasksTestTools.InvalidRawResult,
+    SnodoTest.TasksTestTools.ConfirmDelete,
+    SnodoTest.TasksTestTools.MultiInput,
+    SnodoTest.TasksTestTools.KeyReuse
   ]
 
   @task_support %{
@@ -376,7 +376,7 @@ defmodule MCPEx.TasksTestSupport do
   end
 end
 
-defmodule MCPEx.TasksSubscriptionHub do
+defmodule SnodoTest.TasksSubscriptionHub do
   @moduledoc false
   use GenServer
 
@@ -452,9 +452,9 @@ defmodule MCPEx.TasksSubscriptionHub do
   defp notify(_owner, _message), do: :ok
 end
 
-defmodule MCPEx.TasksSubscriptionSource do
+defmodule SnodoTest.TasksSubscriptionSource do
   @moduledoc false
-  @behaviour MCP.Subscription.Source
+  @behaviour Snodo.Subscription.Source
 
   @impl true
   def open(filter, context, hub), do: GenServer.call(hub, {:open, context.request_id, filter})
@@ -466,7 +466,7 @@ defmodule MCPEx.TasksSubscriptionSource do
   def close({hub, token}, reason, _hub), do: GenServer.call(hub, {:close, token, reason})
 end
 
-defmodule MCPEx.TasksTestInput do
+defmodule SnodoTest.TasksTestInput do
   @moduledoc false
 
   def start_link do

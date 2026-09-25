@@ -1,8 +1,8 @@
 # Initialize-era HTTP compatibility
 
 The runtime remains 2026-only by default. Applications can opt into
-`MCP.Protocol.V2025_11_25` and `MCP.Protocol.V2025_06_18` alongside
-`MCP.Protocol.V2026_07_28`, in that preference order after the latest dialect.
+`Snodo.Protocol.V2025_11_25` and `Snodo.Protocol.V2025_06_18` alongside
+`Snodo.Protocol.V2026_07_28`, in that preference order after the latest dialect.
 Merely loading a module does not enable it.
 
 `initialize` selects the exact requested enabled legacy version, or the first
@@ -56,8 +56,8 @@ This is stacked on private PR #1's exact head
 `4a98d8393da586c039c173cfb80b07fcbc2ba961`. Keep the inherited SQLite Tasks failure
 separate from compatibility results; no gate is removed or weakened.
 
-Both Custode and mcp_ex are private repositories. The owner explicitly confirmed
-that mcp_ex remains private during development.
+Both Custode and snodo are private repositories. The owner explicitly confirmed
+that snodo remains private during development.
 Do not publish source or packages. This issue does not authorize a merge, a default
 Custode dependency migration, or a live fleet cutover. A later local-only pilot can
 use private path dependencies and narrow adapters around actual Custode callbacks,

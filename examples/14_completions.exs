@@ -1,7 +1,7 @@
 defmodule Examples.Completions.PackageSearch do
   @moduledoc false
 
-  use MCP.Prompt,
+  use Snodo.Prompt,
     name: "package_search",
     description: "Search for Hex packages within an optional category",
     arguments: [
@@ -19,19 +19,19 @@ defmodule Examples.Completions.PackageSearch do
   @impl true
   def render(%{"package" => package}, _context) do
     {:ok,
-     MCP.Result.prompt_get(
-       MCP.Prompt.message(:user, MCP.Prompt.text("Evaluate the Hex package #{package}."))
+     Snodo.Result.prompt_get(
+       Snodo.Prompt.message(:user, Snodo.Prompt.text("Evaluate the Hex package #{package}."))
      )}
   end
 
   @impl true
-  def complete(%MCP.Completion{argument: "category", value: value}, _context) do
+  def complete(%Snodo.Completion{argument: "category", value: value}, _context) do
     values = @packages |> Map.keys() |> matching(value)
-    {:ok, MCP.Result.completion(values, total: length(values), has_more: false)}
+    {:ok, Snodo.Result.completion(values, total: length(values), has_more: false)}
   end
 
   def complete(
-        %MCP.Completion{
+        %Snodo.Completion{
           argument: "package",
           value: value,
           arguments: arguments
@@ -45,7 +45,7 @@ defmodule Examples.Completions.PackageSearch do
       end
 
     values = matching(candidates, value)
-    {:ok, MCP.Result.completion(values, total: length(values), has_more: false)}
+    {:ok, Snodo.Result.completion(values, total: length(values), has_more: false)}
   end
 
   defp matching(values, prefix) do
@@ -59,7 +59,7 @@ end
 defmodule Examples.Completions.PackageRelease do
   @moduledoc false
 
-  use MCP.Resource,
+  use Snodo.Resource,
     uri_template: "hex://{package}/releases/{version}",
     name: "package_release",
     description: "Release information for one Hex package version",
@@ -77,17 +77,17 @@ defmodule Examples.Completions.PackageRelease do
 
   @impl true
   def read(%{"uri" => uri}, _context) do
-    {:ok, MCP.Result.resource_read(MCP.Resource.json(uri, %{"uri" => uri}))}
+    {:ok, Snodo.Result.resource_read(Snodo.Resource.json(uri, %{"uri" => uri}))}
   end
 
   @impl true
-  def complete(%MCP.Completion{argument: "package", value: value}, _context) do
+  def complete(%Snodo.Completion{argument: "package", value: value}, _context) do
     values = @versions |> Map.keys() |> matching(value)
-    {:ok, MCP.Result.completion(values, total: length(values))}
+    {:ok, Snodo.Result.completion(values, total: length(values))}
   end
 
   def complete(
-        %MCP.Completion{
+        %Snodo.Completion{
           argument: "version",
           value: value,
           arguments: %{"package" => package}
@@ -95,11 +95,11 @@ defmodule Examples.Completions.PackageRelease do
         _context
       ) do
     values = @versions |> Map.get(package, []) |> matching(value)
-    {:ok, MCP.Result.completion(values, total: length(values), has_more: false)}
+    {:ok, Snodo.Result.completion(values, total: length(values), has_more: false)}
   end
 
-  def complete(%MCP.Completion{argument: "version"}, _context) do
-    {:ok, MCP.Result.completion([])}
+  def complete(%Snodo.Completion{argument: "version"}, _context) do
+    {:ok, Snodo.Result.completion([])}
   end
 
   defp matching(values, prefix) do
@@ -110,10 +110,10 @@ end
 defmodule Examples.Completions.Server do
   @moduledoc false
 
-  use MCP.Server,
+  use Snodo.Server,
     name: "hexpm-completions-example",
     version: "0.1.0",
-    protocols: [MCP.Protocol.V2026_07_28]
+    protocols: [Snodo.Protocol.V2026_07_28]
 
   prompt(Examples.Completions.PackageSearch)
   resource(Examples.Completions.PackageRelease)
@@ -179,7 +179,7 @@ defmodule Examples.Completions.Runner do
 
   defp dispatch(runtime, id, method, params \\ %{}) do
     {:ok, response} =
-      MCP.Test.dispatch(runtime,
+      Snodo.Test.dispatch(runtime,
         id: id,
         protocol: @protocol,
         method: method,

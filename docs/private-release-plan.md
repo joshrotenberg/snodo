@@ -28,7 +28,7 @@ Local quality/type/client evidence is recorded in
 329 core tests, 148 target-application tests, and 21 default examples, but much
 of the implementation remains uncommitted.
 
-A read-only GitHub check on 2026-09-14 confirmed `joshrotenberg/mcp_ex` is
+A read-only GitHub check on 2026-09-14 confirmed `joshrotenberg/snodo` is
 **PRIVATE** with default branch `main`. The latest inspected
 [Compatibility run](https://github.com/joshrotenberg/mcp_ex/actions/runs/34896871246)
 at `d8155192891eb6bb70a2a7394bdd8bc30f2f311c` failed:
@@ -84,8 +84,8 @@ not just the local current-runtime suite. No publishing job is part of this slic
 
 ## Slice 3: Six explicit package contracts
 
-- Retain `mcp_ex`, `mcp_ex_tasks`, `mcp_ex_tasks_sqlite`,
-  `mcp_ex_tasks_postgres`, `mcp_ex_plug`, and `mcp_ex_jsv`.
+- Retain `snodo`, `snodo_tasks`, `snodo_tasks_sqlite`,
+  `snodo_tasks_postgres`, `snodo_plug`, and `snodo_jsv`.
 - Keep versions coordinated for the initial release candidate and document the
   pre-1.0 compatibility policy. Existing `0.1.0` values are not proof of release;
   do not create a tag or claim Hex name availability without checking it.

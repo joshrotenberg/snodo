@@ -1,6 +1,6 @@
-defmodule MCPEx.PlugFixtures.Tool do
+defmodule SnodoTest.PlugFixtures.Tool do
   @moduledoc false
-  use MCP.Tool, name: "inspect_context"
+  use Snodo.Tool, name: "inspect_context"
 
   @impl true
   def call(arguments, context) do
@@ -11,32 +11,33 @@ defmodule MCPEx.PlugFixtures.Tool do
     if arguments["progress"], do: report_progress(context, owner)
     if arguments["wait_after_progress"], do: Process.sleep(:infinity)
 
-    {:ok, MCP.Result.structured(%{"principal" => auth[:principal], "text" => arguments["text"]})}
+    {:ok,
+     Snodo.Result.structured(%{"principal" => auth[:principal], "text" => arguments["text"]})}
   end
 
   defp report_progress(context, owner) do
-    first = MCP.Progress.report(context, 1, total: 2, message: "first")
-    second = MCP.Progress.report(context, 2, total: 2, message: "second")
+    first = Snodo.Progress.report(context, 1, total: 2, message: "first")
+    second = Snodo.Progress.report(context, 2, total: 2, message: "second")
     if owner, do: send(owner, {:progress_replies, first, second})
   end
 end
 
-defmodule MCPEx.PlugFixtures.Probe do
+defmodule SnodoTest.PlugFixtures.Probe do
   @moduledoc false
-  use MCP.Tool, name: "probe_side_effect"
+  use Snodo.Tool, name: "probe_side_effect"
 
   @impl true
   def call(_arguments, context) do
     if owner = context.auth[:observer], do: send(owner, :probe_side_effect_ran)
-    {:ok, MCP.Result.text("ran")}
+    {:ok, Snodo.Result.text("ran")}
   end
 end
 
-defmodule MCPEx.PlugFixtures.Policy do
+defmodule SnodoTest.PlugFixtures.Policy do
   @moduledoc false
-  @behaviour MCP.Authorization
+  @behaviour Snodo.Authorization
 
-  alias MCP.Authorization.Component
+  alias Snodo.Authorization.Component
 
   @impl true
   def authorize(phase, %Component{} = component, context, options) do
@@ -48,18 +49,18 @@ defmodule MCPEx.PlugFixtures.Policy do
       if phase == :invocation,
         do: send(options.owner, {:authorization_refused, principal, component.name})
 
-      {:error, MCP.Error.authorization(-32_003, "Application policy refused #{component.name}")}
+      {:error, Snodo.Error.authorization(-32_003, "Application policy refused #{component.name}")}
     end
   end
 end
 
-defmodule MCPEx.PlugFixtures.Endpoint do
+defmodule SnodoTest.PlugFixtures.Endpoint do
   @moduledoc false
   @behaviour Plug
 
   @impl true
   def init(opts) do
-    {Keyword.fetch!(opts, :observer), MCP.Transport.Plug.init(Keyword.delete(opts, :observer))}
+    {Keyword.fetch!(opts, :observer), Snodo.Transport.Plug.init(Keyword.delete(opts, :observer))}
   end
 
   @impl true
@@ -75,7 +76,7 @@ defmodule MCPEx.PlugFixtures.Endpoint do
         _other -> conn
       end
 
-    MCP.Transport.Plug.call(conn, opts)
+    Snodo.Transport.Plug.call(conn, opts)
   end
 
   defp authenticate(conn, principal, observer) do
@@ -85,20 +86,20 @@ defmodule MCPEx.PlugFixtures.Endpoint do
   end
 end
 
-defmodule MCPEx.PlugFixtures do
+defmodule SnodoTest.PlugFixtures do
   @moduledoc false
-  alias MCPEx.PlugFixtures.Tool
+  alias SnodoTest.PlugFixtures.Tool
 
   def runtime(hub, opts \\ []) do
-    MCP.Server.Runtime.new(
+    Snodo.Server.Runtime.new(
       router:
         opts
         |> Keyword.get(:tools, [Tool])
-        |> Enum.reduce(MCP.Router.new(), &MCP.Router.register_tool(&2, &1)),
-      protocols: Keyword.get(opts, :protocols, [MCP.Protocol.V2026_07_28]),
+        |> Enum.reduce(Snodo.Router.new(), &Snodo.Router.register_tool(&2, &1)),
+      protocols: Keyword.get(opts, :protocols, [Snodo.Protocol.V2026_07_28]),
       server_info: %{"name" => "plug-acceptance", "version" => "0.1.0"},
       capabilities: Keyword.get(opts, :capabilities, %{"tools" => %{"listChanged" => true}}),
-      subscription_source: MCP.Subscription.Hub.source(hub),
+      subscription_source: Snodo.Subscription.Hub.source(hub),
       authorization: Keyword.get(opts, :authorization)
     )
   end

@@ -1,29 +1,29 @@
-defmodule MCP.Compliance.V2026_07_28VectorsTest do
+defmodule Snodo.Compliance.V2026_07_28VectorsTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Context
-  alias MCP.Envelope
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Resource.Definition, as: ResourceDefinition
-  alias MCP.Result
-  alias MCP.Router
-  alias MCP.Server
-  alias MCP.Server.Runtime
-  alias MCP.Transport.Context, as: TransportContext
-  alias MCP.Transport.Stdio
-  alias MCPEx.ComplianceCase
-  alias MCPEx.FutureDialect
-  alias MCPEx.TestCompletions.PackagePrompt
-  alias MCPEx.TestCompletions.RepositoryTemplate
-  alias MCPEx.TestFixtures
-  alias MCPEx.TestPrompts.MediaReview
-  alias MCPEx.TestPrompts.PackageAnalysis
-  alias MCPEx.TestResources.PackageTemplate
-  alias MCPEx.TestResources.StaticBlob
-  alias MCPEx.TestResources.StaticText
-  alias MCPEx.TestTools.Echo
-  alias MCPEx.TestTools.Failing
-  alias MCPEx.TestTools.Structured
+  alias Snodo.Context
+  alias Snodo.Envelope
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Resource.Definition, as: ResourceDefinition
+  alias Snodo.Result
+  alias Snodo.Router
+  alias Snodo.Server
+  alias Snodo.Server.Runtime
+  alias Snodo.Transport.Context, as: TransportContext
+  alias Snodo.Transport.Stdio
+  alias SnodoTest.ComplianceCase
+  alias SnodoTest.FutureDialect
+  alias SnodoTest.TestCompletions.PackagePrompt
+  alias SnodoTest.TestCompletions.RepositoryTemplate
+  alias SnodoTest.TestFixtures
+  alias SnodoTest.TestPrompts.MediaReview
+  alias SnodoTest.TestPrompts.PackageAnalysis
+  alias SnodoTest.TestResources.PackageTemplate
+  alias SnodoTest.TestResources.StaticBlob
+  alias SnodoTest.TestResources.StaticText
+  alias SnodoTest.TestTools.Echo
+  alias SnodoTest.TestTools.Failing
+  alias SnodoTest.TestTools.Structured
 
   @literal_meta %{
     "io.modelcontextprotocol/protocolVersion" => "2026-07-28",
@@ -74,7 +74,7 @@ defmodule MCP.Compliance.V2026_07_28VectorsTest do
                "cacheScope" => "private",
                "_meta" => %{
                  "io.modelcontextprotocol/serverInfo" => %{
-                   "name" => "mcp-ex-spike",
+                   "name" => "snodo-spike",
                    "version" => "0.1.0"
                  }
                }
@@ -225,7 +225,7 @@ defmodule MCP.Compliance.V2026_07_28VectorsTest do
   test "conflicting exact dialect indicators are an invalid request, not an internal error" do
     runtime =
       TestFixtures.runtime(
-        protocols: [MCP.Protocol.V2026_07_28, FutureDialect],
+        protocols: [Snodo.Protocol.V2026_07_28, FutureDialect],
         tools: [Echo]
       )
 

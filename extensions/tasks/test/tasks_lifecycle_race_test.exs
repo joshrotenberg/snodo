@@ -1,12 +1,12 @@
-defmodule MCP.TasksLifecycleRaceTest do
+defmodule Snodo.TasksLifecycleRaceTest do
   use ExUnit.Case, async: false
 
   @moduletag mcp_contract: ["tasks-extension-races"]
   @moduletag :tasks_package
 
-  alias MCP.Extensions.Tasks.Runner
-  alias MCP.Extensions.Tasks.Store.Memory
-  alias MCPEx.TasksTestSupport, as: TasksSupport
+  alias Snodo.Extensions.Tasks.Runner
+  alias Snodo.Extensions.Tasks.Store.Memory
+  alias SnodoTest.TasksTestSupport, as: TasksSupport
 
   setup do
     store = start_supervised!(Memory)

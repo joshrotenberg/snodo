@@ -9,11 +9,11 @@ All packages are still local, pre-release path dependencies.
 
 | Package | Responsibility | Application ownership |
 |---|---|---|
-| `mcp_ex` | Revision admission, routing, results, MRTR, progress, subscriptions, native transports | Tool/resource/prompt definitions, immutable runtime, execution and source supervision |
-| `mcp_ex_plug` | Plug HTTP boundary, ordinary progress SSE and subscription streaming | Bandit/server choice, authenticated Plug pipeline, timeouts, TLS/proxy configuration |
-| `mcp_ex_jsv` | Optional Draft 2020-12 argument/output validation through JSV | Original schemas, compile-once catalog policy, validation cost limits |
-| `mcp_ex_tasks` | Exact-versioned Tasks extension and recoverable work lifecycle | WorkExecutor, store configuration, authorization and idempotency |
-| `mcp_ex_tasks_sqlite` / `mcp_ex_tasks_postgres` | Optional transactional Task persistence | Repo, migrations, database operations, backups and deployment topology |
+| `snodo` | Revision admission, routing, results, MRTR, progress, subscriptions, native transports | Tool/resource/prompt definitions, immutable runtime, execution and source supervision |
+| `snodo_plug` | Plug HTTP boundary, ordinary progress SSE and subscription streaming | Bandit/server choice, authenticated Plug pipeline, timeouts, TLS/proxy configuration |
+| `snodo_jsv` | Optional Draft 2020-12 argument/output validation through JSV | Original schemas, compile-once catalog policy, validation cost limits |
+| `snodo_tasks` | Exact-versioned Tasks extension and recoverable work lifecycle | WorkExecutor, store configuration, authorization and idempotency |
+| `snodo_tasks_sqlite` / `snodo_tasks_postgres` | Optional transactional Task persistence | Repo, migrations, database operations, backups and deployment topology |
 
 The dependency direction is one-way toward the core. Installing an integration
 does not silently start a listener, migrate a database, enable a protocol version,
@@ -37,10 +37,10 @@ compiled catalog for fixed schemas and bound execution. See example
 In an ordinary handler:
 
 ```elixir
-:ok = MCP.Progress.report(context, 0, total: 2, message: "Fetching package metadata")
+:ok = Snodo.Progress.report(context, 0, total: 2, message: "Fetching package metadata")
 # Perform the first bounded stage.
-:ok = MCP.Progress.report(context, 1, total: 2, message: "Preparing the report")
-# Return the usual MCP.Result after finishing.
+:ok = Snodo.Progress.report(context, 1, total: 2, message: "Preparing the report")
+# Return the usual Snodo.Result after finishing.
 ```
 
 A client-supplied string/integer `progressToken` enables reporting. Without a
@@ -94,16 +94,16 @@ store reads or a durable event delivery guarantee.
 ## Authorization at the component boundary
 
 Authentication stays in the application's Plug pipeline; only the verified
-identity reaches `MCP.Context.auth`. Authorization over the catalog is a
+identity reaches `Snodo.Context.auth`. Authorization over the catalog is a
 separate, optional runtime option:
 
 ```elixir
 MyApp.Server.runtime(authorization: {MyApp.Policy, catalog: MyApp.Catalog})
 ```
 
-`MyApp.Policy.authorize/4` receives the phase, an `MCP.Authorization.Component`,
-the derived `MCP.Context`, and the configured options. Return `:ok` or
-`{:error, %MCP.Error{}}`. The router applies the decision before argument
+`MyApp.Policy.authorize/4` receives the phase, an `Snodo.Authorization.Component`,
+the derived `Snodo.Context`, and the configured options. Return `:ok` or
+`{:error, %Snodo.Error{}}`. The router applies the decision before argument
 validation and before any tool, prompt, resource, or completion callback, so a
 guessed name cannot produce a side effect, and a refusal carries the
 application's own error instead of an unknown-name error.
@@ -116,7 +116,7 @@ Keep the following in mind when writing a policy:
 * Discovery refusals are ordinary filtering. Record audit events on the
   `:invocation` branch, which is the actual boundary violation.
 * Choose the refusal code. JSON-RPC reserves -32000..-32099 for
-  implementation-defined server errors, and `MCP.Error.authorization/3` builds
+  implementation-defined server errors, and `Snodo.Error.authorization/3` builds
   one. Over HTTP an application refusal is a JSON-RPC error inside a 200
   response; HTTP status codes remain the authentication layer's concern.
 * Capability advertisement is catalog-wide. A context that can see no tools

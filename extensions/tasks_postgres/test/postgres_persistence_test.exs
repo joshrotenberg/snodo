@@ -1,15 +1,15 @@
-defmodule MCP.Extensions.Tasks.Postgres.PersistenceTest do
+defmodule Snodo.Extensions.Tasks.Postgres.PersistenceTest do
   use ExUnit.Case, async: true
 
   @moduletag mcp_contract: ["tasks-postgres-adapter"]
 
-  alias MCP.Extensions.Tasks.Event
-  alias MCP.Extensions.Tasks.Snapshot
-  alias MCP.Extensions.Tasks.Store.Postgres.EventRow
-  alias MCP.Extensions.Tasks.Store.Postgres.Persistence
-  alias MCP.Extensions.Tasks.Store.Postgres.TaskRow
-  alias MCP.Extensions.Tasks.Task, as: ProtocolTask
-  alias MCP.Extensions.Tasks.Work
+  alias Snodo.Extensions.Tasks.Event
+  alias Snodo.Extensions.Tasks.Snapshot
+  alias Snodo.Extensions.Tasks.Store.Postgres.EventRow
+  alias Snodo.Extensions.Tasks.Store.Postgres.Persistence
+  alias Snodo.Extensions.Tasks.Store.Postgres.TaskRow
+  alias Snodo.Extensions.Tasks.Task, as: ProtocolTask
+  alias Snodo.Extensions.Tasks.Work
 
   @created_at "2026-08-25T10:00:00.000Z"
 

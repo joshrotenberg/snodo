@@ -1,18 +1,18 @@
-defmodule MCP.Transport.StreamableHTTP.AdapterAcceptanceTest do
+defmodule Snodo.Transport.StreamableHTTP.AdapterAcceptanceTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Transport.StreamableHTTP
-  alias MCP.Transport.StreamableHTTP.Request
-  alias MCP.Transport.StreamableHTTP.StreamResponse
-  alias MCPEx.TestCompletions.PackagePrompt
-  alias MCPEx.TestExtensions.HTTPPolicy
-  alias MCPEx.TestFixtures
-  alias MCPEx.TestPrompts.PackageAnalysis
-  alias MCPEx.TestResources.StaticText
-  alias MCPEx.TestSubscriptionHub
-  alias MCPEx.TestSubscriptionSource
-  alias MCPEx.TestTools.Echo
-  alias MCPEx.TestTools.Structured
+  alias Snodo.Transport.StreamableHTTP
+  alias Snodo.Transport.StreamableHTTP.Request
+  alias Snodo.Transport.StreamableHTTP.StreamResponse
+  alias SnodoTest.TestCompletions.PackagePrompt
+  alias SnodoTest.TestExtensions.HTTPPolicy
+  alias SnodoTest.TestFixtures
+  alias SnodoTest.TestPrompts.PackageAnalysis
+  alias SnodoTest.TestResources.StaticText
+  alias SnodoTest.TestSubscriptionHub
+  alias SnodoTest.TestSubscriptionSource
+  alias SnodoTest.TestTools.Echo
+  alias SnodoTest.TestTools.Structured
 
   @protocol "2026-07-28"
 
@@ -38,7 +38,7 @@ defmodule MCP.Transport.StreamableHTTP.AdapterAcceptanceTest do
     assert {"x-accel-buffering", "no"} in response.headers
     assert_receive {:subscription_opened, "adapter-sub", %{"toolsListChanged" => true}}
 
-    assert :ok = MCP.Subscription.close(subscription, :disconnected)
+    assert :ok = Snodo.Subscription.close(subscription, :disconnected)
     assert_receive {:subscription_closed, "adapter-sub", :disconnected}
   end
 
@@ -229,7 +229,7 @@ defmodule MCP.Transport.StreamableHTTP.AdapterAcceptanceTest do
   test "keeps missing metadata, header mismatch, and unsupported version distinct" do
     runtime = TestFixtures.runtime()
     raw = TestFixtures.request(7, "server/discover")
-    protocol_key = MCP.Protocol.V2026_07_28.protocol_version_key()
+    protocol_key = Snodo.Protocol.V2026_07_28.protocol_version_key()
 
     missing_metadata = put_in(raw, ["params", "_meta"], %{})
 
@@ -404,7 +404,7 @@ defmodule MCP.Transport.StreamableHTTP.AdapterAcceptanceTest do
   defp extension_request(id, method, params) do
     TestFixtures.request(id, method, params)
     |> put_in(
-      ["params", "_meta", MCP.Protocol.V2026_07_28.client_capabilities_key()],
+      ["params", "_meta", Snodo.Protocol.V2026_07_28.client_capabilities_key()],
       %{"extensions" => %{HTTPPolicy.id() => %{}}}
     )
   end

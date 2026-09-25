@@ -1,7 +1,7 @@
-defmodule MCP.Extensions.Tasks.EffectCodecTest do
+defmodule Snodo.Extensions.Tasks.EffectCodecTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Extensions.Tasks.EffectCodec
+  alias Snodo.Extensions.Tasks.EffectCodec
 
   @retry_at "2026-08-25T10:00:01.500Z"
 

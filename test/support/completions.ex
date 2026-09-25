@@ -1,5 +1,5 @@
-defmodule MCPEx.TestCompletions.PackagePrompt do
-  use MCP.Prompt,
+defmodule SnodoTest.TestCompletions.PackagePrompt do
+  use Snodo.Prompt,
     name: "package_search",
     description: "Searches Hex packages with completion-aware arguments",
     arguments: [
@@ -13,23 +13,24 @@ defmodule MCPEx.TestCompletions.PackagePrompt do
 
   @impl true
   def render(%{"name" => name}, _context) do
-    {:ok, MCP.Result.prompt_get(MCP.Prompt.message(:user, MCP.Prompt.text("Analyze #{name}.")))}
+    {:ok,
+     Snodo.Result.prompt_get(Snodo.Prompt.message(:user, Snodo.Prompt.text("Analyze #{name}.")))}
   end
 
   @impl true
-  def complete(%MCP.Completion{argument: "name", value: value}, _context) do
+  def complete(%Snodo.Completion{argument: "name", value: value}, _context) do
     values = Enum.filter(@packages, &String.starts_with?(&1, value))
-    {:ok, MCP.Result.completion(values, total: length(values), has_more: false)}
+    {:ok, Snodo.Result.completion(values, total: length(values), has_more: false)}
   end
 
-  def complete(%MCP.Completion{argument: "focus", value: value}, _context) do
+  def complete(%Snodo.Completion{argument: "focus", value: value}, _context) do
     values = Enum.filter(@focuses, &String.starts_with?(&1, value))
-    {:ok, MCP.Result.completion(values, total: length(values))}
+    {:ok, Snodo.Result.completion(values, total: length(values))}
   end
 end
 
-defmodule MCPEx.TestCompletions.RepositoryTemplate do
-  use MCP.Resource,
+defmodule SnodoTest.TestCompletions.RepositoryTemplate do
+  use Snodo.Resource,
     uri_template: "repo://{owner}/{name}",
     name: "repository",
     description: "Repository data with contextual owner/name completion",
@@ -47,17 +48,17 @@ defmodule MCPEx.TestCompletions.RepositoryTemplate do
 
   @impl true
   def read(%{"uri" => uri}, _context) do
-    {:ok, MCP.Result.resource_read(MCP.Resource.text(uri, "repository"))}
+    {:ok, Snodo.Result.resource_read(Snodo.Resource.text(uri, "repository"))}
   end
 
   @impl true
-  def complete(%MCP.Completion{argument: "owner", value: value}, _context) do
+  def complete(%Snodo.Completion{argument: "owner", value: value}, _context) do
     values = Enum.filter(@owners, &String.starts_with?(&1, value))
-    {:ok, MCP.Result.completion(values, total: length(values))}
+    {:ok, Snodo.Result.completion(values, total: length(values))}
   end
 
   def complete(
-        %MCP.Completion{
+        %Snodo.Completion{
           argument: "name",
           value: value,
           arguments: %{"owner" => owner}
@@ -65,69 +66,69 @@ defmodule MCPEx.TestCompletions.RepositoryTemplate do
         _context
       ) do
     values = @repositories |> Map.get(owner, []) |> Enum.filter(&String.starts_with?(&1, value))
-    {:ok, MCP.Result.completion(values, total: length(values), has_more: false)}
+    {:ok, Snodo.Result.completion(values, total: length(values), has_more: false)}
   end
 
-  def complete(%MCP.Completion{argument: "name"}, _context) do
-    {:ok, MCP.Result.completion([])}
+  def complete(%Snodo.Completion{argument: "name"}, _context) do
+    {:ok, Snodo.Result.completion([])}
   end
 end
 
-defmodule MCPEx.TestCompletions.DeclaredError do
-  use MCP.Prompt,
+defmodule SnodoTest.TestCompletions.DeclaredError do
+  use Snodo.Prompt,
     name: "completion_declared_error",
     arguments: [%{"name" => "value"}],
     completion_arguments: ["value"]
 
   @impl true
-  def render(_arguments, _context), do: {:ok, MCP.Result.prompt_get([])}
+  def render(_arguments, _context), do: {:ok, Snodo.Result.prompt_get([])}
 
   @impl true
   def complete(_completion, _context) do
-    {:error, MCP.Error.invalid_params("Completion access denied")}
+    {:error, Snodo.Error.invalid_params("Completion access denied")}
   end
 end
 
-defmodule MCPEx.TestCompletions.WrongKind do
-  use MCP.Prompt,
+defmodule SnodoTest.TestCompletions.WrongKind do
+  use Snodo.Prompt,
     name: "completion_wrong_kind",
     arguments: [%{"name" => "value"}],
     completion_arguments: ["value"]
 
   @impl true
-  def render(_arguments, _context), do: {:ok, MCP.Result.prompt_get([])}
+  def render(_arguments, _context), do: {:ok, Snodo.Result.prompt_get([])}
 
   @impl true
-  def complete(_completion, _context), do: {:ok, MCP.Result.text("wrong")}
+  def complete(_completion, _context), do: {:ok, Snodo.Result.text("wrong")}
 end
 
-defmodule MCPEx.TestCompletions.InvalidResult do
-  use MCP.Prompt,
+defmodule SnodoTest.TestCompletions.InvalidResult do
+  use Snodo.Prompt,
     name: "completion_invalid_result",
     arguments: [%{"name" => "value"}],
     completion_arguments: ["value"]
 
   @impl true
-  def render(_arguments, _context), do: {:ok, MCP.Result.prompt_get([])}
+  def render(_arguments, _context), do: {:ok, Snodo.Result.prompt_get([])}
 
   @impl true
   def complete(_completion, _context) do
-    {:ok, MCP.Result.completion(Enum.map(1..101, &Integer.to_string/1))}
+    {:ok, Snodo.Result.completion(Enum.map(1..101, &Integer.to_string/1))}
   end
 end
 
-defmodule MCPEx.TestCompletions.Raising do
-  use MCP.Prompt,
+defmodule SnodoTest.TestCompletions.Raising do
+  use Snodo.Prompt,
     name: "completion_raising",
     arguments: [%{"name" => "value"}],
     completion_arguments: ["value"]
 
   @impl true
-  def render(_arguments, _context), do: {:ok, MCP.Result.prompt_get([])}
+  def render(_arguments, _context), do: {:ok, Snodo.Result.prompt_get([])}
 
   # Raising is the point: the router must isolate a fixture fault. The spec
   # states that so Dialyzer does not report it as an accidental no_return.
-  @spec complete(MCP.Completion.t(), MCP.Context.t()) :: no_return()
+  @spec complete(Snodo.Completion.t(), Snodo.Context.t()) :: no_return()
   @impl true
   def complete(_completion, _context), do: raise("private completion fixture detail")
 end

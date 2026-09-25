@@ -1,17 +1,17 @@
-defmodule MCP.ResourceRoutingTest do
+defmodule Snodo.ResourceRoutingTest do
   @moduledoc """
   Generated template matchers, and the variables they hand to `read/2`.
   """
 
   use ExUnit.Case, async: true
 
-  alias MCP.Test, as: MCPTest
-  alias MCPEx.TestFixtures
+  alias Snodo.Test, as: MCPTest
+  alias SnodoTest.TestFixtures
 
   defmodule PackageInfo do
     @moduledoc false
 
-    use MCP.Resource,
+    use Snodo.Resource,
       uri_template: "hex://{name}/info",
       name: "package_info",
       mime_type: "application/json"
@@ -20,33 +20,33 @@ defmodule MCP.ResourceRoutingTest do
     # generated and its bound variables arrive here.
     @impl true
     def read(%{"uri" => uri, "name" => name}, _context) do
-      {:ok, MCP.Result.resource_read(MCP.Resource.json(uri, %{"name" => name}))}
+      {:ok, Snodo.Result.resource_read(Snodo.Resource.json(uri, %{"name" => name}))}
     end
   end
 
   defmodule CategoryProjects do
     @moduledoc false
 
-    use MCP.Resource,
+    use Snodo.Resource,
       uri_template: "toolbox://{group}/{category}",
       name: "toolbox_category",
       mime_type: "application/json"
 
     @impl true
     def read(%{"uri" => uri, "group" => group, "category" => category}, _context) do
-      content = MCP.Resource.json(uri, %{"group" => group, "category" => category})
-      {:ok, MCP.Result.resource_read(content)}
+      content = Snodo.Resource.json(uri, %{"group" => group, "category" => category})
+      {:ok, Snodo.Result.resource_read(content)}
     end
   end
 
   defmodule Groups do
     @moduledoc false
 
-    use MCP.Resource, uri: "toolbox://groups", name: "toolbox_groups"
+    use Snodo.Resource, uri: "toolbox://groups", name: "toolbox_groups"
 
     @impl true
     def read(%{"uri" => uri}, _context) do
-      {:ok, MCP.Result.resource_read(MCP.Resource.json(uri, %{"groups" => []}))}
+      {:ok, Snodo.Result.resource_read(Snodo.Resource.json(uri, %{"groups" => []}))}
     end
   end
 
@@ -55,14 +55,14 @@ defmodule MCP.ResourceRoutingTest do
 
     # An operator puts this outside the subset, so no matcher is generated and
     # the module supplies its own. A boolean answer still routes.
-    use MCP.Resource, uri_template: "hex://{+path}/raw", name: "raw"
+    use Snodo.Resource, uri_template: "hex://{+path}/raw", name: "raw"
 
     @impl true
     def matches?(uri), do: String.starts_with?(uri, "hex://") and String.ends_with?(uri, "/raw")
 
     @impl true
     def read(%{"uri" => uri}, _context) do
-      {:ok, MCP.Result.resource_read(MCP.Resource.text(uri, "raw", mime_type: "text/plain"))}
+      {:ok, Snodo.Result.resource_read(Snodo.Resource.text(uri, "raw", mime_type: "text/plain"))}
     end
   end
 
@@ -153,7 +153,7 @@ defmodule MCP.ResourceRoutingTest do
       defmodule Shadowing do
         @moduledoc false
 
-        use MCP.Resource, uri_template: "hex://{name}/shadow", name: "shadow"
+        use Snodo.Resource, uri_template: "hex://{name}/shadow", name: "shadow"
 
         @impl true
         def matches?(_uri), do: {:ok, %{"uri" => "hijacked"}}
@@ -163,7 +163,7 @@ defmodule MCP.ResourceRoutingTest do
       end
 
       assert_raise ArgumentError, ~r/reserved request keys: uri/, fn ->
-        MCP.Router.register_resource(MCP.Router.new(), Shadowing)
+        Snodo.Router.register_resource(Snodo.Router.new(), Shadowing)
       end
     end
 
@@ -171,7 +171,7 @@ defmodule MCP.ResourceRoutingTest do
       defmodule NonString do
         @moduledoc false
 
-        use MCP.Resource, uri_template: "hex://{name}/bad", name: "bad"
+        use Snodo.Resource, uri_template: "hex://{name}/bad", name: "bad"
 
         @impl true
         def matches?(_uri), do: {:ok, %{"name" => :atom}}
@@ -181,7 +181,7 @@ defmodule MCP.ResourceRoutingTest do
       end
 
       assert_raise ArgumentError, ~r/must bind string variables to strings/, fn ->
-        MCP.Router.register_resource(MCP.Router.new(), NonString)
+        Snodo.Router.register_resource(Snodo.Router.new(), NonString)
       end
     end
   end

@@ -6,8 +6,8 @@ defmodule Mix.Tasks.Tasks.Postgres.Contract do
   @contract_ids ["tasks-postgres-adapter"]
 
   @contract_test_modules [
-    MCP.Extensions.Tasks.Postgres.AdapterTest,
-    MCP.Extensions.Tasks.Postgres.PersistenceTest
+    Snodo.Extensions.Tasks.Postgres.AdapterTest,
+    Snodo.Extensions.Tasks.Postgres.PersistenceTest
   ]
 
   @contract_test_paths [

@@ -13,12 +13,12 @@ defmodule Mix.Tasks.Tasks.Sqlite.Contract do
     "tasks-sqlite-recovery"
   ]
 
-  @contract_test_module MCP.Extensions.Tasks.SQLite.IntegrationTest
+  @contract_test_module Snodo.Extensions.Tasks.SQLite.IntegrationTest
   @contract_test_path "test/sqlite_integration_test.exs"
 
   @moduledoc """
   Runs the file-backed SQLite adapter contract and verifies its local evidence
-  tags without coupling the package to `MCP.Compliance`.
+  tags without coupling the package to `Snodo.Compliance`.
 
       mix tasks.sqlite.contract
 

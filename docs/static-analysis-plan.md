@@ -12,15 +12,15 @@ all six Mix packages. They do not change any runtime dependency graph:
   environment with `:unmatched_returns` and `:error_handling` enabled;
 - all six packages declare those tools with
   `only: [:dev, :test], runtime: false`;
-- standalone core `mcp_ex` has no runtime dependency, while child
-  `:mcp_ex_tasks` has a one-way runtime dependency only on `mcp_ex`;
-- optional `:mcp_ex_tasks_postgres` depends one way on Tasks plus Ecto SQL and
+- standalone core `snodo` has no runtime dependency, while child
+  `:snodo_tasks` has a one-way runtime dependency only on `snodo`;
+- optional `:snodo_tasks_postgres` depends one way on Tasks plus Ecto SQL and
   Jason; Postgrex remains optional because the host application supplies and
   supervises its PostgreSQL-backed `Ecto.Repo`;
-- optional `:mcp_ex_tasks_sqlite` also depends one way on Tasks plus Ecto SQL
+- optional `:snodo_tasks_sqlite` also depends one way on Tasks plus Ecto SQL
   and Jason; `ecto_sqlite3` remains optional because the host application
   supplies and supervises its SQLite-backed Repo;
-- optional `:mcp_ex_plug` and `:mcp_ex_jsv` depend inward on the core and add
+- optional `:snodo_plug` and `:snodo_jsv` depend inward on the core and add
   Plug hosting and JSV validation respectively; they are not protocol extensions;
 - the current tree passes both gates without a Dialyzer ignore file; Credo's
   narrow naming and alias policies are documented beside their configuration.
@@ -58,7 +58,7 @@ mix format --check-formatted
 mix compile --warnings-as-errors
 mix credo --strict
 mix test --warnings-as-errors --raise
-mix mcp.contract
+mix snodo.contract
 mix examples
 mix cmd --cd extensions/tasks mix quality
 mix cmd --cd extensions/tasks_postgres mix quality
@@ -72,13 +72,13 @@ runtime dependencies normally, promotes script compiler warnings to errors, and
 requires its exact one-line success marker. The root task runs examples 01–06
 and the Resources/Prompts/Completion/Pagination/Subscriptions examples 12–16
 plus the bounded producer, instrumentation, and MRTR examples 18–20 in the core,
-delegates examples 07–09 and 17 to `:mcp_ex_tasks`, and delegates embedded example 11 to
-`:mcp_ex_tasks_sqlite`. Examples 21/22 use the Plug and JSV integrations, for
+delegates examples 07–09 and 17 to `:snodo_tasks`, and delegates embedded example 11 to
+`:snodo_tasks_sqlite`. Examples 21/22 use the Plug and JSV integrations, for
 twenty-one no-external-service walkthroughs. The
 present suite requires a POSIX host with `sh` and `mkfifo` for the real stdio
 subprocess half-close check.
 
-Tasks, storage, and JSV example aliases use `mix mcp.example PATH` to preserve the active Mix
+Tasks, storage, and JSV example aliases use `mix snodo.example PATH` to preserve the active Mix
 environment and build path in an isolated VM. This matters when `quality`
 selects test through `preferred_envs` without an explicit `MIX_ENV` variable.
 Quality test steps use `--raise` to stop the alias immediately on a failure;
@@ -116,7 +116,7 @@ dedicated database URL:
 
 ```sh
 cd extensions/tasks_postgres
-MCP_TASKS_DATABASE_URL=ecto://postgres:postgres@127.0.0.1:55432/mcp_ex_tasks \
+SNODO_TASKS_DATABASE_URL=ecto://postgres:postgres@127.0.0.1:55432/snodo_tasks \
   mix quality.postgres
 ```
 
@@ -142,7 +142,7 @@ mix cmd --cd integrations/schema_jsv mix quality.types
 Protocol evidence remains a separate lane:
 
 ```sh
-mix mcp.contract
+mix snodo.contract
 ```
 
 The core task covers its 31 groups. Tasks contract evidence remains local to
@@ -159,7 +159,7 @@ evidence answer different questions and neither substitutes for the other.
 
 Credo uses its normal strict check set with narrow, documented conventions:
 
-- private compiled test fixtures under `MCPEx.*` are not required to publish
+- private compiled test fixtures under `SnodoTest.*` are not required to publish
   module documentation;
 - exact-revision modules such as `V2026_07_28` retain the wire version in their
   module name;

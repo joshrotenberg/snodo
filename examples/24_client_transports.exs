@@ -1,7 +1,7 @@
 defmodule Examples.ClientTransports.Greet do
   @moduledoc false
 
-  use MCP.Tool,
+  use Snodo.Tool,
     name: "greet",
     description: "Create a greeting"
 
@@ -13,16 +13,16 @@ defmodule Examples.ClientTransports.Greet do
   })
 
   @impl true
-  def call(%{"name" => name}, _context), do: {:ok, MCP.Result.text("Hello, #{name}!")}
+  def call(%{"name" => name}, _context), do: {:ok, Snodo.Result.text("Hello, #{name}!")}
 end
 
 defmodule Examples.ClientTransports.Server do
   @moduledoc false
 
-  use MCP.Server,
+  use Snodo.Server,
     name: "client-transports-example",
     version: "0.1.0",
-    protocols: [MCP.Protocol.V2026_07_28]
+    protocols: [Snodo.Protocol.V2026_07_28]
 
   tool(Examples.ClientTransports.Greet)
 end
@@ -34,13 +34,13 @@ defmodule Examples.ClientTransports.Runner do
   @moduledoc false
 
   alias Examples.ClientTransports.Server
-  alias MCP.Client
-  alias MCP.Transport.StreamableHTTP.Server, as: HTTPServer
+  alias Snodo.Client
+  alias Snodo.Transport.StreamableHTTP.Server, as: HTTPServer
 
   @expected {"Hello, Ada!", -32_602}
 
   def run(["--serve-stdio"]) do
-    :ok = MCP.Transport.Stdio.serve(Server.runtime())
+    :ok = Snodo.Transport.Stdio.serve(Server.runtime())
   end
 
   def run(args) do
@@ -75,7 +75,7 @@ defmodule Examples.ClientTransports.Runner do
 
   defp targets(url) do
     elixir = System.find_executable("elixir") || raise "elixir executable was not found"
-    ebin = MCP.Client |> :code.which() |> List.to_string() |> Path.dirname()
+    ebin = Snodo.Client |> :code.which() |> List.to_string() |> Path.dirname()
 
     [
       direct: fn -> Client.direct(Server.runtime()) end,
@@ -92,12 +92,12 @@ defmodule Examples.ClientTransports.Runner do
     {:ok, %{"content" => [%{"type" => "text", "text" => text}]}} =
       Client.call_tool(client, "greet", %{"name" => "Ada"})
 
-    {:error, %MCP.Error{code: code}} = Client.call_tool(client, "missing")
+    {:error, %Snodo.Error{code: code}} = Client.call_tool(client, "missing")
     {text, code}
   end
 
   defp print_walkthrough(results) do
-    IO.puts("One MCP.Client API over three transports:\n")
+    IO.puts("One Snodo.Client API over three transports:\n")
 
     for {label, {text, code}} <- results do
       IO.puts("  #{label}: greet -> #{inspect(text)}, unknown tool -> #{code}")

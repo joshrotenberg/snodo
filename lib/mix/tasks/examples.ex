@@ -38,7 +38,7 @@ defmodule Mix.Tasks.Examples do
 
   @check_expression """
   System.argv(["--check"])
-  example = System.fetch_env!("MCP_EX_EXAMPLE_FILE")
+  example = System.fetch_env!("SNODO_EXAMPLE_FILE")
 
   {_loaded, diagnostics} =
     Code.with_diagnostics(fn -> Code.require_file(example) end)
@@ -95,7 +95,7 @@ defmodule Mix.Tasks.Examples do
         ],
         cd: root,
         env: [
-          {"MCP_EX_EXAMPLE_FILE", Path.join(root, example)},
+          {"SNODO_EXAMPLE_FILE", Path.join(root, example)},
           {"MIX_BUILD_PATH", build_path},
           {"MIX_ENV", Atom.to_string(Mix.env())}
         ],

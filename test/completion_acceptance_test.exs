@@ -1,19 +1,19 @@
-defmodule MCP.CompletionAcceptanceTest do
+defmodule Snodo.CompletionAcceptanceTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Completion
-  alias MCP.Context
-  alias MCP.Error
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Result
-  alias MCP.Router
-  alias MCP.Transport.Context, as: TransportContext
-  alias MCPEx.TestCompletions.DeclaredError
-  alias MCPEx.TestCompletions.InvalidResult
-  alias MCPEx.TestCompletions.PackagePrompt
-  alias MCPEx.TestCompletions.Raising
-  alias MCPEx.TestCompletions.RepositoryTemplate
-  alias MCPEx.TestCompletions.WrongKind
+  alias Snodo.Completion
+  alias Snodo.Context
+  alias Snodo.Error
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Result
+  alias Snodo.Router
+  alias Snodo.Transport.Context, as: TransportContext
+  alias SnodoTest.TestCompletions.DeclaredError
+  alias SnodoTest.TestCompletions.InvalidResult
+  alias SnodoTest.TestCompletions.PackagePrompt
+  alias SnodoTest.TestCompletions.Raising
+  alias SnodoTest.TestCompletions.RepositoryTemplate
+  alias SnodoTest.TestCompletions.WrongKind
 
   defp context do
     %Context{
@@ -157,27 +157,27 @@ defmodule MCP.CompletionAcceptanceTest do
   test "compile-time declarations require owned arguments and completion callbacks" do
     assert_raise CompileError, ~r/unique names declared in arguments/, fn ->
       Code.compile_string("""
-      defmodule MCPEx.BadPromptCompletionArgument do
-        use MCP.Prompt,
+      defmodule SnodoTest.BadPromptCompletionArgument do
+        use Snodo.Prompt,
           name: "bad_prompt_completion_argument",
           arguments: [%{"name" => "known"}],
           completion_arguments: ["unknown"]
 
-        def render(_arguments, _context), do: {:ok, MCP.Result.prompt_get([])}
+        def render(_arguments, _context), do: {:ok, Snodo.Result.prompt_get([])}
       end
       """)
     end
 
     assert_raise CompileError, ~r/only resource templates may declare completion_arguments/, fn ->
       Code.compile_string("""
-      defmodule MCPEx.BadDirectResourceCompletion do
-        use MCP.Resource,
+      defmodule SnodoTest.BadDirectResourceCompletion do
+        use Snodo.Resource,
           uri: "test://bad-direct-completion",
           name: "bad_direct_completion",
           completion_arguments: ["value"]
 
         def read(%{"uri" => uri}, _context) do
-          {:ok, MCP.Result.resource_read(MCP.Resource.text(uri, "bad"))}
+          {:ok, Snodo.Result.resource_read(Snodo.Resource.text(uri, "bad"))}
         end
       end
       """)
@@ -185,13 +185,13 @@ defmodule MCP.CompletionAcceptanceTest do
 
     [{module, _bytecode}] =
       Code.compile_string("""
-      defmodule MCPEx.MissingCompletionCallback do
-        use MCP.Prompt,
+      defmodule SnodoTest.MissingCompletionCallback do
+        use Snodo.Prompt,
           name: "missing_completion_callback",
           arguments: [%{"name" => "value"}],
           completion_arguments: ["value"]
 
-        def render(_arguments, _context), do: {:ok, MCP.Result.prompt_get([])}
+        def render(_arguments, _context), do: {:ok, Snodo.Result.prompt_get([])}
       end
       """)
 

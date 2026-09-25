@@ -1,5 +1,5 @@
-defmodule MCPEx.TestPrompts.PackageAnalysis do
-  use MCP.Prompt,
+defmodule SnodoTest.TestPrompts.PackageAnalysis do
+  use Snodo.Prompt,
     name: "package_analysis",
     title: "Analyze a Hex package",
     description: "Builds a guided package analysis workflow",
@@ -27,21 +27,21 @@ defmodule MCPEx.TestPrompts.PackageAnalysis do
     focus = Map.get(arguments, "focus", "health, adoption, and risk")
 
     messages = [
-      MCP.Prompt.message(
+      Snodo.Prompt.message(
         :user,
-        MCP.Prompt.text("Analyze #{name}, focusing on #{focus}.",
+        Snodo.Prompt.text("Analyze #{name}, focusing on #{focus}.",
           annotations: %{"audience" => ["assistant"], "priority" => 0.9},
           metadata: %{"com.example/content" => "request"}
         )
       ),
-      MCP.Prompt.message(
+      Snodo.Prompt.message(
         :assistant,
-        MCP.Prompt.text("I will use package tools and report the evidence.")
+        Snodo.Prompt.text("I will use package tools and report the evidence.")
       )
     ]
 
     {:ok,
-     MCP.Result.prompt_get(messages,
+     Snodo.Result.prompt_get(messages,
        description: "Analysis workflow for #{name}",
        metadata: %{
          "com.example/result" => %{
@@ -53,8 +53,8 @@ defmodule MCPEx.TestPrompts.PackageAnalysis do
   end
 end
 
-defmodule MCPEx.TestPrompts.MediaReview do
-  use MCP.Prompt,
+defmodule SnodoTest.TestPrompts.MediaReview do
+  use Snodo.Prompt,
     name: "media_review",
     description: "Returns the non-text prompt content blocks",
     arguments: [%{"name" => "uri", "required" => true}]
@@ -65,49 +65,49 @@ defmodule MCPEx.TestPrompts.MediaReview do
   @impl true
   def render(%{"uri" => uri}, _context) do
     messages = [
-      MCP.Prompt.message(:user, MCP.Prompt.image(@one_pixel_png, "image/png")),
-      MCP.Prompt.message(:assistant, MCP.Prompt.audio(@silent_wav, "audio/wav")),
-      MCP.Prompt.message(
+      Snodo.Prompt.message(:user, Snodo.Prompt.image(@one_pixel_png, "image/png")),
+      Snodo.Prompt.message(:assistant, Snodo.Prompt.audio(@silent_wav, "audio/wav")),
+      Snodo.Prompt.message(
         :user,
-        MCP.Prompt.embedded_resource(MCP.Resource.text(uri, "embedded package notes"))
+        Snodo.Prompt.embedded_resource(Snodo.Resource.text(uri, "embedded package notes"))
       ),
-      MCP.Prompt.message(:assistant, MCP.Prompt.resource_link(uri, "package_notes"))
+      Snodo.Prompt.message(:assistant, Snodo.Prompt.resource_link(uri, "package_notes"))
     ]
 
-    {:ok, MCP.Result.prompt_get(messages)}
+    {:ok, Snodo.Result.prompt_get(messages)}
   end
 end
 
-defmodule MCPEx.TestPrompts.DeclaredError do
-  use MCP.Prompt,
+defmodule SnodoTest.TestPrompts.DeclaredError do
+  use Snodo.Prompt,
     name: "declared_error",
     description: "Returns an explicit protocol error"
 
   @impl true
   def render(_arguments, _context) do
-    {:error, MCP.Error.invalid_params("Prompt access denied")}
+    {:error, Snodo.Error.invalid_params("Prompt access denied")}
   end
 end
 
-defmodule MCPEx.TestPrompts.InvalidContent do
-  use MCP.Prompt,
+defmodule SnodoTest.TestPrompts.InvalidContent do
+  use Snodo.Prompt,
     name: "invalid_content",
     description: "Returns invalid content for failure-boundary coverage"
 
   @impl true
   def render(_arguments, _context) do
     {:ok,
-     MCP.Result.prompt_get([
+     Snodo.Result.prompt_get([
        %{"role" => "user", "content" => %{"type" => "image", "data" => "not-base64"}}
      ])}
   end
 end
 
-defmodule MCPEx.TestPrompts.WrongKind do
-  use MCP.Prompt,
+defmodule SnodoTest.TestPrompts.WrongKind do
+  use Snodo.Prompt,
     name: "wrong_kind",
     description: "Returns the wrong protocol-neutral result kind"
 
   @impl true
-  def render(_arguments, _context), do: {:ok, MCP.Result.text("wrong")}
+  def render(_arguments, _context), do: {:ok, Snodo.Result.text("wrong")}
 end

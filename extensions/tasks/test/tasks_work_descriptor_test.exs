@@ -1,5 +1,5 @@
-defmodule MCPEx.TasksWorkDescriptorTest.Executor do
-  @behaviour MCP.Extensions.Tasks.WorkExecutor
+defmodule SnodoTest.TasksWorkDescriptorTest.Executor do
+  @behaviour Snodo.Extensions.Tasks.WorkExecutor
 
   @impl true
   def execute(work, cancellation, owner) do
@@ -8,37 +8,37 @@ defmodule MCPEx.TasksWorkDescriptorTest.Executor do
   end
 end
 
-defmodule MCPEx.TasksWorkDescriptorTest.RaisingExecutor do
-  @behaviour MCP.Extensions.Tasks.WorkExecutor
+defmodule SnodoTest.TasksWorkDescriptorTest.RaisingExecutor do
+  @behaviour Snodo.Extensions.Tasks.WorkExecutor
 
   @impl true
   def execute(_work, _cancellation, _state), do: raise("executor failed")
 end
 
-defmodule MCPEx.TasksWorkDescriptorTest.InvalidExecutor do
-  @behaviour MCP.Extensions.Tasks.WorkExecutor
+defmodule SnodoTest.TasksWorkDescriptorTest.InvalidExecutor do
+  @behaviour Snodo.Extensions.Tasks.WorkExecutor
 
   @impl true
   def execute(_work, _cancellation, _state), do: :invalid
 end
 
-defmodule MCP.TasksWorkDescriptorTest do
+defmodule Snodo.TasksWorkDescriptorTest do
   use ExUnit.Case, async: true
 
   @moduletag mcp_contract: ["tasks-work-descriptor"]
   @moduletag :tasks_package
 
-  alias MCP.Cancellation
-  alias MCP.Extensions.Tasks.Event
-  alias MCP.Extensions.Tasks.RetryPolicy
-  alias MCP.Extensions.Tasks.Snapshot
-  alias MCP.Extensions.Tasks.Task, as: ProtocolTask
-  alias MCP.Extensions.Tasks.Transition
-  alias MCP.Extensions.Tasks.Work
-  alias MCP.Extensions.Tasks.WorkExecutor
-  alias MCPEx.TasksWorkDescriptorTest.Executor
-  alias MCPEx.TasksWorkDescriptorTest.InvalidExecutor
-  alias MCPEx.TasksWorkDescriptorTest.RaisingExecutor
+  alias Snodo.Cancellation
+  alias Snodo.Extensions.Tasks.Event
+  alias Snodo.Extensions.Tasks.RetryPolicy
+  alias Snodo.Extensions.Tasks.Snapshot
+  alias Snodo.Extensions.Tasks.Task, as: ProtocolTask
+  alias Snodo.Extensions.Tasks.Transition
+  alias Snodo.Extensions.Tasks.Work
+  alias Snodo.Extensions.Tasks.WorkExecutor
+  alias SnodoTest.TasksWorkDescriptorTest.Executor
+  alias SnodoTest.TasksWorkDescriptorTest.InvalidExecutor
+  alias SnodoTest.TasksWorkDescriptorTest.RaisingExecutor
 
   @created_at "2026-08-24T10:00:00.000Z"
   @requested_at "2026-08-24T10:00:01.000Z"

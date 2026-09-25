@@ -1,25 +1,25 @@
-defmodule MCP.ClientTest do
+defmodule Snodo.ClientTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Client
-  alias MCP.Client.Page
-  alias MCP.Error
-  alias MCP.Protocol.V2025_11_25
-  alias MCP.Protocol.V2026_07_28
-  alias MCPEx.MRTR.Choice
-  alias MCPEx.MRTR.Server, as: ChoiceServer
-  alias MCPEx.TestAuthorization.Policy
-  alias MCPEx.TestFixtures
-  alias MCPEx.TestPrompts.PackageAnalysis
-  alias MCPEx.TestResources.PackageTemplate
-  alias MCPEx.TestResources.StaticText
-  alias MCPEx.TestTools.Echo
+  alias Snodo.Client
+  alias Snodo.Client.Page
+  alias Snodo.Error
+  alias Snodo.Protocol.V2025_11_25
+  alias Snodo.Protocol.V2026_07_28
+  alias SnodoTest.MRTR.Choice
+  alias SnodoTest.MRTR.Server, as: ChoiceServer
+  alias SnodoTest.TestAuthorization.Policy
+  alias SnodoTest.TestFixtures
+  alias SnodoTest.TestPrompts.PackageAnalysis
+  alias SnodoTest.TestResources.PackageTemplate
+  alias SnodoTest.TestResources.StaticText
+  alias SnodoTest.TestTools.Echo
 
   @form_caps %{"elicitation" => %{"form" => %{}}}
 
   defmodule CannedTransport do
     @moduledoc false
-    @behaviour MCP.Client.Transport
+    @behaviour Snodo.Client.Transport
 
     @impl true
     def connect(owner, _opts), do: {:ok, owner}
@@ -107,7 +107,7 @@ defmodule MCP.ClientTest do
                Client.call_tool(client(), "failing")
     end
 
-    test "JSON-RPC errors decode into MCP.Error with the server's code and message" do
+    test "JSON-RPC errors decode into Snodo.Error with the server's code and message" do
       assert {:error, %Error{code: -32_602, kind: :protocol}} =
                Client.call_tool(client(), "no_such_tool")
 
@@ -243,7 +243,7 @@ defmodule MCP.ClientTest do
   end
 
   describe "custom transports" do
-    test "connect/2 accepts any MCP.Client.Transport and passes the dialect and timeout" do
+    test "connect/2 accepts any Snodo.Client.Transport and passes the dialect and timeout" do
       {:ok, client} = Client.connect({CannedTransport, self()}, timeout: 1_234)
 
       assert {:ok, %{"canned" => true}} = Client.call_tool(client, "anything", %{"a" => 1})

@@ -1,5 +1,5 @@
-unless Code.ensure_loaded?(MCP.Extensions.Tasks) do
-  raise "start the combined fixture from extensions/tasks so :mcp_ex_tasks is available"
+unless Code.ensure_loaded?(Snodo.Extensions.Tasks) do
+  raise "start the combined fixture from extensions/tasks so :snodo_tasks is available"
 end
 
 Code.require_file("support/tasks.ex", __DIR__)
@@ -12,8 +12,8 @@ port =
   end
 
 {:ok, server} =
-  MCP.Transport.StreamableHTTP.Server.start_link(
-    runtime: MCPEx.Conformance.Fixture.runtime(),
+  Snodo.Transport.StreamableHTTP.Server.start_link(
+    runtime: SnodoTest.Conformance.Fixture.runtime(),
     ip: {127, 0, 0, 1},
     port: port,
     path: "/mcp",
@@ -21,7 +21,7 @@ port =
     max_queue: 256
   )
 
-url = MCP.Transport.StreamableHTTP.Server.url(server)
+url = Snodo.Transport.StreamableHTTP.Server.url(server)
 
 if System.get_env("MCP_CONFORMANCE_MANAGED") == "1" do
   IO.puts(JSON.encode!(%{"conformanceReady" => true, "url" => url}))

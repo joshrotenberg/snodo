@@ -1,5 +1,5 @@
-defmodule MCPEx.OverclaimingSubscriptionSource do
-  @behaviour MCP.Subscription.Source
+defmodule SnodoTest.OverclaimingSubscriptionSource do
+  @behaviour Snodo.Subscription.Source
 
   @impl true
   def open(_filter, _context, owner) do
@@ -16,15 +16,15 @@ defmodule MCPEx.OverclaimingSubscriptionSource do
   end
 end
 
-defmodule MCP.SubscriptionProtocolAcceptanceTest do
+defmodule Snodo.SubscriptionProtocolAcceptanceTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Subscription
-  alias MCP.Subscription.Event
-  alias MCP.Test, as: MCPTest
-  alias MCPEx.TestFixtures
-  alias MCPEx.TestSubscriptionHub
-  alias MCPEx.TestSubscriptionSource
+  alias Snodo.Subscription
+  alias Snodo.Subscription.Event
+  alias Snodo.Test, as: MCPTest
+  alias SnodoTest.TestFixtures
+  alias SnodoTest.TestSubscriptionHub
+  alias SnodoTest.TestSubscriptionSource
 
   @subscription_id_key "io.modelcontextprotocol/subscriptionId"
 
@@ -143,7 +143,7 @@ defmodule MCP.SubscriptionProtocolAcceptanceTest do
     runtime =
       TestFixtures.runtime(
         capabilities: %{"tools" => %{"listChanged" => true}},
-        subscription_source: {MCPEx.OverclaimingSubscriptionSource, self()}
+        subscription_source: {SnodoTest.OverclaimingSubscriptionSource, self()}
       )
 
     assert {:ok, %{"error" => %{"code" => -32_603}}} =
@@ -154,7 +154,7 @@ defmodule MCP.SubscriptionProtocolAcceptanceTest do
                params: %{"notifications" => %{"toolsListChanged" => true}}
              )
 
-    assert_receive {:overclaiming_source_closed, {:error, %MCP.Error{}}}
+    assert_receive {:overclaiming_source_closed, {:error, %Snodo.Error{}}}
   end
 
   defp runtime(hub) do

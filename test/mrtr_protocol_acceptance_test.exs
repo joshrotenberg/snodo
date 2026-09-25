@@ -1,19 +1,19 @@
-defmodule MCP.MRTR.ProtocolAcceptanceTest do
+defmodule Snodo.MRTR.ProtocolAcceptanceTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Context
-  alias MCP.Error
-  alias MCP.MRTR
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Result
-  alias MCP.Server
-  alias MCP.Server.Executor
-  alias MCP.Transport.Context, as: TransportContext
-  alias MCP.Transport.Stdio
-  alias MCP.Transport.StreamableHTTP
-  alias MCP.Transport.StreamableHTTP.Request
-  alias MCPEx.MRTR.Choice
-  alias MCPEx.MRTR.Server, as: ChoiceServer
+  alias Snodo.Context
+  alias Snodo.Error
+  alias Snodo.MRTR
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Result
+  alias Snodo.Server
+  alias Snodo.Server.Executor
+  alias Snodo.Transport.Context, as: TransportContext
+  alias Snodo.Transport.Stdio
+  alias Snodo.Transport.StreamableHTTP
+  alias Snodo.Transport.StreamableHTTP.Request
+  alias SnodoTest.MRTR.Choice
+  alias SnodoTest.MRTR.Server, as: ChoiceServer
 
   @targets [
     {"tools/call", %{"name" => "choice", "arguments" => %{}}},
@@ -199,7 +199,7 @@ defmodule MCP.MRTR.ProtocolAcceptanceTest do
     raw = request(13, "tools/call", %{"name" => "choice"})
     work = fn _cancellation -> dispatch(:direct, raw) end
     assert {:ok, ref} = Executor.submit(executor, {:peer, 13}, work)
-    assert_receive {:mcp_execution, ^executor, ^ref, {:peer, 13}, {:completed, response}}
+    assert_receive {:snodoecution, ^executor, ^ref, {:peer, 13}, {:completed, response}}
     assert response["result"]["resultType"] == "input_required"
     assert Executor.stats(executor).running == 0
     assert {:error, :not_found} = Executor.cancel(executor, {:peer, 13})

@@ -1,4 +1,4 @@
-defmodule MCP.Transport.StdioSubprocessAcceptanceTest do
+defmodule Snodo.Transport.StdioSubprocessAcceptanceTest do
   use ExUnit.Case, async: true
 
   @logger_marker "STDIO_FIXTURE_LOGGER"
@@ -23,7 +23,7 @@ defmodule MCP.Transport.StdioSubprocessAcceptanceTest do
     stderr_path =
       Path.join(
         System.tmp_dir!(),
-        "mcp_ex_stdio_stderr_#{System.unique_integer([:positive])}.log"
+        "snodo_stdio_stderr_#{System.unique_integer([:positive])}.log"
       )
 
     on_exit(fn -> File.rm(stderr_path) end)

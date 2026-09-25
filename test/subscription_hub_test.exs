@@ -1,12 +1,12 @@
-defmodule MCP.SubscriptionHubTest do
+defmodule Snodo.SubscriptionHubTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Subscription
-  alias MCP.Subscription.Event
-  alias MCP.Subscription.Hub
-  alias MCP.Test, as: MCPTest
-  alias MCPEx.TestFixtures
-  alias MCPEx.TestInstrumentationSink
+  alias Snodo.Subscription
+  alias Snodo.Subscription.Event
+  alias Snodo.Subscription.Hub
+  alias Snodo.Test, as: MCPTest
+  alias SnodoTest.TestFixtures
+  alias SnodoTest.TestInstrumentationSink
 
   test "broadcasts only to matching listeners and supplies pending pulls" do
     {:ok, hub} = start_supervised({Hub, max_buffer: 2})
@@ -141,10 +141,10 @@ defmodule MCP.SubscriptionHubTest do
       "taskIds" => ["task-one"]
     }
 
-    context = %MCP.Context{
+    context = %Snodo.Context{
       protocol_version: "2026-07-28",
-      protocol: MCP.Protocol.V2026_07_28,
-      transport: %MCP.Transport.Context{transport: :direct}
+      protocol: Snodo.Protocol.V2026_07_28,
+      transport: %Snodo.Transport.Context{transport: :direct}
     }
 
     assert {:ok, ^filter, handle} = Hub.open(filter, context, hub)
@@ -173,7 +173,7 @@ defmodule MCP.SubscriptionHubTest do
 
     subscription = listen(runtime(hub), "instrumented", %{"toolsListChanged" => true})
 
-    assert_receive {:instrumentation, [:mcp_ex, :subscription, :open], %{subscriptions: 1},
+    assert_receive {:instrumentation, [:snodo, :subscription, :open], %{subscriptions: 1},
                     %{
                       filter_keys: ["toolsListChanged"],
                       request_id: "instrumented",
@@ -182,27 +182,27 @@ defmodule MCP.SubscriptionHubTest do
 
     assert {:ok, %{buffered: 1, dropped: 0}} = Hub.notify_tools_list_changed(hub)
 
-    assert_receive {:instrumentation, [:mcp_ex, :subscription, :publish],
+    assert_receive {:instrumentation, [:snodo, :subscription, :publish],
                     %{matched: 1, buffered: 1, dropped: 0, queued: 1},
                     %{event_kind: :tools_list_changed}}
 
     assert {:ok, %{buffered: 1, dropped: 1}} = Hub.notify_tools_list_changed(hub)
 
-    assert_receive {:instrumentation, [:mcp_ex, :subscription, :publish],
-                    %{dropped: 1, queued: 1}, _metadata}
+    assert_receive {:instrumentation, [:snodo, :subscription, :publish], %{dropped: 1, queued: 1},
+                    _metadata}
 
-    assert_receive {:instrumentation, [:mcp_ex, :subscription, :overflow],
+    assert_receive {:instrumentation, [:snodo, :subscription, :overflow],
                     %{dropped: 1, queued: 1},
                     %{event_kind: :tools_list_changed, policy: :drop_oldest}}
 
     assert :ok = Hub.complete(hub)
 
-    assert_receive {:instrumentation, [:mcp_ex, :subscription, :complete],
+    assert_receive {:instrumentation, [:snodo, :subscription, :complete],
                     %{subscriptions: 1, queued: 1}, %{}}
 
     assert :ok = Subscription.close(subscription, {:cancelled, "done"})
 
-    assert_receive {:instrumentation, [:mcp_ex, :subscription, :close], %{subscriptions: 0},
+    assert_receive {:instrumentation, [:snodo, :subscription, :close], %{subscriptions: 0},
                     %{reason: :cancelled}}
   end
 

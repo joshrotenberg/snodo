@@ -2,14 +2,14 @@ defmodule Examples.TasksPostgres.Repo do
   @moduledoc false
 
   use Ecto.Repo,
-    otp_app: :mcp_ex_tasks_postgres,
+    otp_app: :snodo_tasks_postgres,
     adapter: Ecto.Adapters.Postgres
 end
 
 defmodule Examples.TasksPostgres.ExportTool do
   @moduledoc false
 
-  use MCP.Tool,
+  use Snodo.Tool,
     name: "postgres_export",
     description: "Exports one document through durable PostgreSQL-backed task work"
 
@@ -22,9 +22,9 @@ end
 defmodule Examples.TasksPostgres.Executor do
   @moduledoc false
 
-  @behaviour MCP.Extensions.Tasks.WorkExecutor
+  @behaviour Snodo.Extensions.Tasks.WorkExecutor
 
-  alias MCP.Extensions.Tasks.Work
+  alias Snodo.Extensions.Tasks.Work
 
   @impl true
   def execute(
@@ -72,14 +72,14 @@ defmodule Examples.TasksPostgres.Runner do
   alias Examples.TasksPostgres.Executor
   alias Examples.TasksPostgres.ExportTool
   alias Examples.TasksPostgres.Repo
-  alias MCP.Extensions.Tasks
-  alias MCP.Extensions.Tasks.Runner, as: TaskRunner
-  alias MCP.Extensions.Tasks.Store.Postgres
-  alias MCP.Extensions.Tasks.Store.Postgres.Migration
-  alias MCP.Extensions.Tasks.Work
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Router
-  alias MCP.Server.Runtime
+  alias Snodo.Extensions.Tasks
+  alias Snodo.Extensions.Tasks.Runner, as: TaskRunner
+  alias Snodo.Extensions.Tasks.Store.Postgres
+  alias Snodo.Extensions.Tasks.Store.Postgres.Migration
+  alias Snodo.Extensions.Tasks.Work
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Router
+  alias Snodo.Server.Runtime
 
   @migration_version 2_026_082_502
   @protocol "2026-07-28"
@@ -206,7 +206,7 @@ defmodule Examples.TasksPostgres.Runner do
 
   defp dispatch(runtime, opts) do
     {:ok, response} =
-      MCP.Test.dispatch(runtime,
+      Snodo.Test.dispatch(runtime,
         id: Keyword.fetch!(opts, :id),
         protocol: @protocol,
         method: Keyword.fetch!(opts, :method),
@@ -274,14 +274,14 @@ defmodule Examples.TasksPostgres.Runner do
   end
 
   defp database_url! do
-    case System.get_env("MCP_TASKS_DATABASE_URL") do
+    case System.get_env("SNODO_TASKS_DATABASE_URL") do
       url when is_binary(url) and url != "" ->
         url
 
       _missing ->
         raise """
-        MCP_TASKS_DATABASE_URL is required for example 10; for example:
-        ecto://postgres:postgres@127.0.0.1:55432/mcp_ex_tasks
+        SNODO_TASKS_DATABASE_URL is required for example 10; for example:
+        ecto://postgres:postgres@127.0.0.1:55432/snodo_tasks
         """
     end
   end

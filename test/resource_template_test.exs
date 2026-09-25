@@ -1,7 +1,7 @@
-defmodule MCP.ResourceTemplateTest do
+defmodule Snodo.ResourceTemplateTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Resource.Template
+  alias Snodo.Resource.Template
 
   describe "compile/1 accepts the simple-expansion subset" do
     test "a variable authority with a literal segment" do

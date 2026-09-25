@@ -1,5 +1,5 @@
-defmodule MCPEx.TasksInstrumentationSink do
-  @behaviour MCP.Instrumentation
+defmodule SnodoTest.TasksInstrumentationSink do
+  @behaviour Snodo.Instrumentation
 
   @impl true
   def handle_event(event_name, measurements, metadata, owner) do
@@ -8,13 +8,13 @@ defmodule MCPEx.TasksInstrumentationSink do
   end
 end
 
-defmodule MCP.TasksInstrumentationTest do
+defmodule Snodo.TasksInstrumentationTest do
   use ExUnit.Case, async: false
 
-  alias MCP.Extensions.Tasks.Runner
-  alias MCP.Extensions.Tasks.Store.Memory
-  alias MCPEx.TasksInstrumentationSink
-  alias MCPEx.TasksTestSupport, as: TasksSupport
+  alias Snodo.Extensions.Tasks.Runner
+  alias Snodo.Extensions.Tasks.Store.Memory
+  alias SnodoTest.TasksInstrumentationSink
+  alias SnodoTest.TasksTestSupport, as: TasksSupport
 
   test "runner emits bounded job and store-transition lifecycle events" do
     store = start_supervised!(Memory)
@@ -36,7 +36,7 @@ defmodule MCP.TasksInstrumentationTest do
 
     task_id = created["taskId"]
 
-    assert_receive {:tasks_instrumentation, [:mcp_ex, :tasks, :runner, :job, :start],
+    assert_receive {:tasks_instrumentation, [:snodo, :tasks, :runner, :job, :start],
                     %{jobs: 1, system_time: system_time},
                     %{task_id: ^task_id, revision: 0, source: :request}}
 
@@ -44,7 +44,7 @@ defmodule MCP.TasksInstrumentationTest do
     assert_receive {:tasks_barrier_entered, "instrumented", worker}
     send(worker, {:tasks_release, "instrumented"})
 
-    assert_receive {:tasks_instrumentation, [:mcp_ex, :tasks, :store, :transition],
+    assert_receive {:tasks_instrumentation, [:snodo, :tasks, :store, :transition],
                     %{duration: transition_duration},
                     %{
                       task_id: ^task_id,
@@ -57,7 +57,7 @@ defmodule MCP.TasksInstrumentationTest do
 
     assert transition_duration >= 0
 
-    assert_receive {:tasks_instrumentation, [:mcp_ex, :tasks, :runner, :job, :stop],
+    assert_receive {:tasks_instrumentation, [:snodo, :tasks, :runner, :job, :stop],
                     %{duration: job_duration, jobs: 0},
                     %{
                       task_id: ^task_id,
@@ -93,13 +93,13 @@ defmodule MCP.TasksInstrumentationTest do
              )
 
     task_id = created["taskId"]
-    assert_receive {:tasks_instrumentation, [:mcp_ex, :tasks, :runner, :job, :start], _, _}
+    assert_receive {:tasks_instrumentation, [:snodo, :tasks, :runner, :job, :start], _, _}
     assert_receive {:tasks_barrier_entered, "private-payload", _worker}
 
     assert {:ok, %{"result" => %{"resultType" => "complete"}}} =
              TasksSupport.cancel(runtime, "instrumented-cancel", task_id)
 
-    assert_receive {:tasks_instrumentation, [:mcp_ex, :tasks, :store, :transition], _measurements,
+    assert_receive {:tasks_instrumentation, [:snodo, :tasks, :store, :transition], _measurements,
                     %{
                       task_id: ^task_id,
                       event_kind: :cancelled,
@@ -110,7 +110,7 @@ defmodule MCP.TasksInstrumentationTest do
     refute Map.has_key?(transition_metadata, :access)
     refute inspect(transition_metadata) =~ "private-payload"
 
-    assert_receive {:tasks_instrumentation, [:mcp_ex, :tasks, :runner, :job, :stop], %{jobs: 0},
+    assert_receive {:tasks_instrumentation, [:snodo, :tasks, :runner, :job, :stop], %{jobs: 0},
                     %{task_id: ^task_id, outcome: :cancelled}}
   end
 end

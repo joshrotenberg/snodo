@@ -1,6 +1,6 @@
 defmodule Examples.PlugBandit.Echo do
   @moduledoc false
-  use MCP.Tool, name: "echo"
+  use Snodo.Tool, name: "echo"
 
   input_schema(%{
     "type" => "object",
@@ -10,13 +10,13 @@ defmodule Examples.PlugBandit.Echo do
 
   @impl true
   def call(%{"text" => text}, context) do
-    {:ok, MCP.Result.structured(%{"text" => text, "principal" => context.auth.principal})}
+    {:ok, Snodo.Result.structured(%{"text" => text, "principal" => context.auth.principal})}
   end
 end
 
 defmodule Examples.PlugBandit.Server do
   @moduledoc false
-  use MCP.Server, name: "plug-bandit-example", version: "0.1.0"
+  use Snodo.Server, name: "plug-bandit-example", version: "0.1.0"
   tool(Examples.PlugBandit.Echo)
 end
 
@@ -27,7 +27,7 @@ defmodule Examples.PlugBandit.Endpoint do
   @impl true
   def init(opts) do
     {token, opts} = Keyword.pop!(opts, :token)
-    {token, MCP.Transport.Plug.init(opts)}
+    {token, Snodo.Transport.Plug.init(opts)}
   end
 
   @impl true
@@ -39,7 +39,7 @@ defmodule Examples.PlugBandit.Endpoint do
         if Plug.Crypto.secure_compare(supplied, token) do
           conn
           |> Plug.Conn.assign(:mcp_auth, %{principal: "example-reader"})
-          |> MCP.Transport.Plug.call(transport)
+          |> Snodo.Transport.Plug.call(transport)
         else
           reject(conn)
         end
@@ -54,7 +54,7 @@ end
 
 defmodule Examples.PlugBandit.Runner do
   @moduledoc false
-  alias MCP.Subscription.Hub
+  alias Snodo.Subscription.Hub
 
   def run(mode) do
     token = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
@@ -62,7 +62,7 @@ defmodule Examples.PlugBandit.Runner do
     {:ok, supervisor} =
       Supervisor.start_link(
         [
-          {MCP.Server.Executor,
+          {Snodo.Server.Executor,
            name: Examples.PlugBandit.Executor, max_concurrency: 2, max_queue: 4},
           {Hub, name: Examples.PlugBandit.Hub, max_buffer: 4}
         ],

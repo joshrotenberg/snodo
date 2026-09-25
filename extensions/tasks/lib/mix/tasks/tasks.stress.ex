@@ -1,7 +1,7 @@
 defmodule Mix.Tasks.Tasks.Stress do
   use Mix.Task
 
-  alias MCP.Extensions.Tasks.Stress
+  alias Snodo.Extensions.Tasks.Stress
 
   @shortdoc "Runs deterministic Tasks contention and soak workloads"
 

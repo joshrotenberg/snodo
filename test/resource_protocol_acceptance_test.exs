@@ -1,29 +1,29 @@
-defmodule MCPEx.TestResources.InvalidCache do
-  use MCP.Resource,
+defmodule SnodoTest.TestResources.InvalidCache do
+  use Snodo.Resource,
     uri: "test://errors/cache",
     name: "invalid_cache"
 
   @impl true
   def read(%{"uri" => uri}, _context) do
     {:ok,
-     MCP.Result.resource_read(MCP.Resource.text(uri, "invalid"),
+     Snodo.Result.resource_read(Snodo.Resource.text(uri, "invalid"),
        metadata: %{ttl_ms: -1, cache_scope: "shared"}
      )}
   end
 end
 
-defmodule MCP.ResourceProtocolAcceptanceTest do
+defmodule Snodo.ResourceProtocolAcceptanceTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Test, as: MCPTest
-  alias MCPEx.TestFixtures
-  alias MCPEx.TestResources.DeclaredError
-  alias MCPEx.TestResources.InvalidCache
-  alias MCPEx.TestResources.PackageTemplate
-  alias MCPEx.TestResources.StaticBlob
-  alias MCPEx.TestResources.StaticJSON
-  alias MCPEx.TestResources.StaticText
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Test, as: MCPTest
+  alias SnodoTest.TestFixtures
+  alias SnodoTest.TestResources.DeclaredError
+  alias SnodoTest.TestResources.InvalidCache
+  alias SnodoTest.TestResources.PackageTemplate
+  alias SnodoTest.TestResources.StaticBlob
+  alias SnodoTest.TestResources.StaticJSON
+  alias SnodoTest.TestResources.StaticText
 
   @resources [StaticText, StaticJSON, StaticBlob, PackageTemplate]
 
@@ -72,10 +72,10 @@ defmodule MCP.ResourceProtocolAcceptanceTest do
     assert listed["resultType"] == "complete"
     assert listed["ttlMs"] == 321
     assert listed["cacheScope"] == "public"
-    assert get_in(listed, ["_meta", V2026_07_28.server_info_key(), "name"]) == "mcp-ex-spike"
+    assert get_in(listed, ["_meta", V2026_07_28.server_info_key(), "name"]) == "snodo-spike"
 
     readme = Enum.find(listed["resources"], &(&1["uri"] == "test://static/readme"))
-    assert readme == MCP.Resource.definition_to_map(StaticText.definition())
+    assert readme == Snodo.Resource.definition_to_map(StaticText.definition())
 
     assert {:ok, %{"result" => templates}} =
              MCPTest.dispatch(runtime(),
@@ -84,7 +84,7 @@ defmodule MCP.ResourceProtocolAcceptanceTest do
              )
 
     assert templates["resourceTemplates"] == [
-             MCP.Resource.definition_to_map(PackageTemplate.definition())
+             Snodo.Resource.definition_to_map(PackageTemplate.definition())
            ]
 
     assert templates["ttlMs"] == 321

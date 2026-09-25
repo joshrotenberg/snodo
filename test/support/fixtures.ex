@@ -1,5 +1,5 @@
-defmodule MCPEx.TestTools.Echo do
-  use MCP.Tool,
+defmodule SnodoTest.TestTools.Echo do
+  use Snodo.Tool,
     name: "echo",
     description: "Echo text"
 
@@ -24,12 +24,12 @@ defmodule MCPEx.TestTools.Echo do
   def call(%{"text" => text} = arguments, _context) do
     delay = Map.get(arguments, "delayMs", 0)
     if delay > 0, do: Process.sleep(delay)
-    {:ok, MCP.Result.text(text)}
+    {:ok, Snodo.Result.text(text)}
   end
 end
 
-defmodule MCPEx.TestTools.ComplexSchema do
-  use MCP.Tool, name: "complex_schema"
+defmodule SnodoTest.TestTools.ComplexSchema do
+  use Snodo.Tool, name: "complex_schema"
 
   input_schema(%{
     "type" => "object",
@@ -44,16 +44,16 @@ defmodule MCPEx.TestTools.ComplexSchema do
   })
 
   @impl true
-  def call(_arguments, _context), do: {:ok, MCP.Result.structured([])}
+  def call(_arguments, _context), do: {:ok, Snodo.Result.structured([])}
 end
 
-defmodule MCPEx.TestTools.ContextEcho do
-  use MCP.Tool, name: "context_echo"
+defmodule SnodoTest.TestTools.ContextEcho do
+  use Snodo.Tool, name: "context_echo"
 
   @impl true
   def call(_arguments, context) do
     {:ok,
-     MCP.Result.structured(%{
+     Snodo.Result.structured(%{
        "metadata" => context.metadata,
        "session" => context.session,
        "protocolVersion" => context.protocol_version,
@@ -62,41 +62,41 @@ defmodule MCPEx.TestTools.ContextEcho do
   end
 end
 
-defmodule MCPEx.TestTools.Structured do
-  use MCP.Tool, name: "structured"
+defmodule SnodoTest.TestTools.Structured do
+  use Snodo.Tool, name: "structured"
 
   @impl true
-  def call(%{"value" => value}, _context), do: {:ok, MCP.Result.structured(value)}
+  def call(%{"value" => value}, _context), do: {:ok, Snodo.Result.structured(value)}
 end
 
-defmodule MCPEx.TestTools.Failing do
-  use MCP.Tool, name: "failing"
+defmodule SnodoTest.TestTools.Failing do
+  use Snodo.Tool, name: "failing"
 
   @impl true
   def call(_arguments, _context), do: {:error, "Actionable domain failure"}
 end
 
-defmodule MCPEx.TestTools.Raising do
-  use MCP.Tool, name: "raising"
+defmodule SnodoTest.TestTools.Raising do
+  use Snodo.Tool, name: "raising"
 
   # Raising is the point: the router must isolate a tool fault.
-  @spec call(map(), MCP.Context.t()) :: no_return()
+  @spec call(map(), Snodo.Context.t()) :: no_return()
   @impl true
   def call(_arguments, _context), do: raise("secret implementation detail")
 end
 
-defmodule MCPEx.TestTools.NotificationProbe do
-  use MCP.Tool, name: "notification_probe"
+defmodule SnodoTest.TestTools.NotificationProbe do
+  use Snodo.Tool, name: "notification_probe"
 
   @impl true
   def call(%{"owner" => owner}, _context) do
     send(owner, :notification_probe_called)
-    {:ok, MCP.Result.text("called")}
+    {:ok, Snodo.Result.text("called")}
   end
 end
 
-defmodule MCPEx.TestTools.InvalidStructuredOutput do
-  use MCP.Tool, name: "invalid_structured_output"
+defmodule SnodoTest.TestTools.InvalidStructuredOutput do
+  use Snodo.Tool, name: "invalid_structured_output"
 
   output_schema(%{
     "type" => "object",
@@ -104,20 +104,20 @@ defmodule MCPEx.TestTools.InvalidStructuredOutput do
   })
 
   @impl true
-  def call(_arguments, _context), do: {:ok, MCP.Result.structured(%{"wrong" => true})}
+  def call(_arguments, _context), do: {:ok, Snodo.Result.structured(%{"wrong" => true})}
 end
 
-defmodule MCPEx.TestTools.InvalidWireResult do
-  use MCP.Tool, name: "invalid_wire_result"
+defmodule SnodoTest.TestTools.InvalidWireResult do
+  use Snodo.Tool, name: "invalid_wire_result"
 
   @impl true
   def call(_arguments, _context) do
-    {:ok, MCP.Result.raw(%{"content" => [], "nonJson" => self()})}
+    {:ok, Snodo.Result.raw(%{"content" => [], "nonJson" => self()})}
   end
 end
 
-defmodule MCPEx.TestTools.InvalidInputSchema do
-  @behaviour MCP.Tool
+defmodule SnodoTest.TestTools.InvalidInputSchema do
+  @behaviour Snodo.Tool
 
   @impl true
   def name, do: "invalid_input_schema"
@@ -135,11 +135,11 @@ defmodule MCPEx.TestTools.InvalidInputSchema do
   def annotations, do: %{}
 
   @impl true
-  def call(_arguments, _context), do: {:ok, MCP.Result.text("unreachable")}
+  def call(_arguments, _context), do: {:ok, Snodo.Result.text("unreachable")}
 end
 
-defmodule MCPEx.RequiredKeysValidator do
-  @behaviour MCP.Schema.Validator
+defmodule SnodoTest.RequiredKeysValidator do
+  @behaviour Snodo.Schema.Validator
 
   @impl true
   def validate(value, %{"type" => "object"}) when not is_map(value),
@@ -158,8 +158,8 @@ defmodule MCPEx.RequiredKeysValidator do
   def validate(_value, _schema), do: :ok
 end
 
-defmodule MCPEx.RejectingInputValidator do
-  @behaviour MCP.Schema.Validator
+defmodule SnodoTest.RejectingInputValidator do
+  @behaviour Snodo.Schema.Validator
 
   # Rejects any tool input, so a call carrying every required argument still
   # exercises the plugged validator rather than the router's own check.
@@ -170,8 +170,8 @@ defmodule MCPEx.RejectingInputValidator do
   def validate(_value, _schema), do: :ok
 end
 
-defmodule MCPEx.TestTools.Trapping do
-  use MCP.Tool, name: "trapping"
+defmodule SnodoTest.TestTools.Trapping do
+  use Snodo.Tool, name: "trapping"
 
   @impl true
   def call(%{"token" => token}, context) do
@@ -180,47 +180,47 @@ defmodule MCPEx.TestTools.Trapping do
     send(owner, {:trapping_entered, self(), context.cancellation})
 
     receive do
-      :finish -> {:ok, MCP.Result.text("finished")}
+      :finish -> {:ok, Snodo.Result.text("finished")}
     after
-      10_000 -> {:ok, MCP.Result.text("timed out")}
+      10_000 -> {:ok, Snodo.Result.text("timed out")}
     end
   end
 end
 
-defmodule MCPEx.TestTools.Barrier do
-  use MCP.Tool, name: "barrier"
+defmodule SnodoTest.TestTools.Barrier do
+  use Snodo.Tool, name: "barrier"
 
   @impl true
   def call(%{"owner" => owner, "index" => index}, _context) do
     send(owner, {:entered, index, self()})
 
     receive do
-      {:release, ^index} -> {:ok, MCP.Result.structured(%{"index" => index})}
+      {:release, ^index} -> {:ok, Snodo.Result.structured(%{"index" => index})}
     after
       5_000 -> {:error, "barrier timeout"}
     end
   end
 end
 
-defmodule MCPEx.TestTools.EchoCollision do
-  use MCP.Tool, name: "echo"
+defmodule SnodoTest.TestTools.EchoCollision do
+  use Snodo.Tool, name: "echo"
 
   @impl true
-  def call(_arguments, _context), do: {:ok, MCP.Result.text("collision")}
+  def call(_arguments, _context), do: {:ok, Snodo.Result.text("collision")}
 end
 
-defmodule MCPEx.FutureDialect do
-  @behaviour MCP.Protocol
+defmodule SnodoTest.FutureDialect do
+  @behaviour Snodo.Protocol
 
-  alias MCP.Context
-  alias MCP.Envelope
-  alias MCP.Error
-  alias MCP.Protocol
-  alias MCP.Protocol.Profile
-  alias MCP.Protocol.Profile.Method
-  alias MCP.Result
-  alias MCP.Transport.Context, as: TransportContext
-  alias MCP.Transport.Policy
+  alias Snodo.Context
+  alias Snodo.Envelope
+  alias Snodo.Error
+  alias Snodo.Protocol
+  alias Snodo.Protocol.Profile
+  alias Snodo.Protocol.Profile.Method
+  alias Snodo.Result
+  alias Snodo.Transport.Context, as: TransportContext
+  alias Snodo.Transport.Policy
 
   @version "2099-01-01"
   @version_key "com.acme/protocolVersion"
@@ -314,13 +314,13 @@ defmodule MCPEx.FutureDialect do
   end
 end
 
-defmodule MCPEx.ProfileDriftDialect do
+defmodule SnodoTest.ProfileDriftDialect do
   @moduledoc false
-  @behaviour MCP.Protocol
+  @behaviour Snodo.Protocol
 
-  alias MCP.Envelope
-  alias MCP.Protocol.Profile
-  alias MCP.Protocol.Profile.Method
+  alias Snodo.Envelope
+  alias Snodo.Protocol.Profile
+  alias Snodo.Protocol.Profile.Method
 
   @profile Profile.new!(
              version: "2099-01-01",
@@ -349,19 +349,19 @@ defmodule MCPEx.ProfileDriftDialect do
   def profile, do: @profile
 
   @impl true
-  defdelegate version(), to: MCPEx.FutureDialect
+  defdelegate version(), to: SnodoTest.FutureDialect
 
   @impl true
-  defdelegate era(), to: MCPEx.FutureDialect
+  defdelegate era(), to: SnodoTest.FutureDialect
 
   @impl true
-  defdelegate detect(envelope), to: MCPEx.FutureDialect
+  defdelegate detect(envelope), to: SnodoTest.FutureDialect
 
   @impl true
-  defdelegate decode_request(raw, transport), to: MCPEx.FutureDialect
+  defdelegate decode_request(raw, transport), to: SnodoTest.FutureDialect
 
   @impl true
-  defdelegate build_context(envelope, runtime), to: MCPEx.FutureDialect
+  defdelegate build_context(envelope, runtime), to: SnodoTest.FutureDialect
 
   @impl true
   def resolve_operation(%Envelope{method: method, params: %{"name" => name}})
@@ -369,39 +369,39 @@ defmodule MCPEx.ProfileDriftDialect do
     {:ok, {:tools_call, name}}
   end
 
-  def resolve_operation(envelope), do: MCPEx.FutureDialect.resolve_operation(envelope)
+  def resolve_operation(envelope), do: SnodoTest.FutureDialect.resolve_operation(envelope)
 
   @impl true
-  defdelegate validate_operation(operation, params, context), to: MCPEx.FutureDialect
+  defdelegate validate_operation(operation, params, context), to: SnodoTest.FutureDialect
 
   @impl true
-  defdelegate shape_result(operation, result, context), to: MCPEx.FutureDialect
+  defdelegate shape_result(operation, result, context), to: SnodoTest.FutureDialect
 
   @impl true
-  defdelegate shape_error(error, context), to: MCPEx.FutureDialect
+  defdelegate shape_error(error, context), to: SnodoTest.FutureDialect
 
   @impl true
-  defdelegate transport_policy(envelope), to: MCPEx.FutureDialect
+  defdelegate transport_policy(envelope), to: SnodoTest.FutureDialect
 
   @impl true
-  defdelegate server_discovery(runtime), to: MCPEx.FutureDialect
+  defdelegate server_discovery(runtime), to: SnodoTest.FutureDialect
 
   @impl true
-  defdelegate request_metadata(capabilities), to: MCPEx.FutureDialect
+  defdelegate request_metadata(capabilities), to: SnodoTest.FutureDialect
 end
 
-defmodule MCPEx.TestFixtures do
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Router
-  alias MCP.Server.Runtime
+defmodule SnodoTest.TestFixtures do
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Router
+  alias Snodo.Server.Runtime
 
   @default_tools [
-    MCPEx.TestTools.Echo,
-    MCPEx.TestTools.ComplexSchema,
-    MCPEx.TestTools.ContextEcho,
-    MCPEx.TestTools.Structured,
-    MCPEx.TestTools.Failing,
-    MCPEx.TestTools.Raising
+    SnodoTest.TestTools.Echo,
+    SnodoTest.TestTools.ComplexSchema,
+    SnodoTest.TestTools.ContextEcho,
+    SnodoTest.TestTools.Structured,
+    SnodoTest.TestTools.Failing,
+    SnodoTest.TestTools.Raising
   ]
 
   def runtime(opts \\ []) do
@@ -424,8 +424,8 @@ defmodule MCPEx.TestFixtures do
       router: router,
       protocols: protocols,
       extensions: Keyword.get(opts, :extensions, []),
-      server_info: %{"name" => "mcp-ex-spike", "version" => "0.1.0"},
-      schema_validator: Keyword.get(opts, :schema_validator, MCP.Schema.Validator.Passthrough),
+      server_info: %{"name" => "snodo-spike", "version" => "0.1.0"},
+      schema_validator: Keyword.get(opts, :schema_validator, Snodo.Schema.Validator.Passthrough),
       instructions: Keyword.get(opts, :instructions),
       discovery_cache: Keyword.get(opts, :discovery_cache, []),
       tools_cache: Keyword.get(opts, :tools_cache, []),
@@ -448,8 +448,8 @@ defmodule MCPEx.TestFixtures do
 
   def metadata(version \\ "2026-07-28", extra \\ %{}) do
     Map.merge(
-      MCP.Protocol.V2026_07_28.request_metadata(%{})
-      |> Map.put(MCP.Protocol.V2026_07_28.protocol_version_key(), version),
+      Snodo.Protocol.V2026_07_28.request_metadata(%{})
+      |> Map.put(Snodo.Protocol.V2026_07_28.protocol_version_key(), version),
       extra
     )
   end
@@ -464,23 +464,23 @@ defmodule MCPEx.TestFixtures do
   end
 end
 
-defmodule MCPEx.TestServer do
-  use MCP.Server,
+defmodule SnodoTest.TestServer do
+  use Snodo.Server,
     name: "dsl-server",
     version: "1.2.3",
-    protocols: [MCP.Protocol.V2026_07_28],
+    protocols: [Snodo.Protocol.V2026_07_28],
     tools_cache: [ttl_ms: 5, scope: "private"],
     prompts_cache: [ttl_ms: 20, scope: "private"],
     resources_cache: [ttl_ms: 30, scope: "public"],
     pagination: [page_size: 2]
 
-  tool(MCPEx.TestTools.ContextEcho)
-  tool(MCPEx.TestTools.Echo)
-  prompt(MCPEx.TestPrompts.PackageAnalysis)
-  resource(MCPEx.TestResources.StaticText)
+  tool(SnodoTest.TestTools.ContextEcho)
+  tool(SnodoTest.TestTools.Echo)
+  prompt(SnodoTest.TestPrompts.PackageAnalysis)
+  resource(SnodoTest.TestResources.StaticText)
 end
 
-defmodule MCPEx.TestInput do
+defmodule SnodoTest.TestInput do
   def start_link do
     pid = spawn_link(fn -> loop(:queue.new(), nil, false) end)
     {:ok, pid}

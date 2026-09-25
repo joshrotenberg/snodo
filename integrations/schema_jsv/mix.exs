@@ -1,13 +1,13 @@
-defmodule MCP.Schema.Validator.JSV.MixProject do
+defmodule Snodo.Schema.Validator.JSV.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :mcp_ex_jsv,
+      app: :snodo_jsv,
       version: "0.1.0",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
-      description: "Optional JSON Schema validation through JSV for mcp_ex",
+      description: "Optional JSON Schema validation through JSV for snodo",
       elixirc_paths: elixirc_paths(Mix.env()),
       dialyzer: [
         plt_add_apps: [:mix],
@@ -29,7 +29,7 @@ defmodule MCP.Schema.Validator.JSV.MixProject do
 
   defp deps do
     [
-      {:mcp_ex, path: "../.."},
+      {:snodo, path: "../.."},
       {:jsv, "~> 0.22.0"},
       {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4.7", only: [:dev, :test], runtime: false}
@@ -40,7 +40,7 @@ defmodule MCP.Schema.Validator.JSV.MixProject do
     [
       "example.jsv": [
         "compile --warnings-as-errors",
-        "mcp.example ../../examples/22_full_schema_validation.exs"
+        "snodo.example ../../examples/22_full_schema_validation.exs"
       ],
       quality: [
         "format --check-formatted",

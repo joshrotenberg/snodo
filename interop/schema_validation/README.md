@@ -14,8 +14,8 @@ npm ci --ignore-scripts --no-audit --no-fund
 npm run check
 ```
 
-Node 22+ and the project's Elixir/OTP runtime are required. `MCP_EX_ELIXIR` may
-select the Elixir executable; `MCP_EX_EBIN` may select another freshly compiled
+Node 22+ and the project's Elixir/OTP runtime are required. `SNODO_ELIXIR` may
+select the Elixir executable; `SNODO_EBIN` may select another freshly compiled
 core beam directory. `ERL_FLAGS` defaults to `+S 4:4` for the fixture children.
 After dependency installation the check needs no Internet access: HTTP requests
 stay on an ephemeral loopback listener. Each fixture is time-bounded and closed

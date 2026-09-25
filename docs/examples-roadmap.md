@@ -1,11 +1,11 @@
 # Examples roadmap and status
 
 Examples 1–22 are implemented. Examples 1–9 and 11–22 run under root
-`mix examples`: the root task runs examples 1–6, 12–16, and 18–20 against standalone `mcp_ex`,
-delegates examples 07–09 and 17 to the independent `:mcp_ex_tasks` child package, and
-delegates example 11 to `:mcp_ex_tasks_sqlite`, and examples 21/22 to the optional
+`mix examples`: the root task runs examples 1–6, 12–16, and 18–20 against standalone `snodo`,
+delegates examples 07–09 and 17 to the independent `:snodo_tasks` child package, and
+delegates example 11 to `:snodo_tasks_sqlite`, and examples 21/22 to the optional
 Plug and JSV integration packages. Example 10 is an opt-in
-live-database acceptance artifact owned by `:mcp_ex_tasks_postgres`. The set
+live-database acceptance artifact owned by `:snodo_tasks_postgres`. The set
 tells one architectural story: start with the process-free protocol core, add
 application-owned state and concurrent transports, then show that optional
 behavior can remain outside that core. They are executable acceptance artifacts,
@@ -19,7 +19,7 @@ Every numbered example:
   `mix run examples/NN_name.exs`, examples 07–09 and 17 run through
   `cd extensions/tasks && mix examples`, and example 10 runs through
   `cd extensions/tasks_postgres && mix example.postgres` with
-  `MCP_TASKS_DATABASE_URL` set; example 11 runs through
+  `SNODO_TASKS_DATABASE_URL` set; example 11 runs through
   `cd extensions/tasks_sqlite && mix example.sqlite`; examples 12–16 and 18–20 run through
   `mix run examples/NN_name.exs`; examples 21/22 use `mix example.plug` and
   `mix example.jsv` from their integration packages;
@@ -43,7 +43,7 @@ PostgreSQL package's separate live lane runs example 10.
 **Purpose:** establish the smallest useful server without starting a transport
 or framework-owned process.
 
-**Proves:** `MCP.Tool` and `MCP.Server` declarations, discovery, deterministic
+**Proves:** `Snodo.Tool` and `Snodo.Server` declarations, discovery, deterministic
 `tools/list`, direct `tools/call`, and exact result shaping.
 
 **`--check`:** discover the server, assert the single advertised tool and its
@@ -143,7 +143,7 @@ scope isolates lookup, cancel a second task, and assert both terminal wire
 results without polling sleeps.
 
 **Status:** implemented and gated. The Tasks implementation is the independent
-`:mcp_ex_tasks` Mix package, uses generic middleware, result, and
+`:snodo_tasks` Mix package, uses generic middleware, result, and
 transport-policy hooks rather than adding task methods to the core catalog, and
 owns its quality, type, contract, and example commands.
 
@@ -236,7 +236,7 @@ multi-node queue.
 **Purpose:** add the first core primitive beyond Tools using shapes required by
 the planned `hexpm-mcp` rewrite.
 
-**Proves:** `use MCP.Resource`, direct and URI-template registrations,
+**Proves:** `use Snodo.Resource`, direct and URI-template registrations,
 `resources/list`, `resources/templates/list`, `resources/read`, application-owned
 template matching, JSON text content, required cache hints, and missing-resource
 `-32602` behavior.
@@ -255,7 +255,7 @@ pagination is composed later in example 15 and subscriptions in example 16.
 **Purpose:** prove the second core primitive beyond Tools with the exact five
 guided workflows in the planned `hexpm-mcp` rewrite.
 
-**Proves:** `use MCP.Prompt`, server registration, deterministic `prompts/list`,
+**Proves:** `use Snodo.Prompt`, server registration, deterministic `prompts/list`,
 independent prompt-list cache hints, flat required string arguments,
 `prompts/get`, and multi-turn user/assistant messages.
 
@@ -273,7 +273,7 @@ access. List pagination is composed later in example 15 and
 released `completion/complete` utility without adding a duplicate registry.
 
 **Proves:** explicit `completion_arguments`, definition-owned `complete/2`
-callbacks, normalized `MCP.Completion` requests, prompt and exact
+callbacks, normalized `Snodo.Completion` requests, prompt and exact
 resource-template references, previously resolved context arguments, truthful
 capability advertisement, and bounded `values`/`total`/`hasMore` results.
 
@@ -307,7 +307,7 @@ truncation hints remain deliberately separate from list cursors.
 **Purpose:** add long-lived protocol delivery without turning the router or the
 generic request executor into a state owner.
 
-**Proves:** an application-owned `MCP.Subscription.Source`, capability-narrowed
+**Proves:** an application-owned `Snodo.Subscription.Source`, capability-narrowed
 filter negotiation, acknowledgement-before-delivery ordering, framework-owned
 subscription metadata, one event in flight, unrequested-event filtering, and a
 correlated graceful completion.
@@ -335,7 +335,7 @@ core method profile.
 current status through an application source, assert response-only fields are
 absent from the notification, and complete the stream.
 
-**Status:** implemented and delegated to `:mcp_ex_tasks` by root `mix examples`.
+**Status:** implemented and delegated to `:snodo_tasks` by root `mix examples`.
 
 ### 18. `18_subscription_hub.exs` — bounded application event producer
 
@@ -343,7 +343,7 @@ absent from the notification, and complete the stream.
 applications while preserving application ownership of state and change
 detection.
 
-**Proves:** an application-supervised `MCP.Subscription.Hub`, filter-aware
+**Proves:** an application-supervised `Snodo.Subscription.Hub`, filter-aware
 broadcast, a bounded per-listener queue and delivery report, resource-update
 helper, fresh read after notification, graceful completion, and cleanup without
 router mutation.
@@ -360,7 +360,7 @@ hub, and assert that no listener remains registered.
 **Purpose:** expose operational timing, outcomes, and subscription pressure
 without coupling the protocol packages to a metrics implementation.
 
-**Proves:** one fault-isolated `MCP.Instrumentation` sink configured separately
+**Proves:** one fault-isolated `Snodo.Instrumentation` sink configured separately
 on the immutable runtime and application-owned hub, dispatch start/stop timing,
 stream outcome classification, queue/drop measurements, explicit overflow
 policy, and bounded metadata.
@@ -374,8 +374,8 @@ and store-transition events are exercised by the independent package suite.
 
 ### 20. `20_mrtr_elicitation.exs` — ordinary interactive requests
 
-Implements a read-only preference workflow using public `MCP.Elicitation`,
-`MCP.Result.input_required/1`, and `MCP.MRTR.State` APIs across ordinary tools,
+Implements a read-only preference workflow using public `Snodo.Elicitation`,
+`Snodo.Result.input_required/1`, and `Snodo.MRTR.State` APIs across ordinary tools,
 resources, and prompts. Demonstrates successive form answers, signed-state
 replacement, state-only and input-only continuations, and URL consent without
 claiming the external interaction completed. Runs in the default examples gate.

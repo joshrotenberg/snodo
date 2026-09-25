@@ -1,7 +1,7 @@
 defmodule Examples.TasksMemory.ControlledJob do
   @moduledoc false
 
-  use MCP.Tool,
+  use Snodo.Tool,
     name: "controlled_job",
     description: "Runs as an application-owned task with explicit coordination"
 
@@ -13,7 +13,7 @@ defmodule Examples.TasksMemory.ControlledJob do
     receive do
       {:finish, ^token} ->
         send(owner, {:controlled_job_returning, token, self()})
-        {:ok, MCP.Result.text("finished #{token}")}
+        {:ok, Snodo.Result.text("finished #{token}")}
     end
   end
 end
@@ -22,12 +22,12 @@ defmodule Examples.TasksMemory.Runner do
   @moduledoc false
 
   alias Examples.TasksMemory.ControlledJob
-  alias MCP.Extensions.Tasks
-  alias MCP.Extensions.Tasks.Runner, as: TaskRunner
-  alias MCP.Extensions.Tasks.Store.Memory
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Router
-  alias MCP.Server.Runtime
+  alias Snodo.Extensions.Tasks
+  alias Snodo.Extensions.Tasks.Runner, as: TaskRunner
+  alias Snodo.Extensions.Tasks.Store.Memory
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Router
+  alias Snodo.Server.Runtime
 
   @protocol "2026-07-28"
   @terminal_statuses ["completed", "failed", "cancelled"]
@@ -167,7 +167,7 @@ defmodule Examples.TasksMemory.Runner do
 
   defp dispatch(runtime, opts) do
     {:ok, response} =
-      MCP.Test.dispatch(runtime,
+      Snodo.Test.dispatch(runtime,
         id: Keyword.fetch!(opts, :id),
         protocol: @protocol,
         method: Keyword.fetch!(opts, :method),

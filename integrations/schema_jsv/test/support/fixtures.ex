@@ -1,4 +1,4 @@
-defmodule MCPEx.JSV.SchemaProbe do
+defmodule SnodoTest.JSV.SchemaProbe do
   @moduledoc false
 
   def json_schema do
@@ -7,7 +7,7 @@ defmodule MCPEx.JSV.SchemaProbe do
   end
 end
 
-defmodule MCPEx.JSV.CastProbe do
+defmodule SnodoTest.JSV.CastProbe do
   @moduledoc false
 
   # Raising is the point: reaching this hook means the adapter failed to reject
@@ -19,9 +19,9 @@ defmodule MCPEx.JSV.CastProbe do
   end
 end
 
-defmodule MCPEx.JSV.Echo do
+defmodule SnodoTest.JSV.Echo do
   @moduledoc false
-  use MCP.Tool, name: "echo"
+  use Snodo.Tool, name: "echo"
 
   input_schema(%{
     "type" => "object",
@@ -43,40 +43,40 @@ defmodule MCPEx.JSV.Echo do
   @impl true
   def call(arguments, _context) do
     Process.put(:jsv_echo_arguments, arguments)
-    {:ok, MCP.Result.structured(arguments)}
+    {:ok, Snodo.Result.structured(arguments)}
   end
 end
 
-defmodule MCPEx.JSV.BadOutput do
+defmodule SnodoTest.JSV.BadOutput do
   @moduledoc false
-  use MCP.Tool, name: "bad_output"
+  use Snodo.Tool, name: "bad_output"
   output_schema(%{"type" => "integer"})
 
   @impl true
-  def call(_arguments, _context), do: {:ok, MCP.Result.structured("not an integer")}
+  def call(_arguments, _context), do: {:ok, Snodo.Result.structured("not an integer")}
 end
 
-defmodule MCPEx.JSV.BadSchema do
+defmodule SnodoTest.JSV.BadSchema do
   @moduledoc false
-  use MCP.Tool, name: "bad_schema"
+  use Snodo.Tool, name: "bad_schema"
   input_schema(%{"type" => "object", "minProperties" => -1})
 
   @impl true
   def call(_arguments, _context) do
     Process.put(:jsv_bad_schema_called, true)
-    {:ok, MCP.Result.text("must not execute")}
+    {:ok, Snodo.Result.text("must not execute")}
   end
 end
 
-defmodule MCPEx.JSV.Server do
+defmodule SnodoTest.JSV.Server do
   @moduledoc false
-  use MCP.Server,
+  use Snodo.Server,
     name: "jsv-test",
     version: "0.1.0",
-    protocols: [MCP.Protocol.V2026_07_28],
-    schema_validator: MCP.Schema.Validator.JSV
+    protocols: [Snodo.Protocol.V2026_07_28],
+    schema_validator: Snodo.Schema.Validator.JSV
 
-  tool(MCPEx.JSV.Echo)
-  tool(MCPEx.JSV.BadOutput)
-  tool(MCPEx.JSV.BadSchema)
+  tool(SnodoTest.JSV.Echo)
+  tool(SnodoTest.JSV.BadOutput)
+  tool(SnodoTest.JSV.BadSchema)
 end

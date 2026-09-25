@@ -1,7 +1,7 @@
 defmodule Examples.HTTPTools.Echo do
   @moduledoc false
 
-  use MCP.Tool,
+  use Snodo.Tool,
     name: "echo",
     description: "Echo text through the native HTTP transport"
 
@@ -12,16 +12,16 @@ defmodule Examples.HTTPTools.Echo do
   })
 
   @impl true
-  def call(%{"text" => text}, _context), do: {:ok, MCP.Result.text(text)}
+  def call(%{"text" => text}, _context), do: {:ok, Snodo.Result.text(text)}
 end
 
 defmodule Examples.HTTPTools.Server do
   @moduledoc false
 
-  use MCP.Server,
+  use Snodo.Server,
     name: "http-tools-example",
     version: "0.1.0",
-    protocols: [MCP.Protocol.V2026_07_28]
+    protocols: [Snodo.Protocol.V2026_07_28]
 
   tool(Examples.HTTPTools.Echo)
 end
@@ -119,8 +119,8 @@ defmodule Examples.HTTPTools.Runner do
 
   alias Examples.HTTPTools.Client
   alias Examples.HTTPTools.Server
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Transport.StreamableHTTP.Server, as: HTTPServer
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Transport.StreamableHTTP.Server, as: HTTPServer
 
   @protocol "2026-07-28"
 

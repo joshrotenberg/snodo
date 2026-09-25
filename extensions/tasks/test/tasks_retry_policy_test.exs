@@ -1,9 +1,9 @@
-defmodule MCPEx.TasksRetryPolicyTest.Executor do
+defmodule SnodoTest.TasksRetryPolicyTest.Executor do
   @moduledoc false
 
-  @behaviour MCP.Extensions.Tasks.WorkExecutor
+  @behaviour Snodo.Extensions.Tasks.WorkExecutor
 
-  alias MCP.Extensions.Tasks.Runner
+  alias Snodo.Extensions.Tasks.Runner
 
   @impl true
   def execute(work, cancellation, state) do
@@ -69,13 +69,13 @@ defmodule MCPEx.TasksRetryPolicyTest.Executor do
   end
 end
 
-defmodule MCPEx.TasksRetryPolicyTest.FaultStore do
+defmodule SnodoTest.TasksRetryPolicyTest.FaultStore do
   @moduledoc false
 
-  @behaviour MCP.Extensions.Tasks.Store
+  @behaviour Snodo.Extensions.Tasks.Store
 
-  alias MCP.Extensions.Tasks.Store.Memory
-  alias MCP.Extensions.Tasks.Transition
+  alias Snodo.Extensions.Tasks.Store.Memory
+  alias Snodo.Extensions.Tasks.Transition
 
   @impl true
   def authorize(state, context, action), do: Memory.authorize(state.store, context, action)
@@ -150,32 +150,32 @@ defmodule MCPEx.TasksRetryPolicyTest.FaultStore do
   end
 end
 
-defmodule MCP.TasksRetryPolicyTest do
+defmodule Snodo.TasksRetryPolicyTest do
   use ExUnit.Case, async: false
 
   @moduletag mcp_contract: ["tasks-retry-policy"]
   @moduletag :tasks_package
 
-  alias MCP.Context
-  alias MCP.Extensions.Tasks.Event
-  alias MCP.Extensions.Tasks.RetryPolicy
-  alias MCP.Extensions.Tasks.Runner
-  alias MCP.Extensions.Tasks.Snapshot
-  alias MCP.Extensions.Tasks.Store
-  alias MCP.Extensions.Tasks.Store.Dets
-  alias MCP.Extensions.Tasks.Store.Memory
-  alias MCP.Extensions.Tasks.Task, as: ProtocolTask
-  alias MCP.Extensions.Tasks.Transition
-  alias MCP.Extensions.Tasks.Work
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Transport.Context, as: TransportContext
-  alias MCPEx.TasksRetryPolicyTest.Executor
-  alias MCPEx.TasksRetryPolicyTest.FaultStore
+  alias Snodo.Context
+  alias Snodo.Extensions.Tasks.Event
+  alias Snodo.Extensions.Tasks.RetryPolicy
+  alias Snodo.Extensions.Tasks.Runner
+  alias Snodo.Extensions.Tasks.Snapshot
+  alias Snodo.Extensions.Tasks.Store
+  alias Snodo.Extensions.Tasks.Store.Dets
+  alias Snodo.Extensions.Tasks.Store.Memory
+  alias Snodo.Extensions.Tasks.Task, as: ProtocolTask
+  alias Snodo.Extensions.Tasks.Transition
+  alias Snodo.Extensions.Tasks.Work
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Transport.Context, as: TransportContext
+  alias SnodoTest.TasksRetryPolicyTest.Executor
+  alias SnodoTest.TasksRetryPolicyTest.FaultStore
 
   @created_at "2026-08-24T10:00:00.000Z"
   @retry_delay_ms 60_000
   @lease_ms 120_000
-  @runner_name MCP.TasksRetryPolicyTest.Runner
+  @runner_name Snodo.TasksRetryPolicyTest.Runner
 
   test "retry policies persist exact fixed and expanded exponential delays" do
     assert RetryPolicy.none() == RetryPolicy.new!([])
@@ -1021,7 +1021,7 @@ defmodule MCP.TasksRetryPolicyTest do
     path =
       Path.join(
         System.tmp_dir!(),
-        "mcp-ex-tasks-retry-#{System.unique_integer([:positive])}.dets"
+        "snodo-tasks-retry-#{System.unique_integer([:positive])}.dets"
       )
 
     on_exit(fn -> File.rm(path) end)

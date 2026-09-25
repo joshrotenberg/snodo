@@ -1,92 +1,92 @@
 defmodule Examples.Pagination.AlphaTool do
   @moduledoc false
-  use MCP.Tool, name: "alpha"
+  use Snodo.Tool, name: "alpha"
 
   @impl true
-  def call(_arguments, _context), do: {:ok, MCP.Result.text("alpha")}
+  def call(_arguments, _context), do: {:ok, Snodo.Result.text("alpha")}
 end
 
 defmodule Examples.Pagination.ZuluTool do
   @moduledoc false
-  use MCP.Tool, name: "zulu"
+  use Snodo.Tool, name: "zulu"
 
   @impl true
-  def call(_arguments, _context), do: {:ok, MCP.Result.text("zulu")}
+  def call(_arguments, _context), do: {:ok, Snodo.Result.text("zulu")}
 end
 
 defmodule Examples.Pagination.AuditPrompt do
   @moduledoc false
-  use MCP.Prompt, name: "audit"
+  use Snodo.Prompt, name: "audit"
 
   @impl true
   def render(_arguments, _context) do
-    {:ok, MCP.Result.prompt_get(MCP.Prompt.message(:user, MCP.Prompt.text("Audit it.")))}
+    {:ok, Snodo.Result.prompt_get(Snodo.Prompt.message(:user, Snodo.Prompt.text("Audit it.")))}
   end
 end
 
 defmodule Examples.Pagination.ReviewPrompt do
   @moduledoc false
-  use MCP.Prompt, name: "review"
+  use Snodo.Prompt, name: "review"
 
   @impl true
   def render(_arguments, _context) do
-    {:ok, MCP.Result.prompt_get(MCP.Prompt.message(:user, MCP.Prompt.text("Review it.")))}
+    {:ok, Snodo.Result.prompt_get(Snodo.Prompt.message(:user, Snodo.Prompt.text("Review it.")))}
   end
 end
 
 defmodule Examples.Pagination.GuideResource do
   @moduledoc false
-  use MCP.Resource, uri: "demo://guide", name: "guide"
+  use Snodo.Resource, uri: "demo://guide", name: "guide"
 
   @impl true
   def read(%{"uri" => uri}, _context) do
-    {:ok, MCP.Result.resource_read(MCP.Resource.text(uri, "guide"))}
+    {:ok, Snodo.Result.resource_read(Snodo.Resource.text(uri, "guide"))}
   end
 end
 
 defmodule Examples.Pagination.StatusResource do
   @moduledoc false
-  use MCP.Resource, uri: "demo://status", name: "status"
+  use Snodo.Resource, uri: "demo://status", name: "status"
 
   @impl true
   def read(%{"uri" => uri}, _context) do
-    {:ok, MCP.Result.resource_read(MCP.Resource.text(uri, "ready"))}
+    {:ok, Snodo.Result.resource_read(Snodo.Resource.text(uri, "ready"))}
   end
 end
 
 defmodule Examples.Pagination.PackageTemplate do
   @moduledoc false
-  use MCP.Resource, uri_template: "hex://{name}", name: "package"
+  use Snodo.Resource, uri_template: "hex://{name}", name: "package"
 
   @impl true
   def matches?(uri), do: String.starts_with?(uri, "hex://")
 
   @impl true
   def read(%{"uri" => uri}, _context) do
-    {:ok, MCP.Result.resource_read(MCP.Resource.text(uri, "package"))}
+    {:ok, Snodo.Result.resource_read(Snodo.Resource.text(uri, "package"))}
   end
 end
 
 defmodule Examples.Pagination.ReleaseTemplate do
   @moduledoc false
-  use MCP.Resource, uri_template: "hex://{name}/releases/{version}", name: "release"
+  use Snodo.Resource, uri_template: "hex://{name}/releases/{version}", name: "release"
 
   @impl true
   def matches?(uri), do: String.contains?(uri, "/releases/")
 
   @impl true
   def read(%{"uri" => uri}, _context) do
-    {:ok, MCP.Result.resource_read(MCP.Resource.text(uri, "release"))}
+    {:ok, Snodo.Result.resource_read(Snodo.Resource.text(uri, "release"))}
   end
 end
 
 defmodule Examples.Pagination.Server do
   @moduledoc false
 
-  use MCP.Server,
+  use Snodo.Server,
     name: "pagination-example",
     version: "1.0.0",
-    protocols: [MCP.Protocol.V2026_07_28],
+    protocols: [Snodo.Protocol.V2026_07_28],
     pagination: [page_size: 1],
     tools_cache: [ttl_ms: 10, scope: "public"],
     prompts_cache: [ttl_ms: 20, scope: "public"],
@@ -153,7 +153,7 @@ defmodule Examples.Pagination.Runner do
 
   defp dispatch(runtime, method, params \\ %{}) do
     {:ok, response} =
-      MCP.Test.dispatch(runtime,
+      Snodo.Test.dispatch(runtime,
         protocol: @protocol,
         method: method,
         params: params

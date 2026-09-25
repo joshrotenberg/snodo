@@ -1,15 +1,15 @@
-defmodule MCP.Transport.StdioAcceptanceTest do
+defmodule Snodo.Transport.StdioAcceptanceTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Server.Executor
-  alias MCP.Subscription.Event
-  alias MCP.Transport.Stdio
-  alias MCPEx.TestFixtures
-  alias MCPEx.TestInput
-  alias MCPEx.TestSubscriptionHub
-  alias MCPEx.TestSubscriptionSource
-  alias MCPEx.TestTools.Echo
-  alias MCPEx.TestTools.Trapping
+  alias Snodo.Server.Executor
+  alias Snodo.Subscription.Event
+  alias Snodo.Transport.Stdio
+  alias SnodoTest.TestFixtures
+  alias SnodoTest.TestInput
+  alias SnodoTest.TestSubscriptionHub
+  alias SnodoTest.TestSubscriptionSource
+  alias SnodoTest.TestTools.Echo
+  alias SnodoTest.TestTools.Trapping
 
   test "empty input always shuts down cleanly" do
     runtime = TestFixtures.runtime()
@@ -286,7 +286,7 @@ defmodule MCP.Transport.StdioAcceptanceTest do
     TestInput.push(input, JSON.encode!(invalid_cancel) <> "\n")
     Process.sleep(20)
     assert Process.alive?(worker)
-    refute MCP.Cancellation.cancelled?(cancellation)
+    refute Snodo.Cancellation.cancelled?(cancellation)
 
     TestInput.push(input, JSON.encode!(valid_cancel) <> "\n")
     TestInput.push(input, JSON.encode!(reused_id) <> "\n")
@@ -294,7 +294,7 @@ defmodule MCP.Transport.StdioAcceptanceTest do
     TestInput.eof(input)
 
     assert :ok = Task.await(server, 1_000)
-    assert MCP.Cancellation.cancelled?(cancellation)
+    assert Snodo.Cancellation.cancelled?(cancellation)
 
     {_remaining_input, raw_output} = StringIO.contents(output)
 

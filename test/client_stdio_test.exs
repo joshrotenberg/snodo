@@ -1,8 +1,8 @@
-defmodule MCP.ClientStdioTest do
+defmodule Snodo.ClientStdioTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Client
-  alias MCP.Error
+  alias Snodo.Client
+  alias Snodo.Error
 
   @moduletag timeout: 30_000
 
@@ -100,7 +100,7 @@ defmodule MCP.ClientStdioTest do
         send(parent, {:client, client})
       end)
 
-    assert_receive {:client, %Client{transport: {MCP.Client.Stdio, connection}}}, 10_000
+    assert_receive {:client, %Client{transport: {Snodo.Client.Stdio, connection}}}, 10_000
     assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
     connection_ref = Process.monitor(connection)
     assert_receive {:DOWN, ^connection_ref, :process, ^connection, _reason}, 5_000
@@ -111,7 +111,7 @@ defmodule MCP.ClientStdioTest do
              Client.connect({:stdio, "/nonexistent/mcp-server", []})
 
     assert {:error, %Error{code: -32_000}} =
-             Client.connect({:stdio, "mcp-ex-no-such-command-#{System.unique_integer()}", []})
+             Client.connect({:stdio, "snodo-no-such-command-#{System.unique_integer()}", []})
   end
 
   defp eventually(check, attempts \\ 50) do

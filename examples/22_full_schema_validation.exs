@@ -1,7 +1,7 @@
 # Run from integrations/schema_jsv: mix example.jsv
 # The optional backend validates canonical schemas without changing arguments.
 defmodule Examples.FullSchema.Tool do
-  use MCP.Tool,
+  use Snodo.Tool,
     name: "package_selection",
     description: "Validates a local package selection; performs no network requests"
 
@@ -35,12 +35,12 @@ defmodule Examples.FullSchema.Tool do
   output_schema(@output)
 
   @impl true
-  def call(arguments, _context), do: {:ok, MCP.Result.structured(%{"selection" => arguments})}
+  def call(arguments, _context), do: {:ok, Snodo.Result.structured(%{"selection" => arguments})}
 end
 
 defmodule Examples.FullSchema.Validator do
-  @behaviour MCP.Schema.Validator
-  alias MCP.Schema.Validator.JSV
+  @behaviour Snodo.Schema.Validator
+  alias Snodo.Schema.Validator.JSV
 
   # Fixed application catalog: compiled immutable roots, no global cache.
   @schemas [Examples.FullSchema.Tool.input_schema(), Examples.FullSchema.Tool.output_schema()]
@@ -56,10 +56,10 @@ defmodule Examples.FullSchema.Validator do
 end
 
 defmodule Examples.FullSchema.Server do
-  use MCP.Server,
+  use Snodo.Server,
     name: "full-schema-example",
     version: "1.0.0",
-    protocols: [MCP.Protocol.V2026_07_28],
+    protocols: [Snodo.Protocol.V2026_07_28],
     schema_validator: Examples.FullSchema.Validator
 
   tool(Examples.FullSchema.Tool)
@@ -86,8 +86,8 @@ defmodule Examples.FullSchema.Check do
     true = definition["inputSchema"] == Examples.FullSchema.Tool.input_schema()
     true = definition["outputSchema"] == Examples.FullSchema.Tool.output_schema()
 
-    {:error, %MCP.Schema.Validator.JSV.BuildError{}} =
-      MCP.Schema.Validator.JSV.compile(%{"$ref" => "https://example.invalid/no-fetch"})
+    {:error, %Snodo.Schema.Validator.JSV.BuildError{}} =
+      Snodo.Schema.Validator.JSV.compile(%{"$ref" => "https://example.invalid/no-fetch"})
 
     :ok
   end
@@ -104,7 +104,7 @@ defmodule Examples.FullSchema.Check do
     }
 
     {:ok, response} =
-      MCP.Server.dispatch(
+      Snodo.Server.dispatch(
         runtime,
         %{
           "jsonrpc" => "2.0",
@@ -112,7 +112,7 @@ defmodule Examples.FullSchema.Check do
           "method" => method,
           "params" => Map.put(params, "_meta", metadata)
         },
-        %MCP.Transport.Context{transport: :direct}
+        %Snodo.Transport.Context{transport: :direct}
       )
 
     response

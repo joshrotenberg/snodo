@@ -1,9 +1,9 @@
 # Tasks extension
 
-This independent `:mcp_ex_tasks` Mix package implements the released SEP-2663
+This independent `:snodo_tasks` Mix package implements the released SEP-2663
 Tasks extension for MCP `2026-07-28` without adding task methods or capabilities
 to the core protocol catalog. Its only runtime dependency is the standalone
-`mcp_ex` core through the one-way path dependency in this spike; the core does
+`snodo` core through the one-way path dependency in this spike; the core does
 not compile or depend on Tasks.
 
 The package owns its source, tests, contract evidence, formatting, Credo, and
@@ -76,9 +76,9 @@ store and runner in the application, then pass their references as extension
 options:
 
 ```elixir
-alias MCP.Extensions.Tasks
-alias MCP.Extensions.Tasks.Runner
-alias MCP.Extensions.Tasks.Store.Memory
+alias Snodo.Extensions.Tasks
+alias Snodo.Extensions.Tasks.Runner
+alias Snodo.Extensions.Tasks.Store.Memory
 
 {:ok, store} =
   Memory.start_link(
@@ -93,9 +93,9 @@ store_ref = {Memory, store}
   )
 
 runtime =
-  MCP.Server.Runtime.new(
+  Snodo.Server.Runtime.new(
     router: router,
-    protocols: [MCP.Protocol.V2026_07_28],
+    protocols: [Snodo.Protocol.V2026_07_28],
     extensions: [
       {Tasks,
        store: store_ref,
@@ -131,7 +131,7 @@ invocation without putting policy on the wire.
 
 ## Durable work and recovery
 
-Every Task is created with a `MCP.Extensions.Tasks.Work` descriptor containing
+Every Task is created with a `Snodo.Extensions.Tasks.Work` descriptor containing
 an application-defined `type`, JSON-safe `input`, and stable
 `idempotency_key`. A versioned immutable `RetryPolicy` is part of that
 descriptor; its default is an empty delay list, so executor failures do not
@@ -144,7 +144,7 @@ extension option:
 
 ```elixir
 work_builder = fn task_id, tool_name, arguments, context ->
-  MCP.Extensions.Tasks.Work.new(task_id, "my_app/tool-call", %{
+  Snodo.Extensions.Tasks.Work.new(task_id, "my_app/tool-call", %{
     "tool" => tool_name,
     "arguments" => arguments,
     "principal" => %{
@@ -159,7 +159,7 @@ Pass that function as `work_builder: work_builder` beside `store`, `runner`, and
 `task_support` in the `{Tasks, ...}` extension options shown above.
 
 The builder is the application's explicit security boundary: project only the
-stable identity required to resume work. Do not persist `MCP.Context`, request
+stable identity required to resume work. Do not persist `Snodo.Context`, request
 transport handles, bearer tokens, or the complete authentication structure.
 The descriptor and initial Task snapshot are committed atomically before the
 creation result is returned.
@@ -168,8 +168,8 @@ For restartable execution, configure a `{module, state}` `WorkExecutor` and
 enable recovery on the independently supervised runner:
 
 ```elixir
-alias MCP.Extensions.Tasks.Runner
-alias MCP.Extensions.Tasks.Store.Dets
+alias Snodo.Extensions.Tasks.Runner
+alias Snodo.Extensions.Tasks.Store.Dets
 
 {:ok, store} =
   Dets.start_link(
@@ -205,8 +205,8 @@ Configure exact retry timing either on a descriptor or through the extension's
 global/per-tool `:retry_policy` option:
 
 ```elixir
-alias MCP.Extensions.Tasks.RetryPolicy
-alias MCP.Extensions.Tasks.Work
+alias Snodo.Extensions.Tasks.RetryPolicy
+alias Snodo.Extensions.Tasks.Work
 
 policy = RetryPolicy.new!([250, 1_000, 5_000])
 
@@ -261,7 +261,7 @@ crashes; that distinction is inherent in the at-least-once model.
 ## Mid-task input
 
 Ordinary MRTR and task-owned input are separate lifecycles. Complete ordinary
-`MCP.Result.input_required/1` exchanges synchronously before selecting task
+`Snodo.Result.input_required/1` exchanges synchronously before selecting task
 execution; once inside a task, use `Tasks.await_input/3` and `tasks/update`.
 Workers enforce the selected dialect's result admission and fail with a
 protocol error if they return ordinary `input_required` or another task handle
@@ -273,14 +273,14 @@ A tool executing inside a Task can suspend on an input request:
 
 ```elixir
 request =
-  MCP.Elicitation.form("Confirm export", %{
+  Snodo.Elicitation.form("Confirm export", %{
     "type" => "object",
     "properties" => %{"confirmed" => %{"type" => "boolean"}},
     "required" => ["confirmed"]
   })
 
 with {:ok, response} <- Tasks.await_input(context, "export-confirmation", request) do
-  {:ok, MCP.Result.structured(%{"confirmation" => response})}
+  {:ok, Snodo.Result.structured(%{"confirmation" => response})}
 end
 ```
 
@@ -306,7 +306,7 @@ the same event ID is idempotent and returns its original committed revision.
 The runner is independent of the request-scoped executor, so work can outlive
 the request that returned the task handle.
 
-`MCP.Context` crosses the store boundary only for `authorize/3`. The store
+`Snodo.Context` crosses the store boundary only for `authorize/3`. The store
 returns an opaque access value bound to one action; reads and request mutations
 use that value rather than retaining the context. A runner separately acquires
 an unguessable, renewable lease restricted to worker lifecycle events for that
@@ -331,10 +331,10 @@ event-replay, authority, claim, and reaping contract.
 - `Store.Dets` is a local, single-node reference adapter, not a production
   distributed store. Its GenServer serializes operations in one BEAM, DETS has
   a 2 GB file limit, and it does not coordinate claims across nodes. The
-  separate [`:mcp_ex_tasks_postgres`](../tasks_postgres/README.md) package
+  separate [`:snodo_tasks_postgres`](../tasks_postgres/README.md) package
   implements the same contract with an application-owned `Ecto.Repo`, row
   locks, database time, and fenced leases without adding Ecto to this package.
-  The separate [`:mcp_ex_tasks_sqlite`](../tasks_sqlite/README.md) package keeps
+  The separate [`:snodo_tasks_sqlite`](../tasks_sqlite/README.md) package keeps
   the same Repo/migration ownership while providing file-backed, single-host
   durability through SQLite `IMMEDIATE` transactions and one serialized writer.
 - `Store.reap/1` and the runner's optional `:reap_interval_ms` implement this

@@ -1,7 +1,7 @@
-defmodule MCPEx.MRTR.Choice do
+defmodule SnodoTest.MRTR.Choice do
   @moduledoc false
-  alias MCP.Elicitation
-  alias MCP.Result
+  alias Snodo.Elicitation
+  alias Snodo.Result
 
   def request do
     Elicitation.form("Choose a label", %{
@@ -28,10 +28,10 @@ defmodule MCPEx.MRTR.Choice do
   end
 end
 
-defmodule MCPEx.MRTR.Tool do
+defmodule SnodoTest.MRTR.Tool do
   @moduledoc false
-  use MCP.Tool, name: "choice"
-  alias MCPEx.MRTR.Choice
+  use Snodo.Tool, name: "choice"
+  alias SnodoTest.MRTR.Choice
   input_schema(%{"type" => "object", "properties" => %{}, "additionalProperties" => false})
 
   output_schema(%{
@@ -43,66 +43,66 @@ defmodule MCPEx.MRTR.Tool do
   @impl true
   def call(arguments, context) do
     if arguments != %{}, do: raise("retry data leaked into tool arguments")
-    Choice.run(context, &MCP.Result.structured(%{"label" => &1}))
+    Choice.run(context, &Snodo.Result.structured(%{"label" => &1}))
   end
 end
 
-defmodule MCPEx.MRTR.Resource do
+defmodule SnodoTest.MRTR.Resource do
   @moduledoc false
-  use MCP.Resource, name: "choice", uri: "choice://value"
-  alias MCPEx.MRTR.Choice
+  use Snodo.Resource, name: "choice", uri: "choice://value"
+  alias SnodoTest.MRTR.Choice
 
   @impl true
   def read(%{"uri" => uri}, context) do
-    Choice.run(context, &MCP.Result.resource_read(MCP.Resource.text(uri, &1)))
+    Choice.run(context, &Snodo.Result.resource_read(Snodo.Resource.text(uri, &1)))
   end
 end
 
-defmodule MCPEx.MRTR.Prompt do
+defmodule SnodoTest.MRTR.Prompt do
   @moduledoc false
-  use MCP.Prompt, name: "choice", arguments: []
-  alias MCPEx.MRTR.Choice
+  use Snodo.Prompt, name: "choice", arguments: []
+  alias SnodoTest.MRTR.Choice
 
   @impl true
   def render(arguments, context) do
     if arguments != %{}, do: raise("retry data leaked into prompt arguments")
 
     Choice.run(context, fn label ->
-      MCP.Result.prompt_get(MCP.Prompt.message(:user, MCP.Prompt.text(label)))
+      Snodo.Result.prompt_get(Snodo.Prompt.message(:user, Snodo.Prompt.text(label)))
     end)
   end
 end
 
-defmodule MCPEx.MRTR.InvalidTool do
+defmodule SnodoTest.MRTR.InvalidTool do
   @moduledoc false
-  use MCP.Tool, name: "invalid_input"
+  use Snodo.Tool, name: "invalid_input"
 
   @impl true
   def call(%{"variant" => variant}, _context) do
     result =
       case variant do
         "empty" ->
-          MCP.Result.input_required()
+          Snodo.Result.input_required()
 
         "state_null" ->
-          MCP.Result.input_required(request_state: nil)
+          Snodo.Result.input_required(request_state: nil)
 
         "bad_request" ->
-          MCP.Result.input_required(input_requests: %{"x" => %{}})
+          Snodo.Result.input_required(input_requests: %{"x" => %{}})
 
         "roots" ->
-          MCP.Result.input_required(input_requests: %{"x" => %{"method" => "roots/list"}})
+          Snodo.Result.input_required(input_requests: %{"x" => %{"method" => "roots/list"}})
 
         "state_only" ->
-          MCP.Result.input_required(request_state: "unused-opaque-marker")
+          Snodo.Result.input_required(request_state: "unused-opaque-marker")
 
         "empty_requests" ->
-          MCP.Result.input_required(input_requests: %{})
+          Snodo.Result.input_required(input_requests: %{})
 
         "url" ->
-          MCP.Result.input_required(
+          Snodo.Result.input_required(
             input_requests: %{
-              "x" => MCP.Elicitation.url("Preview", "https://example.invalid/preview")
+              "x" => Snodo.Elicitation.url("Preview", "https://example.invalid/preview")
             }
           )
       end
@@ -111,30 +111,30 @@ defmodule MCPEx.MRTR.InvalidTool do
   end
 end
 
-defmodule MCPEx.MRTR.Server do
+defmodule SnodoTest.MRTR.Server do
   @moduledoc false
-  use MCP.Server,
+  use Snodo.Server,
     name: "mrtr-test",
     version: "1",
-    schema_validator: MCP.Schema.Validator.Basic,
+    schema_validator: Snodo.Schema.Validator.Basic,
     resources_cache: [ttl_ms: 5000, scope: "public"]
 
-  tool(MCPEx.MRTR.Tool)
-  tool(MCPEx.MRTR.InvalidTool)
-  tool(MCPEx.MRTR.MultipleTool)
-  resource(MCPEx.MRTR.Resource)
-  prompt(MCPEx.MRTR.Prompt)
+  tool(SnodoTest.MRTR.Tool)
+  tool(SnodoTest.MRTR.InvalidTool)
+  tool(SnodoTest.MRTR.MultipleTool)
+  resource(SnodoTest.MRTR.Resource)
+  prompt(SnodoTest.MRTR.Prompt)
 end
 
-defmodule MCPEx.MRTR.MultipleTool do
+defmodule SnodoTest.MRTR.MultipleTool do
   @moduledoc false
-  use MCP.Tool, name: "multiple_choices"
+  use Snodo.Tool, name: "multiple_choices"
 
-  alias MCP.Elicitation
-  alias MCP.Error
-  alias MCP.MRTR.State
-  alias MCP.Result
-  alias MCPEx.MRTR.Choice
+  alias Snodo.Elicitation
+  alias Snodo.Error
+  alias Snodo.MRTR.State
+  alias Snodo.Result
+  alias SnodoTest.MRTR.Choice
 
   # A public test fixture key, never application configuration.
   @state_opts [secret: "test-only-key-never-use-in-an-app!", principal: nil]

@@ -9,12 +9,12 @@ import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const fixture = path.join(project, "interop/official_client/progress_fixture.exs");
-const elixir = process.env.MCP_EX_ELIXIR ?? "elixir";
+const elixir = process.env.SNODO_ELIXIR ?? "elixir";
 const env = { ...process.env, ERL_FLAGS: process.env.ERL_FLAGS ?? "+S 4:4" };
 const options = () => ({ signal: AbortSignal.timeout(15_000) });
 
 function newClient() {
-  const client = new Client({ name: "mcp-ex-progress-check", version: "1.0.0" }, {
+  const client = new Client({ name: "snodo-progress-check", version: "1.0.0" }, {
     versionNegotiation: { mode: { pin: "2026-07-28" } },
     capabilities: { elicitation: { form: {} } },
     inputRequired: { autoFulfill: true, maxRounds: 3 },

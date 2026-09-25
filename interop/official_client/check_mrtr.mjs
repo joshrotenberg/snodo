@@ -14,14 +14,14 @@ import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const project = path.resolve(here, "../..");
 const fixture = path.join(here, "mrtr_fixture.exs");
-const elixir = process.env.MCP_EX_ELIXIR ?? "elixir";
+const elixir = process.env.SNODO_ELIXIR ?? "elixir";
 const protocol = "2026-07-28";
 const options = () => ({ signal: AbortSignal.timeout(30_000) });
 
 function newClient() {
   const callbacks = [];
   const client = new Client(
-    { name: "mcp-ex-mrtr-acceptance", version: "1.0.0" },
+    { name: "snodo-mrtr-acceptance", version: "1.0.0" },
     {
       versionNegotiation: { mode: { pin: protocol } },
       capabilities: { elicitation: { form: {}, url: {} } },

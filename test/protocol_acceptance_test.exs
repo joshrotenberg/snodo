@@ -1,20 +1,20 @@
-defmodule MCP.ProtocolAcceptanceTest do
+defmodule Snodo.ProtocolAcceptanceTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Protocol.Registry
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Server
-  alias MCP.Test, as: MCPTest
-  alias MCP.Transport.Context, as: TransportContext
-  alias MCPEx.FutureDialect
-  alias MCPEx.RejectingInputValidator
-  alias MCPEx.RequiredKeysValidator
-  alias MCPEx.TestFixtures
-  alias MCPEx.TestTools.ComplexSchema
-  alias MCPEx.TestTools.Echo
-  alias MCPEx.TestTools.InvalidStructuredOutput
-  alias MCPEx.TestTools.InvalidWireResult
-  alias MCPEx.TestTools.NotificationProbe
+  alias Snodo.Protocol.Registry
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Server
+  alias Snodo.Test, as: MCPTest
+  alias Snodo.Transport.Context, as: TransportContext
+  alias SnodoTest.FutureDialect
+  alias SnodoTest.RejectingInputValidator
+  alias SnodoTest.RequiredKeysValidator
+  alias SnodoTest.TestFixtures
+  alias SnodoTest.TestTools.ComplexSchema
+  alias SnodoTest.TestTools.Echo
+  alias SnodoTest.TestTools.InvalidStructuredOutput
+  alias SnodoTest.TestTools.InvalidWireResult
+  alias SnodoTest.TestTools.NotificationProbe
 
   test "server/discover follows the final 2026-07-28 shape" do
     runtime =
@@ -42,7 +42,7 @@ defmodule MCP.ProtocolAcceptanceTest do
                "cacheScope" => "public",
                "_meta" => %{
                  "io.modelcontextprotocol/serverInfo" => %{
-                   "name" => "mcp-ex-spike",
+                   "name" => "snodo-spike",
                    "version" => "0.1.0"
                  }
                }

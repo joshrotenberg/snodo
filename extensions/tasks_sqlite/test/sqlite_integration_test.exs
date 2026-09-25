@@ -1,31 +1,31 @@
-defmodule MCP.Extensions.Tasks.SQLite.LiveRepo do
+defmodule Snodo.Extensions.Tasks.SQLite.LiveRepo do
   @moduledoc false
 
   use Ecto.Repo,
-    otp_app: :mcp_ex_tasks_sqlite,
+    otp_app: :snodo_tasks_sqlite,
     adapter: Ecto.Adapters.SQLite3
 end
 
-defmodule MCP.Extensions.Tasks.SQLite.MigrationRepo do
+defmodule Snodo.Extensions.Tasks.SQLite.MigrationRepo do
   @moduledoc false
 
   use Ecto.Repo,
-    otp_app: :mcp_ex_tasks_sqlite,
+    otp_app: :snodo_tasks_sqlite,
     adapter: Ecto.Adapters.SQLite3
 end
 
-defmodule MCP.Extensions.Tasks.SQLite.BusyRepo do
+defmodule Snodo.Extensions.Tasks.SQLite.BusyRepo do
   @moduledoc false
 
   use Ecto.Repo,
-    otp_app: :mcp_ex_tasks_sqlite,
+    otp_app: :snodo_tasks_sqlite,
     adapter: Ecto.Adapters.SQLite3
 end
 
-defmodule MCP.Extensions.Tasks.SQLite.LiveExecutor do
+defmodule Snodo.Extensions.Tasks.SQLite.LiveExecutor do
   @moduledoc false
 
-  @behaviour MCP.Extensions.Tasks.WorkExecutor
+  @behaviour Snodo.Extensions.Tasks.WorkExecutor
 
   @impl true
   def execute(work, _cancellation, state) do
@@ -47,34 +47,34 @@ defmodule MCP.Extensions.Tasks.SQLite.LiveExecutor do
   end
 end
 
-defmodule MCP.Extensions.Tasks.SQLite.IntegrationTest do
+defmodule Snodo.Extensions.Tasks.SQLite.IntegrationTest do
   use ExUnit.Case, async: false
 
   import Ecto.Query
 
-  alias MCP.Context
-  alias MCP.Extensions.Tasks.Event
-  alias MCP.Extensions.Tasks.RetryPolicy
-  alias MCP.Extensions.Tasks.Runner
-  alias MCP.Extensions.Tasks.Snapshot
-  alias MCP.Extensions.Tasks.SQLite.BusyRepo
-  alias MCP.Extensions.Tasks.SQLite.LiveExecutor
-  alias MCP.Extensions.Tasks.SQLite.LiveRepo
-  alias MCP.Extensions.Tasks.SQLite.MigrationRepo
-  alias MCP.Extensions.Tasks.Store
-  alias MCP.Extensions.Tasks.Store.SQLite
-  alias MCP.Extensions.Tasks.Store.SQLite.EventRow
-  alias MCP.Extensions.Tasks.Store.SQLite.Migration
-  alias MCP.Extensions.Tasks.Store.SQLite.Migration.V1, as: MigrationV1
-  alias MCP.Extensions.Tasks.Store.SQLite.Migration.V2, as: MigrationV2
-  alias MCP.Extensions.Tasks.Store.SQLite.Persistence
-  alias MCP.Extensions.Tasks.Store.SQLite.TaskRow
-  alias MCP.Extensions.Tasks.Store.SQLite.Timestamp
-  alias MCP.Extensions.Tasks.Task, as: ProtocolTask
-  alias MCP.Extensions.Tasks.Transition
-  alias MCP.Extensions.Tasks.Work
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Transport.Context, as: TransportContext
+  alias Snodo.Context
+  alias Snodo.Extensions.Tasks.Event
+  alias Snodo.Extensions.Tasks.RetryPolicy
+  alias Snodo.Extensions.Tasks.Runner
+  alias Snodo.Extensions.Tasks.Snapshot
+  alias Snodo.Extensions.Tasks.SQLite.BusyRepo
+  alias Snodo.Extensions.Tasks.SQLite.LiveExecutor
+  alias Snodo.Extensions.Tasks.SQLite.LiveRepo
+  alias Snodo.Extensions.Tasks.SQLite.MigrationRepo
+  alias Snodo.Extensions.Tasks.Store
+  alias Snodo.Extensions.Tasks.Store.SQLite
+  alias Snodo.Extensions.Tasks.Store.SQLite.EventRow
+  alias Snodo.Extensions.Tasks.Store.SQLite.Migration
+  alias Snodo.Extensions.Tasks.Store.SQLite.Migration.V1, as: MigrationV1
+  alias Snodo.Extensions.Tasks.Store.SQLite.Migration.V2, as: MigrationV2
+  alias Snodo.Extensions.Tasks.Store.SQLite.Persistence
+  alias Snodo.Extensions.Tasks.Store.SQLite.TaskRow
+  alias Snodo.Extensions.Tasks.Store.SQLite.Timestamp
+  alias Snodo.Extensions.Tasks.Task, as: ProtocolTask
+  alias Snodo.Extensions.Tasks.Transition
+  alias Snodo.Extensions.Tasks.Work
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Transport.Context, as: TransportContext
 
   @migration_version 2_026_082_602
   @migration_v1_version 2_026_082_601
@@ -1190,7 +1190,7 @@ defmodule MCP.Extensions.Tasks.SQLite.IntegrationTest do
   defp unique_database(label) do
     Path.join(
       System.tmp_dir!(),
-      "mcp_ex_tasks_sqlite_#{label}_#{System.unique_integer([:positive, :monotonic])}.sqlite3"
+      "snodo_tasks_sqlite_#{label}_#{System.unique_integer([:positive, :monotonic])}.sqlite3"
     )
   end
 

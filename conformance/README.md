@@ -1,6 +1,6 @@
 # Conformance workspace
 
-The internal wire contract runs with `mix mcp.contract`. Its implementation,
+The internal wire contract runs with `mix snodo.contract`. Its implementation,
 unsupported, unmeasured, and official evidence buckets stay separate.
 
 ## Latest external measurement

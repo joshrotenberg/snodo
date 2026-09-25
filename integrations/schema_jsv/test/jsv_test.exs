@@ -1,9 +1,9 @@
-defmodule MCP.Schema.Validator.JSVTest do
+defmodule Snodo.Schema.Validator.JSVTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Schema.Validator.JSV, as: Validator
-  alias MCP.Schema.Validator.JSV.BuildError
-  alias MCP.Schema.Validator.JSV.Compiled
+  alias Snodo.Schema.Validator.JSV, as: Validator
+  alias Snodo.Schema.Validator.JSV.BuildError
+  alias Snodo.Schema.Validator.JSV.Compiled
 
   @draft202012 "https://json-schema.org/draft/2020-12/schema"
   @draft7 "http://json-schema.org/draft-07/schema#"
@@ -211,7 +211,7 @@ defmodule MCP.Schema.Validator.JSVTest do
   end
 
   test "unresolved refs fail without HTTP, file access, or module resolution" do
-    Code.ensure_loaded!(MCPEx.JSV.SchemaProbe)
+    Code.ensure_loaded!(SnodoTest.JSV.SchemaProbe)
 
     for reference <- [
           "https://schemas.example.test/unavailable",
@@ -219,7 +219,7 @@ defmodule MCP.Schema.Validator.JSVTest do
           "file:///schema-does-not-exist.json",
           "missing.json",
           "#/$defs/missing",
-          "jsv:module:Elixir.MCPEx.JSV.SchemaProbe"
+          "jsv:module:Elixir.SnodoTest.JSV.SchemaProbe"
         ] do
       assert {:error, %BuildError{}} = Validator.compile(%{"$ref" => reference})
     end
@@ -228,7 +228,7 @@ defmodule MCP.Schema.Validator.JSVTest do
   end
 
   test "casting declarations fail before build-time hooks are invoked" do
-    Code.ensure_loaded!(MCPEx.JSV.CastProbe)
+    Code.ensure_loaded!(SnodoTest.JSV.CastProbe)
 
     for keyword <- ["x-jsv-cast", "jsv-cast"] do
       assert {:error, %BuildError{reason: {:unsupported_cast, _}}} =
@@ -236,7 +236,7 @@ defmodule MCP.Schema.Validator.JSVTest do
                  "properties" => %{
                    "name" => %{
                      "type" => "string",
-                     keyword => ["Elixir.MCPEx.JSV.CastProbe", "cast"]
+                     keyword => ["Elixir.SnodoTest.JSV.CastProbe", "cast"]
                    }
                  }
                })
@@ -322,8 +322,8 @@ defmodule MCP.Schema.Validator.JSVTest do
   end
 
   test "references cannot turn annotation containers into executable casting schemas" do
-    Code.ensure_loaded!(MCPEx.JSV.CastProbe)
-    cast = %{"properties" => %{"x-jsv-cast" => [["Elixir.MCPEx.JSV.CastProbe", "cast"]]}}
+    Code.ensure_loaded!(SnodoTest.JSV.CastProbe)
+    cast = %{"properties" => %{"x-jsv-cast" => [["Elixir.SnodoTest.JSV.CastProbe", "cast"]]}}
 
     for {annotation, value, target} <- [
           {"x-hidden", cast, "#/x-hidden/properties"},
@@ -364,8 +364,8 @@ defmodule MCP.Schema.Validator.JSVTest do
   end
 
   test "anchor, identifier and encoded-pointer indirection cannot admit hidden schema controls" do
-    Code.ensure_loaded!(MCPEx.JSV.CastProbe)
-    injection = %{"properties" => %{"x-jsv-cast" => [["Elixir.MCPEx.JSV.CastProbe", "cast"]]}}
+    Code.ensure_loaded!(SnodoTest.JSV.CastProbe)
+    injection = %{"properties" => %{"x-jsv-cast" => [["Elixir.SnodoTest.JSV.CastProbe", "cast"]]}}
 
     for schema <- [
           %{"$ref" => "#hidden", "default" => Map.put(injection, "$anchor", "hidden")},

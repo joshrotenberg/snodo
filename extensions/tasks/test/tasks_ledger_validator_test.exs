@@ -1,13 +1,13 @@
-defmodule MCP.Extensions.Tasks.LedgerValidatorTest do
+defmodule Snodo.Extensions.Tasks.LedgerValidatorTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Extensions.Tasks.Event
-  alias MCP.Extensions.Tasks.LedgerValidator
-  alias MCP.Extensions.Tasks.RetryPolicy
-  alias MCP.Extensions.Tasks.Snapshot
-  alias MCP.Extensions.Tasks.Task, as: ProtocolTask
-  alias MCP.Extensions.Tasks.Transition
-  alias MCP.Extensions.Tasks.Work
+  alias Snodo.Extensions.Tasks.Event
+  alias Snodo.Extensions.Tasks.LedgerValidator
+  alias Snodo.Extensions.Tasks.RetryPolicy
+  alias Snodo.Extensions.Tasks.Snapshot
+  alias Snodo.Extensions.Tasks.Task, as: ProtocolTask
+  alias Snodo.Extensions.Tasks.Transition
+  alias Snodo.Extensions.Tasks.Work
 
   @created_at "2026-08-25T10:00:00.000Z"
   @first_commit "2026-08-25T10:00:01.000Z"

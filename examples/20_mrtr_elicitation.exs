@@ -56,7 +56,7 @@ defmodule Examples.MRTR.Runner do
 
   defp dispatch(runtime, id, params) do
     {:ok, %{"result" => result}} =
-      MCP.Test.dispatch(runtime,
+      Snodo.Test.dispatch(runtime,
         id: id,
         method: "tools/call",
         protocol: "2026-07-28",

@@ -1,24 +1,24 @@
-defmodule MCP.HTTPRequestDeadlineTest do
+defmodule Snodo.HTTPRequestDeadlineTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Server.Executor
-  alias MCP.Transport.StreamableHTTP.Server, as: HTTPServer
-  alias MCPEx.TestFixtures
+  alias Snodo.Server.Executor
+  alias Snodo.Transport.StreamableHTTP.Server, as: HTTPServer
+  alias SnodoTest.TestFixtures
 
   @moduletag mcp_contract: ["request-progress"]
 
   defmodule RepeatedProgress do
     @moduledoc false
-    use MCP.Tool, name: "repeated_progress"
+    use Snodo.Tool, name: "repeated_progress"
 
     @impl true
     def call(_arguments, context) do
       Enum.each(1..100, fn value ->
-        :ok = MCP.Progress.report(context, value)
+        :ok = Snodo.Progress.report(context, value)
         Process.sleep(10)
       end)
 
-      {:ok, MCP.Result.text("must not finish before the deadline")}
+      {:ok, Snodo.Result.text("must not finish before the deadline")}
     end
   end
 

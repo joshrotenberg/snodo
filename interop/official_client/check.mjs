@@ -6,12 +6,12 @@ import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const project = path.resolve(here, "../..");
-const elixir = process.env.MCP_EX_ELIXIR ?? "elixir";
+const elixir = process.env.SNODO_ELIXIR ?? "elixir";
 const ebin =
-  process.env.MCP_EX_EBIN ?? path.join(project, "_build/dev/lib/mcp_ex/ebin");
+  process.env.SNODO_EBIN ?? path.join(project, "_build/dev/lib/snodo/ebin");
 
 const client = new Client(
-  { name: "mcp-ex-official-client-check", version: "1.0.0" },
+  { name: "snodo-official-client-check", version: "1.0.0" },
   { versionNegotiation: { mode: { pin: "2026-07-28" } } },
 );
 

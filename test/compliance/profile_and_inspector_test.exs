@@ -1,19 +1,19 @@
-defmodule MCP.Compliance.ProfileAndInspectorTest do
+defmodule Snodo.Compliance.ProfileAndInspectorTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Compliance
-  alias MCP.Envelope
-  alias MCP.Protocol
-  alias MCP.Protocol.Inspector
-  alias MCP.Protocol.Profile
-  alias MCP.Protocol.Registry
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Router
-  alias MCP.Server
-  alias MCP.Server.Runtime
-  alias MCP.Transport.Context, as: TransportContext
-  alias MCPEx.ProfileDriftDialect
-  alias MCPEx.TestTools.Echo
+  alias Snodo.Compliance
+  alias Snodo.Envelope
+  alias Snodo.Protocol
+  alias Snodo.Protocol.Inspector
+  alias Snodo.Protocol.Profile
+  alias Snodo.Protocol.Registry
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Router
+  alias Snodo.Server
+  alias Snodo.Server.Runtime
+  alias Snodo.Transport.Context, as: TransportContext
+  alias SnodoTest.ProfileDriftDialect
+  alias SnodoTest.TestTools.Echo
 
   @literal_meta %{
     "io.modelcontextprotocol/protocolVersion" => "2026-07-28",
@@ -166,8 +166,8 @@ defmodule MCP.Compliance.ProfileAndInspectorTest do
 
     assert Protocol.builtin_profiles() == [
              profile,
-             MCP.Protocol.V2025_11_25.profile(),
-             MCP.Protocol.V2025_06_18.profile()
+             Snodo.Protocol.V2025_11_25.profile(),
+             Snodo.Protocol.V2025_06_18.profile()
            ]
 
     assert Protocol.builtin_versions() == ["2026-07-28", "2025-11-25", "2025-06-18"]

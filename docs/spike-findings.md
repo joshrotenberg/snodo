@@ -13,13 +13,13 @@ successful call after cancellation. The frozen official server suite now also
 exercises the native HTTP fixture. Its honest result is partial: 32/37 exercised
 whole scenarios pass, with all 37 attempted.
 
-An exact `MCP.Protocol.Profile` now declares both the complete pinned core-method
+An exact `Snodo.Protocol.Profile` now declares both the complete pinned core-method
 catalog and the implemented revision slice. A pure inspector enforces metadata,
 method kind, direction, placement, params, and typed method rules before routing.
 Known-but-unsupported core methods are distinct from vendor extensions. Literal
 contract vectors run through direct and stdio dispatch without using the
 dialect's request-construction helper.
-`mix mcp.contract` reports those internal checks separately from the official
+`mix snodo.contract` reports those internal checks separately from the official
 HTTP server requirements. The September 14 run passes 32/37 required scenarios,
 with no warning-only or false-positive results counted. Nine newly exercised
 ordinary MRTR scenarios account for the increase from the August 25 baseline.
@@ -54,7 +54,7 @@ Every page retains its cache hints, the terminal page omits `nextCursor`, and
 literal direct/stdio plus native HTTP evidence proves transport parity.
 Completion's bounded `total`/`hasMore` result remains a separate contract.
 
-Execution policy is now outside STDIO. `MCP.Server.Executor` owns its
+Execution policy is now outside STDIO. `Snodo.Server.Executor` owns its
 `Task.Supervisor`, opaque execution references, scope-sensitive keys, bounded
 admission, queueing, cancellation, deadlines, and reply-owner cleanup. STDIO
 retains framing, connection-local ID tracking and notification classification,
@@ -64,7 +64,7 @@ disconnect cancellation, and response translation; either transport can use an
 application-owned executor.
 
 The out-of-tree extension seam is now concrete rather than a placeholder.
-`MCP.Extension.Registry` installs exact-versioned static routes, rejects the
+`Snodo.Extension.Registry` installs exact-versioned static routes, rejects the
 complete family of core and extension collisions, separates installation from
 advertisement, and negotiates the intersection of client/server settings for
 each request. Advertised extensions can also receive application-owned options,
@@ -73,11 +73,11 @@ uses those generic seams for `tools/call` augmentation and its three top-level
 methods without changing the core catalog or router.
 
 The package boundary is now exercised rather than aspirational. At the initial
-package split, standalone `mcp_ex` had 154 tests and 25 core contract groups, while the independently
-compiled `:mcp_ex_tasks` child depends one-way on the core and has 80 tests and
-10 local contract groups. The optional `:mcp_ex_tasks_postgres` sibling adds 9
+package split, standalone `snodo` had 154 tests and 25 core contract groups, while the independently
+compiled `:snodo_tasks` child depends one-way on the core and has 80 tests and
+10 local contract groups. The optional `:snodo_tasks_postgres` sibling adds 9
 database-independent tests plus 14 real-PostgreSQL tests across 7 live evidence
-groups. The optional `:mcp_ex_tasks_sqlite` sibling adds 19 file-backed tests
+groups. The optional `:snodo_tasks_sqlite` sibling adds 19 file-backed tests
 across 7 local evidence groups. Root quality delegates inward without making an
 extension package a core dependency; only the PostgreSQL service lane remains
 opt-in.
@@ -130,7 +130,7 @@ shapes.
 | Released-client interop works | `@modelcontextprotocol/client` 2.0.0 negotiates the modern era over stdio, decodes the tool list, calls the echo tool, cancels a slow call, and successfully calls again. |
 | Frozen official conformance is measured honestly | All 37 required scenarios were attempted; 32 exercised whole scenarios pass. The September 14 report retains 103 success, 8 failure, 5 skipped, 0 warning, and 1 info required checks. A strict per-check CI baseline preserves failures separately from the score. |
 | Native HTTP is protocol-driven | Pure adapter and live-listener tests cover final-era mirrored headers, Base64 names, origins, media types, status mapping, absent session state, normal 404/405 handling, bounded concurrency, disconnect cancellation, and executor ownership. |
-| HTTP reuses the execution layer | The listener admits requests before submitting application work to the same `MCP.Server.Executor` used by stdio. |
+| HTTP reuses the execution layer | The listener admits requests before submitting application work to the same `Snodo.Server.Executor` used by stdio. |
 | Cancellation is request-scoped | `notifications/cancelled` terminates the target worker, suppresses its response, and leaves another request unaffected. |
 | Schemas remain canonical maps | A schema containing `$schema`, `$id`, `$defs`, `$ref`, composition, `unevaluatedProperties`, `x-mcp-header`, unknown nested values, and an array output schema is equal through tool registration, `tools/list`, and JSON encode/decode. |
 | Validation is pluggable | A test validator receives the original maps, rejects invalid input as `-32602`, and turns invalid handler output into `-32603`; the dependency-free default is pass-through. |
@@ -145,10 +145,10 @@ shapes.
 | Extension collisions fail at construction | Duplicate IDs, cross-extension collisions, and names colliding with implemented, unsupported, or MRTR-only core rules are rejected before serving. |
 | Core operations can be extended without joining the catalog | Ordered, advertised, exact-compatible middleware receives application options and can pass a derived immutable context through an arity-1 continuation; installed-only modules remain inert. |
 | Tasks remains protocol-first and out of core | The extension augments `tools/call`, owns `tasks/get` / `tasks/update` / `tasks/cancel`, and contributes `Mcp-Name` policy without adding any Task-specific branch to the profile, router, or HTTP adapter. |
-| The package dependency is one-way | Core `mcp_ex` compiles and tests independently; `:mcp_ex_tasks` depends on the core, and optional PostgreSQL and SQLite siblings depend on Tasks. Each owns its quality, type, contract, and example or live-database gates. |
+| The package dependency is one-way | Core `snodo` compiles and tests independently; `:snodo_tasks` depends on the core, and optional PostgreSQL and SQLite siblings depend on Tasks. Each owns its quality, type, contract, and example or live-database gates. |
 | Task races are atomic | Normative tests repeatedly race completion against cancellation, prove exactly one immutable terminal result, and prove idempotent cancellation after either terminal outcome. |
 | Task persistence transitions are explicit | Versioned JSON-safe work, events, and snapshots round-trip; creation stores Task and work atomically; CAS rejects stale revisions; duplicate event IDs replay idempotently; and unchanged events do not append history or advance a revision. |
-| Task access is application-scoped | Only `authorize/3` receives `MCP.Context`; it returns opaque access bound to one action, and every included adapter exposes cross-scope reads and mutations only as unknown task ID. |
+| Task access is application-scoped | Only `authorize/3` receives `Snodo.Context`; it returns opaque access bound to one action, and every included adapter exposes cross-scope reads and mutations only as unknown task ID. |
 | Worker authority is narrow | A runner claims work with an unguessable renewable lease restricted to lifecycle events for its exact Task and generation; forged, cross-task, stale-generation, and request-action misuse are rejected. |
 | Durable work is application-defined | `Work` records carry a stable idempotency key plus JSON-safe type/input data; `WorkExecutor` resolves them after initial and recovery claims, while `work_builder` makes safe tenant/principal projection explicit. |
 | Recovery is fenced and at-least-once | Claim expiry and DETS reopen allow a higher generation to recover work and fence the previous worker; external effects remain application-idempotent rather than exactly once. |
@@ -165,13 +165,13 @@ shapes.
 
 ## Decisions made by the spike
 
-1. `MCP.Router.dispatch/4` is always synchronous. A caller chooses whether to
+1. `Snodo.Router.dispatch/4` is always synchronous. A caller chooses whether to
    invoke it in a task; the router never returns a task or owns a worker process.
 2. The router sees semantic operations such as `:tools_list` and
    `{:tools_call, name}`, never JSON-RPC method strings.
-3. `MCP.Server.dispatch/3` is the raw-map/dialect boundary and returns a shaped
+3. `Snodo.Server.dispatch/3` is the raw-map/dialect boundary and returns a shaped
    JSON-RPC response (or `nil` for a notification) inside `{:ok, value}`, or an
-   opened `MCP.Subscription` inside `{:stream, subscription}`.
+   opened `Snodo.Subscription` inside `{:stream, subscription}`.
 4. Duplicate tool names and protocol versions fail loudly.
 5. Protocol configurations are closed allowlists. Code loading cannot expand a
    running server's advertised or accepted versions.
@@ -182,20 +182,20 @@ shapes.
 8. Static discovery, tool-list, resource-list, resource-template-list, and
    resource-read cache hints default conservatively to `ttlMs: 0` and
    `cacheScope: "private"`, with runtime or handler overrides as appropriate.
-9. The optional `MCP.Server.Executor` is transport-neutral. It owns bounded
+9. The optional `Snodo.Server.Executor` is transport-neutral. It owns bounded
    admission, FIFO queueing, deadlines, task supervision, opaque execution
    references, scope-sensitive cancellation keys, and abandoned-owner cleanup;
    it knows nothing about JSON-RPC or protocol dialects.
 10. Stdio owns framing, output, and connection scope. Cancellation uses both a
-    cooperative token in `MCP.Context` and worker termination. The executor
+    cooperative token in `Snodo.Context` and worker termination. The executor
     emits exactly one terminal outcome for each admitted job while it and the
     reply owner remain alive, and suppresses racing late results. Reply-owner
     death intentionally cancels without delivery.
-11. JSON Schema validation is a runtime dependency: `MCP.Schema.Validator`
+11. JSON Schema validation is a runtime dependency: `Snodo.Schema.Validator`
     owns validation while the framework only maps input/output failures to the
     correct protocol boundary. No incomplete validator is presented as
     standards-compliant.
-12. `MCP.Protocol.Profile` is both the complete exact-revision catalog and the
+12. `Snodo.Protocol.Profile` is both the complete exact-revision catalog and the
     implementation support ledger. A dialect's `version/0` and `era/0`
     accessors must agree with it, and standard capabilities are admitted from
     implemented rules only. Extension installation, server advertisement,
@@ -274,7 +274,7 @@ shapes.
 | Can applications expose Prompts without transport-specific handlers? | **Yes.** One prompt definition/render boundary drives cached discovery, required argument checks, and multi-content messages across direct, stdio, and HTTP dispatch. |
 | Can a transport avoid protocol-version policy? | **Yes for execution and application routing.** Stdio and HTTP share the executor and server core. Each transport still owns its actual framing/admission, connection scope, cancellation signal, and response delivery. HTTP-specific protocol requirements remain data declared by the selected dialect. |
 | Can legacy sessions avoid changing component APIs? | **Not yet tested.** |
-| Can Tasks avoid core changes? | **Yes.** The independently compiled child package uses generic middleware, wire-result, extension-route, options, and HTTP-policy seams; Task method names remain absent from the core profile and router, and the core has no dependency on `:mcp_ex_tasks`. Its optional PostgreSQL and SQLite siblings depend inward on Tasks without introducing Ecto into either protocol package. |
+| Can Tasks avoid core changes? | **Yes.** The independently compiled child package uses generic middleware, wire-result, extension-route, options, and HTTP-policy seams; Task method names remain absent from the core profile and router, and the core has no dependency on `:snodo_tasks`. Its optional PostgreSQL and SQLite siblings depend inward on Tasks without introducing Ecto into either protocol package. |
 | Can MRTR suspend/resume without blocking shared processes? | **Yes, through separate lifecycles.** Ordinary MRTR ends each request and resumes through a fresh request with validated answers and optional signed state. Tasks workers use their own mid-flight input lifecycle. Nine additional frozen ordinary-MRTR scenarios now pass. |
 | Can 1,000 requests avoid a central serialization bottleneck? | **Not yet proven at 1,000.** Tests show 100 handlers are not serialized and execution is bounded, but admission still passes through one executor coordinator and no benchmark exists. |
 | Do arbitrary schema and `_meta` keys survive? | **Yes.** Preservation and a custom validation seam are tested; a bundled full validator is deferred. |
@@ -312,7 +312,7 @@ shapes.
   application-owned embedded database, but remains local to one host and one
   writer; WAL is not a network-filesystem or multi-node queue mechanism.
   Multi-node persistence is instead isolated in the optional
-  `:mcp_ex_tasks_postgres` sibling, which uses database-clock leases, row locks,
+  `:snodo_tasks_postgres` sibling, which uses database-clock leases, row locks,
   and `FOR UPDATE SKIP LOCKED`. The memory harness supplies a repeatable common
   contention baseline, but both database stores still need production soak,
   upgrade, and operational benchmarking before a release claim.
@@ -363,7 +363,7 @@ core profile about Tasks. The generic seam retains per-extension filter
 ownership and reuses the source, transport, cancellation, backpressure, and
 completion lifecycle. Applications remain responsible for publishing domain
 changes into their chosen source; the Tasks Runner deliberately does not impose
-a PubSub system. The optional `MCP.Subscription.Hub` now supplies filter-aware
+a PubSub system. The optional `Snodo.Subscription.Hub` now supplies filter-aware
 broadcast, bounded per-listener queues, explicit overflow policy, publication
 reports, and core-event helpers without making the immutable router a state
 owner. Applications still decide what constitutes a domain or registry change.

@@ -8,9 +8,9 @@ and [elicitation contract](https://modelcontextprotocol.io/specification/2026-07
 
 ## Authoring an interactive operation
 
-1. Build a bare request with `MCP.Elicitation.form/2` or `url/2`.
-2. Inspect `MCP.Elicitation.response(context, "choice", request)`.
-3. On `:missing`, return `{:ok, MCP.Result.input_required(input_requests:
+1. Build a bare request with `Snodo.Elicitation.form/2` or `url/2`.
+2. Inspect `Snodo.Elicitation.response(context, "choice", request)`.
+3. On `:missing`, return `{:ok, Snodo.Result.input_required(input_requests:
    %{"choice" => request})}`. That ends this request; it does not suspend it.
 4. On retry, consume the named response, validate any state, then return the
    feature's normal result. Ignore inputs you do not need and re-request missing
@@ -34,13 +34,13 @@ node interop/official_client/check_mrtr.mjs
 
 The Node command needs the pinned dependencies installed with
 `npm ci --ignore-scripts` in `interop/official_client`. It defaults to the dev
-build; `MCP_EX_EBIN` selects a different compiled core. Its five automatic
+build; `SNODO_EBIN` selects a different compiled core. Its five automatic
 workflows run over stdio and the native HTTP listener without public services,
 opening a browser, or performing application mutations.
 
 ## State and effects
 
-`MCP.MRTR.State.seal(data, context, secret: secret, principal: principal)` returns
+`Snodo.MRTR.State.seal(data, context, secret: secret, principal: principal)` returns
 an opaque signed token. Use the same options with `open/3` on retry. The helper
 binds the method, salient parameters, explicit principal, and expiry, rejects
 tampering, and bounds token size. JSON-RPC IDs and top-level retry/metadata fields
@@ -74,10 +74,10 @@ the original client's capabilities by passing an altered handler context.
 Custom extension routes still own their semantics; embedded methods are not
 top-level RPCs or new extension route registrations.
 
-Typed callback failures (`{:error, %MCP.Error{}}`) now retain their documented
+Typed callback failures (`{:error, %Snodo.Error{}}`) now retain their documented
 JSON-RPC error semantics for tools as well as resources/prompts. Previously the
 tool router incorrectly converted them into `isError` results. Explicit
-`MCP.Result.error/2` and legacy untyped tool failures remain tool error results.
+`Snodo.Result.error/2` and legacy untyped tool failures remain tool error results.
 This distinction matters for invalid elicitation answers and failed state
 verification.
 
@@ -113,7 +113,7 @@ is a returned user choice, separate from cancelling an active protocol request.
 Verified on Elixir 1.20.4 / OTP 29.0.6 with `ERL_FLAGS='+S 4:4'`:
 
 - Core `mix test --warnings-as-errors`: **272 passing** (one doctest, 271 tests).
-- `mix mcp.contract`: **107 passing tests**, **29 evidence groups**.
+- `mix snodo.contract`: **107 passing tests**, **29 evidence groups**.
 - Core formatting, strict Credo, dev warnings-as-errors compilation, and dev
   Dialyzer: passed; zero Dialyzer errors/skips and no new suppressions.
 - Tasks `mix test --warnings-as-errors`: **85 passing**, including five new

@@ -1,13 +1,13 @@
-defmodule MCP.SimpleComponentsTest do
+defmodule Snodo.SimpleComponentsTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Client
-  alias MCP.Error
-  alias MCP.Resource
-  alias MCP.Result
+  alias Snodo.Client
+  alias Snodo.Error
+  alias Snodo.Resource
+  alias Snodo.Result
 
   defmodule SimpleJSON do
-    use MCP.Resource.Simple,
+    use Snodo.Resource.Simple,
       uri: "test://simple/json",
       name: "simple_json",
       description: "A JSON value returned bare"
@@ -17,7 +17,7 @@ defmodule MCP.SimpleComponentsTest do
   end
 
   defmodule RawJSON do
-    use MCP.Resource,
+    use Snodo.Resource,
       uri: "test://simple/json",
       name: "simple_json",
       description: "A JSON value returned bare"
@@ -29,7 +29,7 @@ defmodule MCP.SimpleComponentsTest do
   end
 
   defmodule SimpleMarkdown do
-    use MCP.Resource.Simple,
+    use Snodo.Resource.Simple,
       uri: "test://simple/readme",
       name: "readme",
       mime_type: "text/markdown"
@@ -39,7 +39,7 @@ defmodule MCP.SimpleComponentsTest do
   end
 
   defmodule SimpleNote do
-    use MCP.Resource.Simple, uri_template: "test://notes/{id}", name: "note"
+    use Snodo.Resource.Simple, uri_template: "test://notes/{id}", name: "note"
 
     @impl true
     def read(%{"id" => "missing"}, _context), do: {:error, Error.invalid_params("No such note")}
@@ -52,7 +52,7 @@ defmodule MCP.SimpleComponentsTest do
   end
 
   defmodule SimpleReview do
-    use MCP.Prompt.Simple, name: "review", title: "Review", description: "Review a package"
+    use Snodo.Prompt.Simple, name: "review", title: "Review", description: "Review a package"
 
     argument("name", required: true, description: "Package name", title: "Package")
     argument("focus", description: "What to focus on")
@@ -61,13 +61,14 @@ defmodule MCP.SimpleComponentsTest do
     def render(%{"name" => "conversation"}, _context) do
       {:ok,
        [
-         MCP.Prompt.message(:user, MCP.Prompt.text("Hi")),
-         MCP.Prompt.message(:assistant, MCP.Prompt.text("Hello"))
+         Snodo.Prompt.message(:user, Snodo.Prompt.text("Hi")),
+         Snodo.Prompt.message(:assistant, Snodo.Prompt.text("Hello"))
        ]}
     end
 
     def render(%{"name" => "described"}, _context) do
-      {:ok, Result.prompt_get(MCP.Prompt.message(:user, MCP.Prompt.text("x")), description: "d")}
+      {:ok,
+       Result.prompt_get(Snodo.Prompt.message(:user, Snodo.Prompt.text("x")), description: "d")}
     end
 
     def render(%{"name" => "refused"}, _context), do: {:error, Error.invalid_params("refused")}
@@ -78,7 +79,7 @@ defmodule MCP.SimpleComponentsTest do
   end
 
   defmodule RawReview do
-    use MCP.Prompt,
+    use Snodo.Prompt,
       name: "review",
       title: "Review",
       description: "Review a package",
@@ -97,9 +98,9 @@ defmodule MCP.SimpleComponentsTest do
   end
 
   defmodule InlineServer do
-    use MCP.Server, name: "inline-server", version: "0.1.0"
+    use Snodo.Server, name: "inline-server", version: "0.1.0"
 
-    alias MCP.Result, as: R
+    alias Snodo.Result, as: R
 
     tool "greet", description: "Create a greeting", additional_properties: false do
       argument("name", :string, required: true)
@@ -129,14 +130,14 @@ defmodule MCP.SimpleComponentsTest do
       def render(%{"name" => name}, _context), do: {:ok, "Review #{name}."}
     end
 
-    tool(MCPEx.TestTools.Echo)
+    tool(SnodoTest.TestTools.Echo)
   end
 
   defmodule ModuleServer do
-    use MCP.Server, name: "inline-server", version: "0.1.0"
+    use Snodo.Server, name: "inline-server", version: "0.1.0"
 
     defmodule Greet do
-      use MCP.Tool.Simple,
+      use Snodo.Tool.Simple,
         name: "greet",
         description: "Create a greeting",
         additional_properties: false
@@ -148,7 +149,7 @@ defmodule MCP.SimpleComponentsTest do
     end
 
     defmodule StructuredEcho do
-      use MCP.Tool.Simple, name: "structured.echo"
+      use Snodo.Tool.Simple, name: "structured.echo"
       argument("value", :object)
 
       @impl true
@@ -156,7 +157,7 @@ defmodule MCP.SimpleComponentsTest do
     end
 
     defmodule Groups do
-      use MCP.Resource.Simple,
+      use Snodo.Resource.Simple,
         uri: "toolbox://groups",
         name: "toolbox_groups",
         mime_type: "application/json"
@@ -166,7 +167,7 @@ defmodule MCP.SimpleComponentsTest do
     end
 
     defmodule Review do
-      use MCP.Prompt.Simple, name: "review", description: "Review a package"
+      use Snodo.Prompt.Simple, name: "review", description: "Review a package"
       argument("name", required: true)
 
       @impl true
@@ -177,16 +178,16 @@ defmodule MCP.SimpleComponentsTest do
     tool(StructuredEcho)
     resource(Groups)
     prompt(Review)
-    tool(MCPEx.TestTools.Echo)
+    tool(SnodoTest.TestTools.Echo)
   end
 
   defp client(opts) do
-    {:ok, client} = opts |> MCPEx.TestFixtures.runtime() |> Client.direct()
+    {:ok, client} = opts |> SnodoTest.TestFixtures.runtime() |> Client.direct()
     client
   end
 
-  describe "MCP.Resource.Simple" do
-    test "has the same definition as the equivalent MCP.Resource and reads the same" do
+  describe "Snodo.Resource.Simple" do
+    test "has the same definition as the equivalent Snodo.Resource and reads the same" do
       assert SimpleJSON.definition() == RawJSON.definition()
 
       {:ok, simple} = Client.read_resource(client(resources: [SimpleJSON]), "test://simple/json")
@@ -229,8 +230,8 @@ defmodule MCP.SimpleComponentsTest do
 
     test "a module without read/2 does not compile" do
       source = """
-      defmodule MCP.SimpleComponentsTest.NoRead do
-        use MCP.Resource.Simple, uri: "test://no-read", name: "no_read"
+      defmodule Snodo.SimpleComponentsTest.NoRead do
+        use Snodo.Resource.Simple, uri: "test://no-read", name: "no_read"
       end
       """
 
@@ -240,7 +241,7 @@ defmodule MCP.SimpleComponentsTest do
     end
   end
 
-  describe "MCP.Prompt.Simple" do
+  describe "Snodo.Prompt.Simple" do
     test "argument/2 builds the same definition as a hand-written argument list" do
       assert SimpleReview.definition() == RawReview.definition()
     end
@@ -286,16 +287,16 @@ defmodule MCP.SimpleComponentsTest do
           case body do
             :arguments_option ->
               """
-              defmodule MCP.SimpleComponentsTest.BadPrompt#{index} do
-                use MCP.Prompt.Simple, name: "bad", arguments: []
+              defmodule Snodo.SimpleComponentsTest.BadPrompt#{index} do
+                use Snodo.Prompt.Simple, name: "bad", arguments: []
                 def render(_arguments, _context), do: {:ok, "x"}
               end
               """
 
             body ->
               """
-              defmodule MCP.SimpleComponentsTest.BadPrompt#{index} do
-                use MCP.Prompt.Simple, name: "bad"
+              defmodule Snodo.SimpleComponentsTest.BadPrompt#{index} do
+                use Snodo.Prompt.Simple, name: "bad"
                 #{body}
               end
               """
@@ -366,8 +367,8 @@ defmodule MCP.SimpleComponentsTest do
 
       for {{message, body}, index} <- Enum.with_index(cases) do
         source = """
-        defmodule MCP.SimpleComponentsTest.BadServer#{index} do
-          use MCP.Server, name: "bad", version: "1"
+        defmodule Snodo.SimpleComponentsTest.BadServer#{index} do
+          use Snodo.Server, name: "bad", version: "1"
           #{body}
         end
         """

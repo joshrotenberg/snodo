@@ -1,13 +1,13 @@
-defmodule MCP.LegacyProtocolAcceptanceTest do
+defmodule Snodo.LegacyProtocolAcceptanceTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Protocol.{V2025_06_18, V2025_11_25, V2026_07_28}
-  alias MCP.{Result, Router, Server}
-  alias MCP.Server.Runtime
-  alias MCP.Transport.Context, as: TransportContext
-  alias MCPEx.TestPrompts.PackageAnalysis
-  alias MCPEx.TestResources.{PackageTemplate, StaticText}
-  alias MCPEx.TestTools.{ComplexSchema, ContextEcho, Echo, Failing, Structured}
+  alias Snodo.Protocol.{V2025_06_18, V2025_11_25, V2026_07_28}
+  alias Snodo.{Result, Router, Server}
+  alias Snodo.Server.Runtime
+  alias Snodo.Transport.Context, as: TransportContext
+  alias SnodoTest.TestPrompts.PackageAnalysis
+  alias SnodoTest.TestResources.{PackageTemplate, StaticText}
+  alias SnodoTest.TestTools.{ComplexSchema, ContextEcho, Echo, Failing, Structured}
 
   @protocols [V2026_07_28, V2025_11_25, V2025_06_18]
 
@@ -211,13 +211,13 @@ defmodule MCP.LegacyProtocolAcceptanceTest do
       assert result["clientCapabilities"] == %{}
 
       assert {:ok, %{"result" => _}} =
-               MCP.Test.dispatch(runtime(), protocol: @version, method: "tools/list")
+               Snodo.Test.dispatch(runtime(), protocol: @version, method: "tools/list")
     end
   end
 
   test "input-required results stay unavailable without legacy server request support" do
     for protocol <- [V2025_06_18, V2025_11_25] do
-      assert {:error, %MCP.Error{code: -32_603}} =
+      assert {:error, %Snodo.Error{code: -32_603}} =
                protocol.validate_result(
                  {:tools_call, "fixture"},
                  Result.input_required(request_state: "state"),
@@ -241,19 +241,19 @@ defmodule MCP.LegacyProtocolAcceptanceTest do
           %{"inputRequests" => %{}},
           %{"task" => %{}}
         ] do
-      assert {:error, %MCP.Error{code: -32_603}} =
+      assert {:error, %Snodo.Error{code: -32_603}} =
                V2025_11_25.validate_result({:tools_call, "fixture"}, Result.raw(value), nil)
     end
   end
 
   test "mixed runtime retains latest stateless discovery and result contract" do
     assert {:ok, %{"result" => result}} =
-             MCP.Test.dispatch(runtime(), protocol: "2026-07-28", method: "tools/list")
+             Snodo.Test.dispatch(runtime(), protocol: "2026-07-28", method: "tools/list")
 
     assert result["resultType"] == "complete"
 
     assert {:ok, %{"result" => discovery}} =
-             MCP.Test.dispatch(runtime(), protocol: "2026-07-28", method: "server/discover")
+             Snodo.Test.dispatch(runtime(), protocol: "2026-07-28", method: "server/discover")
 
     assert "2026-07-28" in discovery["supportedVersions"]
   end

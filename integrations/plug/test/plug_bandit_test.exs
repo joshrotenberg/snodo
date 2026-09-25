@@ -1,12 +1,12 @@
-defmodule MCP.Transport.PlugBanditTest do
+defmodule Snodo.Transport.PlugBanditTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Server.Executor
-  alias MCP.Subscription.Hub
-  alias MCPEx.PlugFixtures
-  alias MCPEx.PlugFixtures.Policy
-  alias MCPEx.PlugFixtures.Probe
-  alias MCPEx.PlugFixtures.Tool
+  alias Snodo.Server.Executor
+  alias Snodo.Subscription.Hub
+  alias SnodoTest.PlugFixtures
+  alias SnodoTest.PlugFixtures.Policy
+  alias SnodoTest.PlugFixtures.Probe
+  alias SnodoTest.PlugFixtures.Tool
 
   @protocol "2026-07-28"
   @version_key "io.modelcontextprotocol/protocolVersion"
@@ -131,13 +131,13 @@ defmodule MCP.Transport.PlugBanditTest do
     notification = cancellation(77)
     assert {202, nil} = rpc(port, notification, auth: :beta)
     assert {202, nil} = rpc(port, notification)
-    refute MCP.Cancellation.cancelled?(token)
+    refute Snodo.Cancellation.cancelled?(token)
     assert Process.alive?(worker)
     assert %{running: 1, queued: 0} = Executor.stats(executor)
 
     assert {202, nil} = rpc(port, notification, auth: :alpha)
     assert_receive {:DOWN, ^monitor, :process, ^worker, _reason}, 1_000
-    assert MCP.Cancellation.cancelled?(token)
+    assert Snodo.Cancellation.cancelled?(token)
     assert read_all(pending) =~ "HTTP/1.1 204"
     assert {200, _result} = rpc(port, request("server/discover", %{}))
   end
@@ -155,7 +155,7 @@ defmodule MCP.Transport.PlugBanditTest do
     assert_receive {:tool_entered, 78, worker, token}, 1_000
     malformed = put_in(cancellation(78), ["params", "reason"], 42)
     assert {202, nil} = rpc(port, malformed, auth: :alpha)
-    refute MCP.Cancellation.cancelled?(token)
+    refute Snodo.Cancellation.cancelled?(token)
     assert Process.alive?(worker)
     assert {202, nil} = rpc(port, cancellation(78), auth: :alpha)
     assert read_all(pending) =~ "HTTP/1.1 204"
@@ -175,7 +175,7 @@ defmodule MCP.Transport.PlugBanditTest do
     monitor = Process.monitor(worker)
     :ok = :gen_tcp.close(socket)
     assert_receive {:DOWN, ^monitor, :process, ^worker, _reason}, 1_000
-    assert MCP.Cancellation.cancelled?(token)
+    assert Snodo.Cancellation.cancelled?(token)
     assert eventually(fn -> Executor.stats(executor).running == 0 end)
   end
 
@@ -258,7 +258,7 @@ defmodule MCP.Transport.PlugBanditTest do
     assert_receive {:progress_replies, :ok, :ok}, 1_000
     :ok = :gen_tcp.close(socket)
     assert_receive {:DOWN, ^monitor, :process, ^worker, _reason}, 1_000
-    assert MCP.Cancellation.cancelled?(token)
+    assert Snodo.Cancellation.cancelled?(token)
     assert eventually(fn -> Executor.stats(executor).running == 0 end)
   end
 
@@ -291,7 +291,7 @@ defmodule MCP.Transport.PlugBanditTest do
     monitor = Process.monitor(worker)
     Process.exit(owner, :kill)
     assert_receive {:DOWN, ^monitor, :process, ^worker, _reason}, 1_000
-    assert MCP.Cancellation.cancelled?(token)
+    assert Snodo.Cancellation.cancelled?(token)
     assert eventually(fn -> Executor.stats(executor).running == 0 end)
     :gen_tcp.close(socket)
   end
@@ -345,9 +345,9 @@ defmodule MCP.Transport.PlugBanditTest do
         server(
           capabilities: %{"tools" => %{}},
           protocols: [
-            MCP.Protocol.V2026_07_28,
-            MCP.Protocol.V2025_11_25,
-            MCP.Protocol.V2025_06_18
+            Snodo.Protocol.V2026_07_28,
+            Snodo.Protocol.V2025_11_25,
+            Snodo.Protocol.V2025_06_18
           ]
         )
 
@@ -418,7 +418,7 @@ defmodule MCP.Transport.PlugBanditTest do
       %{port: port} =
         server(
           capabilities: %{"tools" => %{}},
-          protocols: [MCP.Protocol.V2025_11_25, MCP.Protocol.V2025_06_18]
+          protocols: [Snodo.Protocol.V2025_11_25, Snodo.Protocol.V2025_06_18]
         )
 
       socket = connect(port)
@@ -460,9 +460,9 @@ defmodule MCP.Transport.PlugBanditTest do
         server(
           capabilities: %{"tools" => %{}},
           protocols: [
-            MCP.Protocol.V2026_07_28,
-            MCP.Protocol.V2025_11_25,
-            MCP.Protocol.V2025_06_18
+            Snodo.Protocol.V2026_07_28,
+            Snodo.Protocol.V2025_11_25,
+            Snodo.Protocol.V2025_06_18
           ]
         )
 
@@ -490,10 +490,10 @@ defmodule MCP.Transport.PlugBanditTest do
       }
 
       assert {202, nil} = rpc(port, cancellation, Keyword.put(options, :auth, :beta))
-      refute MCP.Cancellation.cancelled?(token)
+      refute Snodo.Cancellation.cancelled?(token)
       assert {202, nil} = rpc(port, cancellation, Keyword.put(options, :auth, :alpha))
       assert_receive {:DOWN, ^monitor, :process, ^worker, _}, 1_000
-      assert MCP.Cancellation.cancelled?(token)
+      assert Snodo.Cancellation.cancelled?(token)
       assert read_all(socket) =~ "HTTP/1.1 204"
     end
   end

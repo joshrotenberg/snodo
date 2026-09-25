@@ -1,11 +1,11 @@
-defmodule MCP.CompletionProtocolAcceptanceTest do
+defmodule Snodo.CompletionProtocolAcceptanceTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Test, as: MCPTest
-  alias MCPEx.TestCompletions.PackagePrompt
-  alias MCPEx.TestCompletions.RepositoryTemplate
-  alias MCPEx.TestFixtures
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Test, as: MCPTest
+  alias SnodoTest.TestCompletions.PackagePrompt
+  alias SnodoTest.TestCompletions.RepositoryTemplate
+  alias SnodoTest.TestFixtures
 
   defp runtime(opts \\ []) do
     defaults = [tools: [], prompts: [PackagePrompt], resources: [RepositoryTemplate]]
@@ -72,7 +72,7 @@ defmodule MCP.CompletionProtocolAcceptanceTest do
     refute Map.has_key?(prompt_result, "cacheScope")
 
     assert get_in(prompt_result, ["_meta", V2026_07_28.server_info_key(), "name"]) ==
-             "mcp-ex-spike"
+             "snodo-spike"
 
     assert {:ok, %{"result" => resource_result}} =
              MCPTest.dispatch(runtime(),

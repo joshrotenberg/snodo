@@ -18,7 +18,7 @@ end
 defmodule ContextAndState.Increment do
   @moduledoc false
 
-  use MCP.Tool,
+  use Snodo.Tool,
     name: "increment",
     description: "Increment an application-owned counter"
 
@@ -44,7 +44,7 @@ defmodule ContextAndState.Increment do
     count = ContextAndState.Store.increment(amount, observation)
 
     {:ok,
-     MCP.Result.structured(%{
+     Snodo.Result.structured(%{
        "count" => count,
        "requestTag" => observation.request_tag,
        "session" => observation.session
@@ -55,10 +55,10 @@ end
 defmodule ContextAndState.Server do
   @moduledoc false
 
-  use MCP.Server,
+  use Snodo.Server,
     name: "context-and-state-example",
     version: "0.1.0",
-    protocols: [MCP.Protocol.V2026_07_28]
+    protocols: [Snodo.Protocol.V2026_07_28]
 
   tool(ContextAndState.Increment)
 end
@@ -66,8 +66,8 @@ end
 defmodule ContextAndState.Example do
   @moduledoc false
 
-  alias MCP.Protocol.V2026_07_28, as: Protocol
-  alias MCP.Transport.Context, as: TransportContext
+  alias Snodo.Protocol.V2026_07_28, as: Protocol
+  alias Snodo.Transport.Context, as: TransportContext
 
   def run(check?) do
     {:ok, store} = ContextAndState.Store.start_link()
@@ -131,7 +131,7 @@ defmodule ContextAndState.Example do
       }
     }
 
-    {:ok, %{"result" => result}} = MCP.Server.dispatch(runtime, request, transport)
+    {:ok, %{"result" => result}} = Snodo.Server.dispatch(runtime, request, transport)
     result
   end
 

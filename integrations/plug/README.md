@@ -1,7 +1,7 @@
 # Optional Plug / Bandit application stack
 
-`mcp_ex_plug` translates `Plug.Conn` through the existing protocol-first
-`MCP.Transport.StreamableHTTP` adapter. It adds Plug as a dependency to this
+`snodo_plug` translates `Plug.Conn` through the existing protocol-first
+`Snodo.Transport.StreamableHTTP` adapter. It adds Plug as a dependency to this
 package, not to the core. Bandit is a development/test dependency here; an
 application chooses and directly depends on its HTTP server.
 
@@ -12,17 +12,17 @@ mirrored headers, and extension dispatch remain in the core adapter.
 
 ## Application-owned startup
 
-During this unreleased workspace phase, depend on `mcp_ex_plug` by path and add
+During this unreleased workspace phase, depend on `snodo_plug` by path and add
 `{:bandit, "~> 1.12.5"}` to your application. For example:
 
 ```elixir
 runtime = MyApp.MCPServer.runtime()
 
 children = [
-  {MCP.Server.Executor,
-   name: MyApp.MCPExecutor, max_concurrency: 32, max_queue: 128},
+  {Snodo.Server.Executor,
+   name: MyApp.SnodoTestecutor, max_concurrency: 32, max_queue: 128},
   {Bandit,
-   plug: {MCP.Transport.Plug, runtime: runtime, executor: MyApp.MCPExecutor},
+   plug: {Snodo.Transport.Plug, runtime: runtime, executor: MyApp.SnodoTestecutor},
    ip: {127, 0, 0, 1},
    port: 4000,
    thousand_island_options: [transport_options: [send_timeout: 5_000, send_timeout_close: true]]}
@@ -38,7 +38,7 @@ rejection is preserved. Place it **before `Plug.Parsers`** or any component that
 consumes the raw body. It supports both Content-Length and chunked request bodies.
 
 The immutable runtime is application-supplied; there is no global runtime cache,
-hidden listener, or implicit executor. Configure a supervised `MCP.Subscription.Hub`
+hidden listener, or implicit executor. Configure a supervised `Snodo.Subscription.Hub`
 or another source in your runtime when advertising subscription capabilities.
 
 ## Trusted authentication handoff
@@ -52,7 +52,7 @@ conn
 |> Plug.Conn.assign(:mcp_cancellation_scope, verified_client_instance_id)
 ```
 
-`MCP.Context.auth` receives only that trusted auth assign. The transport does not
+`Snodo.Context.auth` receives only that trusted auth assign. The transport does not
 copy arbitrary Authorization headers, forwarded headers, or JSON metadata into
 identity. It does not authenticate callers itself or reject missing credentials:
 your application must do that, normally with an HTTP 401/403 and `halt/1`. The
@@ -79,9 +79,9 @@ cancellation notification after their opening execution has completed.
 ## Per-component authorization
 
 Admission to the endpoint is not admission to every component. Configure
-`authorization:` on the runtime you pass to this Plug and `mcp_ex` applies the
+`authorization:` on the runtime you pass to this Plug and `snodo` applies the
 policy inside the router, below this transport, using the same
-`MCP.Context.auth` value the assign above supplies. One policy therefore covers
+`Snodo.Context.auth` value the assign above supplies. One policy therefore covers
 this binding, the native HTTP listener, stdio, and direct dispatch alike.
 
 Discovery refusals hide components from the list responses. An invocation
@@ -124,7 +124,7 @@ after writing the previous one. Keepalive comments trigger write-side detection
 of idle streaming disconnects. Write errors/exceptions and owner termination
 clean up the source.
 
-Ordinary handlers may call `MCP.Progress.report(context, value, total: total,
+Ordinary handlers may call `Snodo.Progress.report(context, value, total: total,
 message: message)`. With a client-supplied `progressToken`, the first accepted
 update switches the response to SSE, subsequent reports are acknowledged after
 writing, and the final result/error is the terminal SSE message. Without a token
