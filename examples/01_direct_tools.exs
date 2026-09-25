@@ -45,33 +45,16 @@ defmodule Examples.DirectTools.Runner do
     {:links, links_before} = Process.info(self(), :links)
     runtime = Server.runtime()
 
-    {:ok, discovery} =
-      MCP.Test.dispatch(runtime,
-        id: "discover",
-        protocol: "2026-07-28",
-        method: "server/discover"
-      )
-
-    {:ok, list} =
-      MCP.Test.dispatch(runtime,
-        id: "list",
-        protocol: "2026-07-28",
-        method: "tools/list"
-      )
-
-    {:ok, call} =
-      MCP.Test.dispatch(runtime,
-        id: "call",
-        protocol: "2026-07-28",
-        method: "tools/call",
-        params: %{"name" => "greet", "arguments" => %{"name" => "Ada"}}
-      )
+    {:ok, client} = MCP.Client.direct(runtime)
+    {:ok, discovery} = MCP.Client.discover(client)
+    {:ok, list} = MCP.Client.list_tools(client)
+    {:ok, call} = MCP.Client.call_tool(client, "greet", %{"name" => "Ada"})
 
     {:links, links_after} = Process.info(self(), :links)
 
-    assert_equal(discovery, expected_discovery(), "discovery response")
-    assert_equal(list, expected_list(), "tools/list response")
-    assert_equal(call, expected_call(), "tools/call response")
+    assert_equal(discovery, expected_discovery(), "discovery result")
+    assert_equal(list, expected_list(), "tools/list result")
+    assert_equal(call, expected_call(), "tools/call result")
     assert_equal(links_after, links_before, "caller links")
 
     if check? do
@@ -83,56 +66,38 @@ defmodule Examples.DirectTools.Runner do
 
   defp expected_discovery do
     %{
-      "jsonrpc" => "2.0",
-      "id" => "discover",
-      "result" => %{
-        "resultType" => "complete",
-        "supportedVersions" => ["2026-07-28"],
-        "capabilities" => %{"tools" => %{}},
-        "ttlMs" => 0,
-        "cacheScope" => "private",
-        "_meta" => @server_metadata
-      }
+      "resultType" => "complete",
+      "supportedVersions" => ["2026-07-28"],
+      "capabilities" => %{"tools" => %{}},
+      "ttlMs" => 0,
+      "cacheScope" => "private",
+      "_meta" => @server_metadata
     }
   end
 
   defp expected_list do
-    %{
-      "jsonrpc" => "2.0",
-      "id" => "list",
-      "result" => %{
-        "resultType" => "complete",
-        "tools" => [
-          %{
-            "name" => "greet",
-            "description" => "Create a greeting",
-            "inputSchema" => Greet.input_schema()
-          }
-        ],
-        "ttlMs" => 0,
-        "cacheScope" => "private",
-        "_meta" => @server_metadata
+    [
+      %{
+        "name" => "greet",
+        "description" => "Create a greeting",
+        "inputSchema" => Greet.input_schema()
       }
-    }
+    ]
   end
 
   defp expected_call do
     %{
-      "jsonrpc" => "2.0",
-      "id" => "call",
-      "result" => %{
-        "resultType" => "complete",
-        "content" => [%{"type" => "text", "text" => "Hello, Ada!"}],
-        "isError" => false,
-        "_meta" => @server_metadata
-      }
+      "resultType" => "complete",
+      "content" => [%{"type" => "text", "text" => "Hello, Ada!"}],
+      "isError" => false,
+      "_meta" => @server_metadata
     }
   end
 
   defp print_walkthrough(discovery, list, call) do
     IO.puts("A declarative MCP server can be discovered and called without starting a process.\n")
     IO.puts("Discovery:\n#{inspect(discovery, pretty: true)}\n")
-    IO.puts("Tool list:\n#{inspect(list, pretty: true)}\n")
+    IO.puts("Tools:\n#{inspect(list, pretty: true)}\n")
     IO.puts("Direct call:\n#{inspect(call, pretty: true)}")
   end
 

@@ -80,52 +80,35 @@ defmodule Examples.Resources.Runner do
 
   alias Examples.Resources.Server
 
-  @protocol "2026-07-28"
+  alias MCP.Client
 
   def run(mode) do
-    runtime = Server.runtime()
+    {:ok, client} = Client.direct(Server.runtime())
 
-    direct = dispatch(runtime, "list", "resources/list")
-    templates = dispatch(runtime, "templates", "resources/templates/list")
-    groups = dispatch(runtime, "groups", "resources/read", %{"uri" => "toolbox://groups"})
-    package = dispatch(runtime, "package", "resources/read", %{"uri" => "hex://jason/info"})
-    missing = dispatch(runtime, "missing", "resources/read", %{"uri" => "hex://missing/info"})
+    {:ok, [direct | _]} = Client.list_resources(client)
+    {:ok, [template | _]} = Client.list_resource_templates(client)
+    {:ok, groups} = Client.read_resource(client, "toolbox://groups")
+    {:ok, package} = Client.read_resource(client, "hex://jason/info")
+    missing = Client.read_resource(client, "hex://missing/info")
 
-    ensure(
-      get_in(direct, ["result", "resources", Access.at(0), "uri"]) == "toolbox://groups",
-      "static resource was not listed"
-    )
-
-    ensure(
-      get_in(templates, ["result", "resourceTemplates", Access.at(0), "uriTemplate"]) ==
-        "hex://{name}/info",
-      "resource template was not listed"
-    )
-
+    ensure(direct["uri"] == "toolbox://groups", "static resource was not listed")
+    ensure(template["uriTemplate"] == "hex://{name}/info", "resource template was not listed")
     ensure(is_list(decode(groups)), "static JSON content was not readable")
     ensure(decode(package)["name"] == "jason", "templated resource routed incorrectly")
-    ensure(get_in(package, ["result", "ttlMs"]) == 5_000, "read cache override was lost")
-    ensure(get_in(package, ["result", "cacheScope"]) == "private", "cache scope was lost")
-    ensure(get_in(missing, ["error", "code"]) == -32_602, "missing resource was not -32602")
+    ensure(package["ttlMs"] == 5_000, "read cache override was lost")
+    ensure(package["cacheScope"] == "private", "cache scope was lost")
+
+    ensure(
+      match?({:error, %MCP.Error{code: -32_602}}, missing),
+      "missing resource was not -32602"
+    )
 
     print_summary(mode)
   end
 
-  defp dispatch(runtime, id, method, params \\ %{}) do
-    {:ok, response} =
-      MCP.Test.dispatch(runtime,
-        id: id,
-        protocol: @protocol,
-        method: method,
-        params: params
-      )
-
-    response
-  end
-
-  defp decode(response) do
-    response
-    |> get_in(["result", "contents", Access.at(0), "text"])
+  defp decode(result) do
+    result
+    |> get_in(["contents", Access.at(0), "text"])
     |> JSON.decode!()
   end
 
