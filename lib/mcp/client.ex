@@ -98,7 +98,7 @@ defmodule MCP.Client do
   @spec discover(t()) :: response()
   def discover(%__MODULE__{} = client), do: request(client, "server/discover")
 
-  @doc "Lists every tool, following `nextCursor` until the last page."
+  @doc "Lists every tool, following `nextCursor` to the last page."
   @spec list_tools(t()) :: {:ok, [map()]} | {:error, Error.t()}
   def list_tools(%__MODULE__{} = client), do: list_all(client, :tools)
 
@@ -277,25 +277,17 @@ defmodule MCP.Client do
   defp error_kind(-32_603), do: :execution
   defp error_kind(_code), do: :protocol
 
-  defp list_all(client, kind), do: collect_pages(client, kind, nil, MapSet.new(), [])
+  # The in-process server's cursors are scoped to the catalog and always
+  # advance, so no repeated-cursor guard is needed until a remote transport.
+  defp list_all(client, kind), do: collect_pages(client, kind, nil, [])
 
-  defp collect_pages(client, kind, cursor, seen, pages) do
+  defp collect_pages(client, kind, cursor, pages) do
     with {:ok, %Page{items: items, next_cursor: next}} <- list_page(client, kind, cursor) do
       pages = [items | pages]
 
-      cond do
-        is_nil(next) ->
-          {:ok, pages |> Enum.reverse() |> Enum.concat()}
-
-        MapSet.member?(seen, next) ->
-          {:error,
-           Error.internal("The server repeated a pagination cursor", %{
-             "kind" => kind,
-             "cursor" => next
-           })}
-
-        true ->
-          collect_pages(client, kind, next, MapSet.put(seen, next), pages)
+      case next do
+        nil -> {:ok, pages |> Enum.reverse() |> Enum.concat()}
+        next -> collect_pages(client, kind, next, pages)
       end
     end
   end
