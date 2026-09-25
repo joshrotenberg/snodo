@@ -6,6 +6,28 @@ sessions; 1 and 2 are independent of each other (codex correction: the Plug
 adapter does not need the client). Each item is scoped to be a single
 branch/PR.
 
+## Status, 2026-09-25
+
+| Item | Status |
+|---|---|
+| 1. `MCP.Client.direct/1` | In progress in #8, as `MCP.Client.direct/2`. |
+| 2. `:mcp_ex_plug` | Done in #1. |
+| 3. `MCP.Client` transports | Open. Depends on 1. |
+| 4. Ergonomics layer | Open. |
+| 5. JSON Schema 2020-12 backend | Done in #1. |
+| 6. Conformance + interop in CI | Done in #1. |
+| 7. README protocol stance | Superseded by 8. The README documents the opt-in initialize-era HTTP dialects. |
+| 8. Legacy session-era dialect | Done in #4 as opt-in `2025-11-25` and `2025-06-18` HTTP dialects. The trigger was #3: Claude Code 2.1.273 and Codex 0.149.0 could not initialize against the 2026-only server. It ships in the core rather than a sibling package, is stateless (no session IDs), and does not cover Tasks, subscriptions, server requests, continuation inputs, or stdio. |
+
+Work that landed outside this list:
+
+- #6 added application authorization across discovery and dispatch, for the
+  Custode migration.
+- #7 restored green CI after #6 merged without its final type-analysis fix.
+
+Current baseline on `main`: 357 tests (one doctest, 356 tests), 31 internal
+contract evidence groups, and 32/37 official conformance scenarios.
+
 ## Status, 2026-09-19
 
 Work that had accumulated uncommitted in the working tree was landed on
