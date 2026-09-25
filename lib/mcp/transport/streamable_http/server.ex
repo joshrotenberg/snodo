@@ -575,8 +575,12 @@ defmodule MCP.Transport.StreamableHTTP.Server do
             response.keepalive_ms
           )
         else
+          # Each step is a socket operation, so a failure here means the
+          # client went away. A client that closes right after reading the
+          # acknowledgement can fail `setopts` with `:einval` before
+          # `tcp_closed` arrives.
           {:error, reason} ->
-            :ok = Subscription.close(subscription, {:error, reason})
+            :ok = Subscription.close(subscription, {:disconnected, reason})
             :ok
         end
 
