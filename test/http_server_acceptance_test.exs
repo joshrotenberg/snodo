@@ -234,7 +234,11 @@ defmodule MCP.Transport.StreamableHTTP.ServerAcceptanceTest do
       recv_until(disconnected_socket, "notifications/subscriptions/acknowledged")
 
     :ok = :gen_tcp.close(disconnected_socket)
-    assert_receive {:subscription_closed, "http-disconnect", :disconnected}, 1_000
+
+    # The server either observes `tcp_closed` while streaming or fails to
+    # re-arm the closed socket first; both are client disconnects.
+    assert_receive {:subscription_closed, "http-disconnect", reason}, 1_000
+    assert reason == :disconnected or match?({:disconnected, _socket_error}, reason)
   end
 
   defp post(port, raw) do
