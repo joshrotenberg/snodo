@@ -196,7 +196,9 @@ defmodule MCP.Prompt do
     raise ArgumentError, "prompt content is not a supported MCP content block"
   end
 
-  defp compile_definition!(env, opts) do
+  @doc false
+  @spec compile_definition!(Macro.Env.t(), keyword()) :: Definition.t()
+  def compile_definition!(env, opts) do
     definition = %Definition{
       name: Keyword.get(opts, :name),
       title: Keyword.get(opts, :title),

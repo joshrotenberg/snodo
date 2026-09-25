@@ -1,5 +1,43 @@
 defmodule MCP.Server do
-  @moduledoc "Dialect-driven direct dispatch and a declarative server builder."
+  @moduledoc """
+  Dialect-driven direct dispatch and a declarative server builder.
+
+  `use MCP.Server` builds `router/0`, `protocols/0`, `runtime/1`, and
+  `child_spec/1` from the components the module declares. A component is
+  either an existing module or an inline block:
+
+      defmodule EchoServer do
+        use MCP.Server, name: "echo-server", version: "0.1.0"
+
+        tool "greet", description: "Create a greeting" do
+          argument "name", :string, required: true
+
+          @impl true
+          def call(%{"name" => name}, _context), do: {:ok, "Hello, \#{name}!"}
+        end
+
+        resource "toolbox_groups", uri: "toolbox://groups", mime_type: "application/json" do
+          @impl true
+          def read(_params, _context), do: {:ok, %{"groups" => ["web", "data"]}}
+        end
+
+        prompt "review", description: "Review a package" do
+          argument "name", required: true
+
+          @impl true
+          def render(%{"name" => name}, _context), do: {:ok, "Review \#{name}."}
+        end
+
+        tool MyApp.Search
+      end
+
+  An inline block is the body of a generated module that uses
+  `MCP.Tool.Simple`, `MCP.Resource.Simple`, or `MCP.Prompt.Simple` with the
+  given name and options. The module is named after the component, here
+  `EchoServer.Tools.Greet`, `EchoServer.Resources.ToolboxGroups`, and
+  `EchoServer.Prompts.Review`, and is registered exactly as a module component
+  is. Inline and module components can be mixed freely.
+  """
 
   alias MCP.Envelope
   alias MCP.Error
@@ -32,7 +70,18 @@ defmodule MCP.Server do
       |> Enum.map(&Macro.expand(&1, __CALLER__))
 
     quote do
-      import MCP.Server, only: [prompt: 1, resource: 1, tool: 1]
+      import MCP.Server,
+        only: [
+          prompt: 1,
+          prompt: 2,
+          prompt: 3,
+          resource: 1,
+          resource: 2,
+          resource: 3,
+          tool: 1,
+          tool: 2,
+          tool: 3
+        ]
 
       Module.register_attribute(__MODULE__, :mcp_server_tools, accumulate: true)
       Module.register_attribute(__MODULE__, :mcp_server_prompts, accumulate: true)
@@ -94,6 +143,110 @@ defmodule MCP.Server do
     quote do
       @mcp_server_prompts unquote(module)
     end
+  end
+
+  @doc """
+  Defines and registers an inline tool module that uses `MCP.Tool.Simple`.
+
+  `opts` are the `MCP.Tool.Simple` options other than `:name`.
+  """
+  defmacro tool(name, opts), do: inline_component(__CALLER__, :tool, name, opts)
+
+  @doc false
+  defmacro tool(name, opts, block),
+    do: inline_component(__CALLER__, :tool, name, merge_block(opts, block))
+
+  @doc """
+  Defines and registers an inline resource module that uses
+  `MCP.Resource.Simple`.
+
+  `opts` are the `MCP.Resource` options other than `:name`, and must include
+  `:uri` or `:uri_template`.
+  """
+  defmacro resource(name, opts), do: inline_component(__CALLER__, :resource, name, opts)
+
+  @doc false
+  defmacro resource(name, opts, block),
+    do: inline_component(__CALLER__, :resource, name, merge_block(opts, block))
+
+  @doc """
+  Defines and registers an inline prompt module that uses `MCP.Prompt.Simple`.
+
+  `opts` are the `MCP.Prompt.Simple` options other than `:name`.
+  """
+  defmacro prompt(name, opts), do: inline_component(__CALLER__, :prompt, name, opts)
+
+  @doc false
+  defmacro prompt(name, opts, block),
+    do: inline_component(__CALLER__, :prompt, name, merge_block(opts, block))
+
+  @inline_kinds %{
+    tool: {"Tools", MCP.Tool.Simple, :mcp_server_tools},
+    resource: {"Resources", MCP.Resource.Simple, :mcp_server_resources},
+    prompt: {"Prompts", MCP.Prompt.Simple, :mcp_server_prompts}
+  }
+
+  defp inline_component(env, kind, name, opts) do
+    unless is_binary(name) and name != "" do
+      inline_error!(env, "inline #{kind} names must be non-empty string literals")
+    end
+
+    unless Keyword.keyword?(opts) and Keyword.has_key?(opts, :do) do
+      inline_error!(env, "inline #{kind} #{inspect(name)} needs options and a do block")
+    end
+
+    {block, opts} = Keyword.pop(opts, :do)
+
+    if Keyword.has_key?(opts, :name) do
+      inline_error!(env, "inline #{kind} #{inspect(name)} takes its name from the first argument")
+    end
+
+    {namespace, simple, attribute} = Map.fetch!(@inline_kinds, kind)
+    module = Module.concat([env.module, namespace, inline_module_name(name)])
+    claim_inline_module!(env, module, kind, name)
+
+    quote do
+      defmodule unquote(module) do
+        use unquote(simple), unquote([{:name, name} | opts])
+        unquote(block)
+      end
+
+      Module.put_attribute(__MODULE__, unquote(attribute), unquote(module))
+    end
+  end
+
+  # `tool "x", opt: 1 do ... end` passes the options and the do block as two
+  # arguments; `tool "x" do ... end` passes only the block.
+  defp merge_block(opts, block) when is_list(opts) and is_list(block), do: opts ++ block
+  defp merge_block(opts, _block), do: opts
+
+  defp inline_module_name(name) do
+    name
+    |> String.replace(~r/[^A-Za-z0-9]+/, "_")
+    |> Macro.camelize()
+  end
+
+  # Macros expand before the module body runs, so the modules claimed so far
+  # are tracked at expansion time rather than in an attribute `use` registers.
+  defp claim_inline_module!(env, module, kind, name) do
+    claimed = Module.get_attribute(env.module, :mcp_server_inline_modules) || []
+
+    case List.keyfind(claimed, module, 0) do
+      nil ->
+        Module.put_attribute(env.module, :mcp_server_inline_modules, [{module, name} | claimed])
+
+      {^module, existing} ->
+        inline_error!(
+          env,
+          "inline #{kind}s #{inspect(existing)} and #{inspect(name)} would both define " <>
+            "#{inspect(module)}; declare one of them as a module"
+        )
+    end
+  end
+
+  @spec inline_error!(Macro.Env.t(), String.t()) :: no_return()
+  defp inline_error!(env, description) do
+    raise CompileError, file: env.file, line: env.line, description: description
   end
 
   defmacro __before_compile__(env) do
