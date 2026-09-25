@@ -55,6 +55,9 @@ jobs:
       - name: Run aggregate type analysis on the current lane
         if: matrix.lane == 'current'
         run: mix quality.types
+      - name: Build documentation on the current lane
+        if: matrix.lane == 'current'
+        run: MIX_ENV=dev mix docs --warnings-as-errors
 
   official-client:
     name: Official TypeScript client 2.0.0

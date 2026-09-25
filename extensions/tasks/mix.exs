@@ -7,7 +7,13 @@ defmodule Snodo.Extensions.Tasks.MixProject do
       version: "0.1.0",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
-      description: "Tasks extension for snodo",
+      description: "The MCP Tasks extension for snodo",
+      source_url: "https://github.com/joshrotenberg/snodo",
+      package: [
+        licenses: ["MIT"],
+        links: %{"GitHub" => "https://github.com/joshrotenberg/snodo"},
+        files: ~w(lib mix.exs README.md LICENSE .formatter.exs)
+      ],
       elixirc_paths: elixirc_paths(Mix.env()),
       dialyzer: [
         # :ex_unit so the PLT knows ExUnit.AssertionError, which test/support raises.

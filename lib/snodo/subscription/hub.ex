@@ -10,7 +10,9 @@ defmodule Snodo.Subscription.Hub do
   configure `overflow: :drop_newest`.
 
   The hub is application state, not router state. Start it under the
-  application's supervision tree and pass `source/1` to `Snodo.Server.runtime/1`:
+  application's supervision tree and pass `source/1` as the
+  `:subscription_source` option of a server's `runtime/1` or of
+  `Snodo.Server.Runtime.new/1`:
 
       children = [{Snodo.Subscription.Hub, name: MyApp.SubscriptionHub}]
 
@@ -70,7 +72,7 @@ defmodule Snodo.Subscription.Hub do
     GenServer.start_link(__MODULE__, config, Keyword.take(opts, [:name]))
   end
 
-  @doc "Returns a source configuration suitable for `Snodo.Server.runtime/1`."
+  @doc "Returns a source configuration for the `:subscription_source` runtime option."
   @spec source(server()) :: {module(), server()}
   def source(hub), do: {__MODULE__, hub}
 

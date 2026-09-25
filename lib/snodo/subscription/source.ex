@@ -16,7 +16,7 @@ defmodule Snodo.Subscription.Source do
   alias Snodo.Subscription.Event
 
   defmodule Config do
-    @moduledoc false
+    @moduledoc "A normalized subscription source: the source module and its options."
 
     @enforce_keys [:module]
     defstruct [:module, :options]

@@ -6,7 +6,13 @@ defmodule Snodo.Transport.Plug.MixProject do
       app: :snodo_plug,
       version: "0.1.0",
       elixir: "~> 1.18",
-      description: "Optional Plug integration for snodo",
+      description: "Plug and Bandit transport for snodo MCP servers",
+      source_url: "https://github.com/joshrotenberg/snodo",
+      package: [
+        licenses: ["MIT"],
+        links: %{"GitHub" => "https://github.com/joshrotenberg/snodo"},
+        files: ~w(lib mix.exs README.md LICENSE .formatter.exs)
+      ],
       elixirc_paths: if(Mix.env() == :test, do: ["lib", "test/support"], else: ["lib"]),
       dialyzer: [plt_local_path: "priv/plts", flags: [:unmatched_returns, :error_handling]],
       aliases: [

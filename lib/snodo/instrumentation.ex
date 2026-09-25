@@ -12,7 +12,7 @@ defmodule Snodo.Instrumentation do
   """
 
   defmodule Config do
-    @moduledoc false
+    @moduledoc "A normalized instrumentation sink: the sink module and its options."
 
     @enforce_keys [:module]
     defstruct [:module, :options]
