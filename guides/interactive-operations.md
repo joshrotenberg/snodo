@@ -22,8 +22,8 @@ method and params are available as `request_method` and `request_params` for
 binding verification. These are framework-owned fields; middleware should not
 rewrite them when forwarding context to a handler.
 
-Use [example 20](../examples/20_mrtr_elicitation.exs) and its
-[shared workflow](../examples/support/mrtr_elicitation.exs) for a complete,
+Use [example 20](https://github.com/joshrotenberg/snodo/blob/main/examples/20_mrtr_elicitation.exs) and its
+[shared workflow](https://github.com/joshrotenberg/snodo/blob/main/examples/support/mrtr_elicitation.exs) for a complete,
 read-only preference flow that works as a tool, resource, and prompt:
 
 ```sh
@@ -134,8 +134,8 @@ unchanged storage-adapter suites, or Tasks/storage-adapter development Dialyzer.
 The subsequent external fixture close-out passed **31/37** required scenarios,
 including nine newly exercised ordinary MRTR scenarios. The later progress
 slice raises the current score to **32/37**; the current aggregate evidence is
-in [target application findings](target-application-findings.md#verification--2026-09-14).
-See [conformance results](../conformance/results/2026-09-14-alpha.11-summary.md).
+in [target application findings](https://github.com/joshrotenberg/snodo/blob/main/docs/history/target-application-findings.md#verification--2026-09-14).
+See [conformance results](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-09-14-alpha.11-summary.md).
 The official-client and frozen external regression checks are now wired into CI;
 the checked-in workflow is policy until its remote job actually runs.
 

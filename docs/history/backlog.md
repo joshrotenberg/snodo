@@ -13,7 +13,7 @@ branch/PR.
 | 1. `Snodo.Client.direct/1` | Done in #8, as `Snodo.Client.direct/2`. |
 | 2. `:snodo_plug` | Done in #1. |
 | 3. `Snodo.Client` transports | Done in #9. |
-| 4. Ergonomics layer | In progress in #10. |
+| 4. Ergonomics layer | Done in #10. |
 | 5. JSON Schema 2020-12 backend | Done in #1. |
 | 6. Conformance + interop in CI | Done in #1. |
 | 7. README protocol stance | Superseded by 8. The README documents the opt-in initialize-era HTTP dialects. |

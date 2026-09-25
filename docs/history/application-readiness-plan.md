@@ -38,7 +38,7 @@ servers or a complete JSON Schema validator themselves.
      fixtures alongside an application example.
    - Landed public result/context APIs, form/URL elicitation, request-bound signed
      state, partial/multiple-input retries, extension guards, and example 20.
-     [MRTR evidence and limits](mrtr-elicitation.md) record the current slice.
+     [MRTR evidence and limits](../../guides/interactive-operations.md) record the current slice.
      Initial MRTR checkpoint: 272 core tests, 85 Tasks tests, 29 core contract groups,
      core static-analysis gates, and official-client automatic retries over
      stdio/HTTP; the existing target application still passes its 130 tests.
@@ -59,7 +59,7 @@ servers or a complete JSON Schema validator themselves.
    - Implemented separate Plug/Bandit and JSV integration packages; examples
      21/22 demonstrate public application setup and compiled validation. Core
      remains dependency-free. Progress now works over stdio, native HTTP, and
-     Plug with request-scoped sinks. See [recommended stack and limits](application-stack.md).
+     Plug with request-scoped sinks. See [recommended stack and limits](../../guides/application-stack.md).
 4. **Independent protocol regression evidence — implemented and exercised locally.**
    - Pin schema and runner provenance and validate representative emitted
      messages with a complete schema engine.
@@ -116,6 +116,6 @@ validation, and host limitations have a documented application path.
 ## References
 
 - [Current protocol](https://modelcontextprotocol.io/specification/2026-07-28)
-- [Protocol evidence](protocol-compliance.md)
+- [Protocol evidence](../../guides/protocol-compliance.md)
 - [Target application findings](target-application-findings.md)
 - [Examples roadmap](examples-roadmap.md)

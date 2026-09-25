@@ -20,9 +20,9 @@ runtime = MyApp.MCPServer.runtime()
 
 children = [
   {Snodo.Server.Executor,
-   name: MyApp.SnodoTestecutor, max_concurrency: 32, max_queue: 128},
+   name: MyApp.SnodoExecutor, max_concurrency: 32, max_queue: 128},
   {Bandit,
-   plug: {Snodo.Transport.Plug, runtime: runtime, executor: MyApp.SnodoTestecutor},
+   plug: {Snodo.Transport.Plug, runtime: runtime, executor: MyApp.SnodoExecutor},
    ip: {127, 0, 0, 1},
    port: 4000,
    thousand_island_options: [transport_options: [send_timeout: 5_000, send_timeout_close: true]]}
@@ -88,7 +88,7 @@ Discovery refusals hide components from the list responses. An invocation
 refusal is the application's own JSON-RPC error inside a 200 response, because
 the request itself was authenticated and admitted; use HTTP 401/403 in the
 authentication Plug for the endpoint-level decision. See the core
-[application stack notes](../../docs/application-stack.md) for the policy
+[application stack notes](../../guides/application-stack.md) for the policy
 contract.
 
 ## Bounds and lifecycle guarantees

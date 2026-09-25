@@ -71,7 +71,7 @@ The names and bounded metadata are framework API. A particular metrics backend,
 aggregation policy, sampling policy, and task-ID cardinality policy remain
 application concerns.
 
-The opt-in Tasks [contention and soak harness](stress-testing.md) consumes the
+The opt-in Tasks [contention and soak harness](https://github.com/joshrotenberg/snodo/blob/main/extensions/tasks/stress-testing.md) consumes the
 job and transition events directly. Its exact lifecycle invariants illustrate
 one way to build correctness evidence without coupling the framework to a
 metrics dependency or a machine-specific latency threshold.

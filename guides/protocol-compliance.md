@@ -15,10 +15,10 @@ code and reports:
 | Core internal contract | Literal wire requests plus HTTP and generic extension acceptance obey the declared core slice | 31 evidence groups passing |
 | Tasks package contract | The independent child package obeys its Tasks wire, lifecycle, subscriptions, HTTP, descriptor, durable-store, and recovery contract | 10 evidence groups passing |
 | Released-client interop | A real official TypeScript client can discover, list, call, cancel, and call again over stdio | Passing with client 2.0.0 |
-| Target application acceptance | The real Hex.pm server's catalog, tool outcomes, prompts, and resource reads work with seeded domain responses over stdio and HTTP | Passing with client 2.0.0; [scope and commands](target-application-findings.md) |
-| MRTR client acceptance | Ordinary tool/resource/prompt elicitation, signed state, automatic retries, and URL consent work over stdio and HTTP | Passing with client 2.0.0; [scope and commands](mrtr-elicitation.md) |
+| Target application acceptance | The real Hex.pm server's catalog, tool outcomes, prompts, and resource reads work with seeded domain responses over stdio and HTTP | Passing with client 2.0.0; [scope and commands](https://github.com/joshrotenberg/snodo/blob/main/docs/history/target-application-findings.md) |
+| MRTR client acceptance | Ordinary tool/resource/prompt elicitation, signed state, automatic retries, and URL consent work over stdio and HTTP | Passing with client 2.0.0; [scope and commands](interactive-operations.md) |
 | Official server requirements | The implementation passes the frozen upstream scenarios for the released revision | Partial: 32/37 exercised whole scenarios pass (2026-09-14); all 37 attempted |
-| Ordinary progress | Correlated progress precedes normal/error/MRTR terminal messages; cancellation and no-token behavior are checked over stdio and HTTP | Passing wire and controlled client checks; [SDK callback caveat](../interop/official_client/PROGRESS.md) |
+| Ordinary progress | Correlated progress precedes normal/error/MRTR terminal messages; cancellation and no-token behavior are checked over stdio and HTTP | Passing wire and controlled client checks; [SDK callback caveat](https://github.com/joshrotenberg/snodo/blob/main/interop/official_client/PROGRESS.md) |
 | Independent wire-schema corpus | Representative real emissions validate against named definitions and concrete result branches in the pinned official schema using AJV | 78 emissions across direct/stdio/HTTP; 78 negative mutations and 7 unit controls; not every possible message |
 
 `mix snodo.contract` prints the core buckets without converting internal evidence
@@ -234,7 +234,7 @@ all three permitted core operations. An independent pinned TypeScript client
 exercises automatic round trips over stdio and native HTTP.
 
 The 2026-09-14 external run now exercises nine additional ordinary MRTR scenarios.
-See [the MRTR guide](mrtr-elicitation.md) for supported schema limits, state
+See [the MRTR guide](interactive-operations.md) for supported schema limits, state
 security, the Tasks boundary, and the empty-input-map SDK caveat.
 
 ## Official conformance lane
@@ -250,9 +250,9 @@ and 1 `INFO`. Two pending, not-scored scenarios pass completely:
 `json-schema-2020-12` (8/8) and `http-header-validation` (14/14). The remaining
 custom-header pending failure stays visible in the checked-in report. The exact
 pass list, raw no-failure list, and exclusion reasons are checked in as both
-[JSON](../conformance/results/2026-09-14-alpha.11-summary.json) and
-[Markdown](../conformance/results/2026-09-14-alpha.11-summary.md), with
-[per-check outcomes](../conformance/results/2026-09-14-alpha.11-checks.json).
+[JSON](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-09-14-alpha.11-summary.json) and
+[Markdown](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-09-14-alpha.11-summary.md), with
+[per-check outcomes](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-09-14-alpha.11-checks.json).
 The August 25 summaries are retained as historical evidence, not current scores.
 
 The frozen `2026-07-28` requirement manifest contains 37 scored server
@@ -281,10 +281,10 @@ npx -y @modelcontextprotocol/conformance@0.2.0-alpha.11 server \
 fixes scenario membership and the wire revision. The upstream manifest is the
 canonical definition of the score.
 
-The [managed lane](../conformance/README.md) locks the runner and its complete
+The [managed lane](https://github.com/joshrotenberg/snodo/blob/main/conformance/README.md) locks the runner and its complete
 dependency graph, verifies the frozen manifest digest, starts an ephemeral
 loopback fixture, retains raw artifacts, and applies a reviewed per-check
-[regression baseline](../conformance/expected-failures.json). The official runner
+[regression baseline](https://github.com/joshrotenberg/snodo/blob/main/conformance/expected-failures.json). The official runner
 still exits non-zero; failures remain failures in the report. The baseline pins
 all 190 check occurrences across 50 required and unscored scenarios:
 
@@ -315,12 +315,12 @@ specification and the scenario-specific assertions require the flat
 `resultType: "task"` shape instead. The checked-in summary keeps those failures
 visible and claims only the 35 Tasks assertions:
 
-- [human-readable Tasks summary](../conformance/results/2026-07-28-tasks-alpha.11-summary.md)
-- [machine-readable Tasks summary](../conformance/results/2026-07-28-tasks-alpha.11-summary.json)
+- [human-readable Tasks summary](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-07-28-tasks-alpha.11-summary.md)
+- [machine-readable Tasks summary](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-07-28-tasks-alpha.11-summary.json)
 
 ## Independent full-schema engine lane
 
-[`interop/schema_validation`](../interop/schema_validation/README.md) pins the
+[`interop/schema_validation`](https://github.com/joshrotenberg/snodo/blob/main/interop/schema_validation/README.md) pins the
 official artifact and provenance, uses AJV 2020-12, and validates 78 actual
 serialized emissions from 60 operations over direct, stdio, and native HTTP.
 It selects 26 named definitions and concrete result branches: the generated

@@ -231,7 +231,7 @@ Framework and interoperability evidence:
   remains 1 for the recorded failures; a passing regression baseline does not
   make them conformant. All 190 check occurrences are pinned, including the
   unscored lanes; twelve harness tests exercise regression accounting. See
-  [protocol evidence](protocol-compliance.md).
+  [protocol evidence](../../guides/protocol-compliance.md).
 - The official-client baseline, ordinary MRTR, progress, and application
   acceptance pass over both stdio and native HTTP. The pinned client has a
   separately documented unpaced stdio progress-callback scheduling race;

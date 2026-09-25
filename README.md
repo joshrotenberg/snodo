@@ -1,141 +1,49 @@
-# snodo architecture spike
+# snodo
 
-Development follows the [application readiness plan](docs/application-readiness-plan.md),
-with `hexpm-mcp` as the first real application and independent protocol/client
-evidence as the acceptance boundary.
+An Elixir library for building [Model Context Protocol](https://modelcontextprotocol.io)
+servers and clients. It speaks MCP `2026-07-28`, with opt-in support for
+initialize-era HTTP clients (`2025-11-25` and `2025-06-18`).
 
-`snodo` is a router-first Elixir spike for the final MCP `2026-07-28`
-protocol. The protocol core is a standalone, runtime-dependency-free Mix
-library. The released Tasks proof is an independently buildable
-`:snodo_tasks` child package with a one-way dependency on that core; its
-PostgreSQL and SQLite implementations are optional sibling packages:
+`snodo` is pre-release and not yet published to Hex. The API may change.
 
-- a synchronous, immutable router that needs no process;
-- an explicitly configured, out-of-tree-extensible protocol registry;
-- direct `server/discover`, Tools, Resources, Prompts, and Completion dispatch;
-- an optional transport-neutral executor with bounded concurrency, a bounded
-  queue, deadlines, and request-scoped cancellation;
-- newline-delimited stdio built on that executor with atomic response writes;
-- stdio `notifications/cancelled` handling with no late response;
-- a dependency-free, localhost-first Streamable HTTP adapter and listener using
-  the same executor;
-- protocol-owned `subscriptions/listen` lifecycle over multiplexed stdio and
-  long-lived HTTP SSE, backed by an application-owned pull source with one
-  event in flight per subscription, plus negotiated extension-owned filter and
-  event shaping without adding extension methods to the core profile;
-- an opt-in, application-supervised `Snodo.Subscription.Hub` producer with
-  filter-aware broadcast, bounded per-listener queues, explicit overflow
-  policy, delivery statistics, and core notification helpers;
-- dependency-free instrumentation sinks for dispatch, subscription
-  delivery/overflow, and Tasks runner/store-transition lifecycles, with bounded
-  metadata and fault isolation;
-- deterministic Tasks CAS-contention and Runner-soak workloads with a
-  versioned JSON report, exact lifecycle invariants, and descriptive timings;
-- exact preservation of JSON Schema maps and request `_meta` vendor keys;
-- shared stateless pagination for all four list operations, with opaque
-  protocol/method/catalog-scoped cursors and stable cache hints;
-- a pinned complete core-method catalog plus an exact implementation profile
-  and pure pre-router inspector;
-- profile-derived capability admission that prevents false advertisement;
-- an exact-versioned extension registry with collision checks, application
-  options, bilateral negotiation, core-operation middleware, and
-  extension-owned validation, wire shaping, and HTTP policy;
-- a released `io.modelcontextprotocol/tasks` extension with an application-owned
-  store/runner, versioned JSON-safe events, revisioned compare-and-set
-  transitions, scoped access, serializable work, renewable fenced claims,
-  restart recovery, deterministic mid-task input replay, a local durable DETS
-  adapter, persisted exact-delay retry/backoff, cancellation races, and exact
-  task routing headers;
-- an optional `:snodo_tasks_postgres` store with an application-owned
-  `Ecto.Repo`, explicit migrations, JSONB aggregates and ledgers,
-  database-clock leases, and `FOR UPDATE SKIP LOCKED` recovery;
-- an optional `:snodo_tasks_sqlite` store with an application-owned
-  file-backed Repo, explicit migration, versioned JSON aggregates and ledgers,
-  database-clock leases, and `BEGIN IMMEDIATE` single-writer serialization;
-- a runtime-configurable `Snodo.Schema.Validator` boundary;
-- declarative `use Snodo.Server`, `use Snodo.Tool`, `use Snodo.Resource`, and
-  `use Snodo.Prompt` developer APIs, with definition-owned completion callbacks.
+- **Servers** from inline blocks or ordinary modules, served over stdio, a
+  built-in Streamable HTTP listener, or Plug and Bandit.
+- **A client** that calls any MCP server in process, over stdio, or over HTTP.
+- **The 2026-07-28 surface:** discovery, tools, resources and templates,
+  prompts, completion, pagination, `subscriptions/listen`, progress,
+  cancellation, and multi round-trip requests with elicitation.
+- **No runtime dependencies** in the core: it uses Elixir's built-in `JSON`
+  and OTP. Optional sibling packages add Tasks, Plug, and full JSON Schema
+  validation.
 
-The core runtime uses Elixir's built-in `JSON` module, available from Elixir
-1.18, and has no runtime dependencies. The Tasks package depends at runtime
-only on `snodo`. Both database siblings depend inward on Tasks plus Ecto SQL
-and Jason; Postgrex and `ecto_sqlite3` are optional because the host application
-supplies and supervises its Repo. Optional Plug and JSV packages add application
-hosting and schema validation without changing that core graph. All six packages
-keep Credo and Dialyxir development/test-only. The framework preserves and advertises schemas.
-A custom validator can enforce inputs and structured outputs through
-`validate/2`. The dependency-free runtime default remains intentionally
-pass-through, while the included `Snodo.Schema.Validator.Basic` enforces the
-common object, array, primitive, enum, const, and size/bounds subset. A complete
-JSON Schema backend remains application-selectable.
+## Packages
+
+| Package | Path | Adds |
+|---|---|---|
+| `snodo` | `.` | Protocol core, router, server DSL, client, stdio and HTTP transports |
+| `snodo_plug` | `integrations/plug` | `Snodo.Transport.Plug` for Plug and Bandit applications |
+| `snodo_jsv` | `integrations/schema_jsv` | Full JSON Schema 2020-12 validation through JSV |
+| `snodo_tasks` | `extensions/tasks` | The `io.modelcontextprotocol/tasks` extension with an application-owned store and runner |
+| `snodo_tasks_postgres` | `extensions/tasks_postgres` | PostgreSQL store for Tasks |
+| `snodo_tasks_sqlite` | `extensions/tasks_sqlite` | SQLite store for Tasks |
+
+Until the packages are published, depend on the repository. `snodo_plug`
+brings `snodo` with it:
+
+```elixir
+{:snodo, github: "joshrotenberg/snodo"}
+{:snodo_plug, github: "joshrotenberg/snodo", subdir: "integrations/plug"}
+```
+
+Elixir 1.18 or later is required.
 
 ## Quick start
 
-```elixir
-defmodule Echo do
-  use Snodo.Tool,
-    name: "echo",
-    description: "Echo text"
-
-  input_schema %{
-    "type" => "object",
-    "properties" => %{"text" => %{"type" => "string"}},
-    "required" => ["text"]
-  }
-
-  @impl true
-  def call(%{"text" => text}, _context) do
-    {:ok, Snodo.Result.text(text)}
-  end
-end
-
-defmodule EchoServer do
-  use Snodo.Server,
-    name: "echo-server",
-    version: "0.1.0",
-    protocols: [Snodo.Protocol.V2026_07_28]
-
-  tool Echo
-end
-```
-
-For common object-shaped inputs, the opt-in simple layer generates that same
-ordinary `Snodo.Tool` definition without changing handler arguments or dispatch:
+A server with one tool, one resource template, and one prompt:
 
 ```elixir
-defmodule SimpleEcho do
-  use Snodo.Tool.Simple,
-    name: "echo",
-    description: "Echo text",
-    additional_properties: false
-
-  argument "text", :string, required: true, min_length: 1
-
-  @impl true
-  def call(%{"text" => text}, _context), do: {:ok, Snodo.Result.text(text)}
-end
-
-defmodule ValidatedEchoServer do
-  use Snodo.Server,
-    name: "validated-echo-server",
-    version: "0.1.0",
-    schema_validator: Snodo.Schema.Validator.Basic
-
-  tool SimpleEcho
-end
-```
-
-`argument/3` also accepts nested array types and raw property-schema maps. The
-raw `Snodo.Tool` DSL remains the direct path for fully hand-authored root schemas.
-
-Small components can be declared inline. Each block becomes a module that uses
-`Snodo.Tool.Simple`, `Snodo.Resource.Simple`, or `Snodo.Prompt.Simple`, named after
-the component (`InlineServer.Tools.Greet` here) and registered like any module
-component:
-
-```elixir
-defmodule InlineServer do
-  use Snodo.Server, name: "inline-server", version: "0.1.0"
+defmodule Greeter do
+  use Snodo.Server, name: "greeter", version: "0.1.0"
 
   tool "greet", description: "Create a greeting" do
     argument "name", :string, required: true
@@ -144,530 +52,99 @@ defmodule InlineServer do
     def call(%{"name" => name}, _context), do: {:ok, "Hello, #{name}!"}
   end
 
-  resource "package_info", uri_template: "hex://{name}/info" do
+  resource "profile", uri_template: "people://{name}/profile", mime_type: "application/json" do
     @impl true
     def read(%{"name" => name}, _context), do: {:ok, %{"name" => name}}
   end
 
-  prompt "review", description: "Review a package" do
+  prompt "introduce", description: "Introduce someone" do
     argument "name", required: true
 
     @impl true
-    def render(%{"name" => name}, _context), do: {:ok, "Review #{name}."}
+    def render(%{"name" => name}, _context), do: {:ok, "Introduce #{name} in one sentence."}
   end
-
-  tool Echo
 end
 ```
 
-The `Simple` resource and prompt modules accept plain return values. A resource
-string is text at the requested URI and any other JSON value is JSON content; a
-prompt string is one user message. `Snodo.Result` remains the explicit form for
-cache hints, blobs, several contents, descriptions, and `input_required`.
-Example 25 runs this shape end to end.
-
-`Snodo.Client.direct/2` talks to a server in the calling process, with no
-transport or process in between:
+Call it in process with `Snodo.Client`:
 
 ```elixir
-{:ok, client} = Snodo.Client.direct(EchoServer.runtime())
-{:ok, [%{"name" => "echo"}]} = Snodo.Client.list_tools(client)
+{:ok, client} = Snodo.Client.direct(Greeter.runtime())
 
-{:ok, result} = Snodo.Client.call_tool(client, "echo", %{"text" => "hello"})
+{:ok, [%{"name" => "greet"}]} = Snodo.Client.list_tools(client)
+{:ok, result} = Snodo.Client.call_tool(client, "greet", %{"name" => "Ada"})
 result["content"]
-#=> [%{"type" => "text", "text" => "hello"}]
+#=> [%{"type" => "text", "text" => "Hello, Ada!"}]
 ```
 
-The client adds the protocol metadata each request needs and returns the
-JSON-RPC `result` object, `{:input_required, result}` for a multi round-trip
-request, or `{:error, %Snodo.Error{}}`. The same calls work against a stdio
-subprocess or a Streamable HTTP endpoint:
+Serve it over stdio from a script or release:
 
 ```elixir
-{:ok, client} = Snodo.Client.connect({:stdio, "elixir", ["echo_server.exs"]})
+:ok = Snodo.Transport.Stdio.serve(Greeter.runtime())
+```
+
+or over HTTP, supervised:
+
+```elixir
+children = [{Snodo.Transport.StreamableHTTP.Server, runtime: Greeter.runtime(), port: 4000}]
+```
+
+The same client connects to either:
+
+```elixir
+{:ok, client} = Snodo.Client.connect({:stdio, "elixir", ["greeter.exs"]})
 {:ok, client} = Snodo.Client.connect({:http, "http://127.0.0.1:4000/mcp"})
 ```
 
-Example 24 runs one set of calls over all three.
+## Guides
 
-Run the first standalone walkthrough, or check all twenty-four no-external-service
-examples in isolated Elixir VMs:
+- [Getting started](guides/getting-started.md)
+- [Tools, resources, and prompts](guides/components.md)
+- [The client](guides/client.md)
+- [Transports](guides/transports.md)
+- [Choosing packages for an application](guides/application-stack.md)
+- [Interactive operations (MRTR and elicitation)](guides/interactive-operations.md)
+- [Subscriptions](guides/subscriptions.md)
+- [Authorization](guides/authorization.md)
+- [Extensions and Tasks](guides/extensions.md)
+- [Instrumentation](guides/instrumentation.md)
+- [Initialize-era clients](guides/initialize-era-clients.md)
+- [Supported Elixir, OTP, and databases](guides/compatibility.md)
+- [Protocol compliance](guides/protocol-compliance.md)
 
-```sh
-mix run examples/01_direct_tools.exs
-mix examples
-```
+The [examples](https://github.com/joshrotenberg/snodo/blob/main/examples/README.md) are runnable scripts, each checked in CI.
 
-Example 10 is a separate live-PostgreSQL setup walkthrough:
+## Protocol support
 
-```sh
-cd extensions/tasks_postgres
-SNODO_TASKS_DATABASE_URL=ecto://postgres:postgres@127.0.0.1:55432/snodo_tasks \
-  mix example.postgres
-```
-
-Example 11 is the embedded SQLite counterpart and needs no external service:
-
-```sh
-cd extensions/tasks_sqlite
-mix example.sqlite
-```
-
-Example 13 mirrors all five guided prompts in the planned `hexpm-mcp` rewrite:
-
-```sh
-mix run examples/13_prompts.exs
-```
-
-Example 14 completes prompt and resource-template arguments using local,
-context-dependent candidate data:
-
-```sh
-mix run examples/14_completions.exs
-```
-
-Example 15 traverses Tools, Prompts, Resources, and Resource Templates through
-the shared pagination policy:
-
-```sh
-mix run examples/15_pagination.exs
-```
-
-Example 16 implements an application-owned subscription source and walks the
-acknowledgement, bounded event, and graceful completion lifecycle:
-
-```sh
-mix run examples/16_subscriptions.exs
-```
-
-Example 17 runs from the independent Tasks package and contributes authorized
-`taskIds` plus complete `notifications/tasks` snapshots to that same lifecycle:
-
-```sh
-cd extensions/tasks
-mix run ../../examples/17_tasks_subscriptions.exs
-```
-
-Example 18 replaces the handwritten example source with the reusable bounded
-hub and publishes a mutable application-owned resource update:
-
-```sh
-mix run examples/18_subscription_hub.exs
-```
-
-Example 19 observes dispatch and subscription pressure through the optional
-dependency-free instrumentation sink:
-
-```sh
-mix run examples/19_instrumentation.exs
-```
-
-Each input message must be a single JSON object on one line. A modern request
-must include:
-
-```json
-{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"echo","arguments":{"text":"hello"},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}
-```
-
-## Architecture
-
-```text
-raw JSON-RPC map
-  -> protocol registry
-  -> exact protocol-profile inspection
-  -> selected dialect context/admission
-  -> core operation or negotiated extension route
-  -> immutable router or extension callback
-  -> protocol-neutral result or opened subscription
-  -> selected dialect wire/stream shaping
-```
-
-`Snodo.Router.dispatch/4` and `Snodo.Server.dispatch/3` are synchronous and execute
-in their caller. Direct code invokes them as ordinary functions. Transports or
-applications may wrap that core with `Snodo.Server.Executor`, which owns only
-bounded admission, queueing, deadlines, cancellation tokens, and supervised
-worker tasks, including cleanup when a submitting owner dies. The stdio adapter
-owns framing, connection-local request tracking, outcome-to-wire mapping, and
-atomic writes while delegating generic execution policy to that reusable layer;
-applications may also inject and own the executor process.
-
-The `2026-07-28` profile contains all 22 directional core method rules from the
-pinned release schema: eighteen are implemented, including MRTR-embedded
-elicitation; four remain explicitly unsupported. A known core method such as
-`subscriptions/listen` is routed by the protocol profile and never mistaken for
-a vendor extension.
-Tasks remains extension-only and is not folded into the core catalog.
-
-Resources use the same process-free router and server DSL as Tools. Direct
-resources and URI templates are listed separately; `resources/read` routes an
-exact URI through a direct registration or the resource module's explicit
-`matches?/1` callback. This keeps inverse URI-template matching and access
-policy application-owned. Text, JSON text, and base64 blob contents are
-validated before dialect shaping, and all modern results include required
-cache hints. Their list operations use the same stateless cursor engine as
-Tools and Prompts. An application subscription source may emit resource-list
-changes and exact requested resource updates without moving resource state into
-the router. See `examples/12_resources.exs` for target-shaped
-`toolbox://groups` and `hex://{name}/info` resources.
-
-Prompts are first-class immutable router components with deterministic
-`prompts/list` discovery and `prompts/get` rendering. Definitions preserve
-titles, icons, argument metadata, and vendor `_meta`; the router enforces MCP's
-flat string argument map and required arguments before invoking the handler.
-Prompt messages support text, image, audio, embedded-resource, and resource-link
-content, while list results carry independent cache hints and the shared cursor
-policy. An advertised subscription source may emit prompt-list changes through
-the shared stream lifecycle. See `examples/13_prompts.exs` for the five
-target-shaped `hexpm-mcp` workflows.
-
-Completion is definition-owned rather than globally registered. Prompts and
-resource templates opt in with explicit `completion_arguments` and implement
-`complete/2`, which receives a normalized `Snodo.Completion` plus `Snodo.Context`.
-The router resolves exact prompt names and URI-template strings, validates
-string arguments and context, caps results at 100 values, and shapes optional
-`total` and `hasMore` hints without list-cache or cursor semantics. Resource
-templates continue to own matching and expansion; completion does not add a
-partial RFC 6570 implementation. See `examples/14_completions.exs`.
-
-List pagination is applied once after protocol-neutral router dispatch. Routers
-still return complete catalogs in stable name/URI order; `Snodo.Pagination` slices
-those results using a runtime policy whose default page size is 100. Configure
-it declaratively with `pagination: [page_size: 50]` or override it in
-`Server.runtime/1`. Cursors are deterministic and scoped to the protocol
-version, list method, page size, and exact ordered catalog. A catalog or policy
-change therefore returns `-32602` with `Pagination cursor has expired`, while a
-malformed or cross-method cursor returns `Invalid pagination cursor`. Every
-page preserves the list's `ttlMs` and `cacheScope`; `nextCursor` is omitted on
-the final page. See `examples/15_pagination.exs`.
-
-Application authorization is an optional seam rather than a role system. A
-runtime configured with `authorization: MyApp.Policy` or
-`authorization: {MyApp.Policy, options}` calls `authorize/4` with the phase,
-an `Snodo.Authorization.Component` naming the registered component, and the
-derived `Snodo.Context`. The seam sits inside the router, below every transport
-and enabled dialect, so direct, stdio, native HTTP, and Plug dispatch share one
-decision. A `:discovery` refusal removes the component from `tools/list`,
-`prompts/list`, `resources/list`, and `resources/templates/list`; an
-`:invocation` refusal ends `tools/call`, `prompts/get`, `resources/read`, and
-`completion/complete` before argument validation and before any application
-callback, returning the application's own `Snodo.Error` rather than an
-indistinguishable unknown-name error. Because filtering happens before
-pagination, a cursor is minted against the catalog that context can actually
-see and expires when replayed against a different effective catalog. `snodo`
-supplies no identity, role, credential, refusal code, or logging: the policy
-callback is the one place an application records a refusal. A policy that
-raises or returns something else is a fault, and fails the operation instead of
-silently emptying a catalog. See `examples/23_authorization.exs`.
-
-Subscriptions are request-scoped streams rather than router state.
-`Snodo.Subscription.Source` opens an application handle, negotiates a subset of
-the capability-supported filter, blocks in `next/2`, and closes that handle on
-cancellation, disconnect, completion, or failure. The framework writes the
-required acknowledgement before starting a dedicated pull worker, never pulls
-a second event until the previous one has been written, stamps the originating
-JSON-RPC ID on every message, filters unrequested core events, and emits a
-correlated terminal response on graceful source completion. Stdio multiplexes
-streams and uses `notifications/cancelled`; HTTP returns `text/event-stream`,
-disables proxy buffering, sends keepalive comments, and treats socket closure
-as abrupt cancellation. Advertised exact-version extensions may contribute
-validated filter fields and shape only events selected by their own accepted
-filter. Applications that do not need a custom source can supervise
-`Snodo.Subscription.Hub`, pass `Snodo.Subscription.Hub.source(hub)` to the runtime,
-and publish core or extension events through its bounded, filter-aware queues.
-The hub never detects application changes or mutates the router. See
-`examples/16_subscriptions.exs`, `examples/17_tasks_subscriptions.exs`, and
-`examples/18_subscription_hub.exs`.
-
-`Snodo.Instrumentation` accepts an application sink on the immutable runtime,
-subscription hub, and Tasks runner. It emits telemetry-shaped names with native
-duration measurements and bounded lifecycle metadata, but takes no dependency
-on a metrics library. Sink faults are isolated from protocol behavior. See
-`examples/19_instrumentation.exs` and
-[`docs/instrumentation.md`](docs/instrumentation.md).
-
-Dialects are a runtime allowlist. Loading a module does not enable it, and the
-tests supply a `2099-01-01` dialect without changing framework code.
-
-Applications can install a complete JSON Schema 2020-12 backend per runtime:
+`2026-07-28` is the default and only required dialect. For clients that still
+send `initialize`, enable the older dialects on the server:
 
 ```elixir
-EchoServer.runtime(schema_validator: Snodo.Schema.Validator.JSV)
+use Snodo.Server,
+  name: "greeter",
+  version: "0.1.0",
+  protocols: [Snodo.Protocol.V2026_07_28, Snodo.Protocol.V2025_11_25, Snodo.Protocol.V2025_06_18]
 ```
 
-The optional [`snodo_jsv` package](integrations/schema_jsv/README.md) supplies
-this implementation without adding core dependencies. A custom module can still
-implement `Snodo.Schema.Validator`, receiving the original instance and untouched
-schema map. See the [recommended stack](docs/application-stack.md) for validation
-policy, bounded progress, and version-support decisions.
+They cover tools, resources, prompts, completion, and pagination over stateless
+HTTP. They add no session storage.
 
-Applications that only need the included common subset can configure it on the
-server, as above, or per runtime:
+Against the frozen official conformance suite, 32 of 37 `2026-07-28` server
+scenarios pass. The [compliance guide](guides/protocol-compliance.md) lists
+what is measured and what is not. Design records from the project's history are
+in [docs/history](https://github.com/joshrotenberg/snodo/blob/main/docs/history/README.md).
 
-```elixir
-EchoServer.runtime(schema_validator: Snodo.Schema.Validator.Basic)
-```
-
-The same immutable runtime can be served over native HTTP:
-
-```elixir
-{:ok, http} =
-  Snodo.Transport.StreamableHTTP.Server.start_link(
-    runtime: EchoServer.runtime(),
-    port: 0
-  )
-
-Snodo.Transport.StreamableHTTP.Server.url(http)
-```
-
-Applications can use the optional [`snodo_plug` integration](integrations/plug/README.md)
-with an application-owned Bandit/server and authentication pipeline. Other hosts
-can translate requests into `Snodo.Transport.StreamableHTTP.Request` and call the
-pure adapter. The built-in listener intentionally implements one request per
-connection. Native HTTP and Plug support ordinary JSON results, request-progress
-SSE, and request-scoped subscription SSE; these lifecycles remain distinct.
-
-Out-of-tree modules implement `Snodo.Extension`, declare exact-versioned
-`Snodo.Extension.Method` values, and are installed with `extensions:` on the
-server. Runtime construction rejects duplicate IDs, collisions with every core
-method (including unsupported and MRTR-only rules), and cross-extension method
-collisions. An installed route executes only when both peers advertise it and
-its callback accepts negotiation. Advertised, exact-compatible extensions may
-also wrap core dispatch and contribute transport policy through generic hooks;
-installed-but-unadvertised extensions remain inert.
-
-The independently compiled Tasks package uses those hooks to augment
-`tools/call` while keeping `tasks/get`, `tasks/update`, and `tasks/cancel`
-outside the core catalog. It also owns `taskIds` admission, store-backed
-visibility checks, and `notifications/tasks` shaping over the generic
-subscription lifecycle. Its source, application setup, and package-local
-quality commands are documented in
-[extensions/tasks/README.md](extensions/tasks/README.md).
-
-The optional PostgreSQL implementation accepts an already-running Repo and
-never starts it or runs migrations implicitly; its schema, locking model, and
-live transaction gate are documented in
-[extensions/tasks_postgres/README.md](extensions/tasks_postgres/README.md).
-
-The SQLite sibling keeps the same ownership boundary but deliberately promises
-durable single-host execution rather than a multi-node queue. Its file, WAL,
-single-writer, and recovery model is documented in
-[extensions/tasks_sqlite/README.md](extensions/tasks_sqlite/README.md).
-
-See [docs/spike-findings.md](docs/spike-findings.md) for the acceptance evidence,
-architecture answers, and deliberate deferrals. The public API is assessed
-against a real ported application in
-[docs/target-application-findings.md](docs/target-application-findings.md). The protocol evidence model is
-in [docs/protocol-compliance.md](docs/protocol-compliance.md), and the static
-analysis gates are in [docs/static-analysis-plan.md](docs/static-analysis-plan.md).
-The BEAM/PostgreSQL matrix and schema upgrade chain are in
-[docs/compatibility.md](docs/compatibility.md).
-The runnable index is in [examples/README.md](examples/README.md), and the
-ordered plan—including both Ecto-backed walkthroughs—is in
-[docs/examples-roadmap.md](docs/examples-roadmap.md).
-
-## Interactive operations (MRTR)
-
-Ordinary tools, resources, and prompts can return `Snodo.Result.input_required/1`
-with requests built by `Snodo.Elicitation.form/2` or `url/2`. The current request
-ends; a client retry invokes the handler again with a fresh request context.
-Consume named answers with `Snodo.Elicitation.response/3` and use `Snodo.MRTR.State`
-for integrity-protected state bound to the principal and original operation.
-No suspended process or shared continuation store is required.
-
-[Example 20](examples/20_mrtr_elicitation.exs) exercises a multi-round, read-only
-workflow through all three feature families. The
-[MRTR guide](docs/mrtr-elicitation.md) covers partial answers, error handling,
-capability checks, state security, Tasks boundaries, and the pinned client check:
+## Development
 
 ```sh
-mix run examples/20_mrtr_elicitation.exs --check
-node interop/official_client/check_mrtr.mjs
+mix quality          # format, compile, Credo, tests, examples, and every sibling package
+mix quality.types    # Dialyzer across all six packages
+mix snodo.contract   # the protocol contract inventory
 ```
 
-This slice supports form/URL elicitation and state-only continuations;
-deprecated roots and sampling input requests remain unsupported.
+Conformance and interop checks against the official TypeScript client live in
+`conformance/` and `interop/`, and run in CI.
 
-## Verification
+## License
 
-```sh
-mix quality
-mix quality.types
-mix snodo.contract
-mix examples
-```
-
-`mix quality` runs formatting, warning-free compilation, strict Credo, the
-core ExUnit suite and contract inventory, all twenty-four no-external-service
-example checks, and then delegates to Tasks, PostgreSQL, SQLite, Plug, and JSV
-package quality, including their independent test suites. `mix quality.types`
-runs Dialyzer with unmatched-return and error-handling warnings enabled for all
-six packages.
-Dialyzer has no ignore file; Credo has only the documented naming and
-alias-policy exceptions. The default examples gate requires a POSIX host with
-`sh` and `mkfifo` for its real stdio subprocess half-close check; examples
-07–09 and 17 are delegated to Tasks, example 11 to SQLite, example 21 to Plug,
-and example 22 to JSV. Example 10 stays in the opt-in PostgreSQL lane.
-
-`mix snodo.contract` runs 31 core evidence groups across literal direct/stdio
-vectors, native HTTP admission/listener behavior, and generic extension
-registration and negotiated dispatch, including Resources, Prompts, and
-Completion, Pagination, and Subscription routing and wire shapes. The
-independent Tasks package runs 10 local evidence groups with:
-
-```sh
-cd extensions/tasks
-mix quality
-mix quality.types
-mix tasks.contract
-mix examples
-mix tasks.stress
-```
-
-The stress command is an opt-in correctness workload rather than part of the
-fast default gate. It exercises many-writer CAS and repeated runner batches,
-can emit a versioned JSON artifact, and treats timings as observations rather
-than portable pass/fail thresholds. See
-[docs/stress-testing.md](docs/stress-testing.md).
-
-The PostgreSQL sibling owns one database-free adapter group and 7 live evidence
-groups. Its 14-test live lane uses an ordinary pooled Repo rather than SQL
-Sandbox:
-
-```sh
-cd extensions/tasks_postgres
-mix quality
-mix quality.types
-mix tasks.postgres.contract
-SNODO_TASKS_DATABASE_URL=ecto://postgres:postgres@127.0.0.1:55432/snodo_tasks \
-  mix quality.postgres
-```
-
-The SQLite sibling owns 7 local evidence groups backed by real temporary files
-and an ordinary pooled Repo. They need no service or SQL Sandbox:
-
-```sh
-cd extensions/tasks_sqlite
-mix quality
-mix quality.types
-mix tasks.sqlite.contract
-mix example.sqlite
-```
-
-The core contract prints separate internal, unsupported, unmeasured, and
-official evidence buckets. The local acceptance suites also cover 100 requests
-entering a barrier concurrently,
-100 atomic stdio responses, cancellation, malformed input recovery, exact wire
-shapes, schema and metadata preservation, an application-supplied dialect, and
-stdout/stderr isolation in a real OS subprocess. A separate pinned interop
-harness also passes with the released official TypeScript client 2.0.0 in modern
-mode for discovery, `tools/list`, `tools/call`, cancellation, and a follow-up
-call. The frozen official server suite has also been run against the native
-Streamable HTTP fixture: **32/37** exercised whole scenarios pass in the
-2026-09-14 run, with all 37 attempted. Nine ordinary MRTR scenarios and the
-ordinary progress scenario now pass; roots/sampling and remaining diagnostics
-still limit the score. [Raw check outcomes and regression policy](conformance/README.md)
-remain separate from this partial conformance claim.
-
-The separate extension-only Tasks probe passes all 35 Tasks-specific alpha.11
-assertions. Start its combined fixture from the child package so both
-applications are on the code path:
-
-```sh
-cd extensions/tasks
-MCP_PORT=3001 mix run ../../conformance/fixture_server.exs
-```
-
-Eight generic core wire-schema checks still reject the
-extension-defined `CreateTaskResult`, so the probe remains explicitly non-zero
-and is not presented as a whole-scenario conformance pass.
-
-For automation, `mix snodo.contract --format json --output mcp-contract.json`
-writes one machine-readable JSON document after verifying the pinned frozen
-requirement artifact and exact tagged test-evidence coverage. The output file
-is isolated from compiler and test progress.
-
-To repeat the external client check after `mix compile`:
-
-```sh
-cd interop/official_client
-npm ci --ignore-scripts
-npm run check
-```
-
-The companion `interop/official_client/check_hexpm.mjs` checks the real
-`hexpm-mcp` server's 24-tool catalog across three pages, tool outcomes, six prompts,
-package completions, an automatically resumed MRTR review, and five resource
-reads over stdio and HTTP with seeded domain data. See
-[target application findings](docs/target-application-findings.md) for the
-build instructions, fresh evidence, and limits of that acceptance check.
-
-## Opt-in initialize-era HTTP clients
-
-The default remains `2026-07-28`. For clients that still initialize, explicitly
-configure `protocols: [Snodo.Protocol.V2026_07_28, Snodo.Protocol.V2025_11_25,
-Snodo.Protocol.V2025_06_18]` on `Snodo.Server` or `Snodo.Server.Runtime.new/1`.
-See the [compatibility scope](docs/legacy-http-plan.md) for lifecycle, capability,
-identity and client evidence. This enables the HTTP tools/resources/prompts
-slice without adding session storage or changing the latest protocol.
-
-## Scope boundaries
-
-This is a pre-release implementation, not a production-readiness claim. It defers
-deprecated roots/sampling MRTR inputs,
-legacy sessions, authentication, and per-peer fairness. The optional
-authorization seam enforces an application's decision; it does not authenticate
-anyone, define roles or scopes, or supply a policy language, and it does not
-filter application-owned subscription streams, which receive the same context
-and enforce their own policy. Advertised server capabilities stay catalog-wide
-because they describe the server rather than one request. Resources
-cover paginated list/read/template routing and subscription event shaping, but
-not a general RFC 6570 inverse matcher or a bundled change detector. Prompts
-cover paginated list/get routing, required flat-string arguments, all five
-content block types, and subscription event shaping; applications still decide
-when a catalog changed. Tasks now has versioned serializable work descriptors, an
-application-owned `WorkExecutor`, generic claim/renew/release/recovery/reap
-callbacks, deterministic accepted-input replay, creation-based TTL cleanup,
-and both volatile memory and local durable DETS adapters. Exact-delay retry
-policies are persisted with Work and enforced from store commit time. Recovery
-is at-least-once: applications remain responsible for deduplicating external
-effects with the stable work idempotency key. DETS remains a single-node
-reference; SQLite supplies an application-owned embedded database with
-single-writer transaction evidence, while PostgreSQL supplies multi-node
-row-locking and database-clock claims. Neither adds Ecto to the protocol
-packages. Their integration suites are meaningful evidence, not yet a
-production-readiness or upgrade-matrix claim. The memory harness now provides a
-repeatable contention and Runner-soak baseline, but it is not evidence of
-database capacity, multi-node behavior, or operational endurance. Tasks status
-notifications are implemented through the generic subscription lifecycle; the
-application still owns publication from its store or domain process. The
-adapters make the entire aggregate eligible for reaping at `createdAt + ttlMs`.
-Removal depends on explicit or scheduled cleanup; reads and claims are not an
-exact-deadline expiry fence. This is the implementation's allowed expiration
-policy, not a universal protocol mandate.
-Released-client checks cover the implemented stdio and native HTTP slices, while the
-separate frozen official server run exercises the native HTTP fixture. Its
-current honest score is partial: 32 of the 37 frozen `2026-07-28` server
-scenarios pass as exercised whole scenarios. This is not a full-revision
-conformance claim. Basic executor backpressure is implemented, but per-peer
-fairness, adaptive load shedding, general content
-streaming beyond progress, and graceful listener-wide subscription draining remain future
-work. The stdio adapter's optional
-default-Logger redirection changes VM-global Logger configuration and is
-intended for the normal single-stdio-server process; restoration/lease
-coordination for multiple embedded stdio adapters is not implemented.
-
-The official run summary is available in
-[human-readable](conformance/results/2026-09-14-alpha.11-summary.md) and
-[machine-readable](conformance/results/2026-09-14-alpha.11-summary.json) forms.
-The separate Tasks probe is also available in
-[human-readable](conformance/results/2026-07-28-tasks-alpha.11-summary.md) and
-[machine-readable](conformance/results/2026-07-28-tasks-alpha.11-summary.json)
-forms.
-
-The wire fixtures follow the official [MCP 2026-07-28
-specification](https://modelcontextprotocol.io/specification/2026-07-28),
-[discovery contract](https://modelcontextprotocol.io/specification/2026-07-28/server/discover),
-[tools contract](https://modelcontextprotocol.io/specification/2026-07-28/server/tools),
-[resources contract](https://modelcontextprotocol.io/specification/2026-07-28/server/resources),
-[prompts contract](https://modelcontextprotocol.io/specification/2026-07-28/server/prompts),
-and [stdio binding](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio).
+MIT. See [LICENSE](https://github.com/joshrotenberg/snodo/blob/main/LICENSE).
