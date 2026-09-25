@@ -1,11 +1,14 @@
 defmodule MCP.Client do
   @moduledoc """
-  A client for servers built with this library.
+  A client for MCP servers.
 
-  `direct/2` dispatches through `MCP.Server.dispatch/3` in the calling
-  process. No transport or process sits in between:
+  `direct/2` dispatches to a runtime in the calling process. `connect/2` opens
+  a stdio subprocess or a Streamable HTTP endpoint:
 
       {:ok, client} = MCP.Client.direct(EchoServer.runtime())
+      {:ok, client} = MCP.Client.connect({:stdio, "elixir", ["echo_server.exs"]})
+      {:ok, client} = MCP.Client.connect({:http, "http://127.0.0.1:4000/mcp"})
+
       {:ok, [%{"name" => "echo"}]} = MCP.Client.list_tools(client)
 
       {:ok, result} = MCP.Client.call_tool(client, "echo", %{"text" => "hello"})
@@ -21,35 +24,47 @@ defmodule MCP.Client do
     * `{:input_required, result}`: a multi round-trip request. Call again with
       `input_responses:` and, when the result carries a `"requestState"`,
       `request_state:`. See the MRTR guide in `docs/mrtr-elicitation.md`.
-    * `{:error, %MCP.Error{}}`: a JSON-RPC error. `code`, `message`, and
-      `data` are the server's. `kind` is derived from the code: -32700 and
-      -32600 are `:json_rpc`, -32601 and -32602 are `:protocol`, -32603 is
-      `:execution`, and any other code is `:protocol`.
+    * `{:error, %MCP.Error{}}`: a JSON-RPC error or a transport failure. For a
+      JSON-RPC error, `code`, `message`, and `data` are the server's, and
+      `kind` is derived from the code: -32700 and -32600 are `:json_rpc`,
+      -32601 and -32602 are `:protocol`, -32603 is `:execution`, and any other
+      code is `:protocol`. Transport failures have `kind: :transport`: -32000
+      when the connection is closed, unreachable, or returns something that is
+      not a JSON-RPC response, and -32001 when a request times out.
 
-  The client is an immutable struct and each request takes a fresh integer ID,
-  so a client value can be shared between processes. Stdio and HTTP transports
-  and `subscriptions/listen` streams are not implemented.
+  Each request takes a fresh integer ID, so one client can be used from many
+  processes at once. The client speaks the stateless `2026-07-28` protocol;
+  initialize-era servers, which need a session handshake, are not supported.
+  `subscriptions/listen` streams and progress notifications are not delivered.
   """
 
+  alias MCP.Client.Direct
+  alias MCP.Client.HTTP
   alias MCP.Client.Page
+  alias MCP.Client.Stdio
+  alias MCP.Client.Transport
   alias MCP.Error
   alias MCP.Protocol.Registry
-  alias MCP.Server
   alias MCP.Server.Runtime
-  alias MCP.Transport.Context, as: TransportContext
 
   @type response :: {:ok, map()} | {:input_required, map()} | {:error, Error.t()}
   @type list_kind :: :tools | :resources | :resource_templates | :prompts
+  @type target ::
+          {:stdio, String.t(), [String.t()]}
+          | {:http, String.t()}
+          | {module(), term()}
   @type t :: %__MODULE__{
-          runtime: Runtime.t(),
+          transport: {module(), Transport.state()},
           protocol: String.t(),
           dialect: module(),
           client_capabilities: map(),
-          auth: term()
+          timeout: timeout()
         }
 
-  @enforce_keys [:runtime, :protocol, :dialect]
-  defstruct [:runtime, :protocol, :dialect, :auth, client_capabilities: %{}]
+  @enforce_keys [:transport, :protocol, :dialect]
+  defstruct [:transport, :protocol, :dialect, client_capabilities: %{}, timeout: 30_000]
+
+  @remote_dialects [MCP.Protocol.V2026_07_28]
 
   @list_operations %{
     tools: {"tools/list", "tools"},
@@ -74,25 +89,55 @@ defmodule MCP.Client do
   """
   @spec direct(Runtime.t(), keyword()) :: {:ok, t()} | {:error, Error.t()}
   def direct(%Runtime{} = runtime, opts \\ []) when is_list(opts) do
-    capabilities = Keyword.get(opts, :client_capabilities, %{})
-
-    unless is_map(capabilities) do
-      raise ArgumentError, ":client_capabilities must be a map, got: #{inspect(capabilities)}"
-    end
-
     with {:ok, version} <- select_protocol(runtime, Keyword.get(opts, :protocol)),
          {:ok, dialect} <- Registry.fetch(runtime.protocol_registry, version),
          :ok <- require_stateless(dialect) do
-      {:ok,
-       %__MODULE__{
-         runtime: runtime,
-         protocol: version,
-         dialect: dialect,
-         client_capabilities: capabilities,
-         auth: Keyword.get(opts, :auth)
-       }}
+      open(Direct, runtime, dialect, opts)
     end
   end
+
+  @doc """
+  Connects to a server in another process or on the network.
+
+  Targets:
+
+    * `{:stdio, command, args}` - runs `command` and speaks newline-delimited
+      JSON-RPC over its stdin and stdout. See `MCP.Client.Stdio` for `:env`
+      and `:cd`. The connection closes when the calling process exits.
+    * `{:http, url}` - posts each request to a Streamable HTTP endpoint. See
+      `MCP.Client.HTTP` for `:headers`, `:ssl`, and `:connect_timeout`.
+    * `{module, init_arg}` - any `MCP.Client.Transport`.
+
+  Options for every target:
+
+    * `:protocol` - defaults to `"2026-07-28"`, the only supported version.
+    * `:client_capabilities` - as for `direct/2`.
+    * `:timeout` - the default request timeout in milliseconds, 30,000 unless
+      set. Each request can override it with `timeout:`.
+  """
+  @spec connect(target(), keyword()) :: {:ok, t()} | {:error, Error.t()}
+  def connect(target, opts \\ [])
+
+  def connect({:stdio, command, args}, opts) when is_binary(command) and is_list(args),
+    do: connect({Stdio, {command, args}}, opts)
+
+  def connect({:http, url}, opts) when is_binary(url), do: connect({HTTP, url}, opts)
+
+  def connect({module, init_arg}, opts) when is_atom(module) and is_list(opts) do
+    unless Code.ensure_loaded?(module) and function_exported?(module, :request, 3) do
+      raise ArgumentError,
+            "expected {:stdio, command, args}, {:http, url}, or {transport_module, init_arg}, " <>
+              "got a tuple starting with #{inspect(module)}"
+    end
+
+    with {:ok, dialect} <- remote_dialect(Keyword.get(opts, :protocol)) do
+      open(module, init_arg, dialect, opts)
+    end
+  end
+
+  @doc "Closes the client's connection. Closing an in-process client does nothing."
+  @spec close(t()) :: :ok
+  def close(%__MODULE__{transport: {module, state}}), do: module.close(state)
 
   @doc "Requests `server/discover`."
   @spec discover(t()) :: response()
@@ -189,8 +234,7 @@ defmodule MCP.Client do
   def request(%__MODULE__{} = client, method, params \\ %{}, opts \\ [])
       when is_binary(method) and is_map(params) and is_list(opts) do
     if method == "subscriptions/listen" do
-      raise ArgumentError,
-            "MCP.Client.direct/2 cannot stream subscriptions/listen; use a streaming transport"
+      raise ArgumentError, "MCP.Client cannot stream subscriptions/listen"
     end
 
     raw = %{
@@ -200,9 +244,62 @@ defmodule MCP.Client do
       "params" => build_params(client, params, opts)
     }
 
-    client.runtime
-    |> Server.dispatch(raw, transport_context(client))
-    |> decode_response()
+    {module, state} = client.transport
+
+    transport_opts = [
+      dialect: client.dialect,
+      timeout: Keyword.get(opts, :timeout, client.timeout)
+    ]
+
+    case module.request(state, raw, transport_opts) do
+      {:ok, response} -> decode_response(response)
+      {:error, %Error{}} = error -> error
+    end
+  end
+
+  defp open(module, init_arg, dialect, opts) do
+    capabilities = Keyword.get(opts, :client_capabilities, %{})
+    timeout = Keyword.get(opts, :timeout, 30_000)
+
+    unless is_map(capabilities) do
+      raise ArgumentError, ":client_capabilities must be a map, got: #{inspect(capabilities)}"
+    end
+
+    unless timeout == :infinity or (is_integer(timeout) and timeout > 0) do
+      raise ArgumentError,
+            ":timeout must be a positive integer or :infinity, got: #{inspect(timeout)}"
+    end
+
+    with {:ok, state} <- module.connect(init_arg, opts) do
+      {:ok,
+       %__MODULE__{
+         transport: {module, state},
+         protocol: dialect.version(),
+         dialect: dialect,
+         client_capabilities: capabilities,
+         timeout: timeout
+       }}
+    end
+  end
+
+  defp remote_dialect(nil), do: {:ok, hd(@remote_dialects)}
+
+  defp remote_dialect(version) when is_binary(version) do
+    case Enum.find(@remote_dialects, &(&1.version() == version)) do
+      nil ->
+        {:error,
+         Error.invalid_params("MCP.Client does not support protocol #{version}", %{
+           "requested" => version,
+           "supported" => Enum.map(@remote_dialects, & &1.version())
+         })}
+
+      dialect ->
+        {:ok, dialect}
+    end
+  end
+
+  defp remote_dialect(version) do
+    raise ArgumentError, ":protocol must be a version string, got: #{inspect(version)}"
   end
 
   defp select_protocol(runtime, nil) do
@@ -252,24 +349,19 @@ defmodule MCP.Client do
   defp put_present(params, _key, nil), do: params
   defp put_present(params, key, value), do: Map.put(params, key, value)
 
-  defp transport_context(client) do
-    metadata = if is_nil(client.auth), do: %{}, else: %{auth: client.auth}
-
-    %TransportContext{
-      transport: :direct,
-      request_headers: %{"mcp-protocol-version" => client.protocol},
-      metadata: metadata
-    }
-  end
-
-  defp decode_response({:ok, %{"result" => %{"resultType" => "input_required"} = result}}),
+  defp decode_response(%{"result" => %{"resultType" => "input_required"} = result}),
     do: {:input_required, result}
 
-  defp decode_response({:ok, %{"result" => result}}), do: {:ok, result}
-  defp decode_response({:ok, %{"error" => error}}), do: {:error, decode_error(error)}
+  defp decode_response(%{"result" => result}) when is_map(result), do: {:ok, result}
 
-  defp decode_error(%{"code" => code, "message" => message} = error) do
-    %Error{code: code, message: message, data: Map.get(error, "data"), kind: error_kind(code)}
+  defp decode_response(%{"error" => %{"code" => code, "message" => message} = error})
+       when is_integer(code) and is_binary(message) do
+    {:error,
+     %Error{code: code, message: message, data: Map.get(error, "data"), kind: error_kind(code)}}
+  end
+
+  defp decode_response(response) do
+    {:error, Transport.connection_error("The server sent an invalid JSON-RPC response", response)}
   end
 
   defp error_kind(code) when code in [-32_700, -32_600], do: :json_rpc
@@ -277,17 +369,27 @@ defmodule MCP.Client do
   defp error_kind(-32_603), do: :execution
   defp error_kind(_code), do: :protocol
 
-  # The in-process server's cursors are scoped to the catalog and always
-  # advance, so no repeated-cursor guard is needed until a remote transport.
-  defp list_all(client, kind), do: collect_pages(client, kind, nil, [])
+  defp list_all(client, kind), do: collect_pages(client, kind, nil, %{}, [])
 
-  defp collect_pages(client, kind, cursor, pages) do
+  # A remote server can hand back a cursor it already issued; following it
+  # would never terminate.
+  defp collect_pages(client, kind, cursor, seen, pages) do
     with {:ok, %Page{items: items, next_cursor: next}} <- list_page(client, kind, cursor) do
       pages = [items | pages]
 
-      case next do
-        nil -> {:ok, pages |> Enum.reverse() |> Enum.concat()}
-        next -> collect_pages(client, kind, next, pages)
+      cond do
+        is_nil(next) ->
+          {:ok, pages |> Enum.reverse() |> Enum.concat()}
+
+        Map.has_key?(seen, next) ->
+          {:error,
+           Transport.connection_error("The server repeated a pagination cursor", %{
+             kind: kind,
+             cursor: next
+           })}
+
+        true ->
+          collect_pages(client, kind, next, Map.put(seen, next, true), pages)
       end
     end
   end

@@ -10,9 +10,9 @@ branch/PR.
 
 | Item | Status |
 |---|---|
-| 1. `MCP.Client.direct/1` | In progress in #8, as `MCP.Client.direct/2`. |
+| 1. `MCP.Client.direct/1` | Done in #8, as `MCP.Client.direct/2`. |
 | 2. `:mcp_ex_plug` | Done in #1. |
-| 3. `MCP.Client` transports | Open. Depends on 1. |
+| 3. `MCP.Client` transports | In progress in #9. |
 | 4. Ergonomics layer | Open. |
 | 5. JSON Schema 2020-12 backend | Done in #1. |
 | 6. Conformance + interop in CI | Done in #1. |

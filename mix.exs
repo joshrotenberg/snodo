@@ -9,6 +9,8 @@ defmodule MCP.MixProject do
       start_permanent: Mix.env() == :prod,
       description: "A router-first Model Context Protocol architecture spike",
       elixirc_paths: elixirc_paths(Mix.env()),
+      # Scripts under test/fixtures are run as subprocesses, not loaded as tests.
+      test_ignore_filters: [~r{^test/fixtures/}],
       dialyzer: [
         plt_add_apps: [:mix],
         plt_local_path: "priv/plts",
@@ -33,7 +35,7 @@ defmodule MCP.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:crypto, :logger],
+      extra_applications: [:crypto, :inets, :logger, :public_key, :ssl],
       mod: {MCP.Application, []}
     ]
   end
