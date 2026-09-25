@@ -19,8 +19,8 @@ The dependency direction is one-way toward the core. Installing an integration
 does not silently start a listener, migrate a database, enable a protocol version,
 or replace the application's validator.
 
-For an HTTP application, choose the [Plug/Bandit integration](../integrations/plug/README.md)
-and [JSV backend](../integrations/schema_jsv/README.md). The native HTTP listener
+For an HTTP application, choose the [Plug/Bandit integration](https://github.com/joshrotenberg/snodo/blob/main/integrations/plug/README.md)
+and [JSV backend](https://github.com/joshrotenberg/snodo/blob/main/integrations/schema_jsv/README.md). The native HTTP listener
 remains useful for an embedded endpoint, examples, and independent acceptance.
 Stdio needs neither Plug nor Bandit. `Basic` is still available when its documented
 subset is sufficient; it is not the recommended full-vocabulary validator.
@@ -30,7 +30,7 @@ default insertion, atom conversion, remote reference fetching, or casting hooks.
 It intentionally rejects references into annotation data and unsupported dialects.
 It is **not a sandbox for arbitrary untrusted schemas**. Use an application-owned
 compiled catalog for fixed schemas and bound execution. See example
-[22](../examples/22_full_schema_validation.exs) and the package's precise policy.
+[22](https://github.com/joshrotenberg/snodo/blob/main/examples/22_full_schema_validation.exs) and the package's precise policy.
 
 ## Request progress is not a subscription
 
@@ -69,7 +69,7 @@ failure cancels abandoned work. See its documented lifecycle limits rather than
 assuming the native listener's read-side disconnect detection applies everywhere.
 
 The official client's same-read-chunk progress callback race is recorded in
-[progress acceptance](../interop/official_client/PROGRESS.md). Our unpaced wire
+[progress acceptance](https://github.com/joshrotenberg/snodo/blob/main/interop/official_client/PROGRESS.md). Our unpaced wire
 test requires all ordered notifications even when that client misses callbacks;
 the production server does not add artificial delays to hide this limitation.
 
@@ -145,7 +145,7 @@ latest-only application milestone.
 ## Verification boundaries
 
 The [compatibility matrix](compatibility.md), [protocol evidence](protocol-compliance.md),
-and [application readiness plan](application-readiness-plan.md) keep unit tests,
+and [application readiness plan](https://github.com/joshrotenberg/snodo/blob/main/docs/history/application-readiness-plan.md) keep unit tests,
 independent schema checks, real-client acceptance, and external conformance separate.
 Local runs do not establish that remote CI has executed. Database deployment,
 operational load/soak, authentication policy, HTTP/2/TLS acceptance, deprecated

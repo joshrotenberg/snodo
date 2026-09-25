@@ -1,13 +1,19 @@
 defmodule Snodo.MixProject do
   use Mix.Project
 
+  @version "0.1.0"
+  @source_url "https://github.com/joshrotenberg/snodo"
+
   def project do
     [
       app: :snodo,
-      version: "0.1.0",
+      version: @version,
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
-      description: "A router-first Model Context Protocol architecture spike",
+      description: "Model Context Protocol servers and clients for Elixir",
+      source_url: @source_url,
+      package: package(),
+      docs: docs(),
       elixirc_paths: elixirc_paths(Mix.env()),
       # Scripts under test/fixtures are run as subprocesses, not loaded as tests.
       test_ignore_filters: [~r{^test/fixtures/}],
@@ -44,7 +50,50 @@ defmodule Snodo.MixProject do
   defp deps do
     [
       {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4.7", only: [:dev, :test], runtime: false}
+      {:dialyxir, "~> 1.4.7", only: [:dev, :test], runtime: false},
+      {:ex_doc, "~> 0.40", only: :dev, runtime: false}
+    ]
+  end
+
+  defp package do
+    [
+      licenses: ["MIT"],
+      links: %{"GitHub" => @source_url, "Changelog" => "#{@source_url}/blob/main/CHANGELOG.md"},
+      files: ~w(lib mix.exs README.md CHANGELOG.md LICENSE .formatter.exs)
+    ]
+  end
+
+  defp docs do
+    [
+      main: "readme",
+      source_ref: "main",
+      extras: [
+        "README.md",
+        "guides/getting-started.md",
+        "guides/components.md",
+        "guides/client.md",
+        "guides/transports.md",
+        "guides/application-stack.md",
+        "guides/interactive-operations.md",
+        "guides/subscriptions.md",
+        "guides/authorization.md",
+        "guides/extensions.md",
+        "guides/instrumentation.md",
+        "guides/initialize-era-clients.md",
+        "guides/compatibility.md",
+        "guides/protocol-compliance.md",
+        "CHANGELOG.md"
+      ],
+      groups_for_extras: [Guides: ~r{^guides/}],
+      groups_for_modules: [
+        Server: [
+          ~r/^Snodo\.Server/,
+          ~r/^Snodo\.(Tool|Resource|Prompt|Completion|Result|Error|Context)/
+        ],
+        Client: [~r/^Snodo\.Client/],
+        Transports: [~r/^Snodo\.Transport/],
+        Protocol: [~r/^Snodo\.(Protocol|Envelope|Compliance)/]
+      ]
     ]
   end
 

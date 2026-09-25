@@ -394,7 +394,7 @@ current order: recommended application stack, independent regression coverage,
 real workflows, and only then release readiness.
 
 The evidence architecture and official-runner boundary are documented in
-[protocol-compliance.md](protocol-compliance.md).
+[protocol-compliance.md](../../guides/protocol-compliance.md).
 
 The non-runtime Dialyxir and Credo gates described in
 [static-analysis-plan.md](static-analysis-plan.md) are now active and clean:

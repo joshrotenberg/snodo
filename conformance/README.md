@@ -114,5 +114,5 @@ The pending JSON Schema and standard HTTP-header probes pass 8/8 and 14/14,
 respectively. Five pending custom-header checks remain unexercised failures.
 These results do not establish general complete schema validation.
 
-See [protocol-compliance.md](../docs/protocol-compliance.md) for architecture and
-[MRTR documentation](../docs/mrtr-elicitation.md) for semantics and remaining limits.
+See [protocol-compliance.md](../guides/protocol-compliance.md) for architecture and
+[MRTR documentation](../guides/interactive-operations.md) for semantics and remaining limits.

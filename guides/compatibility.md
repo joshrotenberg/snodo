@@ -1,7 +1,7 @@
 # Compatibility and migration evidence
 
 The executable compatibility policy lives in
-[`compatibility.yml`](../.github/workflows/compatibility.yml). It separates
+[`compatibility.yml`](https://github.com/joshrotenberg/snodo/blob/main/.github/workflows/compatibility.yml). It separates
 language/runtime compatibility, database behavior, and migration behavior so a
 pass in one lane cannot be presented as evidence for another.
 
@@ -36,9 +36,9 @@ and the workflow uses the Erlang Ecosystem Foundation's
 The current BEAM lane also runs the lockfile-pinned official TypeScript client
 2.0.0 baseline, MRTR, and progress checks over stdio and native HTTP. Progress
 wire correctness and the SDK's callback scheduling limitation are recorded
-[separately](../interop/official_client/PROGRESS.md).
+[separately](https://github.com/joshrotenberg/snodo/blob/main/interop/official_client/PROGRESS.md).
 
-[`protocol.yml`](../.github/workflows/protocol.yml) adds two independent jobs:
+[`protocol.yml`](https://github.com/joshrotenberg/snodo/blob/main/.github/workflows/protocol.yml) adds two independent jobs:
 the exact frozen alpha.11 conformance runner with a strict per-check regression
 baseline, and AJV validation of representative real emitted messages against a
 digest-pinned official schema. Both upload their local evidence as artifacts.

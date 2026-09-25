@@ -383,7 +383,7 @@ claiming the external interaction completed. Runs in the default examples gate.
 The companion official TypeScript client harness verifies automatic retries over
 stdio and native HTTP, fresh request IDs, unchanged operation arguments, and
 rejection of request-state reuse on a different operation. See
-[the MRTR guide](mrtr-elicitation.md) for security and support boundaries.
+[the MRTR guide](../../guides/interactive-operations.md) for security and support boundaries.
 
 ## Explicit deferrals
 

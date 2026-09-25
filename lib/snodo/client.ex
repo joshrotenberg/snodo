@@ -23,7 +23,7 @@ defmodule Snodo.Client do
       successful response and arrives here.
     * `{:input_required, result}`: a multi round-trip request. Call again with
       `input_responses:` and, when the result carries a `"requestState"`,
-      `request_state:`. See the MRTR guide in `docs/mrtr-elicitation.md`.
+      `request_state:`. See the interactive operations guide.
     * `{:error, %Snodo.Error{}}`: a JSON-RPC error or a transport failure. For a
       JSON-RPC error, `code`, `message`, and `data` are the server's, and
       `kind` is derived from the code: -32700 and -32600 are `:json_rpc`,

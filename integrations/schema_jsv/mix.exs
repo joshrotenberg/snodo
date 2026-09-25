@@ -7,7 +7,13 @@ defmodule Snodo.Schema.Validator.JSV.MixProject do
       version: "0.1.0",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
-      description: "Optional JSON Schema validation through JSV for snodo",
+      description: "JSON Schema 2020-12 validation for snodo through JSV",
+      source_url: "https://github.com/joshrotenberg/snodo",
+      package: [
+        licenses: ["MIT"],
+        links: %{"GitHub" => "https://github.com/joshrotenberg/snodo"},
+        files: ~w(lib mix.exs README.md LICENSE .formatter.exs)
+      ],
       elixirc_paths: elixirc_paths(Mix.env()),
       dialyzer: [
         plt_add_apps: [:mix],

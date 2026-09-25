@@ -25,7 +25,7 @@ child package where appropriate.
 for many-writer compare-and-set contention and repeated Runner batches. It
 produces exact invariant results plus descriptive timings, and accepts `--json`
 for artifact collection. See
-[`docs/stress-testing.md`](../../docs/stress-testing.md).
+[`stress-testing.md`](stress-testing.md).
 
 The frozen Tasks conformance fixture combines core and extension tools. Start
 it from this directory so both applications are available:
@@ -116,7 +116,7 @@ runtime =
 The optional instrumentation sink receives bounded job start/stop and timed
 store-transition events. It never receives work input, access values, results,
 errors, or input responses. The shared event catalog and a `:telemetry` bridge
-are documented in [`docs/instrumentation.md`](../../docs/instrumentation.md).
+are documented in [the instrumentation guide](../../guides/instrumentation.md).
 The included stress harness consumes those same events to prove balanced job
 lifecycle and runner drain behavior without making latency thresholds part of
 correctness.

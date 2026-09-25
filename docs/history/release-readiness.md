@@ -20,8 +20,8 @@ release or a compatibility promise.
   can add authorized status subscriptions without changing the core profile.
 - Optional JSV schema validation and optional SQLite/PostgreSQL Tasks storage.
 
-The [recommended stack](application-stack.md) records ownership and operational
-limits. The [protocol evidence](protocol-compliance.md) is the authoritative
+The [recommended stack](../../guides/application-stack.md) records ownership and operational
+limits. The [protocol evidence](../../guides/protocol-compliance.md) is the authoritative
 claim boundary: 32/37 frozen required scenarios pass, not full conformance.
 Official-client 2.0.0 acceptance is not a claim for every host or older MCP era.
 
