@@ -99,6 +99,7 @@ not have that requirement.
 | [`21_plug_bandit.exs`](21_plug_bandit.exs) | Application-owned Bandit/executor, verified auth assigns, real HTTP tool call and finite subscription, lifecycle cleanup |
 | [`22_full_schema_validation.exs`](22_full_schema_validation.exs) | Optional JSV backend, compile-once catalog, local references/composition, non-mutating validation and fail-closed remote refs |
 | [`23_authorization.exs`](23_authorization.exs) | Application-owned catalog policy, per-context discovery filtering, pre-validation refusal with the application's own error, audit callback, cursor isolation |
+| [`24_client_transports.exs`](24_client_transports.exs) | One `MCP.Client` API in process, over a stdio subprocess, and over the native HTTP listener; identical results and error decoding |
 
 The unnumbered stdio files remain interoperability and subprocess acceptance
 fixtures. DETS in example 08 is deliberately a local single-node reference

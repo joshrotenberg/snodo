@@ -142,9 +142,17 @@ result["content"]
 
 The client adds the protocol metadata each request needs and returns the
 JSON-RPC `result` object, `{:input_required, result}` for a multi round-trip
-request, or `{:error, %MCP.Error{}}`. It does not implement stdio or HTTP yet.
+request, or `{:error, %MCP.Error{}}`. The same calls work against a stdio
+subprocess or a Streamable HTTP endpoint:
 
-Run the first standalone walkthrough, or check all twenty-one no-external-service
+```elixir
+{:ok, client} = MCP.Client.connect({:stdio, "elixir", ["echo_server.exs"]})
+{:ok, client} = MCP.Client.connect({:http, "http://127.0.0.1:4000/mcp"})
+```
+
+Example 24 runs one set of calls over all three.
+
+Run the first standalone walkthrough, or check all twenty-three no-external-service
 examples in isolated Elixir VMs:
 
 ```sh
@@ -451,7 +459,7 @@ mix examples
 ```
 
 `mix quality` runs formatting, warning-free compilation, strict Credo, the
-core ExUnit suite and contract inventory, all twenty-two no-external-service
+core ExUnit suite and contract inventory, all twenty-three no-external-service
 example checks, and then delegates to Tasks, PostgreSQL, SQLite, Plug, and JSV
 package quality, including their independent test suites. `mix quality.types`
 runs Dialyzer with unmatched-return and error-handling warnings enabled for all
