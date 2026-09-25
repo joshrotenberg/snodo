@@ -19,7 +19,8 @@ defmodule Mix.Tasks.Examples do
     {"examples/19_instrumentation.exs", "19_instrumentation: ok"},
     {"examples/20_mrtr_elicitation.exs", "20_mrtr_elicitation: ok"},
     {"examples/23_authorization.exs", "23_authorization: ok"},
-    {"examples/24_client_transports.exs", "24_client_transports: ok"}
+    {"examples/24_client_transports.exs", "24_client_transports: ok"},
+    {"examples/25_inline_components.exs", "25_inline_components: ok"}
   ]
 
   @tasks_examples [

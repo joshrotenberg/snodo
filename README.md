@@ -128,6 +128,44 @@ end
 `argument/3` also accepts nested array types and raw property-schema maps. The
 raw `MCP.Tool` DSL remains the direct path for fully hand-authored root schemas.
 
+Small components can be declared inline. Each block becomes a module that uses
+`MCP.Tool.Simple`, `MCP.Resource.Simple`, or `MCP.Prompt.Simple`, named after
+the component (`InlineServer.Tools.Greet` here) and registered like any module
+component:
+
+```elixir
+defmodule InlineServer do
+  use MCP.Server, name: "inline-server", version: "0.1.0"
+
+  tool "greet", description: "Create a greeting" do
+    argument "name", :string, required: true
+
+    @impl true
+    def call(%{"name" => name}, _context), do: {:ok, "Hello, #{name}!"}
+  end
+
+  resource "package_info", uri_template: "hex://{name}/info" do
+    @impl true
+    def read(%{"name" => name}, _context), do: {:ok, %{"name" => name}}
+  end
+
+  prompt "review", description: "Review a package" do
+    argument "name", required: true
+
+    @impl true
+    def render(%{"name" => name}, _context), do: {:ok, "Review #{name}."}
+  end
+
+  tool Echo
+end
+```
+
+The `Simple` resource and prompt modules accept plain return values. A resource
+string is text at the requested URI and any other JSON value is JSON content; a
+prompt string is one user message. `MCP.Result` remains the explicit form for
+cache hints, blobs, several contents, descriptions, and `input_required`.
+Example 25 runs this shape end to end.
+
 `MCP.Client.direct/2` talks to a server in the calling process, with no
 transport or process in between:
 
@@ -152,7 +190,7 @@ subprocess or a Streamable HTTP endpoint:
 
 Example 24 runs one set of calls over all three.
 
-Run the first standalone walkthrough, or check all twenty-three no-external-service
+Run the first standalone walkthrough, or check all twenty-four no-external-service
 examples in isolated Elixir VMs:
 
 ```sh
@@ -459,7 +497,7 @@ mix examples
 ```
 
 `mix quality` runs formatting, warning-free compilation, strict Credo, the
-core ExUnit suite and contract inventory, all twenty-three no-external-service
+core ExUnit suite and contract inventory, all twenty-four no-external-service
 example checks, and then delegates to Tasks, PostgreSQL, SQLite, Plug, and JSV
 package quality, including their independent test suites. `mix quality.types`
 runs Dialyzer with unmatched-return and error-handling warnings enabled for all
