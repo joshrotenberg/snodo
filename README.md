@@ -128,16 +128,21 @@ end
 `argument/3` also accepts nested array types and raw property-schema maps. The
 raw `MCP.Tool` DSL remains the direct path for fully hand-authored root schemas.
 
-No process is needed for direct dispatch:
+`MCP.Client.direct/2` talks to a server in the calling process, with no
+transport or process in between:
 
 ```elixir
-{:ok, response} =
-  MCP.Test.dispatch(EchoServer.runtime(),
-    protocol: "2026-07-28",
-    method: "tools/call",
-    params: %{"name" => "echo", "arguments" => %{"text" => "hello"}}
-  )
+{:ok, client} = MCP.Client.direct(EchoServer.runtime())
+{:ok, [%{"name" => "echo"}]} = MCP.Client.list_tools(client)
+
+{:ok, result} = MCP.Client.call_tool(client, "echo", %{"text" => "hello"})
+result["content"]
+#=> [%{"type" => "text", "text" => "hello"}]
 ```
+
+The client adds the protocol metadata each request needs and returns the
+JSON-RPC `result` object, `{:input_required, result}` for a multi round-trip
+request, or `{:error, %MCP.Error{}}`. It does not implement stdio or HTTP yet.
 
 Run the first standalone walkthrough, or check all twenty-one no-external-service
 examples in isolated Elixir VMs:
