@@ -50,6 +50,13 @@ try {
     throw new Error(`unexpected tool result: ${JSON.stringify(called)}`);
   }
 
+  const nonAscii = "h\u00e9llo \u65e5\u672c \u{1F600} line\u2028separator";
+  const unicode = await client.callTool({ name: "echo", arguments: { text: nonAscii } });
+
+  if (unicode.content?.[0]?.text !== nonAscii) {
+    throw new Error(`non-ASCII text did not round-trip: ${JSON.stringify(unicode)}`);
+  }
+
   const controller = new AbortController();
   const pending = client.callTool(
     {
@@ -90,6 +97,7 @@ try {
       era: client.getProtocolEra(),
       tools: listed.tools.length,
       text: first.text,
+      nonAsciiRoundTrip: true,
       cancelled,
       afterCancel: afterFirst.text,
     })}\n`,
