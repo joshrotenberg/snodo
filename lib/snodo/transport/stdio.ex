@@ -705,8 +705,25 @@ defmodule Snodo.Transport.Stdio do
 
   defp start_reader(input) do
     owner = self()
-    spawn_link(fn -> read_lines(input, owner) end)
+    spawn_link(fn -> read_lines(input, read_mode(input), owner) end)
   end
+
+  # `:stdio` is a Latin-1 device when the VM's stdin is a pipe, and IO.read/2
+  # would then turn each byte of a UTF-8 character into a character of its
+  # own. IO.binread/2 returns the bytes unchanged. Unicode devices, and
+  # devices that do not report an encoding, keep IO.read/2.
+  defp read_mode(input) do
+    case :io.getopts(io_device(input)) do
+      options when is_list(options) ->
+        if Keyword.get(options, :encoding) == :latin1, do: :bytes, else: :characters
+
+      _unsupported ->
+        :characters
+    end
+  end
+
+  defp io_device(:stdio), do: :standard_io
+  defp io_device(device), do: device
 
   defp execution_key(connection_ref, nil), do: {:stdio, connection_ref, make_ref()}
   defp execution_key(connection_ref, id), do: {:stdio, connection_ref, id}
@@ -819,11 +836,11 @@ defmodule Snodo.Transport.Stdio do
     end
   end
 
-  defp read_lines(input, owner) do
-    case IO.read(input, :line) do
+  defp read_lines(input, mode, owner) do
+    case read_line(input, mode) do
       data when is_binary(data) ->
         send(owner, {:stdio_line, data})
-        read_lines(input, owner)
+        read_lines(input, mode, owner)
 
       :eof ->
         send(owner, :stdio_eof)
@@ -833,4 +850,7 @@ defmodule Snodo.Transport.Stdio do
         send(owner, :stdio_eof)
     end
   end
+
+  defp read_line(input, :bytes), do: IO.binread(input, :line)
+  defp read_line(input, :characters), do: IO.read(input, :line)
 end

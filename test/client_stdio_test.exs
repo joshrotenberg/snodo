@@ -34,6 +34,17 @@ defmodule Snodo.ClientStdioTest do
              Client.call_tool(client, "no_such_tool")
   end
 
+  test "non-ASCII text round-trips through a subprocess under any locale" do
+    text = "héllo 日本 😀 line\u2028separator"
+
+    for locale <- ["en_US.UTF-8", "C"] do
+      client = connect(env: [{"LANG", locale}, {"LC_ALL", locale}])
+
+      assert {:ok, %{"content" => [%{"text" => ^text}]}} =
+               Client.call_tool(client, "echo", %{"text" => text})
+    end
+  end
+
   test "correlates concurrent requests that complete out of order" do
     client = connect()
 
