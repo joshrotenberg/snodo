@@ -12,8 +12,8 @@ branch/PR.
 |---|---|
 | 1. `MCP.Client.direct/1` | Done in #8, as `MCP.Client.direct/2`. |
 | 2. `:mcp_ex_plug` | Done in #1. |
-| 3. `MCP.Client` transports | In progress in #9. |
-| 4. Ergonomics layer | Open. |
+| 3. `MCP.Client` transports | Done in #9. |
+| 4. Ergonomics layer | In progress in #10. |
 | 5. JSON Schema 2020-12 backend | Done in #1. |
 | 6. Conformance + interop in CI | Done in #1. |
 | 7. README protocol stance | Superseded by 8. The README documents the opt-in initialize-era HTTP dialects. |
