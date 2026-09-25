@@ -1,7 +1,7 @@
 # SQLite Tasks store
 
-`mcp_ex_tasks_sqlite` is the optional, single-host embedded persistence package
-for `mcp_ex_tasks`. It implements `MCP.Extensions.Tasks.Store` with a
+`snodo_tasks_sqlite` is the optional, single-host embedded persistence package
+for `snodo_tasks`. It implements `Snodo.Extensions.Tasks.Store` with a
 file-backed SQLite database and an application-owned `Ecto.Repo`.
 
 The package never starts a Repo, creates a database file, or runs a migration.
@@ -31,11 +31,11 @@ defmodule MyApp.Repo.Migrations.UpgradeMcpTasksToV2 do
   use Ecto.Migration
 
   def up do
-    MCP.Extensions.Tasks.Store.SQLite.Migration.V2.up()
+    Snodo.Extensions.Tasks.Store.SQLite.Migration.V2.up()
   end
 
   def down do
-    MCP.Extensions.Tasks.Store.SQLite.Migration.V2.down()
+    Snodo.Extensions.Tasks.Store.SQLite.Migration.V2.down()
   end
 end
 ```
@@ -81,11 +81,11 @@ defmodule MyApp.Repo.Migrations.AddMcpTasks do
   use Ecto.Migration
 
   def up do
-    MCP.Extensions.Tasks.Store.SQLite.Migration.up()
+    Snodo.Extensions.Tasks.Store.SQLite.Migration.up()
   end
 
   def down do
-    MCP.Extensions.Tasks.Store.SQLite.Migration.down()
+    Snodo.Extensions.Tasks.Store.SQLite.Migration.down()
   end
 end
 ```
@@ -114,8 +114,8 @@ a file-backed database, WAL mode, and foreign-key enforcement.
 Build immutable store configuration around the already-running Repo:
 
 ```elixir
-alias MCP.Extensions.Tasks.Runner
-alias MCP.Extensions.Tasks.Store.SQLite
+alias Snodo.Extensions.Tasks.Runner
+alias Snodo.Extensions.Tasks.Store.SQLite
 
 sqlite =
   SQLite.new!(
@@ -149,7 +149,7 @@ DETS, or PostgreSQL.
 
 ## Authorization scope
 
-`MCP.Context` crosses the adapter only through `authorize/3`. The application
+`Snodo.Context` crosses the adapter only through `authorize/3`. The application
 scope callback must return JSON-safe data: null, booleans, finite numbers,
 strings, lists, or maps with string keys. Scalar scopes are supported and
 stored in a versioned JSON object envelope. Atoms, tuples, PIDs, references,

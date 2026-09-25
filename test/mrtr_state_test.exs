@@ -1,12 +1,12 @@
-defmodule MCP.MRTR.StateTest do
+defmodule Snodo.MRTR.StateTest do
   use ExUnit.Case, async: true
 
   @moduletag mcp_contract: ["mrtr-state-integrity"]
 
-  alias MCP.Context
-  alias MCP.Error
-  alias MCP.MRTR.State
-  alias MCP.Transport.Context, as: TransportContext
+  alias Snodo.Context
+  alias Snodo.Error
+  alias Snodo.MRTR.State
+  alias Snodo.Transport.Context, as: TransportContext
 
   @secret :binary.copy("s", 32)
   @now 1_800_000_000
@@ -14,7 +14,7 @@ defmodule MCP.MRTR.StateTest do
   setup do
     context = %Context{
       protocol_version: "2026-07-28",
-      protocol: MCP.Protocol.V2026_07_28,
+      protocol: Snodo.Protocol.V2026_07_28,
       transport: %TransportContext{transport: :direct},
       request_id: "first",
       request_method: "tools/call",
@@ -255,7 +255,7 @@ defmodule MCP.MRTR.StateTest do
     encoded = Base.url_encode64(json, padding: false)
 
     mac =
-      :crypto.mac(:hmac, :sha256, @secret, ["mcp-ex-mrtr-token-v1:", encoded])
+      :crypto.mac(:hmac, :sha256, @secret, ["snodo-mrtr-token-v1:", encoded])
       |> Base.url_encode64(padding: false)
 
     "mrtr1.#{encoded}.#{mac}"

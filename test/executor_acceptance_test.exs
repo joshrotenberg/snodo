@@ -1,7 +1,7 @@
-defmodule MCP.Server.ExecutorAcceptanceTest do
+defmodule Snodo.Server.ExecutorAcceptanceTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Server.Executor
+  alias Snodo.Server.Executor
 
   test "bounds concurrency, queues in admission order, and rejects excess work" do
     {:ok, executor} =
@@ -37,16 +37,16 @@ defmodule MCP.Server.ExecutorAcceptanceTest do
     refute_receive {:entered, :third, _worker, _cancellation}, 20
     send(first_worker, :release)
 
-    assert_receive {:mcp_execution, ^executor, ^first_ref, {:scope, 1}, {:completed, :first}}
+    assert_receive {:snodoecution, ^executor, ^first_ref, {:scope, 1}, {:completed, :first}}
     assert_receive {:entered, :second, second_worker, _cancellation}
     refute_receive {:entered, :third, _worker, _cancellation}, 20
     send(second_worker, :release)
 
-    assert_receive {:mcp_execution, ^executor, ^second_ref, {:scope, 2}, {:completed, :second}}
+    assert_receive {:snodoecution, ^executor, ^second_ref, {:scope, 2}, {:completed, :second}}
     assert_receive {:entered, :third, third_worker, _cancellation}
     send(third_worker, :release)
 
-    assert_receive {:mcp_execution, ^executor, ^third_ref, {:scope, 3}, {:completed, :third}}
+    assert_receive {:snodoecution, ^executor, ^third_ref, {:scope, 3}, {:completed, :third}}
     assert Executor.stats(executor).running == 0
     assert Executor.stats(executor).queued == 0
   end
@@ -74,15 +74,14 @@ defmodule MCP.Server.ExecutorAcceptanceTest do
     send(first_worker, :release)
     send(second_worker, :release)
 
-    assert_receive {:mcp_execution, ^executor, ^first_ref, {:connection_a, 7},
-                    {:completed, :done}}
+    assert_receive {:snodoecution, ^executor, ^first_ref, {:connection_a, 7}, {:completed, :done}}
 
-    assert_receive {:mcp_execution, ^executor, ^other_scope_ref, {:connection_b, 7},
+    assert_receive {:snodoecution, ^executor, ^other_scope_ref, {:connection_b, 7},
                     {:completed, :done}}
 
     assert {:ok, reused_ref} = Executor.submit(executor, {:connection_a, 7}, fn _ -> :reused end)
 
-    assert_receive {:mcp_execution, ^executor, ^reused_ref, {:connection_a, 7},
+    assert_receive {:snodoecution, ^executor, ^reused_ref, {:connection_a, 7},
                     {:completed, :reused}}
   end
 
@@ -102,7 +101,7 @@ defmodule MCP.Server.ExecutorAcceptanceTest do
              end)
 
     assert_receive {:cancellable_started, _worker, cancellation}
-    refute MCP.Cancellation.cancelled?(cancellation)
+    refute Snodo.Cancellation.cancelled?(cancellation)
 
     assert {:ok, queued_ref} =
              Executor.submit(executor, :queued_cancel, fn _cancellation ->
@@ -111,7 +110,7 @@ defmodule MCP.Server.ExecutorAcceptanceTest do
 
     assert :ok = Executor.cancel(executor, :queued_cancel, "cancelled while queued")
 
-    assert_receive {:mcp_execution, ^executor, ^queued_ref, :queued_cancel,
+    assert_receive {:snodoecution, ^executor, ^queued_ref, :queued_cancel,
                     {:cancelled, "cancelled while queued"}}
 
     refute_receive :queued_job_started, 20
@@ -120,11 +119,11 @@ defmodule MCP.Server.ExecutorAcceptanceTest do
 
     assert :ok = Executor.cancel(executor, :cancel_me, "caller stopped")
 
-    assert_receive {:mcp_execution, ^executor, ^execution_ref, :cancel_me,
+    assert_receive {:snodoecution, ^executor, ^execution_ref, :cancel_me,
                     {:cancelled, "caller stopped"}}
 
-    assert MCP.Cancellation.cancelled?(cancellation)
-    refute_receive {:mcp_execution, ^executor, ^execution_ref, :cancel_me, _outcome}, 30
+    assert Snodo.Cancellation.cancelled?(cancellation)
+    refute_receive {:snodoecution, ^executor, ^execution_ref, :cancel_me, _outcome}, 30
     assert {:error, :not_found} = Executor.cancel(executor, :cancel_me)
   end
 
@@ -143,22 +142,22 @@ defmodule MCP.Server.ExecutorAcceptanceTest do
     assert {:ok, next_ref} = Executor.submit(executor, :next, fn _ -> :next end)
     assert_receive {:timed_started, cancellation}
 
-    assert_receive {:mcp_execution, ^executor, ^timed_ref, :timed, {:timed_out, 30}}, 500
-    assert MCP.Cancellation.cancelled?(cancellation)
-    assert_receive {:mcp_execution, ^executor, ^next_ref, :next, {:completed, :next}}, 500
-    refute_receive {:mcp_execution, ^executor, ^timed_ref, :timed, _outcome}, 30
+    assert_receive {:snodoecution, ^executor, ^timed_ref, :timed, {:timed_out, 30}}, 500
+    assert Snodo.Cancellation.cancelled?(cancellation)
+    assert_receive {:snodoecution, ^executor, ^next_ref, :next, {:completed, :next}}, 500
+    refute_receive {:snodoecution, ^executor, ^timed_ref, :timed, _outcome}, 30
 
     assert {:ok, failed_ref} =
              Executor.submit(executor, :crashes, fn _cancellation ->
                Process.exit(self(), :kill)
              end)
 
-    assert_receive {:mcp_execution, ^executor, ^failed_ref, :crashes, {:failed, :killed}}, 500
-    refute_receive {:mcp_execution, ^executor, ^failed_ref, :crashes, _outcome}, 30
+    assert_receive {:snodoecution, ^executor, ^failed_ref, :crashes, {:failed, :killed}}, 500
+    refute_receive {:snodoecution, ^executor, ^failed_ref, :crashes, _outcome}, 30
 
     assert {:ok, reused_ref} = Executor.submit(executor, :crashes, fn _ -> :recovered end)
 
-    assert_receive {:mcp_execution, ^executor, ^reused_ref, :crashes, {:completed, :recovered}}
+    assert_receive {:snodoecution, ^executor, ^reused_ref, :crashes, {:completed, :recovered}}
   end
 
   test "reply-owner death cancels running and queued work before reusing capacity" do
@@ -190,14 +189,14 @@ defmodule MCP.Server.ExecutorAcceptanceTest do
     Process.exit(owner, :kill)
 
     assert_receive {:DOWN, ^worker_monitor, :process, ^worker, :killed}, 500
-    assert MCP.Cancellation.cancelled?(cancellation)
+    assert Snodo.Cancellation.cancelled?(cancellation)
     refute_receive :orphan_queue_started, 30
     assert Executor.stats(executor).running == 0
     assert Executor.stats(executor).queued == 0
 
     assert {:ok, recovered_ref} = Executor.submit(executor, :after_owner, fn _ -> :available end)
 
-    assert_receive {:mcp_execution, ^executor, ^recovered_ref, :after_owner,
+    assert_receive {:snodoecution, ^executor, ^recovered_ref, :after_owner,
                     {:completed, :available}}
   end
 end

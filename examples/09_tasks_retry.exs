@@ -1,7 +1,7 @@
 defmodule Examples.TasksRetry.FlakyExport do
   @moduledoc false
 
-  use MCP.Tool,
+  use Snodo.Tool,
     name: "flaky_export",
     description: "A durable export whose application executor requests one retry"
 
@@ -14,9 +14,9 @@ end
 defmodule Examples.TasksRetry.Executor do
   @moduledoc false
 
-  @behaviour MCP.Extensions.Tasks.WorkExecutor
+  @behaviour Snodo.Extensions.Tasks.WorkExecutor
 
-  alias MCP.Extensions.Tasks.Work
+  alias Snodo.Extensions.Tasks.Work
 
   @impl true
   def execute(%Work{type: "tools/call"} = work, _cancellation, state) do
@@ -57,17 +57,17 @@ defmodule Examples.TasksRetry.Runner do
 
   alias Examples.TasksRetry.Executor
   alias Examples.TasksRetry.FlakyExport
-  alias MCP.Context
-  alias MCP.Extensions.Tasks
-  alias MCP.Extensions.Tasks.RetryPolicy
-  alias MCP.Extensions.Tasks.Runner, as: TaskRunner
-  alias MCP.Extensions.Tasks.Snapshot
-  alias MCP.Extensions.Tasks.Store
-  alias MCP.Extensions.Tasks.Store.Memory
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Router
-  alias MCP.Server.Runtime
-  alias MCP.Transport.Context, as: TransportContext
+  alias Snodo.Context
+  alias Snodo.Extensions.Tasks
+  alias Snodo.Extensions.Tasks.RetryPolicy
+  alias Snodo.Extensions.Tasks.Runner, as: TaskRunner
+  alias Snodo.Extensions.Tasks.Snapshot
+  alias Snodo.Extensions.Tasks.Store
+  alias Snodo.Extensions.Tasks.Store.Memory
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Router
+  alias Snodo.Server.Runtime
+  alias Snodo.Transport.Context, as: TransportContext
 
   @protocol "2026-07-28"
   @created_at "2026-08-25T10:00:00.000Z"
@@ -196,7 +196,7 @@ defmodule Examples.TasksRetry.Runner do
 
   defp call_tool(runtime, id) do
     {:ok, response} =
-      MCP.Test.dispatch(runtime,
+      Snodo.Test.dispatch(runtime,
         id: id,
         protocol: @protocol,
         method: "tools/call",

@@ -1,21 +1,21 @@
-defmodule MCP.TasksOrdinaryMRTRBoundaryTest do
+defmodule Snodo.TasksOrdinaryMRTRBoundaryTest do
   use ExUnit.Case, async: false
 
-  alias MCP.Extensions.Tasks.Runner
-  alias MCP.Extensions.Tasks.Store.Memory
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Router
-  alias MCPEx.TasksTestSupport, as: TasksSupport
+  alias Snodo.Extensions.Tasks.Runner
+  alias Snodo.Extensions.Tasks.Store.Memory
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Router
+  alias SnodoTest.TasksTestSupport, as: TasksSupport
 
   @moduletag mcp_contract: ["tasks-extension-lifecycle"]
   @moduletag :tasks_package
 
   defmodule BoundaryTool do
     @moduledoc false
-    use MCP.Tool, name: "mrtr_boundary"
+    use Snodo.Tool, name: "mrtr_boundary"
 
-    alias MCP.Elicitation
-    alias MCP.Result
+    alias Snodo.Elicitation
+    alias Snodo.Result
 
     @impl true
     def call(%{"kind" => kind}, _context) do

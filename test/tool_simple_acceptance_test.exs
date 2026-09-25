@@ -1,8 +1,8 @@
-defmodule MCP.Tool.SimpleAcceptanceTest do
+defmodule Snodo.Tool.SimpleAcceptanceTest do
   use ExUnit.Case, async: true
 
   defmodule SimpleSearch do
-    use MCP.Tool.Simple,
+    use Snodo.Tool.Simple,
       name: "search",
       description: "Search packages",
       additional_properties: false
@@ -15,7 +15,7 @@ defmodule MCP.Tool.SimpleAcceptanceTest do
     @impl true
     def call(%{"query" => query} = arguments, _context) do
       {:ok,
-       MCP.Result.structured(%{
+       Snodo.Result.structured(%{
          "query" => query,
          "page" => Map.get(arguments, "page", 1),
          "sort" => Map.get(arguments, "sort")
@@ -24,7 +24,7 @@ defmodule MCP.Tool.SimpleAcceptanceTest do
   end
 
   defmodule RawSearch do
-    use MCP.Tool, name: "search", description: "Search packages"
+    use Snodo.Tool, name: "search", description: "Search packages"
 
     input_schema(%{
       "type" => "object",
@@ -45,7 +45,7 @@ defmodule MCP.Tool.SimpleAcceptanceTest do
     @impl true
     def call(%{"query" => query} = arguments, _context) do
       {:ok,
-       MCP.Result.structured(%{
+       Snodo.Result.structured(%{
          "query" => query,
          "page" => Map.get(arguments, "page", 1),
          "sort" => Map.get(arguments, "sort")
@@ -54,25 +54,25 @@ defmodule MCP.Tool.SimpleAcceptanceTest do
   end
 
   defmodule SimpleServer do
-    use MCP.Server,
+    use Snodo.Server,
       name: "equivalent-server",
       version: "1.0.0",
-      schema_validator: MCP.Schema.Validator.Basic
+      schema_validator: Snodo.Schema.Validator.Basic
 
     tool(SimpleSearch)
   end
 
   defmodule RawServer do
-    use MCP.Server,
+    use Snodo.Server,
       name: "equivalent-server",
       version: "1.0.0",
-      schema_validator: MCP.Schema.Validator.Basic
+      schema_validator: Snodo.Schema.Validator.Basic
 
     tool(RawSearch)
   end
 
   defmodule EscapedProperty do
-    use MCP.Tool.Simple, name: "escaped_property", schema: %{"x-root" => true}
+    use Snodo.Tool.Simple, name: "escaped_property", schema: %{"x-root" => true}
 
     argument(
       "choice",
@@ -81,16 +81,16 @@ defmodule MCP.Tool.SimpleAcceptanceTest do
     )
 
     @impl true
-    def call(arguments, _context), do: {:ok, MCP.Result.structured(arguments)}
+    def call(arguments, _context), do: {:ok, Snodo.Result.structured(arguments)}
   end
 
-  test "simple tools compile to the same ordinary MCP.Tool definition as raw tools" do
+  test "simple tools compile to the same ordinary Snodo.Tool definition as raw tools" do
     assert SimpleSearch.name() == RawSearch.name()
     assert SimpleSearch.description() == RawSearch.description()
     assert SimpleSearch.input_schema() == RawSearch.input_schema()
     assert SimpleSearch.output_schema() == RawSearch.output_schema()
     assert SimpleSearch.annotations() == RawSearch.annotations()
-    assert MCP.Tool.definition(SimpleSearch) == MCP.Tool.definition(RawSearch)
+    assert Snodo.Tool.definition(SimpleSearch) == Snodo.Tool.definition(RawSearch)
   end
 
   test "raw and simple tools have equivalent list and call wire behavior" do
@@ -135,7 +135,7 @@ defmodule MCP.Tool.SimpleAcceptanceTest do
   test "invalid declarations fail at the caller with useful compile errors" do
     duplicate = """
     defmodule DuplicateSimpleArgument do
-      use MCP.Tool.Simple, name: "duplicate"
+      use Snodo.Tool.Simple, name: "duplicate"
       argument("name", :string)
       argument("name", :integer)
       def call(_arguments, _context), do: {:ok, "ok"}
@@ -148,7 +148,7 @@ defmodule MCP.Tool.SimpleAcceptanceTest do
 
     unknown_option = """
     defmodule UnknownSimpleOption do
-      use MCP.Tool.Simple, name: "unknown"
+      use Snodo.Tool.Simple, name: "unknown"
       argument("name", :string, magic: true)
       def call(_arguments, _context), do: {:ok, "ok"}
     end
@@ -161,7 +161,7 @@ defmodule MCP.Tool.SimpleAcceptanceTest do
 
   defp dispatch(runtime, method, params \\ %{}) do
     {:ok, response} =
-      MCP.Test.dispatch(runtime,
+      Snodo.Test.dispatch(runtime,
         protocol: "2026-07-28",
         method: method,
         params: params

@@ -1,15 +1,15 @@
-defmodule MCP.Transport.StreamableHTTP.ServerAcceptanceTest do
+defmodule Snodo.Transport.StreamableHTTP.ServerAcceptanceTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Server.Executor
-  alias MCP.Subscription.Event
-  alias MCP.Transport.StreamableHTTP.Server, as: HTTPServer
-  alias MCPEx.TestFixtures
-  alias MCPEx.TestResources.StaticText
-  alias MCPEx.TestSubscriptionHub
-  alias MCPEx.TestSubscriptionSource
-  alias MCPEx.TestTools.Echo
-  alias MCPEx.TestTools.Trapping
+  alias Snodo.Server.Executor
+  alias Snodo.Subscription.Event
+  alias Snodo.Transport.StreamableHTTP.Server, as: HTTPServer
+  alias SnodoTest.TestFixtures
+  alias SnodoTest.TestResources.StaticText
+  alias SnodoTest.TestSubscriptionHub
+  alias SnodoTest.TestSubscriptionSource
+  alias SnodoTest.TestTools.Echo
+  alias SnodoTest.TestTools.Trapping
 
   @protocol "2026-07-28"
 
@@ -123,10 +123,10 @@ defmodule MCP.Transport.StreamableHTTP.ServerAcceptanceTest do
     {:ok, socket} = :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: false])
     :ok = :gen_tcp.send(socket, encoded_request("POST", "/mcp", headers(raw), JSON.encode!(raw)))
     assert_receive {:trapping_entered, _worker, cancellation}, 1_000
-    refute MCP.Cancellation.cancelled?(cancellation)
+    refute Snodo.Cancellation.cancelled?(cancellation)
 
     :ok = :gen_tcp.close(socket)
-    assert eventually(fn -> MCP.Cancellation.cancelled?(cancellation) end)
+    assert eventually(fn -> Snodo.Cancellation.cancelled?(cancellation) end)
     assert eventually(fn -> Executor.stats(executor).running == 0 end)
     assert Process.alive?(executor)
 

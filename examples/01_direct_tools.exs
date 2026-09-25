@@ -1,7 +1,7 @@
 defmodule Examples.DirectTools.Greet do
   @moduledoc false
 
-  use MCP.Tool,
+  use Snodo.Tool,
     name: "greet",
     description: "Create a greeting"
 
@@ -13,16 +13,16 @@ defmodule Examples.DirectTools.Greet do
   })
 
   @impl true
-  def call(%{"name" => name}, _context), do: {:ok, MCP.Result.text("Hello, #{name}!")}
+  def call(%{"name" => name}, _context), do: {:ok, Snodo.Result.text("Hello, #{name}!")}
 end
 
 defmodule Examples.DirectTools.Server do
   @moduledoc false
 
-  use MCP.Server,
+  use Snodo.Server,
     name: "direct-tools-example",
     version: "0.1.0",
-    protocols: [MCP.Protocol.V2026_07_28]
+    protocols: [Snodo.Protocol.V2026_07_28]
 
   tool(Examples.DirectTools.Greet)
 end
@@ -45,10 +45,10 @@ defmodule Examples.DirectTools.Runner do
     {:links, links_before} = Process.info(self(), :links)
     runtime = Server.runtime()
 
-    {:ok, client} = MCP.Client.direct(runtime)
-    {:ok, discovery} = MCP.Client.discover(client)
-    {:ok, list} = MCP.Client.list_tools(client)
-    {:ok, call} = MCP.Client.call_tool(client, "greet", %{"name" => "Ada"})
+    {:ok, client} = Snodo.Client.direct(runtime)
+    {:ok, discovery} = Snodo.Client.discover(client)
+    {:ok, list} = Snodo.Client.list_tools(client)
+    {:ok, call} = Snodo.Client.call_tool(client, "greet", %{"name" => "Ada"})
 
     {:links, links_after} = Process.info(self(), :links)
 

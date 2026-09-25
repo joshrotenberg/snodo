@@ -1,9 +1,9 @@
-defmodule MCPEx.TasksRecoveryTest.Executor do
+defmodule SnodoTest.TasksRecoveryTest.Executor do
   @moduledoc false
 
-  @behaviour MCP.Extensions.Tasks.WorkExecutor
+  @behaviour Snodo.Extensions.Tasks.WorkExecutor
 
-  alias MCP.Extensions.Tasks.Runner
+  alias Snodo.Extensions.Tasks.Runner
 
   @impl true
   def execute(work, cancellation, state) do
@@ -80,7 +80,7 @@ defmodule MCPEx.TasksRecoveryTest.Executor do
   end
 end
 
-defmodule MCP.TasksRecoveryTest do
+defmodule Snodo.TasksRecoveryTest do
   use ExUnit.Case, async: false
 
   import ExUnit.CaptureLog
@@ -88,21 +88,21 @@ defmodule MCP.TasksRecoveryTest do
   @moduletag mcp_contract: ["tasks-recovery-claims"]
   @moduletag :tasks_package
 
-  alias MCP.Context
-  alias MCP.Extensions.Tasks.Event
-  alias MCP.Extensions.Tasks.Runner
-  alias MCP.Extensions.Tasks.Snapshot
-  alias MCP.Extensions.Tasks.Store
-  alias MCP.Extensions.Tasks.Store.Memory
-  alias MCP.Extensions.Tasks.Store.Memory.Lease
-  alias MCP.Extensions.Tasks.Task, as: ProtocolTask
-  alias MCP.Extensions.Tasks.Transition
-  alias MCP.Extensions.Tasks.Work
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Transport.Context, as: TransportContext
-  alias MCPEx.TasksRecoveryTest.Executor
+  alias Snodo.Context
+  alias Snodo.Extensions.Tasks.Event
+  alias Snodo.Extensions.Tasks.Runner
+  alias Snodo.Extensions.Tasks.Snapshot
+  alias Snodo.Extensions.Tasks.Store
+  alias Snodo.Extensions.Tasks.Store.Memory
+  alias Snodo.Extensions.Tasks.Store.Memory.Lease
+  alias Snodo.Extensions.Tasks.Task, as: ProtocolTask
+  alias Snodo.Extensions.Tasks.Transition
+  alias Snodo.Extensions.Tasks.Work
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Transport.Context, as: TransportContext
+  alias SnodoTest.TasksRecoveryTest.Executor
 
-  @runner_name MCP.TasksRecoveryTest.Runner
+  @runner_name Snodo.TasksRecoveryTest.Runner
   @created_at "2026-08-24T10:00:00.000Z"
   @lease_ms 1_000
   @heartbeat_ms 900

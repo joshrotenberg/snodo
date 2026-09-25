@@ -1,7 +1,7 @@
 defmodule Examples.InlineComponents.Search do
   @moduledoc false
 
-  use MCP.Tool.Simple, name: "search", description: "Search a fixed package list"
+  use Snodo.Tool.Simple, name: "search", description: "Search a fixed package list"
 
   argument("query", :string, required: true)
 
@@ -19,7 +19,7 @@ end
 defmodule Examples.InlineComponents.Server do
   @moduledoc false
 
-  use MCP.Server, name: "inline-components-example", version: "0.1.0"
+  use Snodo.Server, name: "inline-components-example", version: "0.1.0"
 
   tool "greet", description: "Create a greeting" do
     argument("name", :string, required: true)
@@ -50,7 +50,7 @@ defmodule Examples.InlineComponents.Runner do
   @moduledoc false
 
   alias Examples.InlineComponents.Server
-  alias MCP.Client
+  alias Snodo.Client
 
   def run(args) do
     check? = check_mode!(args)

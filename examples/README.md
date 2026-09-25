@@ -1,12 +1,12 @@
 # Executable examples
 
 The numbered examples are small, standalone programs built only on public APIs.
-Examples 1–6 use standalone core `mcp_ex`; examples 07–09 and 17 use the independent
-`:mcp_ex_tasks` child package and its one-way core dependency. Example 10 uses
-the optional `:mcp_ex_tasks_postgres` sibling and a live application-owned
-`Ecto.Repo`. Example 11 uses the optional `:mcp_ex_tasks_sqlite` sibling with
+Examples 1–6 use standalone core `snodo`; examples 07–09 and 17 use the independent
+`:snodo_tasks` child package and its one-way core dependency. Example 10 uses
+the optional `:snodo_tasks_postgres` sibling and a live application-owned
+`Ecto.Repo`. Example 11 uses the optional `:snodo_tasks_sqlite` sibling with
 an application-owned Repo and temporary local database file. Example 12 returns
-to standalone core `mcp_ex` for Resources, example 13 adds Prompts, and example
+to standalone core `snodo` for Resources, example 13 adds Prompts, and example
 14 composes both through Completion, and example 15 applies one pagination
 policy to every list surface. Example 16 adds an application-owned subscription
 source and the complete stream lifecycle; example 17 lets Tasks extend that
@@ -44,7 +44,7 @@ dedicated database whose schema it may modify:
 
 ```sh
 cd extensions/tasks_postgres
-MCP_TASKS_DATABASE_URL=ecto://postgres:postgres@127.0.0.1:55432/mcp_ex_tasks \
+SNODO_TASKS_DATABASE_URL=ecto://postgres:postgres@127.0.0.1:55432/snodo_tasks \
   mix example.postgres
 ```
 
@@ -99,7 +99,7 @@ not have that requirement.
 | [`21_plug_bandit.exs`](21_plug_bandit.exs) | Application-owned Bandit/executor, verified auth assigns, real HTTP tool call and finite subscription, lifecycle cleanup |
 | [`22_full_schema_validation.exs`](22_full_schema_validation.exs) | Optional JSV backend, compile-once catalog, local references/composition, non-mutating validation and fail-closed remote refs |
 | [`23_authorization.exs`](23_authorization.exs) | Application-owned catalog policy, per-context discovery filtering, pre-validation refusal with the application's own error, audit callback, cursor isolation |
-| [`24_client_transports.exs`](24_client_transports.exs) | One `MCP.Client` API in process, over a stdio subprocess, and over the native HTTP listener; identical results and error decoding |
+| [`24_client_transports.exs`](24_client_transports.exs) | One `Snodo.Client` API in process, over a stdio subprocess, and over the native HTTP listener; identical results and error decoding |
 | [`25_inline_components.exs`](25_inline_components.exs) | Inline tool, resource template, and prompt blocks next to a module tool; plain return values; generated module names |
 
 The unnumbered stdio files remain interoperability and subprocess acceptance
@@ -123,13 +123,13 @@ context-dependent completion without URI-template expansion or network access.
 Example 15 uses a one-entry page size to make every cursor boundary visible,
 including omission on final pages and rejection across list methods.
 Example 16 uses a small application-owned GenServer source and the public
-`MCP.Subscription` lifecycle API. Stdio cancellation and native long-lived HTTP
+`Snodo.Subscription` lifecycle API. Stdio cancellation and native long-lived HTTP
 SSE are exercised separately by the contract suite.
 Example 17 runs from `extensions/tasks`, reads current snapshots through the
 application-owned store boundary, and demonstrates that Tasks contributes only
 its filter and event wire shape while core retains source, backpressure,
 cancellation, and completion ownership.
-Example 18 starts `MCP.Subscription.Hub` as application state, updates a mutable
+Example 18 starts `Snodo.Subscription.Hub` as application state, updates a mutable
 resource, publishes the corresponding protocol-neutral event with a helper,
 and verifies the notification is followed by a fresh resource read. The hub
 does not detect changes or make the immutable router a state owner.

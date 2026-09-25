@@ -1,4 +1,4 @@
-defmodule MCPEx.TestSubscriptionHub do
+defmodule SnodoTest.TestSubscriptionHub do
   use GenServer
 
   def start_link(opts \\ []) do
@@ -97,8 +97,8 @@ defmodule MCPEx.TestSubscriptionHub do
   defp notify(_owner, _message), do: :ok
 end
 
-defmodule MCPEx.TestSubscriptionSource do
-  @behaviour MCP.Subscription.Source
+defmodule SnodoTest.TestSubscriptionSource do
+  @behaviour Snodo.Subscription.Source
 
   @impl true
   def open(filter, context, hub) do

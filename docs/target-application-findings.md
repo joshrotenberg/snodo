@@ -1,7 +1,7 @@
 # Target application findings
 
 The `hexpm-mcp` checkout is the first application acceptance target for
-`mcp_ex`. The port and its reconciliation are local, uncommitted work. This
+`snodo`. The port and its reconciliation are local, uncommitted work. This
 document records the current code, the problems it exposed, and the evidence
 still needed before calling the application ready. The broader sequence is in
 [the application readiness plan](application-readiness-plan.md).
@@ -9,11 +9,11 @@ still needed before calling the application ready. The broader sequence is in
 ## Current state
 
 The target registers 24 tools, six prompts, one concrete resource, and four
-resource templates. Its server selects `MCP.Protocol.V2026_07_28` and explicitly
-installs the optional `MCP.Schema.Validator.JSV` backend. Domain operations remain behind the
+resource templates. Its server selects `Snodo.Protocol.V2026_07_28` and explicitly
+installs the optional `Snodo.Schema.Validator.JSV` backend. Domain operations remain behind the
 existing `HexpmMcp` API; the reconciliation changes MCP adapters and validation.
 
-All 24 tools now use `MCP.Tool.Simple`. Twenty-three declare their inputs with
+All 24 tools now use `Snodo.Tool.Simple`. Twenty-three declare their inputs with
 `argument/3`; the zero-argument `toolbox_groups` tool retains an
 `input_schema(%{"type" => "object"})` override. This preserves its original
 definition exactly instead of adding an empty `properties` map. The full
@@ -22,8 +22,8 @@ pre-conversion catalog was captured from the source AST in
 input schemas, and required-argument ordering match that snapshot.
 
 The target currently runs the framework's native
-`MCP.Transport.StreamableHTTP.Server` for HTTP. Stdio runs one temporary,
-supervised `StdioLifecycle` Task that calls public `MCP.Transport.Stdio.serve/2`.
+`Snodo.Transport.StreamableHTTP.Server` for HTTP. Stdio runs one temporary,
+supervised `StdioLifecycle` Task that calls public `Snodo.Transport.Stdio.serve/2`.
 It drains admitted requests before exiting 0 on EOF, and reports failures to
 stderr before exiting 1. Owning the serving call removes the race between a
 separate transport child and lifecycle monitor. Subprocess tests exercise the
@@ -31,8 +31,8 @@ actual application's empty EOF and discovery-before-EOF paths, plus transport
 startup failures and serving exceptions. An optional framework Plug/Bandit package
 now exists, but the target's default HTTP startup has not switched to it.
 
-The framework dependency defaults to the sibling `../mcp_ex` checkout, with
-`MCP_EX_PATH` available to select another path. The target declares Elixir
+The framework dependency defaults to the sibling `../snodo` checkout, with
+`SNODO_PATH` available to select another path. The target declares Elixir
 `~> 1.18`. Dependency packaging, release builds, deployment, and compatibility
 with additional client hosts remain acceptance work.
 
@@ -107,8 +107,8 @@ full VM power-loss test or a live package security conclusion.
 ### Elixir values need an explicit JSON conversion boundary
 
 The domain layer returns atom-keyed maps and structs. Passing these directly
-to `MCP.Resource.json/3` fails the framework's JSON-value validation.
-`MCP.JSONValue.encodable!/1` provides a public, recursive conversion with
+to `Snodo.Resource.json/3` fails the framework's JSON-value validation.
+`Snodo.JSONValue.encodable!/1` provides a public, recursive conversion with
 collision detection: `:name` and `"name"` cannot silently overwrite each other.
 
 The four JSON resources now call that helper before building their content.
@@ -154,7 +154,7 @@ supported.
 ### Tool failures must be visible as tool results
 
 Upstream failures, missing packages, and rejected domain preconditions now
-return `{:ok, MCP.Result.error(message)}`, producing `isError: true` in the
+return `{:ok, Snodo.Result.error(message)}`, producing `isError: true` in the
 tool result. The conversion also fixes branches that previously reported a
 domain failure as successful text. Successful searches or documentation
 listings with no entries still return successful results.
@@ -181,7 +181,7 @@ prompt adapters use public framework APIs; the port has also supplied concrete
 reasons to improve framework validation, JSON conversion, and template matching.
 
 Direct dispatch makes catalog and routing checks straightforward, but
-`MCP.Test.dispatch/2` supplies protocol metadata when its `protocol:` option
+`Snodo.Test.dispatch/2` supplies protocol metadata when its `protocol:` option
 is present. Those checks must be paired with literal transport requests and an
 independent client that sends its own metadata.
 
@@ -283,7 +283,7 @@ rerun successfully after cleanup. Apparent Toolbox non-returning-function
 diagnostics disappeared without source/specification changes or suppressions.
 
 The origin of the duplicate files was not established. Recoverable copies from
-this local run are under `/private/tmp/mcp-ex-duplicate-beams.kmCDpE`,
+this local run are under `/private/tmp/snodo-duplicate-beams.kmCDpE`,
 `/private/tmp/hexpm-mcp-duplicate-beams.Eklx50`, and
 `/private/tmp/hexpm-mcp-duplicate-beams.A4v2Q9`. These are temporary build artifacts,
 not source backups or release inputs. A clean consumer build remains a separate

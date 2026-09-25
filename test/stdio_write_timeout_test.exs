@@ -1,14 +1,14 @@
-defmodule MCP.Transport.StdioWriteTimeoutTest do
+defmodule Snodo.Transport.StdioWriteTimeoutTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Cancellation
-  alias MCP.Server.Executor
-  alias MCP.Transport.Stdio
-  alias MCPEx.TestFixtures
-  alias MCPEx.TestInput
-  alias MCPEx.TestSubscriptionHub
-  alias MCPEx.TestSubscriptionSource
-  alias MCPEx.TestTools.Trapping
+  alias Snodo.Cancellation
+  alias Snodo.Server.Executor
+  alias Snodo.Transport.Stdio
+  alias SnodoTest.TestFixtures
+  alias SnodoTest.TestInput
+  alias SnodoTest.TestSubscriptionHub
+  alias SnodoTest.TestSubscriptionSource
+  alias SnodoTest.TestTools.Trapping
 
   @moduletag capture_log: true
   @moduletag mcp_contract: ["stdio-write-deadline"]
@@ -31,13 +31,13 @@ defmodule MCP.Transport.StdioWriteTimeoutTest do
 
   defmodule ProgressTool do
     @moduledoc false
-    use MCP.Tool, name: "write_progress"
+    use Snodo.Tool, name: "write_progress"
 
     @impl true
     def call(_arguments, context) do
-      :ok = MCP.Progress.report(context, 0)
-      :ok = MCP.Progress.report(context, 1)
-      {:ok, MCP.Result.text("complete")}
+      :ok = Snodo.Progress.report(context, 0)
+      :ok = Snodo.Progress.report(context, 1)
+      {:ok, Snodo.Result.text("complete")}
     end
   end
 

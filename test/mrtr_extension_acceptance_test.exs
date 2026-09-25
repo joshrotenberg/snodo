@@ -1,14 +1,14 @@
-defmodule MCP.MRTR.ExtensionAcceptanceTest do
+defmodule Snodo.MRTR.ExtensionAcceptanceTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Router
-  alias MCP.Server
-  alias MCP.Server.Runtime
-  alias MCP.Transport.Context, as: TransportContext
-  alias MCPEx.MRTR.AroundExtension
-  alias MCPEx.MRTR.ObservedTool
-  alias MCPEx.MRTR.Server, as: ChoiceServer
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Router
+  alias Snodo.Server
+  alias Snodo.Server.Runtime
+  alias Snodo.Transport.Context, as: TransportContext
+  alias SnodoTest.MRTR.AroundExtension
+  alias SnodoTest.MRTR.ObservedTool
+  alias SnodoTest.MRTR.Server, as: ChoiceServer
 
   @form_caps %{"elicitation" => %{"form" => %{}}}
   @tool_params %{"name" => "observed_choice", "arguments" => %{}}
@@ -32,7 +32,7 @@ defmodule MCP.MRTR.ExtensionAcceptanceTest do
     assert_receive {:mrtr_tool, 1, %{}, first_tool_context}
     assert first_tool_context.metadata["mrtrMark"] == "seen-1"
     assert first_tool_context.request_params == initial_params
-    assert_receive {:mrtr_around_returned, 1, {:ok, %MCP.Result{kind: :input_required}}}
+    assert_receive {:mrtr_around_returned, 1, {:ok, %Snodo.Result{kind: :input_required}}}
 
     responses = %{"choice" => %{"action" => "accept", "content" => %{"label" => "chosen"}}}
 
@@ -60,7 +60,7 @@ defmodule MCP.MRTR.ExtensionAcceptanceTest do
     assert second_tool_context.request_state == "opaque-state"
     assert second_tool_context.input_responses == responses
     assert second_tool_context.metadata["mrtrMark"] == "seen-2"
-    assert_receive {:mrtr_around_returned, 2, {:ok, %MCP.Result{kind: :structured}}}
+    assert_receive {:mrtr_around_returned, 2, {:ok, %Snodo.Result{kind: :structured}}}
   end
 
   test "extension guard protocol errors are preserved on initial calls and retries" do
@@ -78,7 +78,7 @@ defmodule MCP.MRTR.ExtensionAcceptanceTest do
 
       refute Map.has_key?(response, "result")
       assert_receive {:mrtr_around, ^id, {:tools_call, "observed_choice"}, _params, _context}
-      assert_receive {:mrtr_around_returned, ^id, {:error, %MCP.Error{code: -32_602}}}
+      assert_receive {:mrtr_around_returned, ^id, {:error, %Snodo.Error{code: -32_602}}}
       refute_receive {:mrtr_tool, ^id, _arguments, _context}
     end
   end
@@ -89,7 +89,7 @@ defmodule MCP.MRTR.ExtensionAcceptanceTest do
     assert_missing_capability(response)
     assert_receive {:mrtr_tool, 1, %{}, context}
     assert context.client_capabilities == @form_caps
-    assert_receive {:mrtr_around_returned, 1, {:ok, %MCP.Result{kind: :input_required}}}
+    assert_receive {:mrtr_around_returned, 1, {:ok, %Snodo.Result{kind: :input_required}}}
   end
 
   @tag mcp_contract: ["mrtr-extension-composition"]
@@ -98,7 +98,7 @@ defmodule MCP.MRTR.ExtensionAcceptanceTest do
     assert_missing_capability(response)
     assert_receive {:mrtr_tool, 1, %{}, context}
     assert context.client_capabilities == @form_caps
-    assert_receive {:mrtr_around_returned, 1, {:ok, %MCP.Result{kind: :wire}}}
+    assert_receive {:mrtr_around_returned, 1, {:ok, %Snodo.Result{kind: :wire}}}
   end
 
   @tag mcp_contract: ["mrtr-extension-composition"]
@@ -141,7 +141,7 @@ defmodule MCP.MRTR.ExtensionAcceptanceTest do
       assert response["error"]["code"] == -32_603
       refute Map.has_key?(response, "result")
       assert_receive {:mrtr_around, ^index, _operation, _params, _context}
-      assert_receive {:mrtr_around_returned, ^index, {:ok, %MCP.Result{}}}
+      assert_receive {:mrtr_around_returned, ^index, {:ok, %Snodo.Result{}}}
     end
   end
 

@@ -1,19 +1,19 @@
-defmodule MCP.RouterAcceptanceTest do
+defmodule Snodo.RouterAcceptanceTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Context
-  alias MCP.Error
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Result
-  alias MCP.Router
-  alias MCP.Tool.Definition
-  alias MCP.Transport.Context, as: TransportContext
-  alias MCPEx.TestTools.Barrier
-  alias MCPEx.TestTools.ComplexSchema
-  alias MCPEx.TestTools.Echo
-  alias MCPEx.TestTools.EchoCollision
-  alias MCPEx.TestTools.Failing
-  alias MCPEx.TestTools.InvalidInputSchema
+  alias Snodo.Context
+  alias Snodo.Error
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Result
+  alias Snodo.Router
+  alias Snodo.Tool.Definition
+  alias Snodo.Transport.Context, as: TransportContext
+  alias SnodoTest.TestTools.Barrier
+  alias SnodoTest.TestTools.ComplexSchema
+  alias SnodoTest.TestTools.Echo
+  alias SnodoTest.TestTools.EchoCollision
+  alias SnodoTest.TestTools.Failing
+  alias SnodoTest.TestTools.InvalidInputSchema
 
   defp context(metadata \\ %{}) do
     %Context{

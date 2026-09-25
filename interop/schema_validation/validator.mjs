@@ -21,7 +21,7 @@ const ajv = new Ajv2020({
   coerceTypes: false,
   removeAdditional: false,
 });
-const schemaId = `urn:mcp-ex:pinned-wire-schema:${provenance.commit}`;
+const schemaId = `urn:snodo:pinned-wire-schema:${provenance.commit}`;
 ajv.addSchema(schema, schemaId);
 
 export function validator(definition) {

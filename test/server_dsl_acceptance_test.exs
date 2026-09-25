@@ -1,27 +1,27 @@
-defmodule MCP.ServerDslAcceptanceTest do
+defmodule Snodo.ServerDslAcceptanceTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Server.Runtime
-  alias MCPEx.TestPrompts.PackageAnalysis
-  alias MCPEx.TestResources.StaticText
-  alias MCPEx.TestServer
-  alias MCPEx.TestTools.ContextEcho
-  alias MCPEx.TestTools.Echo
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Server.Runtime
+  alias SnodoTest.TestPrompts.PackageAnalysis
+  alias SnodoTest.TestResources.StaticText
+  alias SnodoTest.TestServer
+  alias SnodoTest.TestTools.ContextEcho
+  alias SnodoTest.TestTools.Echo
 
   defmodule AttributeIdentityServer do
     @moduledoc false
     @version "9.8.7"
 
-    use MCP.Server,
+    use Snodo.Server,
       name: "attribute-identity",
       version: @version,
-      protocols: [MCP.Protocol.V2026_07_28]
+      protocols: [Snodo.Protocol.V2026_07_28]
   end
 
   defmodule ConfiguredValidator do
     @moduledoc false
-    @behaviour MCP.Schema.Validator
+    @behaviour Snodo.Schema.Validator
 
     @impl true
     def validate(_instance, _schema), do: :ok
@@ -30,10 +30,10 @@ defmodule MCP.ServerDslAcceptanceTest do
   defmodule ValidatedServer do
     @moduledoc false
 
-    use MCP.Server,
+    use Snodo.Server,
       name: "validated",
       version: "1.0.0",
-      protocols: [MCP.Protocol.V2026_07_28],
+      protocols: [Snodo.Protocol.V2026_07_28],
       schema_validator: ConfiguredValidator
   end
 
@@ -78,7 +78,7 @@ defmodule MCP.ServerDslAcceptanceTest do
       TestServer.runtime(pagination: [page_size: 0])
     end
 
-    assert %{type: :supervisor, start: {MCP.Server.Supervisor, :start_link, [opts]}} =
+    assert %{type: :supervisor, start: {Snodo.Server.Supervisor, :start_link, [opts]}} =
              TestServer.child_spec([])
 
     assert %Runtime{} = opts[:runtime]

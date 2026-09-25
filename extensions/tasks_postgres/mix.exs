@@ -1,13 +1,13 @@
-defmodule MCP.Extensions.Tasks.Postgres.MixProject do
+defmodule Snodo.Extensions.Tasks.Postgres.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :mcp_ex_tasks_postgres,
+      app: :snodo_tasks_postgres,
       version: "0.1.0",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
-      description: "PostgreSQL persistence adapter for mcp_ex Tasks",
+      description: "PostgreSQL persistence adapter for snodo Tasks",
       dialyzer: [
         plt_add_apps: [:mix],
         plt_local_path: "priv/plts",
@@ -37,7 +37,7 @@ defmodule MCP.Extensions.Tasks.Postgres.MixProject do
 
   defp deps do
     [
-      {:mcp_ex_tasks, path: "../tasks"},
+      {:snodo_tasks, path: "../tasks"},
       {:ecto_sql, "~> 3.14"},
       {:jason, "~> 1.4"},
       {:postgrex, "~> 0.22.4", optional: true},
@@ -50,7 +50,7 @@ defmodule MCP.Extensions.Tasks.Postgres.MixProject do
     [
       "example.postgres": [
         "compile --warnings-as-errors",
-        "mcp.example ../../examples/10_tasks_postgres.exs"
+        "snodo.example ../../examples/10_tasks_postgres.exs"
       ],
       quality: [
         "format --check-formatted",

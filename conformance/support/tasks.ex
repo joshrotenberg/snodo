@@ -1,17 +1,17 @@
-defmodule MCPEx.Conformance.Tasks.Greet do
-  use MCP.Tool,
+defmodule SnodoTest.Conformance.Tasks.Greet do
+  use Snodo.Tool,
     name: "greet",
     description: "Returns a synchronous greeting"
 
   @impl true
   def call(arguments, _context) do
     name = Map.get(arguments, "name", "World")
-    {:ok, MCP.Result.text("Hello, #{name}!")}
+    {:ok, Snodo.Result.text("Hello, #{name}!")}
   end
 end
 
-defmodule MCPEx.Conformance.Tasks.SlowCompute do
-  use MCP.Tool,
+defmodule SnodoTest.Conformance.Tasks.SlowCompute do
+  use Snodo.Tool,
     name: "slow_compute",
     description: "Completes after a caller-selected delay"
 
@@ -24,12 +24,12 @@ defmodule MCPEx.Conformance.Tasks.SlowCompute do
       Process.sleep(round(seconds * 1_000))
     end
 
-    {:ok, MCP.Result.text("Completed #{label}")}
+    {:ok, Snodo.Result.text("Completed #{label}")}
   end
 end
 
-defmodule MCPEx.Conformance.Tasks.FailingJob do
-  use MCP.Tool,
+defmodule SnodoTest.Conformance.Tasks.FailingJob do
+  use Snodo.Tool,
     name: "failing_job",
     description: "Returns a tool-domain error from task work"
 
@@ -37,8 +37,8 @@ defmodule MCPEx.Conformance.Tasks.FailingJob do
   def call(_arguments, _context), do: {:error, "The task job failed"}
 end
 
-defmodule MCPEx.Conformance.Tasks.ProtocolErrorJob do
-  use MCP.Tool,
+defmodule SnodoTest.Conformance.Tasks.ProtocolErrorJob do
+  use Snodo.Tool,
     name: "protocol_error_job",
     description: "Raises so the task records a protocol-level failure"
 
@@ -46,12 +46,12 @@ defmodule MCPEx.Conformance.Tasks.ProtocolErrorJob do
   def call(_arguments, _context), do: raise("intentional task fixture failure")
 end
 
-defmodule MCPEx.Conformance.Tasks.ConfirmDelete do
-  use MCP.Tool,
+defmodule SnodoTest.Conformance.Tasks.ConfirmDelete do
+  use Snodo.Tool,
     name: "confirm_delete",
     description: "Waits for one elicitation response inside a task"
 
-  alias MCP.Extensions.Tasks
+  alias Snodo.Extensions.Tasks
 
   @impl true
   def call(arguments, context) do
@@ -72,7 +72,7 @@ defmodule MCPEx.Conformance.Tasks.ConfirmDelete do
     case Tasks.await_input(context, "confirm-delete", request) do
       {:ok, response} ->
         confirmed = get_in(response, ["content", "confirm"]) == true
-        {:ok, MCP.Result.text("Delete confirmed: #{confirmed}")}
+        {:ok, Snodo.Result.text("Delete confirmed: #{confirmed}")}
 
       {:error, reason} ->
         raise "task input failed: #{inspect(reason)}"
@@ -80,12 +80,12 @@ defmodule MCPEx.Conformance.Tasks.ConfirmDelete do
   end
 end
 
-defmodule MCPEx.Conformance.Tasks.MultiInput do
-  use MCP.Tool,
+defmodule SnodoTest.Conformance.Tasks.MultiInput do
+  use Snodo.Tool,
     name: "multi_input",
     description: "Waits for two independent task-scoped elicitation responses"
 
-  alias MCP.Extensions.Tasks
+  alias Snodo.Extensions.Tasks
 
   @impl true
   def call(_arguments, context) do
@@ -98,7 +98,7 @@ defmodule MCPEx.Conformance.Tasks.MultiInput do
     with {:ok, first_response} <- Task.await(first, :infinity),
          {:ok, second_response} <- Task.await(second, :infinity) do
       names = [input_name(first_response), input_name(second_response)]
-      {:ok, MCP.Result.text("Inputs received: #{Enum.join(names, ", ")}")}
+      {:ok, Snodo.Result.text("Inputs received: #{Enum.join(names, ", ")}")}
     else
       {:error, reason} -> raise "task input failed: #{inspect(reason)}"
     end
@@ -123,19 +123,19 @@ defmodule MCPEx.Conformance.Tasks.MultiInput do
   defp input_name(response), do: get_in(response, ["content", "name"]) || "confirmed"
 end
 
-defmodule MCPEx.Conformance.Tasks.MRTRThenTask do
-  use MCP.Tool,
+defmodule SnodoTest.Conformance.Tasks.MRTRThenTask do
+  use Snodo.Tool,
     name: "test_tool_with_task",
     description: "Gathers MRTR input synchronously, then completes it as a task"
 
-  alias MCP.Extensions.Tasks
+  alias Snodo.Extensions.Tasks
 
   @impl true
   def call(_arguments, context) do
     case Tasks.input_responses(context) do
       responses when map_size(responses) == 0 ->
         {:ok,
-         MCP.Result.wire(%{
+         Snodo.Result.wire(%{
            "resultType" => "input_required",
            "inputRequests" => %{
              "user_name" => %{
@@ -156,26 +156,26 @@ defmodule MCPEx.Conformance.Tasks.MRTRThenTask do
       responses ->
         response = Map.get(responses, "user_name") || responses |> Map.values() |> List.first()
         name = get_in(response || %{}, ["content", "name"]) || "unknown"
-        {:ok, MCP.Result.text("Hello, #{name}; task completed")}
+        {:ok, Snodo.Result.text("Hello, #{name}; task completed")}
     end
   end
 end
 
-defmodule MCPEx.Conformance.Tasks do
+defmodule SnodoTest.Conformance.Tasks do
   @moduledoc false
 
-  alias MCP.Extensions.Tasks
-  alias MCP.Extensions.Tasks.Runner
-  alias MCP.Extensions.Tasks.Store.Memory
+  alias Snodo.Extensions.Tasks
+  alias Snodo.Extensions.Tasks.Runner
+  alias Snodo.Extensions.Tasks.Store.Memory
 
   @tools [
-    MCPEx.Conformance.Tasks.Greet,
-    MCPEx.Conformance.Tasks.SlowCompute,
-    MCPEx.Conformance.Tasks.FailingJob,
-    MCPEx.Conformance.Tasks.ProtocolErrorJob,
-    MCPEx.Conformance.Tasks.ConfirmDelete,
-    MCPEx.Conformance.Tasks.MultiInput,
-    MCPEx.Conformance.Tasks.MRTRThenTask
+    SnodoTest.Conformance.Tasks.Greet,
+    SnodoTest.Conformance.Tasks.SlowCompute,
+    SnodoTest.Conformance.Tasks.FailingJob,
+    SnodoTest.Conformance.Tasks.ProtocolErrorJob,
+    SnodoTest.Conformance.Tasks.ConfirmDelete,
+    SnodoTest.Conformance.Tasks.MultiInput,
+    SnodoTest.Conformance.Tasks.MRTRThenTask
   ]
 
   def tools, do: @tools

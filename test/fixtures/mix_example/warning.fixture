@@ -1,4 +1,4 @@
-defmodule MCP.MixExampleWarningFixture do
+defmodule Snodo.MixExampleWarningFixture do
   def run do
     unused_example_value = :warning
     :ok

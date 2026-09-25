@@ -99,13 +99,13 @@
           {Credo.Check.Readability.MaxLineLength, [priority: :low, max_length: 120]},
           {Credo.Check.Readability.ModuleAttributeNames, []},
           # Test fixtures are private compiled support modules, not public API.
-          {Credo.Check.Readability.ModuleDoc, [ignore_names: [~r/^MCPEx\./]]},
+          {Credo.Check.Readability.ModuleDoc, [ignore_names: [~r/^SnodoTest\./]]},
           # Exact revision modules intentionally mirror the dated wire identifier.
           {Credo.Check.Readability.ModuleNames,
            [
              ignore: [
-               ~r/^MCP\.Protocol\.V\d{4}_\d{2}_\d{2}$/,
-               ~r/^MCP\.Compliance\.V\d{4}_\d{2}_\d{2}VectorsTest$/
+               ~r/^Snodo\.Protocol\.V\d{4}_\d{2}_\d{2}$/,
+               ~r/^Snodo\.Compliance\.V\d{4}_\d{2}_\d{2}VectorsTest$/
              ]
            ]},
           {Credo.Check.Readability.ParenthesesInCondition, []},

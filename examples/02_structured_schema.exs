@@ -1,7 +1,7 @@
 defmodule Examples.StructuredSchema.Validator do
   @moduledoc false
 
-  @behaviour MCP.Schema.Validator
+  @behaviour Snodo.Schema.Validator
 
   @impl true
   def validate(value, %{"x-example-role" => "input"}) do
@@ -36,7 +36,7 @@ end
 defmodule Examples.StructuredSchema.NormalizeLabels do
   @moduledoc false
 
-  use MCP.Tool,
+  use Snodo.Tool,
     name: "normalize_labels",
     description: "Normalize a list of labels"
 
@@ -92,17 +92,17 @@ defmodule Examples.StructuredSchema.NormalizeLabels do
   def call(%{"labels" => labels}, _context) do
     Process.put({__MODULE__, :invocations}, invocations() + 1)
     normalized = Enum.map(labels, &String.upcase/1)
-    {:ok, MCP.Result.structured(%{"count" => length(normalized), "labels" => normalized})}
+    {:ok, Snodo.Result.structured(%{"count" => length(normalized), "labels" => normalized})}
   end
 end
 
 defmodule Examples.StructuredSchema.Server do
   @moduledoc false
 
-  use MCP.Server,
+  use Snodo.Server,
     name: "structured-schema-example",
     version: "0.1.0",
-    protocols: [MCP.Protocol.V2026_07_28]
+    protocols: [Snodo.Protocol.V2026_07_28]
 
   tool(Examples.StructuredSchema.NormalizeLabels)
 end
@@ -129,7 +129,7 @@ defmodule Examples.StructuredSchema.Runner do
       runtime = Server.runtime(schema_validator: Validator)
 
       {:ok, list_response} =
-        MCP.Test.dispatch(runtime,
+        Snodo.Test.dispatch(runtime,
           id: "list",
           protocol: "2026-07-28",
           method: "tools/list"
@@ -142,7 +142,7 @@ defmodule Examples.StructuredSchema.Runner do
       assert_equal(wire_tool["outputSchema"], NormalizeLabels.output_schema(), "output schema")
 
       {:ok, valid_response} =
-        MCP.Test.dispatch(runtime,
+        Snodo.Test.dispatch(runtime,
           id: "valid",
           protocol: "2026-07-28",
           method: "tools/call",
@@ -157,7 +157,7 @@ defmodule Examples.StructuredSchema.Runner do
       assert_equal(NormalizeLabels.invocations(), 1, "handler invocation count after valid input")
 
       {:ok, invalid_response} =
-        MCP.Test.dispatch(runtime,
+        Snodo.Test.dispatch(runtime,
           id: "invalid",
           protocol: "2026-07-28",
           method: "tools/call",
@@ -174,7 +174,7 @@ defmodule Examples.StructuredSchema.Runner do
       assert_equal(invalid_response, expected_invalid(), "invalid tools/call response")
 
       {:ok, missing_response} =
-        MCP.Test.dispatch(runtime,
+        Snodo.Test.dispatch(runtime,
           id: "missing",
           protocol: "2026-07-28",
           method: "tools/call",

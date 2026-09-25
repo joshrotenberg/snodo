@@ -1,10 +1,10 @@
 defmodule Examples.CustomExtension.Greeting do
   @moduledoc false
-  @behaviour MCP.Extension
+  @behaviour Snodo.Extension
 
-  alias MCP.Error
-  alias MCP.Extension.Method
-  alias MCP.Result
+  alias Snodo.Error
+  alias Snodo.Extension.Method
+  alias Snodo.Result
 
   @id "dev.example/greeting"
 
@@ -76,11 +76,11 @@ end
 
 defmodule Examples.CustomExtension.CoreCollision do
   @moduledoc false
-  @behaviour MCP.Extension
+  @behaviour Snodo.Extension
 
-  alias MCP.Error
-  alias MCP.Extension.Method
-  alias MCP.Result
+  alias Snodo.Error
+  alias Snodo.Extension.Method
+  alias Snodo.Result
 
   @impl true
   def id, do: "dev.example/core-collision"
@@ -115,10 +115,10 @@ end
 defmodule Examples.CustomExtension.Server do
   @moduledoc false
 
-  use MCP.Server,
+  use Snodo.Server,
     name: "custom-extension-example",
     version: "0.1.0",
-    protocols: [MCP.Protocol.V2026_07_28],
+    protocols: [Snodo.Protocol.V2026_07_28],
     extensions: [Examples.CustomExtension.Greeting],
     capabilities: %{
       "extensions" => %{
@@ -130,10 +130,10 @@ end
 defmodule Examples.CustomExtension.CollisionServer do
   @moduledoc false
 
-  use MCP.Server,
+  use Snodo.Server,
     name: "collision-example",
     version: "0.1.0",
-    protocols: [MCP.Protocol.V2026_07_28],
+    protocols: [Snodo.Protocol.V2026_07_28],
     extensions: [Examples.CustomExtension.CoreCollision]
 end
 
@@ -217,7 +217,7 @@ defmodule Examples.CustomExtension.Runner do
 
   defp dispatch(runtime, id, method, params \\ %{}, client_capabilities \\ %{}) do
     {:ok, response} =
-      MCP.Test.dispatch(runtime,
+      Snodo.Test.dispatch(runtime,
         id: id,
         protocol: @protocol,
         method: method,

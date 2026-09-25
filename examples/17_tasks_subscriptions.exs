@@ -1,6 +1,6 @@
 defmodule Examples.TasksSubscriptions.ControlledJob do
   @moduledoc false
-  use MCP.Tool, name: "controlled_job"
+  use Snodo.Tool, name: "controlled_job"
 
   @impl true
   def call(_arguments, _context) do
@@ -8,18 +8,18 @@ defmodule Examples.TasksSubscriptions.ControlledJob do
     send(owner, {:job_started, self()})
 
     receive do
-      :finish -> {:ok, MCP.Result.text("finished")}
+      :finish -> {:ok, Snodo.Result.text("finished")}
     end
   end
 end
 
 defmodule Examples.TasksSubscriptions.Source do
   @moduledoc false
-  @behaviour MCP.Subscription.Source
+  @behaviour Snodo.Subscription.Source
 
-  alias MCP.Extensions.Tasks
-  alias MCP.Extensions.Tasks.Snapshot
-  alias MCP.Extensions.Tasks.Store
+  alias Snodo.Extensions.Tasks
+  alias Snodo.Extensions.Tasks.Snapshot
+  alias Snodo.Extensions.Tasks.Store
 
   @impl true
   def open(filter, context, store) do
@@ -61,13 +61,13 @@ defmodule Examples.TasksSubscriptions.Runner do
 
   alias Examples.TasksSubscriptions.ControlledJob
   alias Examples.TasksSubscriptions.Source
-  alias MCP.Extensions.Tasks
-  alias MCP.Extensions.Tasks.Runner, as: TaskRunner
-  alias MCP.Extensions.Tasks.Store.Memory
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Router
-  alias MCP.Server.Runtime
-  alias MCP.Subscription
+  alias Snodo.Extensions.Tasks
+  alias Snodo.Extensions.Tasks.Runner, as: TaskRunner
+  alias Snodo.Extensions.Tasks.Store.Memory
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Router
+  alias Snodo.Server.Runtime
+  alias Snodo.Subscription
 
   @protocol "2026-07-28"
 
@@ -147,7 +147,7 @@ defmodule Examples.TasksSubscriptions.Runner do
 
   defp call_task(runtime) do
     {:ok, response} =
-      MCP.Test.dispatch(runtime,
+      Snodo.Test.dispatch(runtime,
         id: "create-task",
         protocol: @protocol,
         method: "tools/call",
@@ -159,7 +159,7 @@ defmodule Examples.TasksSubscriptions.Runner do
   end
 
   defp listen(runtime, task_id) do
-    MCP.Test.dispatch(runtime,
+    Snodo.Test.dispatch(runtime,
       id: "listen-task",
       protocol: @protocol,
       method: "subscriptions/listen",

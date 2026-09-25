@@ -1,7 +1,7 @@
 # PostgreSQL Tasks store
 
-`mcp_ex_tasks_postgres` is the optional, multi-node persistence package for
-`mcp_ex_tasks`. It implements `MCP.Extensions.Tasks.Store` with PostgreSQL row
+`snodo_tasks_postgres` is the optional, multi-node persistence package for
+`snodo_tasks`. It implements `Snodo.Extensions.Tasks.Store` with PostgreSQL row
 locks and an application-owned `Ecto.Repo`.
 
 The package never starts a Repo, creates a database, or runs a migration. Those
@@ -36,11 +36,11 @@ defmodule MyApp.Repo.Migrations.AddMcpTasks do
   use Ecto.Migration
 
   def up do
-    MCP.Extensions.Tasks.Store.Postgres.Migration.up()
+    Snodo.Extensions.Tasks.Store.Postgres.Migration.up()
   end
 
   def down do
-    MCP.Extensions.Tasks.Store.Postgres.Migration.down()
+    Snodo.Extensions.Tasks.Store.Postgres.Migration.down()
   end
 end
 ```
@@ -49,7 +49,7 @@ For a PostgreSQL schema other than the Repo default, pass the same prefix to
 both migration and adapter:
 
 ```elixir
-MCP.Extensions.Tasks.Store.Postgres.Migration.up(prefix: "automation")
+Snodo.Extensions.Tasks.Store.Postgres.Migration.up(prefix: "automation")
 ```
 
 That facade creates the current version-two schema from an empty database. To
@@ -61,11 +61,11 @@ defmodule MyApp.Repo.Migrations.UpgradeMcpTasksToV2 do
   use Ecto.Migration
 
   def up do
-    MCP.Extensions.Tasks.Store.Postgres.Migration.V2.up(prefix: "automation")
+    Snodo.Extensions.Tasks.Store.Postgres.Migration.V2.up(prefix: "automation")
   end
 
   def down do
-    MCP.Extensions.Tasks.Store.Postgres.Migration.V2.down(prefix: "automation")
+    Snodo.Extensions.Tasks.Store.Postgres.Migration.V2.down(prefix: "automation")
   end
 end
 ```
@@ -99,8 +99,8 @@ readiness check.
 Build immutable store configuration around the already-running Repo:
 
 ```elixir
-alias MCP.Extensions.Tasks.Runner
-alias MCP.Extensions.Tasks.Store.Postgres
+alias Snodo.Extensions.Tasks.Runner
+alias Snodo.Extensions.Tasks.Store.Postgres
 
 postgres =
   Postgres.new!(
@@ -140,7 +140,7 @@ runners and BEAM nodes can use the same store concurrently.
 
 ## Authorization scope
 
-`MCP.Context` crosses the adapter only through `authorize/3`. The application
+`Snodo.Context` crosses the adapter only through `authorize/3`. The application
 scope callback must return JSON-safe data: null, booleans, finite numbers,
 strings, lists, or maps with string keys. Scalar scopes such as `"tenant-a"`
 are supported and stored in a versioned JSON object envelope. Atoms, tuples,
@@ -228,18 +228,18 @@ The live transaction lane is deliberately separate from default unit quality.
 Point it at a dedicated PostgreSQL database:
 
 ```sh
-MCP_TASKS_DATABASE_URL=ecto://postgres:postgres@127.0.0.1:55432/mcp_ex_tasks \
+SNODO_TASKS_DATABASE_URL=ecto://postgres:postgres@127.0.0.1:55432/snodo_tasks \
   mix quality.postgres
 ```
 
 `mix tasks.postgres.live` runs the same live evidence without the preceding
 format, compile, and executable-example gates. `mix example.postgres` runs only
 [`10_tasks_postgres.exs`](../../examples/10_tasks_postgres.exs). All three
-commands fail with a direct configuration error when `MCP_TASKS_DATABASE_URL`
+commands fail with a direct configuration error when `SNODO_TASKS_DATABASE_URL`
 is absent.
 
 ```sh
-MCP_TASKS_DATABASE_URL=ecto://postgres:postgres@127.0.0.1:55432/mcp_ex_tasks \
+SNODO_TASKS_DATABASE_URL=ecto://postgres:postgres@127.0.0.1:55432/snodo_tasks \
   mix example.postgres
 ```
 

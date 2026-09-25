@@ -1,13 +1,13 @@
-# mcp_ex architecture spike
+# snodo architecture spike
 
 Development follows the [application readiness plan](docs/application-readiness-plan.md),
 with `hexpm-mcp` as the first real application and independent protocol/client
 evidence as the acceptance boundary.
 
-`mcp_ex` is a router-first Elixir spike for the final MCP `2026-07-28`
+`snodo` is a router-first Elixir spike for the final MCP `2026-07-28`
 protocol. The protocol core is a standalone, runtime-dependency-free Mix
 library. The released Tasks proof is an independently buildable
-`:mcp_ex_tasks` child package with a one-way dependency on that core; its
+`:snodo_tasks` child package with a one-way dependency on that core; its
 PostgreSQL and SQLite implementations are optional sibling packages:
 
 - a synchronous, immutable router that needs no process;
@@ -23,7 +23,7 @@ PostgreSQL and SQLite implementations are optional sibling packages:
   long-lived HTTP SSE, backed by an application-owned pull source with one
   event in flight per subscription, plus negotiated extension-owned filter and
   event shaping without adding extension methods to the core profile;
-- an opt-in, application-supervised `MCP.Subscription.Hub` producer with
+- an opt-in, application-supervised `Snodo.Subscription.Hub` producer with
   filter-aware broadcast, bounded per-listener queues, explicit overflow
   policy, delivery statistics, and core notification helpers;
 - dependency-free instrumentation sinks for dispatch, subscription
@@ -46,26 +46,26 @@ PostgreSQL and SQLite implementations are optional sibling packages:
   restart recovery, deterministic mid-task input replay, a local durable DETS
   adapter, persisted exact-delay retry/backoff, cancellation races, and exact
   task routing headers;
-- an optional `:mcp_ex_tasks_postgres` store with an application-owned
+- an optional `:snodo_tasks_postgres` store with an application-owned
   `Ecto.Repo`, explicit migrations, JSONB aggregates and ledgers,
   database-clock leases, and `FOR UPDATE SKIP LOCKED` recovery;
-- an optional `:mcp_ex_tasks_sqlite` store with an application-owned
+- an optional `:snodo_tasks_sqlite` store with an application-owned
   file-backed Repo, explicit migration, versioned JSON aggregates and ledgers,
   database-clock leases, and `BEGIN IMMEDIATE` single-writer serialization;
-- a runtime-configurable `MCP.Schema.Validator` boundary;
-- declarative `use MCP.Server`, `use MCP.Tool`, `use MCP.Resource`, and
-  `use MCP.Prompt` developer APIs, with definition-owned completion callbacks.
+- a runtime-configurable `Snodo.Schema.Validator` boundary;
+- declarative `use Snodo.Server`, `use Snodo.Tool`, `use Snodo.Resource`, and
+  `use Snodo.Prompt` developer APIs, with definition-owned completion callbacks.
 
 The core runtime uses Elixir's built-in `JSON` module, available from Elixir
 1.18, and has no runtime dependencies. The Tasks package depends at runtime
-only on `mcp_ex`. Both database siblings depend inward on Tasks plus Ecto SQL
+only on `snodo`. Both database siblings depend inward on Tasks plus Ecto SQL
 and Jason; Postgrex and `ecto_sqlite3` are optional because the host application
 supplies and supervises its Repo. Optional Plug and JSV packages add application
 hosting and schema validation without changing that core graph. All six packages
 keep Credo and Dialyxir development/test-only. The framework preserves and advertises schemas.
 A custom validator can enforce inputs and structured outputs through
 `validate/2`. The dependency-free runtime default remains intentionally
-pass-through, while the included `MCP.Schema.Validator.Basic` enforces the
+pass-through, while the included `Snodo.Schema.Validator.Basic` enforces the
 common object, array, primitive, enum, const, and size/bounds subset. A complete
 JSON Schema backend remains application-selectable.
 
@@ -73,7 +73,7 @@ JSON Schema backend remains application-selectable.
 
 ```elixir
 defmodule Echo do
-  use MCP.Tool,
+  use Snodo.Tool,
     name: "echo",
     description: "Echo text"
 
@@ -85,26 +85,26 @@ defmodule Echo do
 
   @impl true
   def call(%{"text" => text}, _context) do
-    {:ok, MCP.Result.text(text)}
+    {:ok, Snodo.Result.text(text)}
   end
 end
 
 defmodule EchoServer do
-  use MCP.Server,
+  use Snodo.Server,
     name: "echo-server",
     version: "0.1.0",
-    protocols: [MCP.Protocol.V2026_07_28]
+    protocols: [Snodo.Protocol.V2026_07_28]
 
   tool Echo
 end
 ```
 
 For common object-shaped inputs, the opt-in simple layer generates that same
-ordinary `MCP.Tool` definition without changing handler arguments or dispatch:
+ordinary `Snodo.Tool` definition without changing handler arguments or dispatch:
 
 ```elixir
 defmodule SimpleEcho do
-  use MCP.Tool.Simple,
+  use Snodo.Tool.Simple,
     name: "echo",
     description: "Echo text",
     additional_properties: false
@@ -112,30 +112,30 @@ defmodule SimpleEcho do
   argument "text", :string, required: true, min_length: 1
 
   @impl true
-  def call(%{"text" => text}, _context), do: {:ok, MCP.Result.text(text)}
+  def call(%{"text" => text}, _context), do: {:ok, Snodo.Result.text(text)}
 end
 
 defmodule ValidatedEchoServer do
-  use MCP.Server,
+  use Snodo.Server,
     name: "validated-echo-server",
     version: "0.1.0",
-    schema_validator: MCP.Schema.Validator.Basic
+    schema_validator: Snodo.Schema.Validator.Basic
 
   tool SimpleEcho
 end
 ```
 
 `argument/3` also accepts nested array types and raw property-schema maps. The
-raw `MCP.Tool` DSL remains the direct path for fully hand-authored root schemas.
+raw `Snodo.Tool` DSL remains the direct path for fully hand-authored root schemas.
 
 Small components can be declared inline. Each block becomes a module that uses
-`MCP.Tool.Simple`, `MCP.Resource.Simple`, or `MCP.Prompt.Simple`, named after
+`Snodo.Tool.Simple`, `Snodo.Resource.Simple`, or `Snodo.Prompt.Simple`, named after
 the component (`InlineServer.Tools.Greet` here) and registered like any module
 component:
 
 ```elixir
 defmodule InlineServer do
-  use MCP.Server, name: "inline-server", version: "0.1.0"
+  use Snodo.Server, name: "inline-server", version: "0.1.0"
 
   tool "greet", description: "Create a greeting" do
     argument "name", :string, required: true
@@ -162,30 +162,30 @@ end
 
 The `Simple` resource and prompt modules accept plain return values. A resource
 string is text at the requested URI and any other JSON value is JSON content; a
-prompt string is one user message. `MCP.Result` remains the explicit form for
+prompt string is one user message. `Snodo.Result` remains the explicit form for
 cache hints, blobs, several contents, descriptions, and `input_required`.
 Example 25 runs this shape end to end.
 
-`MCP.Client.direct/2` talks to a server in the calling process, with no
+`Snodo.Client.direct/2` talks to a server in the calling process, with no
 transport or process in between:
 
 ```elixir
-{:ok, client} = MCP.Client.direct(EchoServer.runtime())
-{:ok, [%{"name" => "echo"}]} = MCP.Client.list_tools(client)
+{:ok, client} = Snodo.Client.direct(EchoServer.runtime())
+{:ok, [%{"name" => "echo"}]} = Snodo.Client.list_tools(client)
 
-{:ok, result} = MCP.Client.call_tool(client, "echo", %{"text" => "hello"})
+{:ok, result} = Snodo.Client.call_tool(client, "echo", %{"text" => "hello"})
 result["content"]
 #=> [%{"type" => "text", "text" => "hello"}]
 ```
 
 The client adds the protocol metadata each request needs and returns the
 JSON-RPC `result` object, `{:input_required, result}` for a multi round-trip
-request, or `{:error, %MCP.Error{}}`. The same calls work against a stdio
+request, or `{:error, %Snodo.Error{}}`. The same calls work against a stdio
 subprocess or a Streamable HTTP endpoint:
 
 ```elixir
-{:ok, client} = MCP.Client.connect({:stdio, "elixir", ["echo_server.exs"]})
-{:ok, client} = MCP.Client.connect({:http, "http://127.0.0.1:4000/mcp"})
+{:ok, client} = Snodo.Client.connect({:stdio, "elixir", ["echo_server.exs"]})
+{:ok, client} = Snodo.Client.connect({:http, "http://127.0.0.1:4000/mcp"})
 ```
 
 Example 24 runs one set of calls over all three.
@@ -202,7 +202,7 @@ Example 10 is a separate live-PostgreSQL setup walkthrough:
 
 ```sh
 cd extensions/tasks_postgres
-MCP_TASKS_DATABASE_URL=ecto://postgres:postgres@127.0.0.1:55432/mcp_ex_tasks \
+SNODO_TASKS_DATABASE_URL=ecto://postgres:postgres@127.0.0.1:55432/snodo_tasks \
   mix example.postgres
 ```
 
@@ -282,9 +282,9 @@ raw JSON-RPC map
   -> selected dialect wire/stream shaping
 ```
 
-`MCP.Router.dispatch/4` and `MCP.Server.dispatch/3` are synchronous and execute
+`Snodo.Router.dispatch/4` and `Snodo.Server.dispatch/3` are synchronous and execute
 in their caller. Direct code invokes them as ordinary functions. Transports or
-applications may wrap that core with `MCP.Server.Executor`, which owns only
+applications may wrap that core with `Snodo.Server.Executor`, which owns only
 bounded admission, queueing, deadlines, cancellation tokens, and supervised
 worker tasks, including cleanup when a submitting owner dies. The stdio adapter
 owns framing, connection-local request tracking, outcome-to-wire mapping, and
@@ -322,7 +322,7 @@ target-shaped `hexpm-mcp` workflows.
 
 Completion is definition-owned rather than globally registered. Prompts and
 resource templates opt in with explicit `completion_arguments` and implement
-`complete/2`, which receives a normalized `MCP.Completion` plus `MCP.Context`.
+`complete/2`, which receives a normalized `Snodo.Completion` plus `Snodo.Context`.
 The router resolves exact prompt names and URI-template strings, validates
 string arguments and context, caps results at 100 values, and shapes optional
 `total` and `hasMore` hints without list-cache or cursor semantics. Resource
@@ -330,7 +330,7 @@ templates continue to own matching and expansion; completion does not add a
 partial RFC 6570 implementation. See `examples/14_completions.exs`.
 
 List pagination is applied once after protocol-neutral router dispatch. Routers
-still return complete catalogs in stable name/URI order; `MCP.Pagination` slices
+still return complete catalogs in stable name/URI order; `Snodo.Pagination` slices
 those results using a runtime policy whose default page size is 100. Configure
 it declaratively with `pagination: [page_size: 50]` or override it in
 `Server.runtime/1`. Cursors are deterministic and scoped to the protocol
@@ -343,24 +343,24 @@ the final page. See `examples/15_pagination.exs`.
 Application authorization is an optional seam rather than a role system. A
 runtime configured with `authorization: MyApp.Policy` or
 `authorization: {MyApp.Policy, options}` calls `authorize/4` with the phase,
-an `MCP.Authorization.Component` naming the registered component, and the
-derived `MCP.Context`. The seam sits inside the router, below every transport
+an `Snodo.Authorization.Component` naming the registered component, and the
+derived `Snodo.Context`. The seam sits inside the router, below every transport
 and enabled dialect, so direct, stdio, native HTTP, and Plug dispatch share one
 decision. A `:discovery` refusal removes the component from `tools/list`,
 `prompts/list`, `resources/list`, and `resources/templates/list`; an
 `:invocation` refusal ends `tools/call`, `prompts/get`, `resources/read`, and
 `completion/complete` before argument validation and before any application
-callback, returning the application's own `MCP.Error` rather than an
+callback, returning the application's own `Snodo.Error` rather than an
 indistinguishable unknown-name error. Because filtering happens before
 pagination, a cursor is minted against the catalog that context can actually
-see and expires when replayed against a different effective catalog. `mcp_ex`
+see and expires when replayed against a different effective catalog. `snodo`
 supplies no identity, role, credential, refusal code, or logging: the policy
 callback is the one place an application records a refusal. A policy that
 raises or returns something else is a fault, and fails the operation instead of
 silently emptying a catalog. See `examples/23_authorization.exs`.
 
 Subscriptions are request-scoped streams rather than router state.
-`MCP.Subscription.Source` opens an application handle, negotiates a subset of
+`Snodo.Subscription.Source` opens an application handle, negotiates a subset of
 the capability-supported filter, blocks in `next/2`, and closes that handle on
 cancellation, disconnect, completion, or failure. The framework writes the
 required acknowledgement before starting a dedicated pull worker, never pulls
@@ -372,13 +372,13 @@ disables proxy buffering, sends keepalive comments, and treats socket closure
 as abrupt cancellation. Advertised exact-version extensions may contribute
 validated filter fields and shape only events selected by their own accepted
 filter. Applications that do not need a custom source can supervise
-`MCP.Subscription.Hub`, pass `MCP.Subscription.Hub.source(hub)` to the runtime,
+`Snodo.Subscription.Hub`, pass `Snodo.Subscription.Hub.source(hub)` to the runtime,
 and publish core or extension events through its bounded, filter-aware queues.
 The hub never detects application changes or mutates the router. See
 `examples/16_subscriptions.exs`, `examples/17_tasks_subscriptions.exs`, and
 `examples/18_subscription_hub.exs`.
 
-`MCP.Instrumentation` accepts an application sink on the immutable runtime,
+`Snodo.Instrumentation` accepts an application sink on the immutable runtime,
 subscription hub, and Tasks runner. It emits telemetry-shaped names with native
 duration measurements and bounded lifecycle metadata, but takes no dependency
 on a metrics library. Sink faults are isolated from protocol behavior. See
@@ -391,12 +391,12 @@ tests supply a `2099-01-01` dialect without changing framework code.
 Applications can install a complete JSON Schema 2020-12 backend per runtime:
 
 ```elixir
-EchoServer.runtime(schema_validator: MCP.Schema.Validator.JSV)
+EchoServer.runtime(schema_validator: Snodo.Schema.Validator.JSV)
 ```
 
-The optional [`mcp_ex_jsv` package](integrations/schema_jsv/README.md) supplies
+The optional [`snodo_jsv` package](integrations/schema_jsv/README.md) supplies
 this implementation without adding core dependencies. A custom module can still
-implement `MCP.Schema.Validator`, receiving the original instance and untouched
+implement `Snodo.Schema.Validator`, receiving the original instance and untouched
 schema map. See the [recommended stack](docs/application-stack.md) for validation
 policy, bounded progress, and version-support decisions.
 
@@ -404,30 +404,30 @@ Applications that only need the included common subset can configure it on the
 server, as above, or per runtime:
 
 ```elixir
-EchoServer.runtime(schema_validator: MCP.Schema.Validator.Basic)
+EchoServer.runtime(schema_validator: Snodo.Schema.Validator.Basic)
 ```
 
 The same immutable runtime can be served over native HTTP:
 
 ```elixir
 {:ok, http} =
-  MCP.Transport.StreamableHTTP.Server.start_link(
+  Snodo.Transport.StreamableHTTP.Server.start_link(
     runtime: EchoServer.runtime(),
     port: 0
   )
 
-MCP.Transport.StreamableHTTP.Server.url(http)
+Snodo.Transport.StreamableHTTP.Server.url(http)
 ```
 
-Applications can use the optional [`mcp_ex_plug` integration](integrations/plug/README.md)
+Applications can use the optional [`snodo_plug` integration](integrations/plug/README.md)
 with an application-owned Bandit/server and authentication pipeline. Other hosts
-can translate requests into `MCP.Transport.StreamableHTTP.Request` and call the
+can translate requests into `Snodo.Transport.StreamableHTTP.Request` and call the
 pure adapter. The built-in listener intentionally implements one request per
 connection. Native HTTP and Plug support ordinary JSON results, request-progress
 SSE, and request-scoped subscription SSE; these lifecycles remain distinct.
 
-Out-of-tree modules implement `MCP.Extension`, declare exact-versioned
-`MCP.Extension.Method` values, and are installed with `extensions:` on the
+Out-of-tree modules implement `Snodo.Extension`, declare exact-versioned
+`Snodo.Extension.Method` values, and are installed with `extensions:` on the
 server. Runtime construction rejects duplicate IDs, collisions with every core
 method (including unsupported and MRTR-only rules), and cross-extension method
 collisions. An installed route executes only when both peers advertise it and
@@ -467,10 +467,10 @@ ordered plan—including both Ecto-backed walkthroughs—is in
 
 ## Interactive operations (MRTR)
 
-Ordinary tools, resources, and prompts can return `MCP.Result.input_required/1`
-with requests built by `MCP.Elicitation.form/2` or `url/2`. The current request
+Ordinary tools, resources, and prompts can return `Snodo.Result.input_required/1`
+with requests built by `Snodo.Elicitation.form/2` or `url/2`. The current request
 ends; a client retry invokes the handler again with a fresh request context.
-Consume named answers with `MCP.Elicitation.response/3` and use `MCP.MRTR.State`
+Consume named answers with `Snodo.Elicitation.response/3` and use `Snodo.MRTR.State`
 for integrity-protected state bound to the principal and original operation.
 No suspended process or shared continuation store is required.
 
@@ -492,7 +492,7 @@ deprecated roots and sampling input requests remain unsupported.
 ```sh
 mix quality
 mix quality.types
-mix mcp.contract
+mix snodo.contract
 mix examples
 ```
 
@@ -508,7 +508,7 @@ alias-policy exceptions. The default examples gate requires a POSIX host with
 07–09 and 17 are delegated to Tasks, example 11 to SQLite, example 21 to Plug,
 and example 22 to JSV. Example 10 stays in the opt-in PostgreSQL lane.
 
-`mix mcp.contract` runs 31 core evidence groups across literal direct/stdio
+`mix snodo.contract` runs 31 core evidence groups across literal direct/stdio
 vectors, native HTTP admission/listener behavior, and generic extension
 registration and negotiated dispatch, including Resources, Prompts, and
 Completion, Pagination, and Subscription routing and wire shapes. The
@@ -538,7 +538,7 @@ cd extensions/tasks_postgres
 mix quality
 mix quality.types
 mix tasks.postgres.contract
-MCP_TASKS_DATABASE_URL=ecto://postgres:postgres@127.0.0.1:55432/mcp_ex_tasks \
+SNODO_TASKS_DATABASE_URL=ecto://postgres:postgres@127.0.0.1:55432/snodo_tasks \
   mix quality.postgres
 ```
 
@@ -581,7 +581,7 @@ Eight generic core wire-schema checks still reject the
 extension-defined `CreateTaskResult`, so the probe remains explicitly non-zero
 and is not presented as a whole-scenario conformance pass.
 
-For automation, `mix mcp.contract --format json --output mcp-contract.json`
+For automation, `mix snodo.contract --format json --output mcp-contract.json`
 writes one machine-readable JSON document after verifying the pinned frozen
 requirement artifact and exact tagged test-evidence coverage. The output file
 is isolated from compiler and test progress.
@@ -604,8 +604,8 @@ build instructions, fresh evidence, and limits of that acceptance check.
 ## Opt-in initialize-era HTTP clients
 
 The default remains `2026-07-28`. For clients that still initialize, explicitly
-configure `protocols: [MCP.Protocol.V2026_07_28, MCP.Protocol.V2025_11_25,
-MCP.Protocol.V2025_06_18]` on `MCP.Server` or `MCP.Server.Runtime.new/1`.
+configure `protocols: [Snodo.Protocol.V2026_07_28, Snodo.Protocol.V2025_11_25,
+Snodo.Protocol.V2025_06_18]` on `Snodo.Server` or `Snodo.Server.Runtime.new/1`.
 See the [compatibility scope](docs/legacy-http-plan.md) for lifecycle, capability,
 identity and client evidence. This enables the HTTP tools/resources/prompts
 slice without adding session storage or changing the latest protocol.

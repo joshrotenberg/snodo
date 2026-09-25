@@ -1,29 +1,29 @@
-defmodule MCP.AuthorizationAcceptanceTest do
+defmodule Snodo.AuthorizationAcceptanceTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Authorization
-  alias MCP.Protocol.V2025_06_18
-  alias MCP.Protocol.V2025_11_25
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Server
-  alias MCP.Test, as: MCPTest
-  alias MCP.Transport.Context, as: TransportContext
-  alias MCP.Transport.Stdio
-  alias MCP.Transport.StreamableHTTP
-  alias MCP.Transport.StreamableHTTP.Request
-  alias MCPEx.TestAuthorization.DenyAll
-  alias MCPEx.TestAuthorization.InvalidDecision
-  alias MCPEx.TestAuthorization.NotAPolicy
-  alias MCPEx.TestAuthorization.Policy
-  alias MCPEx.TestAuthorization.ProbePrompt
-  alias MCPEx.TestAuthorization.ProbeResource
-  alias MCPEx.TestAuthorization.ProbeTemplate
-  alias MCPEx.TestAuthorization.ProbeTool
-  alias MCPEx.TestAuthorization.Raising
-  alias MCPEx.TestFixtures
-  alias MCPEx.TestPrompts.PackageAnalysis
-  alias MCPEx.TestResources.StaticText
-  alias MCPEx.TestTools.Echo
+  alias Snodo.Authorization
+  alias Snodo.Protocol.V2025_06_18
+  alias Snodo.Protocol.V2025_11_25
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Server
+  alias Snodo.Test, as: MCPTest
+  alias Snodo.Transport.Context, as: TransportContext
+  alias Snodo.Transport.Stdio
+  alias Snodo.Transport.StreamableHTTP
+  alias Snodo.Transport.StreamableHTTP.Request
+  alias SnodoTest.TestAuthorization.DenyAll
+  alias SnodoTest.TestAuthorization.InvalidDecision
+  alias SnodoTest.TestAuthorization.NotAPolicy
+  alias SnodoTest.TestAuthorization.Policy
+  alias SnodoTest.TestAuthorization.ProbePrompt
+  alias SnodoTest.TestAuthorization.ProbeResource
+  alias SnodoTest.TestAuthorization.ProbeTemplate
+  alias SnodoTest.TestAuthorization.ProbeTool
+  alias SnodoTest.TestAuthorization.Raising
+  alias SnodoTest.TestFixtures
+  alias SnodoTest.TestPrompts.PackageAnalysis
+  alias SnodoTest.TestResources.StaticText
+  alias SnodoTest.TestTools.Echo
 
   @protocol "2026-07-28"
   @refused Policy.refusal_code()
@@ -316,13 +316,13 @@ defmodule MCP.AuthorizationAcceptanceTest do
   defmodule DeclaredServer do
     @moduledoc false
 
-    use MCP.Server,
+    use Snodo.Server,
       name: "declared-authorization",
       version: "1.0.0",
-      protocols: [MCP.Protocol.V2026_07_28],
-      authorization: MCPEx.TestAuthorization.DenyAll
+      protocols: [Snodo.Protocol.V2026_07_28],
+      authorization: SnodoTest.TestAuthorization.DenyAll
 
-    tool(MCPEx.TestTools.Echo)
+    tool(SnodoTest.TestTools.Echo)
   end
 
   test "the server DSL carries a declared policy into every runtime" do
@@ -349,7 +349,7 @@ defmodule MCP.AuthorizationAcceptanceTest do
     end
 
     assert_raise ArgumentError, ~r/could not be loaded/, fn ->
-      Authorization.normalize!(MCPEx.TestAuthorization.Missing)
+      Authorization.normalize!(SnodoTest.TestAuthorization.Missing)
     end
 
     assert_raise ArgumentError, ~r/must be a module or a \{module, options\} tuple/, fn ->

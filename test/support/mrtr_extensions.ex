@@ -1,12 +1,12 @@
-defmodule MCPEx.MRTR.AroundExtension do
+defmodule SnodoTest.MRTR.AroundExtension do
   @moduledoc false
-  use MCPEx.TestExtensions.Definition,
+  use SnodoTest.TestExtensions.Definition,
     id: "com.example/mrtr-around",
     name: "com.example/mrtr-around"
 
-  alias MCP.Error
-  alias MCP.Result
-  alias MCPEx.MRTR.Choice
+  alias Snodo.Error
+  alias Snodo.Result
+  alias SnodoTest.MRTR.Choice
 
   @impl true
   def around_dispatch(operation, params, context, next) do
@@ -58,13 +58,13 @@ defmodule MCPEx.MRTR.AroundExtension do
   defp as_wire(result), do: Result.wire(Map.put(result.value, "resultType", "input_required"))
 end
 
-defmodule MCPEx.MRTR.ObservedTool do
+defmodule SnodoTest.MRTR.ObservedTool do
   @moduledoc false
-  use MCP.Tool, name: "observed_choice"
+  use Snodo.Tool, name: "observed_choice"
 
-  alias MCP.Result
-  alias MCPEx.MRTR.AroundExtension
-  alias MCPEx.MRTR.Choice
+  alias Snodo.Result
+  alias SnodoTest.MRTR.AroundExtension
+  alias SnodoTest.MRTR.Choice
 
   @impl true
   def call(arguments, context) do

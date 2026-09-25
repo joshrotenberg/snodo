@@ -1,5 +1,5 @@
-defmodule MCPEx.StdioSubprocessFixture.NoisyTool do
-  use MCP.Tool,
+defmodule SnodoTest.StdioSubprocessFixture.NoisyTool do
+  use Snodo.Tool,
     name: "noisy",
     description: "Writes diagnostics before returning a protocol result"
 
@@ -18,22 +18,22 @@ defmodule MCPEx.StdioSubprocessFixture.NoisyTool do
     IO.puts("STDIO_FIXTURE_RAW_IO")
     Logger.flush()
 
-    {:ok, MCP.Result.text(text)}
+    {:ok, Snodo.Result.text(text)}
   end
 end
 
 router =
-  MCP.Router.new()
-  |> MCP.Router.register_tool(MCPEx.StdioSubprocessFixture.NoisyTool)
+  Snodo.Router.new()
+  |> Snodo.Router.register_tool(SnodoTest.StdioSubprocessFixture.NoisyTool)
 
 runtime =
-  MCP.Server.Runtime.new(
+  Snodo.Server.Runtime.new(
     router: router,
-    protocols: [MCP.Protocol.V2026_07_28],
+    protocols: [Snodo.Protocol.V2026_07_28],
     server_info: %{"name" => "stdio-subprocess-fixture", "version" => "0.1.0"}
   )
 
-case MCP.Transport.Stdio.serve(runtime) do
+case Snodo.Transport.Stdio.serve(runtime) do
   :ok -> :ok
   {:error, reason} -> raise "stdio fixture failed: #{inspect(reason)}"
 end

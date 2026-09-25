@@ -1,7 +1,7 @@
 defmodule Examples.Resources.ToolboxGroups do
   @moduledoc false
 
-  use MCP.Resource,
+  use Snodo.Resource,
     uri: "toolbox://groups",
     name: "Elixir Toolbox groups",
     title: "Toolbox Groups",
@@ -13,14 +13,14 @@ defmodule Examples.Resources.ToolboxGroups do
 
   @impl true
   def read(%{"uri" => uri}, _context) do
-    {:ok, MCP.Result.resource_read(MCP.Resource.json(uri, @groups))}
+    {:ok, Snodo.Result.resource_read(Snodo.Resource.json(uri, @groups))}
   end
 end
 
 defmodule Examples.Resources.PackageInfo do
   @moduledoc false
 
-  use MCP.Resource,
+  use Snodo.Resource,
     uri_template: "hex://{name}/info",
     name: "Hex package information",
     description: "Metadata for a package in the local example catalog",
@@ -49,15 +49,15 @@ defmodule Examples.Resources.PackageInfo do
 
     case Map.fetch(@packages, package) do
       {:ok, info} ->
-        content = MCP.Resource.json(uri, info)
+        content = Snodo.Resource.json(uri, info)
 
         {:ok,
-         MCP.Result.resource_read(content,
+         Snodo.Result.resource_read(content,
            metadata: %{ttl_ms: 5_000, cache_scope: "private"}
          )}
 
       :error ->
-        {:error, MCP.Error.invalid_params("Resource not found", %{"uri" => uri})}
+        {:error, Snodo.Error.invalid_params("Resource not found", %{"uri" => uri})}
     end
   end
 end
@@ -65,10 +65,10 @@ end
 defmodule Examples.Resources.Server do
   @moduledoc false
 
-  use MCP.Server,
+  use Snodo.Server,
     name: "resources-example",
     version: "0.1.0",
-    protocols: [MCP.Protocol.V2026_07_28],
+    protocols: [Snodo.Protocol.V2026_07_28],
     resources_cache: [ttl_ms: 60_000, scope: "public"]
 
   resource(Examples.Resources.PackageInfo)
@@ -80,7 +80,7 @@ defmodule Examples.Resources.Runner do
 
   alias Examples.Resources.Server
 
-  alias MCP.Client
+  alias Snodo.Client
 
   def run(mode) do
     {:ok, client} = Client.direct(Server.runtime())
@@ -99,7 +99,7 @@ defmodule Examples.Resources.Runner do
     ensure(package["cacheScope"] == "private", "cache scope was lost")
 
     ensure(
-      match?({:error, %MCP.Error{code: -32_602}}, missing),
+      match?({:error, %Snodo.Error{code: -32_602}}, missing),
       "missing resource was not -32602"
     )
 

@@ -21,7 +21,7 @@ code and reports:
 | Ordinary progress | Correlated progress precedes normal/error/MRTR terminal messages; cancellation and no-token behavior are checked over stdio and HTTP | Passing wire and controlled client checks; [SDK callback caveat](../interop/official_client/PROGRESS.md) |
 | Independent wire-schema corpus | Representative real emissions validate against named definitions and concrete result branches in the pinned official schema using AJV | 78 emissions across direct/stdio/HTTP; 78 negative mutations and 7 unit controls; not every possible message |
 
-`mix mcp.contract` prints the core buckets without converting internal evidence
+`mix snodo.contract` prints the core buckets without converting internal evidence
 or unsupported features into an official score. The one-way-dependent Tasks
 package owns its local evidence and runs it with `mix tasks.contract` from
 `extensions/tasks`.
@@ -45,16 +45,16 @@ The Elixir translation is:
 
 ```text
 decoded JSON value
-  -> MCP.Envelope                    JSON-RPC structure
-  -> MCP.Protocol.Registry           explicitly enabled dialect
-  -> MCP.Protocol.Inspector          exact profile and method contract
+  -> Snodo.Envelope                    JSON-RPC structure
+  -> Snodo.Protocol.Registry           explicitly enabled dialect
+  -> Snodo.Protocol.Inspector          exact profile and method contract
   -> dialect context/operation       lifecycle and metadata semantics
   -> Extension.Registry middleware     advertised exact-compatible augmentation
-  -> MCP.Router / Extension.Registry   core or negotiated out-of-tree execution
+  -> Snodo.Router / Extension.Registry   core or negotiated out-of-tree execution
   -> dialect wire shaping
 ```
 
-`MCP.Protocol.Profile` is the exact-revision catalog and implementation manifest.
+`Snodo.Protocol.Profile` is the exact-revision catalog and implementation manifest.
 It records:
 
 - the exact revision and lifecycle;
@@ -99,7 +99,7 @@ an exact-versioned route is installed, advertised by the server, advertised by
 the client, and accepted by the extension's negotiation callback.
 
 The subscription path is deliberately separate from router dispatch after the
-request has opened. The application implements `MCP.Subscription.Source` and
+request has opened. The application implements `Snodo.Subscription.Source` and
 owns any hub, database cursor, PubSub process, and backlog. The framework
 narrows the requested core filter to advertised capabilities, rejects a source
 that acknowledges anything outside that subset, and then pulls at most one
@@ -110,7 +110,7 @@ HTTP owns SSE headers, acknowledgement ordering, keepalives, socket disconnect
 cleanup, and graceful source completion. Neither long-lived stream consumes a
 slot in the generic request executor after `open/3` returns.
 
-`MCP.Subscription.Hub` is an optional application-supervised implementation of
+`Snodo.Subscription.Hub` is an optional application-supervised implementation of
 that same source contract. It accepts only events selected by each listener's
 negotiated filter, bounds every listener queue, reports per-publication drops,
 and offers explicit newest- or oldest-retention overflow policies. It remains
@@ -136,7 +136,7 @@ server-advertised, exact-compatible extension. Installed-only modules remain
 inert, and callback faults become safe internal errors.
 
 Tasks is the substantial proof of that split. Its independently compiled
-`:mcp_ex_tasks` package depends one-way on `mcp_ex`, wraps `tools/call`, owns
+`:snodo_tasks` package depends one-way on `snodo`, wraps `tools/call`, owns
 `tasks/get`, `tasks/update`, and `tasks/cancel`, and requires `Mcp-Name` mirrored
 from `params.taskId` without adding any Task-specific branch or dependency to
 the core profile, router, or HTTP adapter. Direct, stdio, and HTTP acceptance
@@ -171,7 +171,7 @@ copied. tower-mcp is licensed MIT OR Apache-2.0.
 ## Independent contract vectors
 
 The tests under `test/compliance` use literal `_meta` keys and wire values. They
-do not use `MCP.Test.dispatch(protocol: ...)`, because that helper obtains
+do not use `Snodo.Test.dispatch(protocol: ...)`, because that helper obtains
 metadata from the same dialect being tested and could allow request generation
 and admission to drift together.
 
@@ -210,10 +210,10 @@ The current matrix covers:
 Run it with:
 
 ```sh
-mix mcp.contract
-mix mcp.contract --format json
-mix mcp.contract --format json --output mcp-contract.json
-mix mcp.contract --format markdown
+mix snodo.contract
+mix snodo.contract --format json
+mix snodo.contract --format json --output mcp-contract.json
+mix snodo.contract --format markdown
 ```
 
 Run the independent Tasks evidence lane with:

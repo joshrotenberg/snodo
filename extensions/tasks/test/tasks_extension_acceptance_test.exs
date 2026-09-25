@@ -1,18 +1,18 @@
-defmodule MCP.TasksExtensionAcceptanceTest do
+defmodule Snodo.TasksExtensionAcceptanceTest do
   use ExUnit.Case, async: false
 
   @moduletag mcp_contract: ["tasks-extension-lifecycle"]
   @moduletag :tasks_package
 
-  alias MCP.Context
-  alias MCP.Extensions.Tasks.RetryPolicy
-  alias MCP.Extensions.Tasks.Runner
-  alias MCP.Extensions.Tasks.Snapshot
-  alias MCP.Extensions.Tasks.Store
-  alias MCP.Extensions.Tasks.Store.Memory
-  alias MCP.Extensions.Tasks.Work
-  alias MCP.Transport.Context, as: TransportContext
-  alias MCPEx.TasksTestSupport, as: TasksSupport
+  alias Snodo.Context
+  alias Snodo.Extensions.Tasks.RetryPolicy
+  alias Snodo.Extensions.Tasks.Runner
+  alias Snodo.Extensions.Tasks.Snapshot
+  alias Snodo.Extensions.Tasks.Store
+  alias Snodo.Extensions.Tasks.Store.Memory
+  alias Snodo.Extensions.Tasks.Work
+  alias Snodo.Transport.Context, as: TransportContext
+  alias SnodoTest.TasksTestSupport, as: TasksSupport
 
   setup do
     scope = fn context ->
@@ -70,7 +70,7 @@ defmodule MCP.TasksExtensionAcceptanceTest do
 
     access_context = %Context{
       protocol_version: "2026-07-28",
-      protocol: MCP.Protocol.V2026_07_28,
+      protocol: Snodo.Protocol.V2026_07_28,
       transport: %TransportContext{transport: :direct},
       auth: auth
     }

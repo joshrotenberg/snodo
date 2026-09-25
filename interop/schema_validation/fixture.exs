@@ -1,13 +1,13 @@
 # Mixless, public APIs only. No test/support imports or external services.
 project = Path.expand("../..", __DIR__)
-ebin = System.get_env("MCP_EX_EBIN") || Path.join(project, "_build/dev/lib/mcp_ex/ebin")
+ebin = System.get_env("SNODO_EBIN") || Path.join(project, "_build/dev/lib/snodo/ebin")
 true = Code.prepend_path(ebin)
-{:ok, _applications} = Application.ensure_all_started(:mcp_ex)
+{:ok, _applications} = Application.ensure_all_started(:snodo)
 
 defmodule SchemaFixture.Input do
   @moduledoc false
-  alias MCP.Elicitation
-  alias MCP.Result
+  alias Snodo.Elicitation
+  alias Snodo.Result
 
   def resolve(context, complete) do
     request =
@@ -28,7 +28,7 @@ end
 
 defmodule SchemaFixture.Tool do
   @moduledoc false
-  use MCP.Tool,
+  use Snodo.Tool,
     name: "schema_preview",
     description: "Produces ordinary, input-required, and error preview results"
 
@@ -40,27 +40,27 @@ defmodule SchemaFixture.Tool do
   @impl true
   def call(%{"mode" => "progress"}, context) do
     for value <- [0, 50, 100] do
-      :ok = MCP.Progress.report(context, value, total: 100, message: "Schema stage #{value}")
+      :ok = Snodo.Progress.report(context, value, total: 100, message: "Schema stage #{value}")
     end
 
-    {:ok, MCP.Result.text("schema-progress-ok")}
+    {:ok, Snodo.Result.text("schema-progress-ok")}
   end
 
   def call(%{"mode" => "mrtr"}, context),
-    do: SchemaFixture.Input.resolve(context, &MCP.Result.text/1)
+    do: SchemaFixture.Input.resolve(context, &Snodo.Result.text/1)
 
   def call(%{"mode" => "domain_error"}, _context),
-    do: {:ok, MCP.Result.error("Preview unavailable")}
+    do: {:ok, Snodo.Result.error("Preview unavailable")}
 
   def call(%{"mode" => "protocol_error"}, _context),
-    do: {:error, MCP.Error.invalid_params("Invalid preview")}
+    do: {:error, Snodo.Error.invalid_params("Invalid preview")}
 
-  def call(_arguments, _context), do: {:ok, MCP.Result.text("schema-preview-ok")}
+  def call(_arguments, _context), do: {:ok, Snodo.Result.text("schema-preview-ok")}
 end
 
 defmodule SchemaFixture.Resource do
   @moduledoc false
-  use MCP.Resource,
+  use Snodo.Resource,
     name: "schema_text",
     uri: "schema://text",
     description: "A read-only text resource",
@@ -68,37 +68,37 @@ defmodule SchemaFixture.Resource do
 
   @impl true
   def read(%{"uri" => uri}, _context),
-    do: {:ok, MCP.Result.resource_read(MCP.Resource.text(uri, "schema-resource-ok"))}
+    do: {:ok, Snodo.Result.resource_read(Snodo.Resource.text(uri, "schema-resource-ok"))}
 end
 
 defmodule SchemaFixture.InputResource do
   @moduledoc false
-  use MCP.Resource,
+  use Snodo.Resource,
     name: "schema_input",
     uri: "schema://input",
     description: "A read-only input-required resource"
 
   @impl true
   def read(%{"uri" => uri}, context) do
-    SchemaFixture.Input.resolve(context, &MCP.Result.resource_read(MCP.Resource.text(uri, &1)))
+    SchemaFixture.Input.resolve(context, &Snodo.Result.resource_read(Snodo.Resource.text(uri, &1)))
   end
 end
 
 defmodule SchemaFixture.Template do
   @moduledoc false
-  use MCP.Resource,
+  use Snodo.Resource,
     name: "schema_template",
     uri_template: "schema://item/{id}",
     description: "A read-only URI-template resource"
 
   @impl true
   def read(%{"uri" => uri}, _context),
-    do: {:ok, MCP.Result.resource_read(MCP.Resource.text(uri, "schema-template-ok"))}
+    do: {:ok, Snodo.Result.resource_read(Snodo.Resource.text(uri, "schema-template-ok"))}
 end
 
 defmodule SchemaFixture.Prompt do
   @moduledoc false
-  use MCP.Prompt,
+  use Snodo.Prompt,
     name: "schema_prompt",
     description: "An optionally interactive prompt with completion",
     arguments: [%{"name" => "mode", "description" => "plain or mrtr"}],
@@ -109,18 +109,18 @@ defmodule SchemaFixture.Prompt do
   def render(_arguments, _context), do: {:ok, result("schema-prompt-ok")}
 
   @impl true
-  def complete(%MCP.Completion{value: value}, _context) do
+  def complete(%Snodo.Completion{value: value}, _context) do
     values = Enum.filter(["mrtr", "plain"], &String.starts_with?(&1, value))
-    {:ok, MCP.Result.completion(values, total: length(values), has_more: false)}
+    {:ok, Snodo.Result.completion(values, total: length(values), has_more: false)}
   end
 
-  defp result(label), do: MCP.Result.prompt_get(MCP.Prompt.message(:user, MCP.Prompt.text(label)))
+  defp result(label), do: Snodo.Result.prompt_get(Snodo.Prompt.message(:user, Snodo.Prompt.text(label)))
 end
 
 defmodule SchemaFixture.Source do
   @moduledoc false
-  @behaviour MCP.Subscription.Source
-  alias MCP.Subscription.Event
+  @behaviour Snodo.Subscription.Source
+  alias Snodo.Subscription.Event
 
   @impl true
   def open(filter, _context, _options) do
@@ -149,10 +149,10 @@ end
 
 defmodule SchemaFixture.Server do
   @moduledoc false
-  use MCP.Server,
+  use Snodo.Server,
     name: "wire-schema-fixture",
     version: "1.0.0",
-    protocols: [MCP.Protocol.V2026_07_28],
+    protocols: [Snodo.Protocol.V2026_07_28],
     capabilities: %{
       "tools" => %{"listChanged" => true},
       "resources" => %{"subscribe" => true},
@@ -170,7 +170,7 @@ end
 
 defmodule SchemaFixture.Direct do
   @moduledoc false
-  alias MCP.Subscription
+  alias Snodo.Subscription
 
   def serve(runtime) do
     Enum.each(IO.stream(:stdio, :line), fn line ->
@@ -185,14 +185,14 @@ defmodule SchemaFixture.Direct do
   # core dispatch stays synchronous in the worker; the owner acknowledges each
   # report only after serializing and writing its notification.
   defp dispatch(runtime, raw) do
-    sink = MCP.Progress.sink(self())
-    transport = %MCP.Transport.Context{transport: :direct, metadata: %{progress_sink: sink}}
-    task = Task.async(fn -> MCP.Server.dispatch(runtime, raw, transport) end)
+    sink = Snodo.Progress.sink(self())
+    transport = %Snodo.Transport.Context{transport: :direct, metadata: %{progress_sink: sink}}
+    task = Task.async(fn -> Snodo.Server.dispatch(runtime, raw, transport) end)
 
     try do
-      await_dispatch(task, MCP.Progress.state(sink))
+      await_dispatch(task, Snodo.Progress.state(sink))
     after
-      MCP.Progress.close(sink)
+      Snodo.Progress.close(sink)
       if Process.alive?(task.pid), do: Task.shutdown(task, :brutal_kill)
     end
   end
@@ -200,14 +200,14 @@ defmodule SchemaFixture.Direct do
   defp await_dispatch(task, state) do
     receive do
       {:"$gen_call", from, {:mcp_progress, _reference, report}} ->
-        case MCP.Progress.accept(state, from, report) do
+        case Snodo.Progress.accept(state, from, report) do
           {:ok, notification, next_state} ->
             emit(notification)
-            MCP.Progress.reply(from, report, :ok)
+            Snodo.Progress.reply(from, report, :ok)
             await_dispatch(task, next_state)
 
           {:error, reason} ->
-            MCP.Progress.reply(from, report, {:error, reason})
+            Snodo.Progress.reply(from, report, {:error, reason})
             await_dispatch(task, state)
         end
 
@@ -262,11 +262,11 @@ case System.argv() do
     SchemaFixture.Direct.serve(runtime)
 
   ["--stdio"] ->
-    MCP.Transport.Stdio.serve(runtime)
+    Snodo.Transport.Stdio.serve(runtime)
 
   ["--http"] ->
-    {:ok, listener} = MCP.Transport.StreamableHTTP.Server.start_link(runtime: runtime, port: 0)
-    IO.puts(JSON.encode!(%{"url" => MCP.Transport.StreamableHTTP.Server.url(listener)}))
+    {:ok, listener} = Snodo.Transport.StreamableHTTP.Server.start_link(runtime: runtime, port: 0)
+    IO.puts(JSON.encode!(%{"url" => Snodo.Transport.StreamableHTTP.Server.url(listener)}))
     _input = IO.read(:stdio, :eof)
     :ok = GenServer.stop(listener)
 

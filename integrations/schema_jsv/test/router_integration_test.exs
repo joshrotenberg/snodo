@@ -1,12 +1,12 @@
-defmodule MCP.Schema.Validator.JSV.RouterIntegrationTest do
+defmodule Snodo.Schema.Validator.JSV.RouterIntegrationTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Error
-  alias MCP.Result
-  alias MCP.Router
-  alias MCP.Schema.Validator.JSV, as: Validator
-  alias MCPEx.JSV.Echo
-  alias MCPEx.JSV.Server
+  alias Snodo.Error
+  alias Snodo.Result
+  alias Snodo.Router
+  alias Snodo.Schema.Validator.JSV, as: Validator
+  alias SnodoTest.JSV.Echo
+  alias SnodoTest.JSV.Server
 
   @meta %{
     "io.modelcontextprotocol/protocolVersion" => "2026-07-28",
@@ -50,10 +50,10 @@ defmodule MCP.Schema.Validator.JSV.RouterIntegrationTest do
   test "direct router callers can select the optional adapter without server macros" do
     router = Router.new() |> Router.register_tool(Echo)
 
-    context = %MCP.Context{
+    context = %Snodo.Context{
       protocol_version: "2026-07-28",
-      protocol: MCP.Protocol.V2026_07_28,
-      transport: %MCP.Transport.Context{transport: :direct}
+      protocol: Snodo.Protocol.V2026_07_28,
+      transport: %Snodo.Transport.Context{transport: :direct}
     }
 
     assert {:ok, %Result{kind: :structured}} =
@@ -84,7 +84,9 @@ defmodule MCP.Schema.Validator.JSV.RouterIntegrationTest do
     }
 
     {:ok, response} =
-      MCP.Server.dispatch(Server.runtime(), envelope, %MCP.Transport.Context{transport: :direct})
+      Snodo.Server.dispatch(Server.runtime(), envelope, %Snodo.Transport.Context{
+        transport: :direct
+      })
 
     response
   end

@@ -1,7 +1,7 @@
 defmodule Examples.SubscriptionHub.Status do
   @moduledoc false
 
-  alias MCP.Subscription.Hub
+  alias Snodo.Subscription.Hub
 
   @uri "demo://status"
 
@@ -32,24 +32,24 @@ defmodule Examples.SubscriptionHub.StatusResource do
 
   alias Examples.SubscriptionHub.Status
 
-  use MCP.Resource,
+  use Snodo.Resource,
     uri: "demo://status",
     name: "Application status",
     mime_type: "application/json"
 
   @impl true
   def read(%{"uri" => uri}, _context) do
-    {:ok, MCP.Result.resource_read(MCP.Resource.json(uri, Status.get()))}
+    {:ok, Snodo.Result.resource_read(Snodo.Resource.json(uri, Status.get()))}
   end
 end
 
 defmodule Examples.SubscriptionHub.Server do
   @moduledoc false
 
-  use MCP.Server,
+  use Snodo.Server,
     name: "subscription-hub-example",
     version: "1.0.0",
-    protocols: [MCP.Protocol.V2026_07_28],
+    protocols: [Snodo.Protocol.V2026_07_28],
     capabilities: %{"resources" => %{"subscribe" => true}}
 
   resource(Examples.SubscriptionHub.StatusResource)
@@ -60,9 +60,9 @@ defmodule Examples.SubscriptionHub.Runner do
 
   alias Examples.SubscriptionHub.Server
   alias Examples.SubscriptionHub.Status
-  alias MCP.Subscription
-  alias MCP.Subscription.Event
-  alias MCP.Subscription.Hub
+  alias Snodo.Subscription
+  alias Snodo.Subscription.Event
+  alias Snodo.Subscription.Hub
 
   @subscription_id_key "io.modelcontextprotocol/subscriptionId"
 
@@ -133,7 +133,7 @@ defmodule Examples.SubscriptionHub.Runner do
   end
 
   defp listen(runtime) do
-    MCP.Test.dispatch(runtime,
+    Snodo.Test.dispatch(runtime,
       id: "hub-sub",
       protocol: "2026-07-28",
       method: "subscriptions/listen",
@@ -143,7 +143,7 @@ defmodule Examples.SubscriptionHub.Runner do
 
   defp dispatch(runtime, id, method, params) do
     {:ok, response} =
-      MCP.Test.dispatch(runtime,
+      Snodo.Test.dispatch(runtime,
         id: id,
         protocol: "2026-07-28",
         method: method,

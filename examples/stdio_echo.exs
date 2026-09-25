@@ -1,5 +1,5 @@
 defmodule Example.Echo do
-  use MCP.Tool,
+  use Snodo.Tool,
     name: "echo",
     description: "Echo text"
 
@@ -19,17 +19,17 @@ defmodule Example.Echo do
       _no_delay -> :ok
     end
 
-    {:ok, MCP.Result.text(text)}
+    {:ok, Snodo.Result.text(text)}
   end
 end
 
 defmodule Example.Server do
-  use MCP.Server,
+  use Snodo.Server,
     name: "stdio-echo",
     version: "0.1.0",
-    protocols: [MCP.Protocol.V2026_07_28]
+    protocols: [Snodo.Protocol.V2026_07_28]
 
   tool(Example.Echo)
 end
 
-:ok = MCP.Transport.Stdio.serve(Example.Server.runtime())
+:ok = Snodo.Transport.Stdio.serve(Example.Server.runtime())

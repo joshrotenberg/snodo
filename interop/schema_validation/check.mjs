@@ -15,7 +15,7 @@ function request(method, params = {}) {
   return { jsonrpc: "2.0", id: nextId++, method, params: { ...params, _meta: {
     "io.modelcontextprotocol/protocolVersion": version,
     "io.modelcontextprotocol/clientCapabilities": { elicitation: { form: {} } },
-    "io.modelcontextprotocol/clientInfo": { name: "mcp-ex-wire-schema-check", version: "1.0.0" },
+    "io.modelcontextprotocol/clientInfo": { name: "snodo-wire-schema-check", version: "1.0.0" },
     ...params._meta,
   } } };
 }
@@ -30,7 +30,7 @@ async function deadline(promise, label, ms = 8_000) {
 }
 
 function start(mode) {
-  const child = spawn(process.env.MCP_EX_ELIXIR ?? "elixir", [path.join(here, "fixture.exs"), `--${mode}`], {
+  const child = spawn(process.env.SNODO_ELIXIR ?? "elixir", [path.join(here, "fixture.exs"), `--${mode}`], {
     cwd: project,
     env: { ...process.env, ERL_FLAGS: process.env.ERL_FLAGS ?? "+S 4:4" },
     stdio: ["pipe", "pipe", "pipe"],

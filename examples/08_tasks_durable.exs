@@ -1,11 +1,11 @@
 defmodule Examples.TasksDurable.ExportTool do
   @moduledoc false
 
-  use MCP.Tool,
+  use Snodo.Tool,
     name: "durable_export",
     description: "Exports one document through durable task execution"
 
-  alias MCP.Extensions.Tasks
+  alias Snodo.Extensions.Tasks
 
   @impl true
   def call(%{"document" => document}, context) do
@@ -15,7 +15,7 @@ defmodule Examples.TasksDurable.ExportTool do
   end
 
   def result(document, principal, execution_id) do
-    MCP.Result.structured(%{
+    Snodo.Result.structured(%{
       "document" => document,
       "tenant" => principal["tenant"],
       "idempotencyKey" => execution_id
@@ -26,7 +26,7 @@ end
 defmodule Examples.TasksDurable.WorkBuilder do
   @moduledoc false
 
-  alias MCP.Extensions.Tasks.Work
+  alias Snodo.Extensions.Tasks.Work
 
   def build(task_id, tool_name, arguments, context) do
     Work.new(task_id, "example/durable-tool-call", %{
@@ -40,14 +40,14 @@ end
 defmodule Examples.TasksDurable.Executor do
   @moduledoc false
 
-  @behaviour MCP.Extensions.Tasks.WorkExecutor
+  @behaviour Snodo.Extensions.Tasks.WorkExecutor
 
   alias Examples.TasksDurable.ExportTool
-  alias MCP.Cancellation
-  alias MCP.Context
-  alias MCP.Extensions.Tasks.Work
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Transport.Context, as: TransportContext
+  alias Snodo.Cancellation
+  alias Snodo.Context
+  alias Snodo.Extensions.Tasks.Work
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Transport.Context, as: TransportContext
 
   @impl true
   def execute(
@@ -115,15 +115,15 @@ defmodule Examples.TasksDurable.Runner do
   alias Examples.TasksDurable.Executor
   alias Examples.TasksDurable.ExportTool
   alias Examples.TasksDurable.WorkBuilder
-  alias MCP.Extensions.Tasks
-  alias MCP.Extensions.Tasks.Runner, as: TaskRunner
-  alias MCP.Extensions.Tasks.Store.Dets
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Router
-  alias MCP.Server.Runtime
+  alias Snodo.Extensions.Tasks
+  alias Snodo.Extensions.Tasks.Runner, as: TaskRunner
+  alias Snodo.Extensions.Tasks.Store.Dets
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Router
+  alias Snodo.Server.Runtime
 
   @protocol "2026-07-28"
-  @table :mcp_ex_tasks_durable_example
+  @table :snodo_tasks_durable_example
   @terminal_statuses ["completed", "failed", "cancelled"]
 
   def run(mode) do
@@ -290,7 +290,7 @@ defmodule Examples.TasksDurable.Runner do
 
   defp dispatch(runtime, opts) do
     {:ok, response} =
-      MCP.Test.dispatch(runtime,
+      Snodo.Test.dispatch(runtime,
         id: Keyword.fetch!(opts, :id),
         protocol: @protocol,
         method: Keyword.fetch!(opts, :method),
@@ -359,7 +359,7 @@ defmodule Examples.TasksDurable.Runner do
 
   defp unique_directory! do
     suffix = System.unique_integer([:positive, :monotonic])
-    directory = Path.join(System.tmp_dir!(), "mcp_ex_tasks_durable_#{suffix}")
+    directory = Path.join(System.tmp_dir!(), "snodo_tasks_durable_#{suffix}")
     File.mkdir!(directory)
     directory
   end

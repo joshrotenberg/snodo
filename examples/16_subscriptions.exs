@@ -71,7 +71,7 @@ end
 
 defmodule Examples.Subscriptions.Source do
   @moduledoc false
-  @behaviour MCP.Subscription.Source
+  @behaviour Snodo.Subscription.Source
 
   alias Examples.Subscriptions.Hub
 
@@ -90,10 +90,10 @@ end
 defmodule Examples.Subscriptions.Server do
   @moduledoc false
 
-  use MCP.Server,
+  use Snodo.Server,
     name: "subscriptions-example",
     version: "1.0.0",
-    protocols: [MCP.Protocol.V2026_07_28],
+    protocols: [Snodo.Protocol.V2026_07_28],
     capabilities: %{
       "tools" => %{"listChanged" => true},
       "resources" => %{"subscribe" => true}
@@ -105,8 +105,8 @@ defmodule Examples.Subscriptions.Runner do
   @moduledoc false
 
   alias Examples.Subscriptions.Hub
-  alias MCP.Subscription
-  alias MCP.Subscription.Event
+  alias Snodo.Subscription
+  alias Snodo.Subscription.Event
 
   @subscription_id_key "io.modelcontextprotocol/subscriptionId"
 
@@ -175,7 +175,7 @@ defmodule Examples.Subscriptions.Runner do
   end
 
   defp listen(runtime) do
-    MCP.Test.dispatch(runtime,
+    Snodo.Test.dispatch(runtime,
       id: "example-sub",
       protocol: "2026-07-28",
       method: "subscriptions/listen",

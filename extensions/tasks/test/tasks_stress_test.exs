@@ -1,9 +1,9 @@
-defmodule MCP.TasksStressTest do
+defmodule Snodo.TasksStressTest do
   use ExUnit.Case, async: false
 
   @moduletag :tasks_package
 
-  alias MCP.Extensions.Tasks.Stress
+  alias Snodo.Extensions.Tasks.Stress
 
   test "contention and runner soak produce exact invariant evidence" do
     report = Stress.run(tasks: 4, writers: 5, rounds: 3, timeout_ms: 5_000)

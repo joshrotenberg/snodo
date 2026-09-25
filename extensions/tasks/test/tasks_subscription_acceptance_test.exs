@@ -1,19 +1,19 @@
-defmodule MCP.TasksSubscriptionAcceptanceTest do
+defmodule Snodo.TasksSubscriptionAcceptanceTest do
   use ExUnit.Case, async: false
 
   @moduletag mcp_contract: ["tasks-extension-subscriptions"]
   @moduletag :tasks_package
 
-  alias MCP.Extensions.Tasks
-  alias MCP.Extensions.Tasks.Runner
-  alias MCP.Extensions.Tasks.Store.Memory
-  alias MCP.Subscription
-  alias MCP.Subscription.Event
-  alias MCP.Transport.Stdio
-  alias MCPEx.TasksSubscriptionHub
-  alias MCPEx.TasksSubscriptionSource
-  alias MCPEx.TasksTestInput
-  alias MCPEx.TasksTestSupport, as: TasksSupport
+  alias Snodo.Extensions.Tasks
+  alias Snodo.Extensions.Tasks.Runner
+  alias Snodo.Extensions.Tasks.Store.Memory
+  alias Snodo.Subscription
+  alias Snodo.Subscription.Event
+  alias Snodo.Transport.Stdio
+  alias SnodoTest.TasksSubscriptionHub
+  alias SnodoTest.TasksSubscriptionSource
+  alias SnodoTest.TasksTestInput
+  alias SnodoTest.TasksTestSupport, as: TasksSupport
 
   @subscription_id_key "io.modelcontextprotocol/subscriptionId"
 
@@ -83,7 +83,7 @@ defmodule MCP.TasksSubscriptionAcceptanceTest do
         %{task | id: "another-task"}
       )
 
-    assert {:error, %MCP.Error{code: -32_603}} =
+    assert {:error, %Snodo.Error{code: -32_603}} =
              Subscription.notification(subscription, smuggled)
 
     assert {:ok, core_notification} =

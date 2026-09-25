@@ -1,35 +1,35 @@
-defmodule MCP.Extensions.Tasks.Postgres.FakeRepo do
+defmodule Snodo.Extensions.Tasks.Postgres.FakeRepo do
   def __adapter__, do: Ecto.Adapters.Postgres
 end
 
-defmodule MCP.Extensions.Tasks.Postgres.WrongAdapterRepo do
+defmodule Snodo.Extensions.Tasks.Postgres.WrongAdapterRepo do
   def __adapter__, do: :not_postgres
 end
 
-defmodule MCP.Extensions.Tasks.Postgres.AdapterTest do
+defmodule Snodo.Extensions.Tasks.Postgres.AdapterTest do
   use ExUnit.Case, async: true
 
   @moduletag mcp_contract: ["tasks-postgres-adapter"]
 
-  alias MCP.Context
-  alias MCP.Extensions.Tasks.Event
-  alias MCP.Extensions.Tasks.RetryPolicy
-  alias MCP.Extensions.Tasks.Snapshot
-  alias MCP.Extensions.Tasks.Store
-  alias MCP.Extensions.Tasks.Store.Postgres
-  alias MCP.Extensions.Tasks.Store.Postgres.Access
-  alias MCP.Extensions.Tasks.Store.Postgres.Config
-  alias MCP.Extensions.Tasks.Store.Postgres.EventRow
-  alias MCP.Extensions.Tasks.Store.Postgres.Migration
-  alias MCP.Extensions.Tasks.Store.Postgres.Migration.V1, as: MigrationV1
-  alias MCP.Extensions.Tasks.Store.Postgres.Migration.V2, as: MigrationV2
-  alias MCP.Extensions.Tasks.Store.Postgres.Persistence
-  alias MCP.Extensions.Tasks.Store.Postgres.TaskRow
-  alias MCP.Extensions.Tasks.Task, as: ProtocolTask
-  alias MCP.Extensions.Tasks.Transition
-  alias MCP.Extensions.Tasks.Work
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Transport.Context, as: TransportContext
+  alias Snodo.Context
+  alias Snodo.Extensions.Tasks.Event
+  alias Snodo.Extensions.Tasks.RetryPolicy
+  alias Snodo.Extensions.Tasks.Snapshot
+  alias Snodo.Extensions.Tasks.Store
+  alias Snodo.Extensions.Tasks.Store.Postgres
+  alias Snodo.Extensions.Tasks.Store.Postgres.Access
+  alias Snodo.Extensions.Tasks.Store.Postgres.Config
+  alias Snodo.Extensions.Tasks.Store.Postgres.EventRow
+  alias Snodo.Extensions.Tasks.Store.Postgres.Migration
+  alias Snodo.Extensions.Tasks.Store.Postgres.Migration.V1, as: MigrationV1
+  alias Snodo.Extensions.Tasks.Store.Postgres.Migration.V2, as: MigrationV2
+  alias Snodo.Extensions.Tasks.Store.Postgres.Persistence
+  alias Snodo.Extensions.Tasks.Store.Postgres.TaskRow
+  alias Snodo.Extensions.Tasks.Task, as: ProtocolTask
+  alias Snodo.Extensions.Tasks.Transition
+  alias Snodo.Extensions.Tasks.Work
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Transport.Context, as: TransportContext
 
   @created_at "2026-08-25T10:00:00.000Z"
   @committed_at "2026-08-25T10:00:01.000Z"
@@ -42,7 +42,7 @@ defmodule MCP.Extensions.Tasks.Postgres.AdapterTest do
     assert {Postgres, config} == Store.validate_ref!({Postgres, config})
 
     assert {:error, :repo_must_use_ecto_postgres} =
-             Postgres.new(repo: MCP.Extensions.Tasks.Postgres.WrongAdapterRepo)
+             Postgres.new(repo: Snodo.Extensions.Tasks.Postgres.WrongAdapterRepo)
 
     assert {:error, :repo_must_use_ecto_postgres} = Postgres.new(repo: :missing_repo)
     assert {:error, :invalid_prefix} = Postgres.new(repo: fake_repo(), prefix: "")
@@ -188,7 +188,7 @@ defmodule MCP.Extensions.Tasks.Postgres.AdapterTest do
     assert function_exported?(Migration, :down, 1)
   end
 
-  defp fake_repo, do: MCP.Extensions.Tasks.Postgres.FakeRepo
+  defp fake_repo, do: Snodo.Extensions.Tasks.Postgres.FakeRepo
 
   defp task(id, ttl_ms) do
     ProtocolTask.new!(

@@ -43,8 +43,8 @@ npm run check:mrtr -- --stdio
 npm run check:mrtr -- --http
 ```
 
-`MCP_EX_ELIXIR` selects the Elixir executable. `MCP_EX_EBIN` overrides the default
-`_build/dev/lib/mcp_ex/ebin` directory.
+`SNODO_ELIXIR` selects the Elixir executable. `SNODO_EBIN` overrides the default
+`_build/dev/lib/snodo/ebin` directory.
 
 ## Optional target-application acceptance
 

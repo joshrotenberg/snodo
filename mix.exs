@@ -1,9 +1,9 @@
-defmodule MCP.MixProject do
+defmodule Snodo.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :mcp_ex,
+      app: :snodo,
       version: "0.1.0",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
@@ -27,7 +27,7 @@ defmodule MCP.MixProject do
         examples: :dev,
         quality: :test,
         "quality.types": :dev,
-        "mcp.contract": :test
+        "snodo.contract": :test
       ]
     ]
   end
@@ -36,7 +36,7 @@ defmodule MCP.MixProject do
   def application do
     [
       extra_applications: [:crypto, :inets, :logger, :public_key, :ssl],
-      mod: {MCP.Application, []}
+      mod: {Snodo.Application, []}
     ]
   end
 
@@ -55,7 +55,7 @@ defmodule MCP.MixProject do
         "compile --warnings-as-errors",
         "credo --strict",
         "test --warnings-as-errors --raise",
-        "mcp.contract",
+        "snodo.contract",
         "examples",
         "cmd --cd extensions/tasks mix quality",
         "cmd --cd extensions/tasks_postgres mix quality",

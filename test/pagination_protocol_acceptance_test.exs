@@ -1,18 +1,18 @@
-defmodule MCP.PaginationProtocolAcceptanceTest do
+defmodule Snodo.PaginationProtocolAcceptanceTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Test, as: MCPTest
-  alias MCPEx.TestFixtures
-  alias MCPEx.TestPrompts.MediaReview
-  alias MCPEx.TestPrompts.PackageAnalysis
-  alias MCPEx.TestResources.ArchiveTemplate
-  alias MCPEx.TestResources.PackageTemplate
-  alias MCPEx.TestResources.StaticBlob
-  alias MCPEx.TestResources.StaticJSON
-  alias MCPEx.TestResources.StaticText
-  alias MCPEx.TestTools.ContextEcho
-  alias MCPEx.TestTools.Echo
-  alias MCPEx.TestTools.Structured
+  alias Snodo.Test, as: MCPTest
+  alias SnodoTest.TestFixtures
+  alias SnodoTest.TestPrompts.MediaReview
+  alias SnodoTest.TestPrompts.PackageAnalysis
+  alias SnodoTest.TestResources.ArchiveTemplate
+  alias SnodoTest.TestResources.PackageTemplate
+  alias SnodoTest.TestResources.StaticBlob
+  alias SnodoTest.TestResources.StaticJSON
+  alias SnodoTest.TestResources.StaticText
+  alias SnodoTest.TestTools.ContextEcho
+  alias SnodoTest.TestTools.Echo
+  alias SnodoTest.TestTools.Structured
 
   @tag mcp_contract: ["list-pagination-wire"]
   test "one cursor engine traverses every list operation in stable router order" do

@@ -1,13 +1,13 @@
-defmodule MCP.Extensions.Tasks.SQLite.MixProject do
+defmodule Snodo.Extensions.Tasks.SQLite.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :mcp_ex_tasks_sqlite,
+      app: :snodo_tasks_sqlite,
       version: "0.1.0",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
-      description: "SQLite persistence adapter for mcp_ex Tasks",
+      description: "SQLite persistence adapter for snodo Tasks",
       dialyzer: [
         plt_add_apps: [:mix],
         plt_local_path: "priv/plts",
@@ -35,7 +35,7 @@ defmodule MCP.Extensions.Tasks.SQLite.MixProject do
 
   defp deps do
     [
-      {:mcp_ex_tasks, path: "../tasks"},
+      {:snodo_tasks, path: "../tasks"},
       {:ecto_sql, "~> 3.14"},
       {:jason, "~> 1.4"},
       {:ecto_sqlite3, "~> 0.24.1", optional: true},
@@ -48,7 +48,7 @@ defmodule MCP.Extensions.Tasks.SQLite.MixProject do
     [
       "example.sqlite": [
         "compile --warnings-as-errors",
-        "mcp.example ../../examples/11_tasks_sqlite.exs"
+        "snodo.example ../../examples/11_tasks_sqlite.exs"
       ],
       quality: [
         "format --check-formatted",

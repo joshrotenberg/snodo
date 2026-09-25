@@ -1,29 +1,29 @@
-defmodule MCPEx.TestPrompts.PackageAnalysisCollision do
-  use MCP.Prompt,
+defmodule SnodoTest.TestPrompts.PackageAnalysisCollision do
+  use Snodo.Prompt,
     name: "package_analysis",
     description: "Collides with the package analysis fixture"
 
   @impl true
-  def render(_arguments, _context), do: {:ok, MCP.Result.prompt_get([])}
+  def render(_arguments, _context), do: {:ok, Snodo.Result.prompt_get([])}
 end
 
-defmodule MCP.PromptAcceptanceTest do
+defmodule Snodo.PromptAcceptanceTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Context
-  alias MCP.Error
-  alias MCP.Prompt
-  alias MCP.Prompt.Definition
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Result
-  alias MCP.Router
-  alias MCP.Transport.Context, as: TransportContext
-  alias MCPEx.TestPrompts.DeclaredError
-  alias MCPEx.TestPrompts.InvalidContent
-  alias MCPEx.TestPrompts.MediaReview
-  alias MCPEx.TestPrompts.PackageAnalysis
-  alias MCPEx.TestPrompts.PackageAnalysisCollision
-  alias MCPEx.TestPrompts.WrongKind
+  alias Snodo.Context
+  alias Snodo.Error
+  alias Snodo.Prompt
+  alias Snodo.Prompt.Definition
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Result
+  alias Snodo.Router
+  alias Snodo.Transport.Context, as: TransportContext
+  alias SnodoTest.TestPrompts.DeclaredError
+  alias SnodoTest.TestPrompts.InvalidContent
+  alias SnodoTest.TestPrompts.MediaReview
+  alias SnodoTest.TestPrompts.PackageAnalysis
+  alias SnodoTest.TestPrompts.PackageAnalysisCollision
+  alias SnodoTest.TestPrompts.WrongKind
 
   defp context do
     %Context{
@@ -151,12 +151,12 @@ defmodule MCP.PromptAcceptanceTest do
   test "definition and content validation reject malformed static data" do
     assert_raise CompileError, ~r/prompt argument names must be unique/, fn ->
       Code.compile_string("""
-      defmodule MCPEx.BadDuplicatePromptArguments do
-        use MCP.Prompt,
+      defmodule SnodoTest.BadDuplicatePromptArguments do
+        use Snodo.Prompt,
           name: "bad_duplicate",
           arguments: [%{"name" => "same"}, %{"name" => "same"}]
 
-        def render(_arguments, _context), do: {:ok, MCP.Result.prompt_get([])}
+        def render(_arguments, _context), do: {:ok, Snodo.Result.prompt_get([])}
       end
       """)
     end

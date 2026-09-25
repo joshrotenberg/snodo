@@ -2,14 +2,14 @@ defmodule Examples.TasksSQLite.Repo do
   @moduledoc false
 
   use Ecto.Repo,
-    otp_app: :mcp_ex_tasks_sqlite,
+    otp_app: :snodo_tasks_sqlite,
     adapter: Ecto.Adapters.SQLite3
 end
 
 defmodule Examples.TasksSQLite.ExportTool do
   @moduledoc false
 
-  use MCP.Tool,
+  use Snodo.Tool,
     name: "sqlite_export",
     description: "Exports one document through durable SQLite-backed task work"
 
@@ -22,9 +22,9 @@ end
 defmodule Examples.TasksSQLite.Executor do
   @moduledoc false
 
-  @behaviour MCP.Extensions.Tasks.WorkExecutor
+  @behaviour Snodo.Extensions.Tasks.WorkExecutor
 
-  alias MCP.Extensions.Tasks.Work
+  alias Snodo.Extensions.Tasks.Work
 
   @impl true
   def execute(
@@ -80,14 +80,14 @@ defmodule Examples.TasksSQLite.Runner do
   alias Examples.TasksSQLite.Executor
   alias Examples.TasksSQLite.ExportTool
   alias Examples.TasksSQLite.Repo
-  alias MCP.Extensions.Tasks
-  alias MCP.Extensions.Tasks.Runner, as: TaskRunner
-  alias MCP.Extensions.Tasks.Store.SQLite
-  alias MCP.Extensions.Tasks.Store.SQLite.Migration
-  alias MCP.Extensions.Tasks.Work
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Router
-  alias MCP.Server.Runtime
+  alias Snodo.Extensions.Tasks
+  alias Snodo.Extensions.Tasks.Runner, as: TaskRunner
+  alias Snodo.Extensions.Tasks.Store.SQLite
+  alias Snodo.Extensions.Tasks.Store.SQLite.Migration
+  alias Snodo.Extensions.Tasks.Work
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Router
+  alias Snodo.Server.Runtime
 
   @migration_version 2_026_082_602
   @protocol "2026-07-28"
@@ -290,7 +290,7 @@ defmodule Examples.TasksSQLite.Runner do
 
   defp dispatch(runtime, opts) do
     {:ok, response} =
-      MCP.Test.dispatch(runtime,
+      Snodo.Test.dispatch(runtime,
         id: Keyword.fetch!(opts, :id),
         protocol: @protocol,
         method: Keyword.fetch!(opts, :method),
@@ -370,7 +370,7 @@ defmodule Examples.TasksSQLite.Runner do
   defp unique_database do
     Path.join(
       System.tmp_dir!(),
-      "mcp_ex_tasks_sqlite_example_#{System.unique_integer([:positive, :monotonic])}.sqlite3"
+      "snodo_tasks_sqlite_example_#{System.unique_integer([:positive, :monotonic])}.sqlite3"
     )
   end
 

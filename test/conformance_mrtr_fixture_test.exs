@@ -1,13 +1,13 @@
 Code.require_file("../conformance/support/mrtr.ex", __DIR__)
 
-defmodule MCPEx.Conformance.MRTRFixtureTest do
+defmodule SnodoTest.Conformance.MRTRFixtureTest do
   use ExUnit.Case, async: false
 
-  alias MCP.Router
-  alias MCP.Server
-  alias MCP.Server.Runtime
-  alias MCP.Transport.Context, as: TransportContext
-  alias MCPEx.Conformance.MRTR
+  alias Snodo.Router
+  alias Snodo.Server
+  alias Snodo.Server.Runtime
+  alias Snodo.Transport.Context, as: TransportContext
+  alias SnodoTest.Conformance.MRTR
 
   @basic "test_input_required_result_elicitation"
   @state "test_input_required_result_request_state"
@@ -23,13 +23,13 @@ defmodule MCPEx.Conformance.MRTRFixtureTest do
   ]
 
   setup_all do
-    previous = Application.fetch_env(:mcp_ex, :conformance_mrtr_secret)
+    previous = Application.fetch_env(:snodo, :conformance_mrtr_secret)
     MRTR.Workflow.configure()
 
     on_exit(fn ->
       case previous do
-        {:ok, value} -> Application.put_env(:mcp_ex, :conformance_mrtr_secret, value)
-        :error -> Application.delete_env(:mcp_ex, :conformance_mrtr_secret)
+        {:ok, value} -> Application.put_env(:snodo, :conformance_mrtr_secret, value)
+        :error -> Application.delete_env(:snodo, :conformance_mrtr_secret)
       end
     end)
 
@@ -351,7 +351,7 @@ defmodule MCPEx.Conformance.MRTRFixtureTest do
     runtime =
       Runtime.new(
         router: router,
-        protocols: [MCP.Protocol.V2026_07_28],
+        protocols: [Snodo.Protocol.V2026_07_28],
         server_info: %{"name" => "conformance-mrtr-test", "version" => "1"}
       )
 

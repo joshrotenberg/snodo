@@ -30,9 +30,9 @@ erl_crash.dump
 node_modules/
 
 # Ignore package tarballs (built via "mix hex.build").
-mcp_ex-*.tar
-mcp_ex_tasks-*.tar
-mcp_ex_tasks_postgres-*.tar
-mcp_ex_tasks_sqlite-*.tar
-mcp_ex_plug-*.tar
-mcp_ex_jsv-*.tar
+snodo-*.tar
+snodo_tasks-*.tar
+snodo_tasks_postgres-*.tar
+snodo_tasks_sqlite-*.tar
+snodo_plug-*.tar
+snodo_jsv-*.tar

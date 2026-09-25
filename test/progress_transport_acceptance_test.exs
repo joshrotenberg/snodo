@@ -1,25 +1,25 @@
-defmodule MCP.ProgressTransportAcceptanceTest do
+defmodule Snodo.ProgressTransportAcceptanceTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Cancellation
-  alias MCP.Server
-  alias MCP.Server.Executor
-  alias MCP.Transport.Context, as: TransportContext
-  alias MCP.Transport.Stdio
-  alias MCP.Transport.StreamableHTTP.Server, as: HTTPServer
-  alias MCPEx.TestFixtures
-  alias MCPEx.TestInput
+  alias Snodo.Cancellation
+  alias Snodo.Server
+  alias Snodo.Server.Executor
+  alias Snodo.Transport.Context, as: TransportContext
+  alias Snodo.Transport.Stdio
+  alias Snodo.Transport.StreamableHTTP.Server, as: HTTPServer
+  alias SnodoTest.TestFixtures
+  alias SnodoTest.TestInput
 
   @moduletag mcp_contract: ["request-progress"]
 
   defmodule Tool do
-    use MCP.Tool, name: "progress_probe"
+    use Snodo.Tool, name: "progress_probe"
 
     @impl true
     def call(arguments, context) do
-      :ok = MCP.Progress.report(context, 0, total: 1, message: "starting")
+      :ok = Snodo.Progress.report(context, 0, total: 1, message: "starting")
       wait_for_controller(arguments, context)
-      :ok = MCP.Progress.report(context, 0.5, total: 1)
+      :ok = Snodo.Progress.report(context, 0.5, total: 1)
       finish(Map.get(arguments, "finish", "complete"))
     end
 
@@ -33,14 +33,14 @@ defmodule MCP.ProgressTransportAcceptanceTest do
 
     defp wait_for_controller(_arguments, _context), do: :ok
 
-    defp finish("error"), do: {:error, MCP.Error.invalid_params("requested failure")}
+    defp finish("error"), do: {:error, Snodo.Error.invalid_params("requested failure")}
 
     defp finish("input_required") do
-      request = MCP.Elicitation.form("Choose", %{"type" => "object", "properties" => %{}})
-      {:ok, MCP.Result.input_required(input_requests: %{"choice" => request})}
+      request = Snodo.Elicitation.form("Choose", %{"type" => "object", "properties" => %{}})
+      {:ok, Snodo.Result.input_required(input_requests: %{"choice" => request})}
     end
 
-    defp finish("complete"), do: {:ok, MCP.Result.text("complete")}
+    defp finish("complete"), do: {:ok, Snodo.Result.text("complete")}
   end
 
   test "direct synchronous dispatch safely ignores reporting without a transport sink" do
@@ -53,12 +53,12 @@ defmodule MCP.ProgressTransportAcceptanceTest do
   test "the dialect keeps subscription progress separate from ordinary request streams" do
     transport = %TransportContext{
       transport: :stdio,
-      metadata: %{progress_sink: MCP.Progress.sink(self())}
+      metadata: %{progress_sink: Snodo.Progress.sink(self())}
     }
 
     raw = request("listen") |> Map.put("method", "subscriptions/listen")
-    assert {:ok, envelope} = MCP.Envelope.decode(raw, transport)
-    assert {:ok, context} = MCP.Protocol.V2026_07_28.build_context(envelope, runtime())
+    assert {:ok, envelope} = Snodo.Envelope.decode(raw, transport)
+    assert {:ok, context} = Snodo.Protocol.V2026_07_28.build_context(envelope, runtime())
     assert context.progress == nil
   end
 

@@ -1,8 +1,8 @@
-defmodule MCP.ElicitationTest do
+defmodule Snodo.ElicitationTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Elicitation
-  alias MCP.Error
+  alias Snodo.Elicitation
+  alias Snodo.Error
 
   test "builders return bare embedded requests without legacy identifiers" do
     schema = schema(%{"name" => %{"type" => "string"}})

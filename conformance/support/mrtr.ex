@@ -1,15 +1,15 @@
-defmodule MCPEx.Conformance.MRTR.Workflow do
+defmodule SnodoTest.Conformance.MRTR.Workflow do
   @moduledoc false
 
-  alias MCP.Elicitation
-  alias MCP.Error
-  alias MCP.MRTR.State
-  alias MCP.Result
+  alias Snodo.Elicitation
+  alias Snodo.Error
+  alias Snodo.MRTR.State
+  alias Snodo.Result
 
   # The fixture is anonymous, read-only, and loopback-only. This process-lifetime
   # random secret is not a deployable authentication or durable workflow policy.
   def configure do
-    Application.put_env(:mcp_ex, :conformance_mrtr_secret, :crypto.strong_rand_bytes(32))
+    Application.put_env(:snodo, :conformance_mrtr_secret, :crypto.strong_rand_bytes(32))
   end
 
   def field(name, type \\ "string") do
@@ -185,133 +185,133 @@ defmodule MCPEx.Conformance.MRTR.Workflow do
     do: {:error, Error.invalid_params("Invalid or missing fixture request state")}
 
   defp state_options do
-    [secret: Application.fetch_env!(:mcp_ex, :conformance_mrtr_secret), principal: nil, ttl: 300]
+    [secret: Application.fetch_env!(:snodo, :conformance_mrtr_secret), principal: nil, ttl: 300]
   end
 end
 
-defmodule MCPEx.Conformance.MRTR.Basic do
+defmodule SnodoTest.Conformance.MRTR.Basic do
   @moduledoc false
-  use MCP.Tool,
+  use Snodo.Tool,
     name: "test_input_required_result_elicitation",
     description: "Elicits a name before returning a read-only greeting"
 
-  alias MCPEx.Conformance.MRTR.Workflow
+  alias SnodoTest.Conformance.MRTR.Workflow
   @impl true
   def call(_arguments, context), do: Workflow.greeting(context)
 end
 
-defmodule MCPEx.Conformance.MRTR.RequestState do
+defmodule SnodoTest.Conformance.MRTR.RequestState do
   @moduledoc false
-  use MCP.Tool,
+  use Snodo.Tool,
     name: "test_input_required_result_request_state",
     description: "Validates signed request state before reporting confirmation"
 
-  alias MCPEx.Conformance.MRTR.Workflow
+  alias SnodoTest.Conformance.MRTR.Workflow
   @impl true
   def call(_arguments, context), do: Workflow.confirmation(context)
 end
 
-defmodule MCPEx.Conformance.MRTR.TamperedState do
+defmodule SnodoTest.Conformance.MRTR.TamperedState do
   @moduledoc false
-  use MCP.Tool,
+  use Snodo.Tool,
     name: "test_input_required_result_tampered_state",
     description: "Rejects tampered or request-mismatched confirmation state"
 
-  alias MCPEx.Conformance.MRTR.Workflow
+  alias SnodoTest.Conformance.MRTR.Workflow
   @impl true
   def call(_arguments, context), do: Workflow.confirmation(context)
 end
 
-defmodule MCPEx.Conformance.MRTR.MultiRound do
+defmodule SnodoTest.Conformance.MRTR.MultiRound do
   @moduledoc false
-  use MCP.Tool,
+  use Snodo.Tool,
     name: "test_input_required_result_multi_round",
     description: "Elicits a name and color in separate signed-state rounds"
 
-  alias MCPEx.Conformance.MRTR.Workflow
+  alias SnodoTest.Conformance.MRTR.Workflow
   @impl true
   def call(_arguments, context), do: Workflow.multi_round(context)
 end
 
-defmodule MCPEx.Conformance.MRTR.ParallelForms do
+defmodule SnodoTest.Conformance.MRTR.ParallelForms do
   @moduledoc false
-  use MCP.Tool,
+  use Snodo.Tool,
     name: "test_input_required_result_parallel_forms",
     description: "Collects parallel form answers with signed partial progress"
 
-  alias MCPEx.Conformance.MRTR.Workflow
+  alias SnodoTest.Conformance.MRTR.Workflow
   @impl true
   def call(_arguments, context), do: Workflow.parallel_forms(context)
 end
 
-defmodule MCPEx.Conformance.MRTR.URL do
+defmodule SnodoTest.Conformance.MRTR.URL do
   @moduledoc false
-  use MCP.Tool,
+  use Snodo.Tool,
     name: "test_input_required_result_url_consent",
     description: "Previews URL consent without claiming external completion"
 
-  alias MCPEx.Conformance.MRTR.Workflow
+  alias SnodoTest.Conformance.MRTR.Workflow
   @impl true
   def call(_arguments, context), do: Workflow.url_consent(context)
 end
 
-defmodule MCPEx.Conformance.MRTR.Prompt do
+defmodule SnodoTest.Conformance.MRTR.Prompt do
   @moduledoc false
-  use MCP.Prompt,
+  use Snodo.Prompt,
     name: "test_input_required_result_prompt",
     description: "Elicits context before rendering a prompt"
 
-  alias MCPEx.Conformance.MRTR.Workflow
+  alias SnodoTest.Conformance.MRTR.Workflow
 
   @impl true
   def render(_arguments, context) do
     Workflow.single(context, "user_context", Workflow.field("context"), fn
       %{"action" => "accept", "content" => %{"context" => value}} ->
-        MCP.Result.prompt_get(MCP.Prompt.message(:user, MCP.Prompt.text(value)))
+        Snodo.Result.prompt_get(Snodo.Prompt.message(:user, Snodo.Prompt.text(value)))
 
       %{"action" => action} ->
-        MCP.Result.prompt_get(MCP.Prompt.message(:user, MCP.Prompt.text("Input #{action}")))
+        Snodo.Result.prompt_get(Snodo.Prompt.message(:user, Snodo.Prompt.text("Input #{action}")))
     end)
   end
 end
 
-defmodule MCPEx.Conformance.MRTR.Resource do
+defmodule SnodoTest.Conformance.MRTR.Resource do
   @moduledoc false
   # Keep the external runner's alphabetically first-resource cache probe on an
   # ordinary static resource. This additional resource requires user input.
-  use MCP.Resource,
+  use Snodo.Resource,
     name: "input_required_preview",
     uri: "z-mrtr://input-required-preview",
     description: "Elicits context before returning a read-only resource preview"
 
-  alias MCPEx.Conformance.MRTR.Workflow
+  alias SnodoTest.Conformance.MRTR.Workflow
 
   @impl true
   def read(%{"uri" => uri}, context) do
     Workflow.single(context, "user_context", Workflow.field("context"), fn
       %{"action" => "accept", "content" => %{"context" => value}} ->
-        MCP.Result.resource_read(MCP.Resource.text(uri, value))
+        Snodo.Result.resource_read(Snodo.Resource.text(uri, value))
 
       %{"action" => action} ->
-        MCP.Result.resource_read(MCP.Resource.text(uri, "Input #{action}"))
+        Snodo.Result.resource_read(Snodo.Resource.text(uri, "Input #{action}"))
     end)
   end
 end
 
-defmodule MCPEx.Conformance.MRTR do
+defmodule SnodoTest.Conformance.MRTR do
   @moduledoc false
 
   def tools do
     [
-      MCPEx.Conformance.MRTR.Basic,
-      MCPEx.Conformance.MRTR.RequestState,
-      MCPEx.Conformance.MRTR.TamperedState,
-      MCPEx.Conformance.MRTR.MultiRound,
-      MCPEx.Conformance.MRTR.ParallelForms,
-      MCPEx.Conformance.MRTR.URL
+      SnodoTest.Conformance.MRTR.Basic,
+      SnodoTest.Conformance.MRTR.RequestState,
+      SnodoTest.Conformance.MRTR.TamperedState,
+      SnodoTest.Conformance.MRTR.MultiRound,
+      SnodoTest.Conformance.MRTR.ParallelForms,
+      SnodoTest.Conformance.MRTR.URL
     ]
   end
 
-  def prompts, do: [MCPEx.Conformance.MRTR.Prompt]
-  def resources, do: [MCPEx.Conformance.MRTR.Resource]
+  def prompts, do: [SnodoTest.Conformance.MRTR.Prompt]
+  def resources, do: [SnodoTest.Conformance.MRTR.Resource]
 end

@@ -1,35 +1,35 @@
 # Optional JSV schema validation
 
-This package provides `MCP.Schema.Validator.JSV`, an opt-in implementation of
+This package provides `Snodo.Schema.Validator.JSV`, an opt-in implementation of
 the core validator boundary using JSV. It adds no runtime dependencies to the
-`mcp_ex` core and is not an MCP protocol extension. `Basic` remains a useful,
+`snodo` core and is not an MCP protocol extension. `Basic` remains a useful,
 explicitly partial dependency-free option; installing this package does not
 silently change any server's validation policy.
 
 ## Use from an application
 
 The repository packages are not yet published. With this checkout available,
-add a path dependency alongside the application's `mcp_ex` dependency:
+add a path dependency alongside the application's `snodo` dependency:
 
 ```elixir
-{:mcp_ex_jsv, path: "../mcp_ex/integrations/schema_jsv"}
+{:snodo_jsv, path: "../snodo/integrations/schema_jsv"}
 ```
 
 Select the backend on the server:
 
 ```elixir
 defmodule MyApp.MCPServer do
-  use MCP.Server,
+  use Snodo.Server,
     name: "my-application",
     version: "0.1.0",
-    protocols: [MCP.Protocol.V2026_07_28],
-    schema_validator: MCP.Schema.Validator.JSV
+    protocols: [Snodo.Protocol.V2026_07_28],
+    schema_validator: Snodo.Schema.Validator.JSV
 
   tool(MyApp.Search)
 end
 ```
 
-`MCP.Router.dispatch/5` also accepts `schema_validator: MCP.Schema.Validator.JSV`.
+`Snodo.Router.dispatch/5` also accepts `schema_validator: Snodo.Schema.Validator.JSV`.
 Input schemas and output schemas remain the original JSON-decoded maps. The
 backend validates data but never inserts defaults, converts keys to atoms,
 returns cast values, or rewrites the tool definitions advertised by the server.
@@ -48,7 +48,7 @@ returns cast values, or rewrites the tool definitions advertised by the server.
   supports 1.18, so the restriction is real rather than theoretical.
 - The adapter validates schemas against JSV's bundled meta-schemas before
   building a root. Schema failures and unsupported policy features become
-  `MCP.Schema.Validator.JSV.BuildError`; `validate/2` raises that error so the
+  `Snodo.Schema.Validator.JSV.BuildError`; `validate/2` raises that error so the
   router treats it as a server configuration failure. Invalid instances return
   `{:error, reason}` and become ordinary invalid-params/output-validation errors
   at the existing router boundary. No library error details are intentionally
@@ -110,8 +110,8 @@ catalog, an application can retain compiled roots in an ordinary module:
 
 ```elixir
 defmodule MyApp.SchemaValidator do
-  @behaviour MCP.Schema.Validator
-  alias MCP.Schema.Validator.JSV, as: Backend
+  @behaviour Snodo.Schema.Validator
+  alias Snodo.Schema.Validator.JSV, as: Backend
 
   @schema MyApp.Search.input_schema()
   @compiled case Backend.compile(@schema, formats: :assertion) do

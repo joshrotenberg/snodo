@@ -1,13 +1,13 @@
-defmodule MCP.ProgressTest do
+defmodule Snodo.ProgressTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Cancellation
-  alias MCP.Context
-  alias MCP.Envelope
-  alias MCP.Progress
-  alias MCP.Protocol.Inspector
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Transport.Context, as: TransportContext
+  alias Snodo.Cancellation
+  alias Snodo.Context
+  alias Snodo.Envelope
+  alias Snodo.Progress
+  alias Snodo.Protocol.Inspector
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Transport.Context, as: TransportContext
 
   @moduletag mcp_contract: ["request-progress"]
 
@@ -23,7 +23,7 @@ defmodule MCP.ProgressTest do
 
     for token <- [nil, %{}, 1.5], do: assert(Progress.bind(sink, context(token)) == nil)
     assert Progress.bind(sink, %{context | request_id: nil}) == nil
-    assert Progress.bind(sink, %{context | protocol: MCP.Protocol}) == nil
+    assert Progress.bind(sink, %{context | protocol: Snodo.Protocol}) == nil
     refute_receive {:"$gen_call", _, _}
   end
 

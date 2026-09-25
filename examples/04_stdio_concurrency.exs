@@ -1,7 +1,7 @@
 defmodule StdioConcurrency.Slow do
   @moduledoc false
 
-  use MCP.Tool,
+  use Snodo.Tool,
     name: "slow",
     description: "Wait for cancellation after crossing a synchronization barrier"
 
@@ -28,7 +28,7 @@ end
 defmodule StdioConcurrency.Echo do
   @moduledoc false
 
-  use MCP.Tool,
+  use Snodo.Tool,
     name: "echo",
     description: "Return text immediately"
 
@@ -40,16 +40,16 @@ defmodule StdioConcurrency.Echo do
   })
 
   @impl true
-  def call(%{"text" => text}, _context), do: {:ok, MCP.Result.text(text)}
+  def call(%{"text" => text}, _context), do: {:ok, Snodo.Result.text(text)}
 end
 
 defmodule StdioConcurrency.Server do
   @moduledoc false
 
-  use MCP.Server,
+  use Snodo.Server,
     name: "stdio-concurrency-example",
     version: "0.1.0",
-    protocols: [MCP.Protocol.V2026_07_28]
+    protocols: [Snodo.Protocol.V2026_07_28]
 
   tool(StdioConcurrency.Slow)
   tool(StdioConcurrency.Echo)
@@ -58,12 +58,12 @@ end
 defmodule StdioConcurrency.Example do
   @moduledoc false
 
-  alias MCP.Protocol.V2026_07_28, as: Protocol
+  alias Snodo.Protocol.V2026_07_28, as: Protocol
 
   @timeout 15_000
 
   def serve do
-    case MCP.Transport.Stdio.serve(StdioConcurrency.Server.runtime(), max_concurrency: 2) do
+    case Snodo.Transport.Stdio.serve(StdioConcurrency.Server.runtime(), max_concurrency: 2) do
       :ok -> :ok
       {:error, reason} -> raise "stdio server failed: #{inspect(reason)}"
     end
@@ -147,7 +147,7 @@ defmodule StdioConcurrency.Example do
   defp start_subprocess(fifo) do
     shell = System.find_executable("sh") || raise "sh executable was not found"
     elixir = System.find_executable("elixir") || raise "elixir executable was not found"
-    ebin = MCP.Server |> :code.which() |> List.to_string() |> Path.dirname()
+    ebin = Snodo.Server |> :code.which() |> List.to_string() |> Path.dirname()
     script = Path.expand(__ENV__.file)
     command = ~S(exec "$1" -pa "$2" "$3" --server < "$4")
 
@@ -167,7 +167,7 @@ defmodule StdioConcurrency.Example do
     directory =
       Path.join(
         System.tmp_dir!(),
-        "mcp_ex_stdio_example_#{System.unique_integer([:positive, :monotonic])}"
+        "snodo_stdio_example_#{System.unique_integer([:positive, :monotonic])}"
       )
 
     fifo = Path.join(directory, "requests.fifo")

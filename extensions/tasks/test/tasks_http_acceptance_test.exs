@@ -1,19 +1,19 @@
-defmodule MCP.TasksHTTPAcceptanceTest do
+defmodule Snodo.TasksHTTPAcceptanceTest do
   use ExUnit.Case, async: false
 
   @moduletag mcp_contract: ["tasks-extension-http-admission"]
   @moduletag :tasks_package
 
-  alias MCP.Extensions.Tasks
-  alias MCP.Extensions.Tasks.Runner
-  alias MCP.Extensions.Tasks.Store.Memory
-  alias MCP.Subscription
-  alias MCP.Transport.StreamableHTTP
-  alias MCP.Transport.StreamableHTTP.Request
-  alias MCP.Transport.StreamableHTTP.StreamResponse
-  alias MCPEx.TasksSubscriptionHub
-  alias MCPEx.TasksSubscriptionSource
-  alias MCPEx.TasksTestSupport, as: TasksSupport
+  alias Snodo.Extensions.Tasks
+  alias Snodo.Extensions.Tasks.Runner
+  alias Snodo.Extensions.Tasks.Store.Memory
+  alias Snodo.Subscription
+  alias Snodo.Transport.StreamableHTTP
+  alias Snodo.Transport.StreamableHTTP.Request
+  alias Snodo.Transport.StreamableHTTP.StreamResponse
+  alias SnodoTest.TasksSubscriptionHub
+  alias SnodoTest.TasksSubscriptionSource
+  alias SnodoTest.TasksTestSupport, as: TasksSupport
 
   @protocol "2026-07-28"
 

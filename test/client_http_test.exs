@@ -1,22 +1,22 @@
-defmodule MCP.ClientHTTPTest do
+defmodule Snodo.ClientHTTPTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Client
-  alias MCP.Client.HTTP
-  alias MCP.Error
-  alias MCP.Transport.StreamableHTTP.Server, as: HTTPServer
-  alias MCPEx.MRTR.Server, as: ChoiceServer
-  alias MCPEx.TestFixtures
-  alias MCPEx.TestPrompts.PackageAnalysis
-  alias MCPEx.TestResources.StaticText
+  alias Snodo.Client
+  alias Snodo.Client.HTTP
+  alias Snodo.Error
+  alias Snodo.Transport.StreamableHTTP.Server, as: HTTPServer
+  alias SnodoTest.MRTR.Server, as: ChoiceServer
+  alias SnodoTest.TestFixtures
+  alias SnodoTest.TestPrompts.PackageAnalysis
+  alias SnodoTest.TestResources.StaticText
 
   defmodule Staged do
-    use MCP.Tool, name: "staged"
+    use Snodo.Tool, name: "staged"
 
     @impl true
     def call(_arguments, context) do
-      for stage <- 1..3, do: :ok = MCP.Progress.report(context, stage, total: 3)
-      {:ok, MCP.Result.text("staged")}
+      for stage <- 1..3, do: :ok = Snodo.Progress.report(context, stage, total: 3)
+      {:ok, Snodo.Result.text("staged")}
     end
   end
 
@@ -121,7 +121,7 @@ defmodule MCP.ClientHTTPTest do
       assert {:ok, %{"isError" => true}} = Client.call_tool(client, "failing")
     end
 
-    test "a JSON-RPC error on an HTTP 400 decodes as MCP.Error" do
+    test "a JSON-RPC error on an HTTP 400 decodes as Snodo.Error" do
       client = connect(serve(TestFixtures.runtime(resources: [StaticText])))
 
       assert {:error, %Error{code: -32_602, kind: :protocol}} =

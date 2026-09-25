@@ -1,8 +1,8 @@
 # Public API fixture with deterministic cancellation coordination, no sleeps.
 project = Path.expand("../..", __DIR__)
-ebin = System.get_env("MCP_EX_EBIN") || Path.join(project, "_build/dev/lib/mcp_ex/ebin")
+ebin = System.get_env("SNODO_EBIN") || Path.join(project, "_build/dev/lib/snodo/ebin")
 true = Code.prepend_path(ebin)
-{:ok, _applications} = Application.ensure_all_started(:mcp_ex)
+{:ok, _applications} = Application.ensure_all_started(:snodo)
 
 defmodule ProgressFixture.Control do
   @moduledoc false
@@ -58,20 +58,20 @@ end
 
 defmodule ProgressFixture.Tool do
   @moduledoc false
-  use MCP.Tool,
+  use Snodo.Tool,
     name: "progress_preview",
     description: "Reports progress before a selected outcome"
 
   @impl true
   def call(%{"mode" => "slow"}, context) do
     :ok = ProgressFixture.Control.track()
-    :ok = MCP.Progress.report(context, 0, total: 100, message: "Parked until explicitly released")
+    :ok = Snodo.Progress.report(context, 0, total: 100, message: "Parked until explicitly released")
 
     receive do
       :release ->
-        :ok = MCP.Progress.report(context, 100, total: 100, message: "Released")
+        :ok = Snodo.Progress.report(context, 100, total: 100, message: "Released")
         :ok = ProgressFixture.Control.completed()
-        {:ok, MCP.Result.text("must-not-complete-after-cancellation")}
+        {:ok, Snodo.Result.text("must-not-complete-after-cancellation")}
     after
       15_000 -> raise "progress fixture was neither released nor cancelled"
     end
@@ -82,7 +82,7 @@ defmodule ProgressFixture.Tool do
     if operation, do: ProgressFixture.Control.gate(operation)
 
     for value <- [0, 50, 100] do
-      :ok = MCP.Progress.report(context, value, total: 100, message: "Stage #{value}")
+      :ok = Snodo.Progress.report(context, value, total: 100, message: "Stage #{value}")
       if operation, do: await_acknowledgement(value)
     end
 
@@ -97,62 +97,62 @@ defmodule ProgressFixture.Tool do
     end
   end
 
-  defp result("domain_error", _context), do: {:ok, MCP.Result.error("progress-domain-error")}
+  defp result("domain_error", _context), do: {:ok, Snodo.Result.error("progress-domain-error")}
 
   defp result("protocol_error", _context),
-    do: {:error, MCP.Error.invalid_params("progress-protocol-error")}
+    do: {:error, Snodo.Error.invalid_params("progress-protocol-error")}
 
   defp result("mrtr", context) do
     request =
-      MCP.Elicitation.form("Choose a preview label", %{
+      Snodo.Elicitation.form("Choose a preview label", %{
         "type" => "object",
         "properties" => %{"label" => %{"type" => "string"}},
         "required" => ["label"]
       })
 
-    case MCP.Elicitation.response(context, "label", request) do
+    case Snodo.Elicitation.response(context, "label", request) do
       :missing ->
-        {:ok, MCP.Result.input_required(input_requests: %{"label" => request})}
+        {:ok, Snodo.Result.input_required(input_requests: %{"label" => request})}
 
       {:ok, %{"action" => "accept", "content" => %{"label" => label}}} ->
-        {:ok, MCP.Result.text(label)}
+        {:ok, Snodo.Result.text(label)}
 
       {:ok, %{"action" => action}} ->
-        {:ok, MCP.Result.text(action)}
+        {:ok, Snodo.Result.text(action)}
 
       {:error, error} ->
         {:error, error}
     end
   end
 
-  defp result(_mode, _context), do: {:ok, MCP.Result.text("progress-ok")}
+  defp result(_mode, _context), do: {:ok, Snodo.Result.text("progress-ok")}
 end
 
 defmodule ProgressFixture.Acknowledge do
   @moduledoc false
-  use MCP.Tool, name: "progress_ack", description: "Releases exactly one controlled fixture stage"
+  use Snodo.Tool, name: "progress_ack", description: "Releases exactly one controlled fixture stage"
 
   @impl true
   def call(%{"operation" => operation, "value" => value}, _context) do
     :ok = ProgressFixture.Control.acknowledge(operation, value)
-    {:ok, MCP.Result.text("acknowledged")}
+    {:ok, Snodo.Result.text("acknowledged")}
   end
 end
 
 defmodule ProgressFixture.Status do
   @moduledoc false
-  use MCP.Tool, name: "progress_status", description: "Waits for the cancelled worker to stop"
+  use Snodo.Tool, name: "progress_status", description: "Waits for the cancelled worker to stop"
   @impl true
   def call(_arguments, _context),
-    do: {:ok, MCP.Result.text(JSON.encode!(ProgressFixture.Control.await_stopped()))}
+    do: {:ok, Snodo.Result.text(JSON.encode!(ProgressFixture.Control.await_stopped()))}
 end
 
 defmodule ProgressFixture.Server do
   @moduledoc false
-  use MCP.Server,
+  use Snodo.Server,
     name: "progress-fixture",
     version: "1.0.0",
-    protocols: [MCP.Protocol.V2026_07_28]
+    protocols: [Snodo.Protocol.V2026_07_28]
 
   tool(ProgressFixture.Tool)
   tool(ProgressFixture.Status)
@@ -164,11 +164,11 @@ runtime = ProgressFixture.Server.runtime()
 
 case System.argv() do
   ["--stdio"] ->
-    MCP.Transport.Stdio.serve(runtime)
+    Snodo.Transport.Stdio.serve(runtime)
 
   ["--http"] ->
-    {:ok, listener} = MCP.Transport.StreamableHTTP.Server.start_link(runtime: runtime, port: 0)
-    IO.puts(JSON.encode!(%{"url" => MCP.Transport.StreamableHTTP.Server.url(listener)}))
+    {:ok, listener} = Snodo.Transport.StreamableHTTP.Server.start_link(runtime: runtime, port: 0)
+    IO.puts(JSON.encode!(%{"url" => Snodo.Transport.StreamableHTTP.Server.url(listener)}))
     _input = IO.read(:stdio, :eof)
     :ok = GenServer.stop(listener)
 

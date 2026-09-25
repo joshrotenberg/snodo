@@ -1,28 +1,28 @@
 Code.require_file("mrtr.ex", __DIR__)
 Code.require_file("progress.ex", __DIR__)
 
-defmodule MCPEx.Conformance.Tools.SimpleText do
-  use MCP.Tool,
+defmodule SnodoTest.Conformance.Tools.SimpleText do
+  use Snodo.Tool,
     name: "test_simple_text",
     description: "Returns one text content item for the official conformance runner"
 
   @impl true
   def call(_arguments, _context) do
-    {:ok, MCP.Result.text("This is a simple text response for testing.")}
+    {:ok, Snodo.Result.text("This is a simple text response for testing.")}
   end
 end
 
-defmodule MCPEx.Conformance.Tools.HeaderProbe do
-  use MCP.Tool,
+defmodule SnodoTest.Conformance.Tools.HeaderProbe do
+  use Snodo.Tool,
     name: "a_header_probe",
     description: "Returns a synchronous result for generic conformance probes"
 
   @impl true
-  def call(_arguments, _context), do: {:ok, MCP.Result.text("Header probe accepted")}
+  def call(_arguments, _context), do: {:ok, Snodo.Result.text("Header probe accepted")}
 end
 
-defmodule MCPEx.Conformance.Tools.ImageContent do
-  use MCP.Tool,
+defmodule SnodoTest.Conformance.Tools.ImageContent do
+  use Snodo.Tool,
     name: "test_image_content",
     description: "Returns a small PNG image content item for conformance"
 
@@ -31,7 +31,7 @@ defmodule MCPEx.Conformance.Tools.ImageContent do
   @impl true
   def call(_arguments, _context) do
     {:ok,
-     MCP.Result.raw(%{
+     Snodo.Result.raw(%{
        "content" => [
          %{"type" => "image", "data" => @one_pixel_png, "mimeType" => "image/png"}
        ]
@@ -39,8 +39,8 @@ defmodule MCPEx.Conformance.Tools.ImageContent do
   end
 end
 
-defmodule MCPEx.Conformance.Tools.AudioContent do
-  use MCP.Tool,
+defmodule SnodoTest.Conformance.Tools.AudioContent do
+  use Snodo.Tool,
     name: "test_audio_content",
     description: "Returns a small WAV audio content item for conformance"
 
@@ -49,7 +49,7 @@ defmodule MCPEx.Conformance.Tools.AudioContent do
   @impl true
   def call(_arguments, _context) do
     {:ok,
-     MCP.Result.raw(%{
+     Snodo.Result.raw(%{
        "content" => [
          %{"type" => "audio", "data" => @silent_wav, "mimeType" => "audio/wav"}
        ]
@@ -57,15 +57,15 @@ defmodule MCPEx.Conformance.Tools.AudioContent do
   end
 end
 
-defmodule MCPEx.Conformance.Tools.EmbeddedResource do
-  use MCP.Tool,
+defmodule SnodoTest.Conformance.Tools.EmbeddedResource do
+  use Snodo.Tool,
     name: "test_embedded_resource",
     description: "Returns one embedded text resource for conformance"
 
   @impl true
   def call(_arguments, _context) do
     {:ok,
-     MCP.Result.raw(%{
+     Snodo.Result.raw(%{
        "content" => [
          %{
            "type" => "resource",
@@ -80,8 +80,8 @@ defmodule MCPEx.Conformance.Tools.EmbeddedResource do
   end
 end
 
-defmodule MCPEx.Conformance.Tools.MixedContent do
-  use MCP.Tool,
+defmodule SnodoTest.Conformance.Tools.MixedContent do
+  use Snodo.Tool,
     name: "test_multiple_content_types",
     description: "Returns text, image, and embedded resource content together"
 
@@ -90,7 +90,7 @@ defmodule MCPEx.Conformance.Tools.MixedContent do
   @impl true
   def call(_arguments, _context) do
     {:ok,
-     MCP.Result.raw(%{
+     Snodo.Result.raw(%{
        "content" => [
          %{"type" => "text", "text" => "Multiple content types test:"},
          %{"type" => "image", "data" => @one_pixel_png, "mimeType" => "image/png"},
@@ -107,8 +107,8 @@ defmodule MCPEx.Conformance.Tools.MixedContent do
   end
 end
 
-defmodule MCPEx.Conformance.Tools.ErrorHandling do
-  use MCP.Tool,
+defmodule SnodoTest.Conformance.Tools.ErrorHandling do
+  use Snodo.Tool,
     name: "test_error_handling",
     description: "Returns the tool-level error result expected by conformance"
 
@@ -118,8 +118,8 @@ defmodule MCPEx.Conformance.Tools.ErrorHandling do
   end
 end
 
-defmodule MCPEx.Conformance.Tools.JSONSchema2020 do
-  use MCP.Tool,
+defmodule SnodoTest.Conformance.Tools.JSONSchema2020 do
+  use Snodo.Tool,
     name: "json_schema_2020_12_tool",
     description: "Tool with JSON Schema 2020-12 features"
 
@@ -154,26 +154,26 @@ defmodule MCPEx.Conformance.Tools.JSONSchema2020 do
   })
 
   @impl true
-  def call(_arguments, _context), do: {:ok, MCP.Result.text("schema accepted")}
+  def call(_arguments, _context), do: {:ok, Snodo.Result.text("schema accepted")}
 end
 
-defmodule MCPEx.Conformance.Prompts.Simple do
-  use MCP.Prompt,
+defmodule SnodoTest.Conformance.Prompts.Simple do
+  use Snodo.Prompt,
     name: "test_simple_prompt",
     description: "A simple prompt without arguments"
 
   @impl true
   def render(_arguments, _context) do
     {:ok,
-     MCP.Result.prompt_get(
-       MCP.Prompt.message(:user, MCP.Prompt.text("This is a simple test prompt.")),
+     Snodo.Result.prompt_get(
+       Snodo.Prompt.message(:user, Snodo.Prompt.text("This is a simple test prompt.")),
        description: "Simple conformance prompt"
      )}
   end
 end
 
-defmodule MCPEx.Conformance.Prompts.WithArguments do
-  use MCP.Prompt,
+defmodule SnodoTest.Conformance.Prompts.WithArguments do
+  use Snodo.Prompt,
     name: "test_prompt_with_arguments",
     description: "A prompt that substitutes two arguments",
     arguments: [
@@ -185,23 +185,23 @@ defmodule MCPEx.Conformance.Prompts.WithArguments do
   @impl true
   def render(%{"arg1" => arg1, "arg2" => arg2}, _context) do
     {:ok,
-     MCP.Result.prompt_get(
-       MCP.Prompt.message(
+     Snodo.Result.prompt_get(
+       Snodo.Prompt.message(
          :user,
-         MCP.Prompt.text("Parameterized prompt values: #{arg1} and #{arg2}.")
+         Snodo.Prompt.text("Parameterized prompt values: #{arg1} and #{arg2}.")
        ),
        description: "Parameterized conformance prompt"
      )}
   end
 
   @impl true
-  def complete(%MCP.Completion{value: value}, _context) do
-    {:ok, MCP.Result.completion([value], total: 1, has_more: false)}
+  def complete(%Snodo.Completion{value: value}, _context) do
+    {:ok, Snodo.Result.completion([value], total: 1, has_more: false)}
   end
 end
 
-defmodule MCPEx.Conformance.Prompts.WithEmbeddedResource do
-  use MCP.Prompt,
+defmodule SnodoTest.Conformance.Prompts.WithEmbeddedResource do
+  use Snodo.Prompt,
     name: "test_prompt_with_embedded_resource",
     description: "A prompt containing an embedded resource",
     arguments: [
@@ -211,18 +211,18 @@ defmodule MCPEx.Conformance.Prompts.WithEmbeddedResource do
   @impl true
   def render(%{"resourceUri" => uri}, _context) do
     resource =
-      MCP.Resource.text(uri, "This is embedded resource content.", mime_type: "text/plain")
+      Snodo.Resource.text(uri, "This is embedded resource content.", mime_type: "text/plain")
 
     {:ok,
-     MCP.Result.prompt_get(
-       MCP.Prompt.message(:user, MCP.Prompt.embedded_resource(resource)),
+     Snodo.Result.prompt_get(
+       Snodo.Prompt.message(:user, Snodo.Prompt.embedded_resource(resource)),
        description: "Embedded resource conformance prompt"
      )}
   end
 end
 
-defmodule MCPEx.Conformance.Prompts.WithImage do
-  use MCP.Prompt,
+defmodule SnodoTest.Conformance.Prompts.WithImage do
+  use Snodo.Prompt,
     name: "test_prompt_with_image",
     description: "A prompt containing image content"
 
@@ -231,15 +231,15 @@ defmodule MCPEx.Conformance.Prompts.WithImage do
   @impl true
   def render(_arguments, _context) do
     {:ok,
-     MCP.Result.prompt_get(
-       MCP.Prompt.message(:user, MCP.Prompt.image(@one_pixel_png, "image/png")),
+     Snodo.Result.prompt_get(
+       Snodo.Prompt.message(:user, Snodo.Prompt.image(@one_pixel_png, "image/png")),
        description: "Image conformance prompt"
      )}
   end
 end
 
-defmodule MCPEx.Conformance.Resources.StaticText do
-  use MCP.Resource,
+defmodule SnodoTest.Conformance.Resources.StaticText do
+  use Snodo.Resource,
     uri: "test://static-text",
     name: "static_text",
     description: "Static text resource required by the frozen conformance runner",
@@ -248,16 +248,16 @@ defmodule MCPEx.Conformance.Resources.StaticText do
   @impl true
   def read(%{"uri" => uri}, _context) do
     {:ok,
-     MCP.Result.resource_read(
-       MCP.Resource.text(uri, "This is a static text resource for testing.",
+     Snodo.Result.resource_read(
+       Snodo.Resource.text(uri, "This is a static text resource for testing.",
          mime_type: "text/plain"
        )
      )}
   end
 end
 
-defmodule MCPEx.Conformance.Resources.StaticBinary do
-  use MCP.Resource,
+defmodule SnodoTest.Conformance.Resources.StaticBinary do
+  use Snodo.Resource,
     uri: "test://static-binary",
     name: "static_binary",
     description: "Static binary resource required by the frozen conformance runner",
@@ -268,14 +268,14 @@ defmodule MCPEx.Conformance.Resources.StaticBinary do
   @impl true
   def read(%{"uri" => uri}, _context) do
     {:ok,
-     MCP.Result.resource_read(
-       MCP.Resource.blob(uri, Base.encode64(@bytes), mime_type: "application/octet-stream")
+     Snodo.Result.resource_read(
+       Snodo.Resource.blob(uri, Base.encode64(@bytes), mime_type: "application/octet-stream")
      )}
   end
 end
 
-defmodule MCPEx.Conformance.Resources.TemplateData do
-  use MCP.Resource,
+defmodule SnodoTest.Conformance.Resources.TemplateData do
+  use Snodo.Resource,
     uri_template: "test://template/{id}/data",
     name: "template_data",
     description: "Parameterized resource required by the frozen conformance runner",
@@ -291,8 +291,8 @@ defmodule MCPEx.Conformance.Resources.TemplateData do
   def read(%{"uri" => uri}, _context) do
     with {:ok, id} <- extract_id(uri) do
       {:ok,
-       MCP.Result.resource_read(
-         MCP.Resource.text(uri, "Template resource data for id #{id}", mime_type: "text/plain")
+       Snodo.Result.resource_read(
+         Snodo.Resource.text(uri, "Template resource data for id #{id}", mime_type: "text/plain")
        )}
     end
   end
@@ -310,28 +310,28 @@ defmodule MCPEx.Conformance.Resources.TemplateData do
   end
 end
 
-defmodule MCPEx.Conformance.Fixture do
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Router
-  alias MCP.Server.Runtime
-  alias MCPEx.Conformance.MRTR, as: MRTRFixture
-  alias MCPEx.Conformance.Progress.Tool, as: ProgressTool
-  alias MCPEx.Conformance.Prompts.Simple
-  alias MCPEx.Conformance.Prompts.WithArguments
-  alias MCPEx.Conformance.Prompts.WithEmbeddedResource
-  alias MCPEx.Conformance.Prompts.WithImage
-  alias MCPEx.Conformance.Resources.StaticBinary
-  alias MCPEx.Conformance.Resources.StaticText
-  alias MCPEx.Conformance.Resources.TemplateData
-  alias MCPEx.Conformance.Tasks, as: TasksFixture
-  alias MCPEx.Conformance.Tools.AudioContent
-  alias MCPEx.Conformance.Tools.EmbeddedResource
-  alias MCPEx.Conformance.Tools.ErrorHandling
-  alias MCPEx.Conformance.Tools.HeaderProbe
-  alias MCPEx.Conformance.Tools.ImageContent
-  alias MCPEx.Conformance.Tools.JSONSchema2020
-  alias MCPEx.Conformance.Tools.MixedContent
-  alias MCPEx.Conformance.Tools.SimpleText
+defmodule SnodoTest.Conformance.Fixture do
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Router
+  alias Snodo.Server.Runtime
+  alias SnodoTest.Conformance.MRTR, as: MRTRFixture
+  alias SnodoTest.Conformance.Progress.Tool, as: ProgressTool
+  alias SnodoTest.Conformance.Prompts.Simple
+  alias SnodoTest.Conformance.Prompts.WithArguments
+  alias SnodoTest.Conformance.Prompts.WithEmbeddedResource
+  alias SnodoTest.Conformance.Prompts.WithImage
+  alias SnodoTest.Conformance.Resources.StaticBinary
+  alias SnodoTest.Conformance.Resources.StaticText
+  alias SnodoTest.Conformance.Resources.TemplateData
+  alias SnodoTest.Conformance.Tasks, as: TasksFixture
+  alias SnodoTest.Conformance.Tools.AudioContent
+  alias SnodoTest.Conformance.Tools.EmbeddedResource
+  alias SnodoTest.Conformance.Tools.ErrorHandling
+  alias SnodoTest.Conformance.Tools.HeaderProbe
+  alias SnodoTest.Conformance.Tools.ImageContent
+  alias SnodoTest.Conformance.Tools.JSONSchema2020
+  alias SnodoTest.Conformance.Tools.MixedContent
+  alias SnodoTest.Conformance.Tools.SimpleText
 
   @tools [
            HeaderProbe,
@@ -349,7 +349,7 @@ defmodule MCPEx.Conformance.Fixture do
   @prompts [Simple, WithArguments, WithEmbeddedResource, WithImage] ++ MRTRFixture.prompts()
 
   def runtime do
-    MCPEx.Conformance.MRTR.Workflow.configure()
+    SnodoTest.Conformance.MRTR.Workflow.configure()
 
     router =
       @tools
@@ -375,7 +375,7 @@ defmodule MCPEx.Conformance.Fixture do
       router: router,
       protocols: [V2026_07_28],
       extensions: [TasksFixture.extension()],
-      server_info: %{"name" => "mcp-ex-conformance", "version" => "0.1.0"},
+      server_info: %{"name" => "snodo-conformance", "version" => "0.1.0"},
       capabilities: capabilities,
       tools_cache: [ttl_ms: 0, scope: "private"],
       prompts_cache: [ttl_ms: 0, scope: "private"],

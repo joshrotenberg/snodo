@@ -1,8 +1,8 @@
-defmodule MCP.Schema.Validator.BasicTest do
+defmodule Snodo.Schema.Validator.BasicTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Schema.Validator.Basic
-  alias MCP.Schema.Validator.Basic.Error
+  alias Snodo.Schema.Validator.Basic
+  alias Snodo.Schema.Validator.Basic.Error
 
   test "validates nested object requirements and primitive types" do
     schema = %{

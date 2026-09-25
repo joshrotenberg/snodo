@@ -1,12 +1,12 @@
-defmodule MCP.Transport.Plug.MixProject do
+defmodule Snodo.Transport.Plug.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :mcp_ex_plug,
+      app: :snodo_plug,
       version: "0.1.0",
       elixir: "~> 1.18",
-      description: "Optional Plug integration for mcp_ex",
+      description: "Optional Plug integration for snodo",
       elixirc_paths: if(Mix.env() == :test, do: ["lib", "test/support"], else: ["lib"]),
       dialyzer: [plt_local_path: "priv/plts", flags: [:unmatched_returns, :error_handling]],
       aliases: [
@@ -21,7 +21,7 @@ defmodule MCP.Transport.Plug.MixProject do
         "quality.types": ["dialyzer --force-check --format short --list-unused-filters"]
       ],
       deps: [
-        {:mcp_ex, path: "../.."},
+        {:snodo, path: "../.."},
         {:plug, "~> 1.20.3"},
         {:bandit, "~> 1.12.5", only: [:dev, :test]},
         {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},

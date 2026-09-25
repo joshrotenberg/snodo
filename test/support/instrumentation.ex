@@ -1,7 +1,7 @@
-defmodule MCPEx.TestInstrumentationSink do
+defmodule SnodoTest.TestInstrumentationSink do
   @moduledoc false
 
-  @behaviour MCP.Instrumentation
+  @behaviour Snodo.Instrumentation
 
   @impl true
   def handle_event(event_name, measurements, metadata, owner) when is_pid(owner) do
@@ -10,10 +10,10 @@ defmodule MCPEx.TestInstrumentationSink do
   end
 end
 
-defmodule MCPEx.RaisingInstrumentationSink do
+defmodule SnodoTest.RaisingInstrumentationSink do
   @moduledoc false
 
-  @behaviour MCP.Instrumentation
+  @behaviour Snodo.Instrumentation
 
   # Raising is the point: a sink fault must not reach protocol behavior.
   @spec handle_event(term(), map(), map(), term()) :: no_return()

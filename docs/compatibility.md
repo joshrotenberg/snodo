@@ -108,7 +108,7 @@ cd extensions/tasks_sqlite
 mix tasks.sqlite.contract
 
 cd ../tasks_postgres
-MCP_TASKS_DATABASE_URL=ecto://postgres:postgres@127.0.0.1:55432/mcp_ex_tasks \
+SNODO_TASKS_DATABASE_URL=ecto://postgres:postgres@127.0.0.1:55432/snodo_tasks \
   mix quality.postgres
 ```
 

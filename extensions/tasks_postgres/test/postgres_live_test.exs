@@ -1,15 +1,15 @@
-defmodule MCP.Extensions.Tasks.Postgres.LiveRepo do
+defmodule Snodo.Extensions.Tasks.Postgres.LiveRepo do
   @moduledoc false
 
   use Ecto.Repo,
-    otp_app: :mcp_ex_tasks_postgres,
+    otp_app: :snodo_tasks_postgres,
     adapter: Ecto.Adapters.Postgres
 end
 
-defmodule MCP.Extensions.Tasks.Postgres.LiveExecutor do
+defmodule Snodo.Extensions.Tasks.Postgres.LiveExecutor do
   @moduledoc false
 
-  @behaviour MCP.Extensions.Tasks.WorkExecutor
+  @behaviour Snodo.Extensions.Tasks.WorkExecutor
 
   @impl true
   def execute(work, _cancellation, state) do
@@ -31,31 +31,31 @@ defmodule MCP.Extensions.Tasks.Postgres.LiveExecutor do
   end
 end
 
-defmodule MCP.Extensions.Tasks.Postgres.LiveTest do
+defmodule Snodo.Extensions.Tasks.Postgres.LiveTest do
   use ExUnit.Case, async: false
 
   import Ecto.Query
 
-  alias MCP.Context
-  alias MCP.Extensions.Tasks.Event
-  alias MCP.Extensions.Tasks.Postgres.LiveExecutor
-  alias MCP.Extensions.Tasks.Postgres.LiveRepo
-  alias MCP.Extensions.Tasks.RetryPolicy
-  alias MCP.Extensions.Tasks.Runner
-  alias MCP.Extensions.Tasks.Snapshot
-  alias MCP.Extensions.Tasks.Store
-  alias MCP.Extensions.Tasks.Store.Postgres
-  alias MCP.Extensions.Tasks.Store.Postgres.EventRow
-  alias MCP.Extensions.Tasks.Store.Postgres.Migration
-  alias MCP.Extensions.Tasks.Store.Postgres.Migration.V1, as: MigrationV1
-  alias MCP.Extensions.Tasks.Store.Postgres.Migration.V2, as: MigrationV2
-  alias MCP.Extensions.Tasks.Store.Postgres.Persistence
-  alias MCP.Extensions.Tasks.Store.Postgres.TaskRow
-  alias MCP.Extensions.Tasks.Task, as: ProtocolTask
-  alias MCP.Extensions.Tasks.Transition
-  alias MCP.Extensions.Tasks.Work
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Transport.Context, as: TransportContext
+  alias Snodo.Context
+  alias Snodo.Extensions.Tasks.Event
+  alias Snodo.Extensions.Tasks.Postgres.LiveExecutor
+  alias Snodo.Extensions.Tasks.Postgres.LiveRepo
+  alias Snodo.Extensions.Tasks.RetryPolicy
+  alias Snodo.Extensions.Tasks.Runner
+  alias Snodo.Extensions.Tasks.Snapshot
+  alias Snodo.Extensions.Tasks.Store
+  alias Snodo.Extensions.Tasks.Store.Postgres
+  alias Snodo.Extensions.Tasks.Store.Postgres.EventRow
+  alias Snodo.Extensions.Tasks.Store.Postgres.Migration
+  alias Snodo.Extensions.Tasks.Store.Postgres.Migration.V1, as: MigrationV1
+  alias Snodo.Extensions.Tasks.Store.Postgres.Migration.V2, as: MigrationV2
+  alias Snodo.Extensions.Tasks.Store.Postgres.Persistence
+  alias Snodo.Extensions.Tasks.Store.Postgres.TaskRow
+  alias Snodo.Extensions.Tasks.Task, as: ProtocolTask
+  alias Snodo.Extensions.Tasks.Transition
+  alias Snodo.Extensions.Tasks.Work
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Transport.Context, as: TransportContext
 
   @moduletag :postgres_live
   @moduletag timeout: 20_000
@@ -71,9 +71,9 @@ defmodule MCP.Extensions.Tasks.Postgres.LiveTest do
 
   setup_all do
     database_url =
-      case System.get_env("MCP_TASKS_DATABASE_URL") do
+      case System.get_env("SNODO_TASKS_DATABASE_URL") do
         url when is_binary(url) and url != "" -> url
-        _missing -> flunk("MCP_TASKS_DATABASE_URL is required for PostgreSQL live tests")
+        _missing -> flunk("SNODO_TASKS_DATABASE_URL is required for PostgreSQL live tests")
       end
 
     {:ok, repo} =

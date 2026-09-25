@@ -3,7 +3,7 @@
 ## Goal
 
 Build Elixir MCP applications that use the current `2026-07-28` protocol through
-supported public APIs. Invest in `mcp_ex`, with a working `hexpm-mcp` application
+supported public APIs. Invest in `snodo`, with a working `hexpm-mcp` application
 and executable feature examples as the acceptance criteria.
 
 The protocol core stays synchronous and independent of transports. Execution,
@@ -15,7 +15,7 @@ servers or a complete JSON Schema validator themselves.
 
 1. **Reconcile and verify the target application — complete locally, 2026-09-14.**
    - Correct JSON resource payloads and tool/domain error semantics.
-   - Exercise `MCP.Tool.Simple` across the real tool catalog without changing
+   - Exercise `Snodo.Tool.Simple` across the real tool catalog without changing
      published definitions.
    - Adopt template variable handoff and harden its exact matching boundary.
    - Establish fresh test, static-analysis, and transport interoperability

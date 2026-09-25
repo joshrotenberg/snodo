@@ -1,14 +1,14 @@
 defmodule Examples.MRTR.Workflow do
   @moduledoc false
 
-  alias MCP.Elicitation
-  alias MCP.MRTR.State
-  alias MCP.Result
+  alias Snodo.Elicitation
+  alias Snodo.MRTR.State
+  alias Snodo.Result
 
   # This read-only, loopback example uses a process-lifetime secret. Remote
   # applications must configure a shared secret and a verified auth principal.
   def configure do
-    Application.put_env(:mcp_ex, :mrtr_example_secret, :crypto.strong_rand_bytes(32))
+    Application.put_env(:snodo, :mrtr_example_secret, :crypto.strong_rand_bytes(32))
   end
 
   def preference(context) do
@@ -17,7 +17,7 @@ defmodule Examples.MRTR.Workflow do
         nil -> ask(context, "color", %{"phase" => "color"})
         %{"phase" => "color"} -> color(context)
         %{"phase" => "style", "color" => color} -> style(context, color)
-        _other -> {:error, MCP.Error.invalid_params("Unexpected preference continuation")}
+        _other -> {:error, Snodo.Error.invalid_params("Unexpected preference continuation")}
       end
     end
   end
@@ -33,7 +33,7 @@ defmodule Examples.MRTR.Workflow do
       case state do
         nil -> suspend(context, "visit", request, %{"phase" => "visit"})
         %{"phase" => "visit"} -> url_response(context, request)
-        _other -> {:error, MCP.Error.invalid_params("Unexpected URL continuation")}
+        _other -> {:error, Snodo.Error.invalid_params("Unexpected URL continuation")}
       end
     end
   end
@@ -52,7 +52,7 @@ defmodule Examples.MRTR.Workflow do
           {:ok, Result.input_required(input_requests: %{"label" => request})}
 
         _other ->
-          {:error, MCP.Error.invalid_params("Unexpected reset continuation")}
+          {:error, Snodo.Error.invalid_params("Unexpected reset continuation")}
       end
     end
   end
@@ -140,7 +140,7 @@ defmodule Examples.MRTR.Workflow do
 
   defp state_options do
     [
-      secret: Application.fetch_env!(:mcp_ex, :mrtr_example_secret),
+      secret: Application.fetch_env!(:snodo, :mrtr_example_secret),
       # This deliberately anonymous loopback preview has no authenticated user.
       principal: nil,
       ttl: 300
@@ -152,7 +152,7 @@ defmodule Examples.MRTR.PreferenceTool do
   @moduledoc false
   alias Examples.MRTR.Workflow
 
-  use MCP.Tool.Simple,
+  use Snodo.Tool.Simple,
     name: "preference_preview",
     description: "Build a read-only preference preview"
 
@@ -161,7 +161,7 @@ defmodule Examples.MRTR.PreferenceTool do
   @impl true
   def call(_arguments, context) do
     case Workflow.preference(context) do
-      {:done, data} -> {:ok, MCP.Result.text(JSON.encode!(data))}
+      {:done, data} -> {:ok, Snodo.Result.text(JSON.encode!(data))}
       other -> other
     end
   end
@@ -171,14 +171,14 @@ defmodule Examples.MRTR.URLTool do
   @moduledoc false
   alias Examples.MRTR.Workflow
 
-  use MCP.Tool.Simple,
+  use Snodo.Tool.Simple,
     name: "url_preview",
     description: "Show that URL consent is not external completion"
 
   @impl true
   def call(_arguments, context) do
     case Workflow.url_preview(context) do
-      {:done, data} -> {:ok, MCP.Result.text(JSON.encode!(data))}
+      {:done, data} -> {:ok, Snodo.Result.text(JSON.encode!(data))}
       other -> other
     end
   end
@@ -188,14 +188,14 @@ defmodule Examples.MRTR.ResetTool do
   @moduledoc false
   alias Examples.MRTR.Workflow
 
-  use MCP.Tool.Simple,
+  use Snodo.Tool.Simple,
     name: "reset_preview",
     description: "Demonstrate state-only and input-only continuations"
 
   @impl true
   def call(_arguments, context) do
     case Workflow.reset_preview(context) do
-      {:done, data} -> {:ok, MCP.Result.text(JSON.encode!(data))}
+      {:done, data} -> {:ok, Snodo.Result.text(JSON.encode!(data))}
       other -> other
     end
   end
@@ -205,7 +205,7 @@ defmodule Examples.MRTR.PreferenceResource do
   @moduledoc false
   alias Examples.MRTR.Workflow
 
-  use MCP.Resource,
+  use Snodo.Resource,
     uri: "preview://preferences",
     name: "Preference preview",
     mime_type: "application/json"
@@ -213,7 +213,7 @@ defmodule Examples.MRTR.PreferenceResource do
   @impl true
   def read(%{"uri" => uri}, context) do
     case Workflow.preference(context) do
-      {:done, data} -> {:ok, MCP.Result.resource_read(MCP.Resource.json(uri, data))}
+      {:done, data} -> {:ok, Snodo.Result.resource_read(Snodo.Resource.json(uri, data))}
       other -> other
     end
   end
@@ -223,7 +223,7 @@ defmodule Examples.MRTR.PreferencePrompt do
   @moduledoc false
   alias Examples.MRTR.Workflow
 
-  use MCP.Prompt,
+  use Snodo.Prompt,
     name: "preference_prompt",
     description: "Render a prompt after eliciting preferences"
 
@@ -232,7 +232,9 @@ defmodule Examples.MRTR.PreferencePrompt do
     case Workflow.preference(context) do
       {:done, data} ->
         {:ok,
-         MCP.Result.prompt_get(MCP.Prompt.message(:user, MCP.Prompt.text(JSON.encode!(data))))}
+         Snodo.Result.prompt_get(
+           Snodo.Prompt.message(:user, Snodo.Prompt.text(JSON.encode!(data)))
+         )}
 
       other ->
         other
@@ -242,11 +244,11 @@ end
 
 defmodule Examples.MRTR.Server do
   @moduledoc false
-  use MCP.Server,
+  use Snodo.Server,
     name: "mrtr-example",
     version: "1.0.0",
-    protocols: [MCP.Protocol.V2026_07_28],
-    schema_validator: MCP.Schema.Validator.Basic
+    protocols: [Snodo.Protocol.V2026_07_28],
+    schema_validator: Snodo.Schema.Validator.Basic
 
   tool(Examples.MRTR.PreferenceTool)
   tool(Examples.MRTR.URLTool)

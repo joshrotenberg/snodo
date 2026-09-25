@@ -1,12 +1,12 @@
 Code.require_file("../conformance/support/progress.ex", __DIR__)
 
-defmodule MCPEx.Conformance.ProgressFixtureTest do
+defmodule SnodoTest.Conformance.ProgressFixtureTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Server
-  alias MCP.Server.Runtime
-  alias MCP.Transport.Context, as: TransportContext
-  alias MCP.Transport.Stdio
+  alias Snodo.Server
+  alias Snodo.Server.Runtime
+  alias Snodo.Transport.Context, as: TransportContext
+  alias Snodo.Transport.Stdio
 
   test "the frozen runner's exact named fixture is discoverable" do
     {:ok, listed} = Server.dispatch(runtime(), request(1, "tools/list", %{}), %TransportContext{})
@@ -75,8 +75,8 @@ defmodule MCPEx.Conformance.ProgressFixtureTest do
 
   defp runtime do
     Runtime.new(
-      router: MCP.Router.register_tool(MCP.Router.new(), MCPEx.Conformance.Progress.Tool),
-      protocols: [MCP.Protocol.V2026_07_28],
+      router: Snodo.Router.register_tool(Snodo.Router.new(), SnodoTest.Conformance.Progress.Tool),
+      protocols: [Snodo.Protocol.V2026_07_28],
       server_info: %{"name" => "progress-conformance-test", "version" => "1.0.0"}
     )
   end

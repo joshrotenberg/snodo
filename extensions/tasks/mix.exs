@@ -1,13 +1,13 @@
-defmodule MCP.Extensions.Tasks.MixProject do
+defmodule Snodo.Extensions.Tasks.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :mcp_ex_tasks,
+      app: :snodo_tasks,
       version: "0.1.0",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
-      description: "Tasks extension for mcp_ex",
+      description: "Tasks extension for snodo",
       elixirc_paths: elixirc_paths(Mix.env()),
       dialyzer: [
         # :ex_unit so the PLT knows ExUnit.AssertionError, which test/support raises.
@@ -37,7 +37,7 @@ defmodule MCP.Extensions.Tasks.MixProject do
 
   defp deps do
     [
-      {:mcp_ex, path: "../.."},
+      {:snodo, path: "../.."},
       {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4.7", only: [:dev, :test], runtime: false}
     ]
@@ -47,10 +47,10 @@ defmodule MCP.Extensions.Tasks.MixProject do
     [
       examples: [
         "compile --warnings-as-errors",
-        "mcp.example ../../examples/07_tasks_memory.exs",
-        "mcp.example ../../examples/08_tasks_durable.exs",
-        "mcp.example ../../examples/09_tasks_retry.exs",
-        "mcp.example ../../examples/17_tasks_subscriptions.exs"
+        "snodo.example ../../examples/07_tasks_memory.exs",
+        "snodo.example ../../examples/08_tasks_durable.exs",
+        "snodo.example ../../examples/09_tasks_retry.exs",
+        "snodo.example ../../examples/17_tasks_subscriptions.exs"
       ],
       quality: [
         "format --check-formatted",

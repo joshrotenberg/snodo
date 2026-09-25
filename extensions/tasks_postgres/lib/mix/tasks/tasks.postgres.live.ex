@@ -12,13 +12,13 @@ defmodule Mix.Tasks.Tasks.Postgres.Live do
     "tasks-postgres-live-scope",
     "tasks-postgres-live-time"
   ]
-  @contract_test_module MCP.Extensions.Tasks.Postgres.LiveTest
+  @contract_test_module Snodo.Extensions.Tasks.Postgres.LiveTest
   @contract_test_path "test/postgres_live_test.exs"
 
   @moduledoc """
   Runs transaction and locking evidence against a real PostgreSQL database.
 
-      MCP_TASKS_DATABASE_URL=ecto://postgres:postgres@127.0.0.1:55432/mcp_ex_tasks \
+      SNODO_TASKS_DATABASE_URL=ecto://postgres:postgres@127.0.0.1:55432/snodo_tasks \
         mix tasks.postgres.live
 
   The suite starts an ordinary application-owned Ecto Repo pool and creates a
@@ -51,15 +51,15 @@ defmodule Mix.Tasks.Tasks.Postgres.Live do
   def run(_args), do: Mix.raise("usage: mix tasks.postgres.live")
 
   defp require_database_url! do
-    case System.get_env("MCP_TASKS_DATABASE_URL") do
+    case System.get_env("SNODO_TASKS_DATABASE_URL") do
       url when is_binary(url) and url != "" ->
         :ok
 
       _missing ->
         Mix.raise(
-          "MCP_TASKS_DATABASE_URL is required for the live PostgreSQL contract; " <>
+          "SNODO_TASKS_DATABASE_URL is required for the live PostgreSQL contract; " <>
             "for example: " <>
-            "ecto://postgres:postgres@127.0.0.1:55432/mcp_ex_tasks"
+            "ecto://postgres:postgres@127.0.0.1:55432/snodo_tasks"
         )
     end
   end

@@ -1,7 +1,7 @@
 defmodule Examples.Prompts.AnalyzePackage do
   @moduledoc false
 
-  use MCP.Prompt,
+  use Snodo.Prompt,
     name: "analyze_package",
     title: "Analyze a Hex package",
     description: "Analyze package quality, maintenance, popularity, and alternatives",
@@ -22,14 +22,14 @@ defmodule Examples.Prompts.AnalyzePackage do
     health, quality, popularity, security, alternatives, and a recommendation.
     """
 
-    {:ok, MCP.Result.prompt_get(MCP.Prompt.message(:user, MCP.Prompt.text(text)))}
+    {:ok, Snodo.Result.prompt_get(Snodo.Prompt.message(:user, Snodo.Prompt.text(text)))}
   end
 end
 
 defmodule Examples.Prompts.ComparePackages do
   @moduledoc false
 
-  use MCP.Prompt,
+  use Snodo.Prompt,
     name: "compare_packages",
     description: "Compare multiple hex.pm packages side by side",
     arguments: [
@@ -45,14 +45,14 @@ defmodule Examples.Prompts.ComparePackages do
     text =
       "Compare these hex.pm packages: #{names}. Cover stats, strengths, weaknesses, use cases, and a recommendation."
 
-    {:ok, MCP.Result.prompt_get(MCP.Prompt.message(:user, MCP.Prompt.text(text)))}
+    {:ok, Snodo.Result.prompt_get(Snodo.Prompt.message(:user, Snodo.Prompt.text(text)))}
   end
 end
 
 defmodule Examples.Prompts.EvaluateDependencies do
   @moduledoc false
 
-  use MCP.Prompt,
+  use Snodo.Prompt,
     name: "evaluate_dependencies",
     description: "Evaluate hex.pm dependencies for health and security",
     arguments: [
@@ -68,14 +68,14 @@ defmodule Examples.Prompts.EvaluateDependencies do
     text =
       "Evaluate these dependencies: #{deps}. Assess maintenance, security, bus factor, staleness, and recommended actions."
 
-    {:ok, MCP.Result.prompt_get(MCP.Prompt.message(:user, MCP.Prompt.text(text)))}
+    {:ok, Snodo.Result.prompt_get(Snodo.Prompt.message(:user, Snodo.Prompt.text(text)))}
   end
 end
 
 defmodule Examples.Prompts.MigrationGuide do
   @moduledoc false
 
-  use MCP.Prompt,
+  use Snodo.Prompt,
     name: "migration_guide",
     description: "Guide a migration from one hex.pm package to another",
     arguments: [
@@ -86,28 +86,28 @@ defmodule Examples.Prompts.MigrationGuide do
   @impl true
   def render(%{"from" => from, "to" => to}, _context) do
     messages = [
-      MCP.Prompt.message(
+      Snodo.Prompt.message(
         :user,
-        MCP.Prompt.text(
+        Snodo.Prompt.text(
           "Plan a migration from #{from} to #{to}. Map APIs, breaking changes, ordered steps, and tests."
         )
       ),
-      MCP.Prompt.message(
+      Snodo.Prompt.message(
         :assistant,
-        MCP.Prompt.text(
+        Snodo.Prompt.text(
           "I will compare both packages and build an evidence-backed migration plan."
         )
       )
     ]
 
-    {:ok, MCP.Result.prompt_get(messages, description: "Migration from #{from} to #{to}")}
+    {:ok, Snodo.Result.prompt_get(messages, description: "Migration from #{from} to #{to}")}
   end
 end
 
 defmodule Examples.Prompts.RecommendPackages do
   @moduledoc false
 
-  use MCP.Prompt,
+  use Snodo.Prompt,
     name: "recommend_packages",
     description: "Find and evaluate packages for a use case",
     arguments: [
@@ -123,17 +123,17 @@ defmodule Examples.Prompts.RecommendPackages do
     text =
       "Find hex.pm packages for #{use_case}. Compare the top candidates and recommend the best fit with alternatives."
 
-    {:ok, MCP.Result.prompt_get(MCP.Prompt.message(:user, MCP.Prompt.text(text)))}
+    {:ok, Snodo.Result.prompt_get(Snodo.Prompt.message(:user, Snodo.Prompt.text(text)))}
   end
 end
 
 defmodule Examples.Prompts.Server do
   @moduledoc false
 
-  use MCP.Server,
+  use Snodo.Server,
     name: "hexpm-prompts-example",
     version: "0.1.0",
-    protocols: [MCP.Protocol.V2026_07_28],
+    protocols: [Snodo.Protocol.V2026_07_28],
     prompts_cache: [ttl_ms: 60_000, scope: "public"]
 
   prompt(Examples.Prompts.AnalyzePackage)
@@ -200,7 +200,7 @@ defmodule Examples.Prompts.Runner do
 
   defp dispatch(runtime, id, method, params \\ %{}) do
     {:ok, response} =
-      MCP.Test.dispatch(runtime,
+      Snodo.Test.dispatch(runtime,
         id: id,
         protocol: @protocol,
         method: method,

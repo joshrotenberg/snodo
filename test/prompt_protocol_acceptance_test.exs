@@ -1,11 +1,11 @@
-defmodule MCP.PromptProtocolAcceptanceTest do
+defmodule Snodo.PromptProtocolAcceptanceTest do
   use ExUnit.Case, async: true
 
-  alias MCP.Protocol.V2026_07_28
-  alias MCP.Test, as: MCPTest
-  alias MCPEx.TestFixtures
-  alias MCPEx.TestPrompts.MediaReview
-  alias MCPEx.TestPrompts.PackageAnalysis
+  alias Snodo.Protocol.V2026_07_28
+  alias Snodo.Test, as: MCPTest
+  alias SnodoTest.TestFixtures
+  alias SnodoTest.TestPrompts.MediaReview
+  alias SnodoTest.TestPrompts.PackageAnalysis
 
   @prompts [PackageAnalysis, MediaReview]
 
@@ -48,8 +48,8 @@ defmodule MCP.PromptProtocolAcceptanceTest do
     refute Map.has_key?(listed, "nextCursor")
 
     analysis = Enum.find(listed["prompts"], &(&1["name"] == "package_analysis"))
-    assert analysis == MCP.Prompt.definition_to_map(PackageAnalysis.definition())
-    assert get_in(listed, ["_meta", V2026_07_28.server_info_key(), "name"]) == "mcp-ex-spike"
+    assert analysis == Snodo.Prompt.definition_to_map(PackageAnalysis.definition())
+    assert get_in(listed, ["_meta", V2026_07_28.server_info_key(), "name"]) == "snodo-spike"
   end
 
   test "prompts/get shapes multi-turn messages and result metadata" do
