@@ -153,6 +153,16 @@ defmodule Snodo.Tool.SimpleAcceptanceTest do
     end
   end
 
+  test "Snodo.Test.dispatch/2 names the enabled protocols when asked for another" do
+    runtime = SnodoTest.TestFixtures.runtime()
+
+    assert_raise ArgumentError,
+                 ~s(the runtime does not enable protocol "2025-06-18"; enabled: 2026-07-28),
+                 fn ->
+                   Snodo.Test.dispatch(runtime, protocol: "2025-06-18", method: "tools/list")
+                 end
+  end
+
   test "invalid declarations fail at the caller with useful compile errors" do
     duplicate = """
     defmodule DuplicateSimpleArgument do
