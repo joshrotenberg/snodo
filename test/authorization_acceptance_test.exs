@@ -339,6 +339,28 @@ defmodule Snodo.AuthorizationAcceptanceTest do
     assert DeclaredServer.runtime(authorization: nil).authorization == nil
   end
 
+  test "Router.dispatch/5 accepts a bare policy module, as Runtime.new/1 does" do
+    router = Snodo.Router.new() |> Snodo.Router.register_tool(Echo)
+
+    context = %Snodo.Context{
+      protocol_version: "2026-07-28",
+      protocol: V2026_07_28,
+      transport: %TransportContext{transport: :direct}
+    }
+
+    assert {:ok, %Snodo.Result{kind: :tools, value: [%{name: "echo"}]}} =
+             Snodo.Router.dispatch(router, :tools_list, %{}, context)
+
+    for policy <- [DenyAll, {DenyAll, []}] do
+      assert {:ok, %Snodo.Result{kind: :tools, value: []}} =
+               Snodo.Router.dispatch(router, :tools_list, %{}, context, authorization: policy)
+    end
+
+    assert_raise ArgumentError, ~r/must be a module or a \{module, options\} tuple/, fn ->
+      Snodo.Router.dispatch(router, :tools_list, %{}, context, authorization: "policy")
+    end
+  end
+
   test "a policy is validated when the runtime is built" do
     assert Authorization.normalize!(nil) == nil
     assert Authorization.normalize!(Policy) == {Policy, []}
