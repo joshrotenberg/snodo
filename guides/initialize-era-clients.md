@@ -11,7 +11,11 @@ initialization and conflicting version headers fail. Subsequent requests use
 `MCP-Protocol-Version`; missing headers are rejected because the March 2025
 fallback dialect is not implemented. Initialization does not require that header.
 `notifications/initialized` returns an empty HTTP 202 response. Ping is supported.
-GET and DELETE return 405. There is no HTTP session ID, session process, retained
+GET and DELETE return 405. JSON-RPC errors from executing a request, such as an
+unknown tool or method, are returned with HTTP 200, because clients of these
+revisions treat a non-2xx answer as a transport failure and 404 as an expired
+session. Admission failures (media type, Origin, a missing or unsupported
+`MCP-Protocol-Version`) keep their 4xx statuses. There is no HTTP session ID, session process, retained
 client capability state, or lifecycle registry. Authentication remains application
 owned and is evaluated for each request; session or client metadata never becomes
 an identity. Applications must supply the existing cancellation scope for peers

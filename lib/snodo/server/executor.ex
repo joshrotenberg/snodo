@@ -17,7 +17,7 @@ defmodule Snodo.Server.Executor do
 
   alias Snodo.Cancellation
 
-  @event_tag :snodoecution
+  @event_tag :mcp_execution
 
   @type server :: GenServer.server()
   @type execution_ref :: reference()
@@ -29,7 +29,7 @@ defmodule Snodo.Server.Executor do
           | {:timed_out, non_neg_integer()}
           | {:failed, term()}
   @type event ::
-          {:snodoecution, pid(), execution_ref(), execution_key(), outcome()}
+          {:mcp_execution, pid(), execution_ref(), execution_key(), outcome()}
 
   @default_max_concurrency 32
   @default_max_queue 256

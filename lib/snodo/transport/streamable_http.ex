@@ -49,9 +49,11 @@ defmodule Snodo.Transport.StreamableHTTP do
   def prepare(%Runtime{} = runtime, %Request{} = request, opts \\ []) do
     with :ok <- validate_http_method(request),
          :ok <- validate_origin(request, opts),
+         :ok <- validate_host(request, opts),
          :ok <- validate_content_type(request),
          :ok <- validate_accept(request),
          {:ok, raw} <- decode_body(request.body),
+         :ok <- reject_response_object(raw),
          transport = transport_context(request),
          {:ok, envelope} <- decode_envelope(raw, transport),
          {:ok, protocol} <- select_protocol(runtime, envelope),
@@ -74,6 +76,9 @@ defmodule Snodo.Transport.StreamableHTTP do
          policy: policy
        }}
     else
+      :response_object ->
+        {:response, %Response{status: 202}}
+
       {:http_error, status, %Error{} = error, id} ->
         {:response, error_response(status, error, id)}
 
@@ -98,8 +103,7 @@ defmodule Snodo.Transport.StreamableHTTP do
         %Response{status: 202}
 
       {:ok, response} when is_map(response) ->
-        status = response_status(response)
-        json_response(status, response)
+        json_response(execution_status(prepared.protocol, response), response)
 
       {:stream, subscription} when prepared.policy.stream_mode == :sse ->
         %StreamResponse{subscription: subscription}
@@ -160,17 +164,73 @@ defmodule Snodo.Transport.StreamableHTTP do
     end
   end
 
+  # An allowlist entry is a host, or a host and port ("localhost:3000") that
+  # pins the port. Origins carrying userinfo are never browser-generated.
   defp valid_origin?(origin, allowed_hosts) when is_list(allowed_hosts) do
     case URI.new(origin) do
-      {:ok, %URI{scheme: scheme, host: host}}
-      when scheme in ["http", "https"] and is_binary(host) ->
-        normalized = String.downcase(host)
-        Enum.any?(allowed_hosts, &(String.downcase(&1) == normalized))
+      {:ok, %URI{scheme: scheme, host: host, port: port, userinfo: nil}}
+      when scheme in ["http", "https"] and is_binary(host) and host != "" ->
+        Enum.any?(allowed_hosts, &host_allowed?(&1, host, port))
 
       _invalid ->
         false
     end
   end
+
+  # Host checking is opt-in: behind a reverse proxy the Host header commonly
+  # carries the public name, so a loopback default would refuse proxied
+  # requests. Origin, which browsers send, is checked by default.
+  defp validate_host(%Request{} = request, opts) do
+    case Keyword.get(opts, :allowed_hosts) do
+      nil ->
+        :ok
+
+      allowed when is_list(allowed) ->
+        with [authority] <- authority_values(request.headers),
+             {:ok, host, port} <- parse_authority(authority),
+             true <- Enum.any?(allowed, &host_allowed?(&1, host, port)) do
+          :ok
+        else
+          _refused -> {:http_error, 403, Error.invalid_request("Host is not allowed"), nil}
+        end
+    end
+  end
+
+  defp authority_values(headers) do
+    case header_values(headers, "host") do
+      [] -> header_values(headers, ":authority")
+      values -> values
+    end
+  end
+
+  defp host_allowed?(entry, host, port) do
+    case parse_authority(entry) do
+      {:ok, allowed_host, nil} ->
+        String.downcase(allowed_host) == String.downcase(host)
+
+      {:ok, allowed_host, allowed_port} ->
+        String.downcase(allowed_host) == String.downcase(host) and allowed_port == port
+
+      :error ->
+        false
+    end
+  end
+
+  # "host", "host:port", "[v6]", "[v6]:port", or a bare IPv6 literal.
+  defp parse_authority(value) when is_binary(value) do
+    cond do
+      match = Regex.run(~r/^\[([^\]]+)\](?::(\d+))?$/, value) -> authority(match)
+      match = Regex.run(~r/^([^:\[\]]+)(?::(\d+))?$/, value) -> authority(match)
+      String.contains?(value, ":") -> {:ok, value, nil}
+      true -> :error
+    end
+  end
+
+  defp parse_authority(_value), do: :error
+
+  defp authority([_all, host]), do: {:ok, host, nil}
+  defp authority([_all, host, ""]), do: {:ok, host, nil}
+  defp authority([_all, host, port]), do: {:ok, host, String.to_integer(port)}
 
   defp validate_content_type(%Request{} = request) do
     case media_types(request.headers, "content-type") do
@@ -198,6 +258,12 @@ defmodule Snodo.Transport.StreamableHTTP do
       {:ok, raw} -> {:ok, raw}
       {:error, _reason} -> {:http_error, 400, Error.parse_error(), nil}
     end
+  end
+
+  # A response object has nothing to answer. The transport accepts it with
+  # 202 and no body, as it does a notification.
+  defp reject_response_object(raw) do
+    if Envelope.response?(raw), do: :response_object, else: :ok
   end
 
   defp decode_envelope(raw, transport) do
@@ -353,6 +419,14 @@ defmodule Snodo.Transport.StreamableHTTP do
         "supported" => Registry.versions(runtime.protocol_registry)
       }
     }
+  end
+
+  # Initialize-era clients treat any non-2xx answer to a request as a
+  # transport failure, and 404 as an expired session, so their JSON-RPC
+  # errors travel with 200. Admission failures in prepare/3 keep 4xx on
+  # every dialect.
+  defp execution_status(protocol, response) do
+    if protocol.era() == :stateless, do: response_status(response), else: 200
   end
 
   defp response_status(%{"error" => %{"code" => code}}) when is_integer(code) do

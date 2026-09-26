@@ -443,6 +443,26 @@ defmodule Snodo.Transport.PlugBanditTest do
                  rpc(port, called, Keyword.put(options, :auth, principal))
       end
 
+      unknown_tool = %{
+        "jsonrpc" => "2.0",
+        "id" => 4,
+        "method" => "tools/call",
+        "params" => %{"name" => "missing", "arguments" => %{}}
+      }
+
+      assert {200, %{"id" => 4, "error" => %{"code" => -32_602}}} =
+               rpc(port, unknown_tool, options)
+
+      unknown_method = %{
+        "jsonrpc" => "2.0",
+        "id" => 5,
+        "method" => "logging/setLevel",
+        "params" => %{"level" => "info"}
+      }
+
+      assert {200, %{"id" => 5, "error" => %{"code" => -32_601}}} =
+               rpc(port, unknown_method, options)
+
       assert {400, _} = rpc(port, listed, legacy: true)
 
       assert {400, _} =

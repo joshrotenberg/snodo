@@ -64,7 +64,7 @@ defmodule Snodo.Transport.Plug do
       read_timeout: positive_option!(opts, :read_timeout, 5_000),
       subscription_keepalive_ms: positive_option!(opts, :subscription_keepalive_ms, 15_000),
       disconnect_probe_ms: probe_option!(opts),
-      adapter_opts: Keyword.take(opts, [:allowed_origin_hosts])
+      adapter_opts: Keyword.take(opts, [:allowed_origin_hosts, :allowed_hosts])
     }
   end
 
@@ -206,7 +206,7 @@ defmodule Snodo.Transport.Plug do
     } = state
 
     receive do
-      {:snodoecution, ^executor, ^reference, ^key, outcome} ->
+      {:mcp_execution, ^executor, ^reference, ^key, outcome} ->
         send_response(state.conn, execution_response(outcome, opts, prepared), opts)
 
       {:DOWN, ^monitor, :process, _pid, _reason} ->

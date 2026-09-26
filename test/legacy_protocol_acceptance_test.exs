@@ -5,6 +5,7 @@ defmodule Snodo.LegacyProtocolAcceptanceTest do
   alias Snodo.{Result, Router, Server}
   alias Snodo.Server.Runtime
   alias Snodo.Transport.Context, as: TransportContext
+  alias Snodo.Transport.StreamableHTTP
   alias SnodoTest.TestPrompts.PackageAnalysis
   alias SnodoTest.TestResources.{PackageTemplate, StaticText}
   alias SnodoTest.TestTools.{ComplexSchema, ContextEcho, Echo, Failing, Structured}
@@ -54,6 +55,51 @@ defmodule Snodo.LegacyProtocolAcceptanceTest do
       transport: :direct,
       request_headers: %{"mcp-protocol-version" => version}
     }
+
+  test "legacy JSON-RPC errors travel over HTTP with 200 while modern ones keep their status" do
+    runtime = runtime()
+
+    http = fn version, body ->
+      headers = [
+        {"content-type", "application/json"},
+        {"accept", "application/json, text/event-stream"},
+        {"mcp-protocol-version", version}
+      ]
+
+      headers =
+        if version == "2026-07-28",
+          do: headers ++ [{"mcp-method", body["method"]}, {"mcp-name", body["params"]["name"]}],
+          else: headers
+
+      response =
+        StreamableHTTP.handle(runtime, %StreamableHTTP.Request{
+          method: "POST",
+          path: "/mcp",
+          headers: headers,
+          body: JSON.encode!(body),
+          peer: {{127, 0, 0, 1}, 50_000},
+          connection_ref: make_ref()
+        })
+
+      {response.status, JSON.decode!(response.body)}
+    end
+
+    unknown_tool = request("tools/call", %{"name" => "missing", "arguments" => %{}})
+    unknown_method = request("logging/setLevel", %{"level" => "info"})
+
+    for version <- ["2025-11-25", "2025-06-18"] do
+      assert {200, %{"error" => %{"code" => -32_602}}} = http.(version, unknown_tool)
+      assert {200, %{"error" => %{"code" => -32_601}}} = http.(version, unknown_method)
+    end
+
+    modern =
+      put_in(unknown_tool, ["params", "_meta"], %{
+        "io.modelcontextprotocol/protocolVersion" => "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities" => %{}
+      })
+
+    assert {400, %{"error" => %{"code" => -32_602}}} = http.("2026-07-28", modern)
+  end
 
   test "legacy is opt in and unsupported initialize proposals negotiate a configured legacy version" do
     default = runtime(protocols: [V2026_07_28])

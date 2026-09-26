@@ -3,6 +3,7 @@ defmodule Snodo.Transport.StreamableHTTP.AdapterAcceptanceTest do
 
   alias Snodo.Transport.StreamableHTTP
   alias Snodo.Transport.StreamableHTTP.Request
+  alias Snodo.Transport.StreamableHTTP.Response
   alias Snodo.Transport.StreamableHTTP.StreamResponse
   alias SnodoTest.TestCompletions.PackagePrompt
   alias SnodoTest.TestExtensions.HTTPPolicy
@@ -42,7 +43,67 @@ defmodule Snodo.Transport.StreamableHTTP.AdapterAcceptanceTest do
     assert_receive {:subscription_closed, "adapter-sub", :disconnected}
   end
 
+  describe "Host and Origin admission" do
+    setup do
+      raw = TestFixtures.request("host", "server/discover")
+      %{raw: raw, runtime: TestFixtures.runtime()}
+    end
+
+    defp status(runtime, raw, extra_headers, opts) do
+      StreamableHTTP.handle(runtime, request(raw, headers: extra_headers ++ headers(raw)), opts).status
+    end
+
+    test "any Host is admitted unless :allowed_hosts is set", %{raw: raw, runtime: runtime} do
+      assert status(runtime, raw, [{"Host", "evil.example.com"}], []) == 200
+    end
+
+    test ":allowed_hosts refuses other hosts and a missing Host", %{raw: raw, runtime: runtime} do
+      opts = [allowed_hosts: ["localhost", "127.0.0.1", "::1"]]
+
+      assert status(runtime, raw, [{"Host", "localhost:4000"}], opts) == 200
+      assert status(runtime, raw, [{"Host", "127.0.0.1"}], opts) == 200
+      assert status(runtime, raw, [{"Host", "[::1]:4000"}], opts) == 200
+      assert status(runtime, raw, [{"Host", "LOCALHOST:4000"}], opts) == 200
+      assert status(runtime, raw, [{"Host", "evil.example.com"}], opts) == 403
+      assert status(runtime, raw, [{"Host", "localhost.evil.example.com:4000"}], opts) == 403
+      assert status(runtime, raw, [], opts) == 403
+    end
+
+    test "an Origin with userinfo is refused", %{raw: raw, runtime: runtime} do
+      assert status(runtime, raw, [{"Origin", "http://localhost:4000"}], []) == 200
+      assert status(runtime, raw, [{"Origin", "http://user@localhost:4000"}], []) == 403
+    end
+
+    test "an allowlist entry with a port pins it", %{raw: raw, runtime: runtime} do
+      opts = [allowed_origin_hosts: ["localhost:3000", "127.0.0.1"]]
+
+      assert status(runtime, raw, [{"Origin", "http://localhost:3000"}], opts) == 200
+      assert status(runtime, raw, [{"Origin", "http://localhost:4000"}], opts) == 403
+      assert status(runtime, raw, [{"Origin", "http://127.0.0.1:9999"}], opts) == 200
+    end
+  end
+
   @tag mcp_contract: ["streamable-http-admission"]
+  test "accepts a response object with 202 and no body" do
+    raw = %{"jsonrpc" => "2.0", "id" => 9, "result" => %{}}
+
+    request = %Request{
+      method: "POST",
+      path: "/mcp",
+      headers: [
+        {"Content-Type", "application/json"},
+        {"Accept", "application/json, text/event-stream"},
+        {"MCP-Protocol-Version", @protocol}
+      ],
+      body: JSON.encode!(raw),
+      peer: {{127, 0, 0, 1}, 50_000},
+      connection_ref: make_ref()
+    }
+
+    assert %Response{status: 202, body: ""} =
+             StreamableHTTP.handle(TestFixtures.runtime(tools: [Echo]), request)
+  end
+
   test "serves final-era discovery over a sessionless JSON response" do
     runtime = TestFixtures.runtime()
     raw = TestFixtures.request("discover-http", "server/discover")

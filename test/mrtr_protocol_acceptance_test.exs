@@ -199,7 +199,7 @@ defmodule Snodo.MRTR.ProtocolAcceptanceTest do
     raw = request(13, "tools/call", %{"name" => "choice"})
     work = fn _cancellation -> dispatch(:direct, raw) end
     assert {:ok, ref} = Executor.submit(executor, {:peer, 13}, work)
-    assert_receive {:snodoecution, ^executor, ^ref, {:peer, 13}, {:completed, response}}
+    assert_receive {:mcp_execution, ^executor, ^ref, {:peer, 13}, {:completed, response}}, 1_000
     assert response["result"]["resultType"] == "input_required"
     assert Executor.stats(executor).running == 0
     assert {:error, :not_found} = Executor.cancel(executor, {:peer, 13})
