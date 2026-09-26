@@ -38,9 +38,9 @@ The current BEAM lane also runs the lockfile-pinned official TypeScript client
 wire correctness and the SDK's callback scheduling limitation are recorded
 [separately](https://github.com/joshrotenberg/snodo/blob/main/interop/official_client/PROGRESS.md).
 
-[`protocol.yml`](https://github.com/joshrotenberg/snodo/blob/main/.github/workflows/protocol.yml) adds two independent jobs:
-the exact frozen alpha.11 conformance runner with a strict per-check regression
-baseline, and AJV validation of representative real emitted messages against a
+[`protocol.yml`](https://github.com/joshrotenberg/snodo/blob/main/.github/workflows/protocol.yml) adds three independent jobs:
+the exact frozen alpha.11 conformance runner's server and client legs, each with
+a strict per-check regression baseline, and AJV validation of representative real emitted messages against a
 digest-pinned official schema. Both upload their local evidence as artifacts.
 A baseline pass is not full conformance, and a corpus pass is not a proof of all
 possible protocol output. No remote CI execution is inferred from local results.

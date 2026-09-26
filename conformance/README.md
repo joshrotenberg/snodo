@@ -3,6 +3,10 @@
 The internal wire contract runs with `mix snodo.contract`. Its implementation,
 unsupported, unmeasured, and official evidence buckets stay separate.
 
+The official runner has two legs. The server leg runs its scenarios against
+the combined fixture. The [client leg](#client-leg) runs `Snodo.Client` against
+the runner's own scenario servers. Each leg has its own score and baseline.
+
 ## Latest external measurement
 
 The frozen alpha.11 runner passes **32/37 exercised whole required scenarios**
@@ -35,13 +39,15 @@ cd ../../conformance
 npm ci --ignore-scripts
 npm test
 npm run check
+npm run check:client
 ```
 
 The launcher uses the dev build and starts the combined fixture on an
 OS-assigned loopback port. Startup, runner execution, and shutdown are bounded;
 stdin EOF shuts down the fixture. No public application services are contacted.
-Each invocation creates a fresh directory under `tmp/conformance/`
-(override with `MCP_CONFORMANCE_OUTPUT`), keeping stale files out of the score.
+Each invocation creates a fresh directory under `tmp/conformance/server/` or
+`tmp/conformance/client/` (override with `MCP_CONFORMANCE_OUTPUT`), keeping
+stale files out of the score.
 
 The frozen manifest is vendored at
 [requirements/2026-07-28.yaml](requirements/2026-07-28.yaml), from commit
@@ -113,6 +119,47 @@ the core `CallToolResult`, which requires `content`; they are not erased.
 The pending JSON Schema and standard HTTP-header probes pass 8/8 and 14/14,
 respectively. Five pending custom-header checks remain unexercised failures.
 These results do not establish general complete schema validation.
+
+## Client leg
+
+`npm run check:client` runs `client --requirements 2026-07-28`: 32 required
+scenarios and 7 unscored ones. For each scenario the runner starts a scenario
+server and runs [client.exs](client.exs) with `mix run` from the repository
+root, so the root project must be compiled in the dev environment. The harness
+drives `Snodo.Client` the way an application would and adds no protocol
+behavior: discover, list tools, call the tools the scenario context names (or
+every listed tool with arguments sampled from its schema), answer
+`input_required` results, and list and read resources and prompts when the
+server advertises them. The runner scores the traffic its scenario server
+records.
+
+The first measurement, on 2026-09-26, passes **4/32** whole required scenarios:
+`tools_call`, `sep-2322-client-request-state`, `json-schema-ref-no-deref`, and
+`auth/resource-mismatch`. The last passes only because the harness never starts
+authorization; it is not evidence of OAuth support. The unscored
+`json-schema-2020-12-preservation` scenario passes.
+
+- [Client report](results/2026-09-26-client-alpha.11-summary.md)
+- [Client machine-readable report](results/2026-09-26-client-alpha.11-summary.json)
+- [Client per-check outcomes](results/2026-09-26-client-alpha.11-checks.json)
+
+[expected-failures-client.json](expected-failures-client.json) follows the
+same policy as the server baseline, with every check of all 39 scenarios
+pinned. The remaining gaps:
+
+- The 25 required and 6 unscored `auth/*` scenarios: `Snodo.Client` has no
+  OAuth support, and the harness exits before sending a request.
+- `http-custom-headers` and `http-invalid-tool-headers`: `Snodo.Client` does not
+  mirror `x-mcp-header` parameters into `Mcp-Param-*` headers or exclude tools
+  with invalid annotations.
+- `request-metadata` is excluded from the score: the client does not send
+  `io.modelcontextprotocol/clientInfo` (a warning), and the deprecated roots and
+  sampling capability checks are skipped because the client does not declare
+  them.
+- `http-standard-headers` is excluded from the score: its `initialize` and
+  `notifications/initialized` checks are skipped because a 2026-07-28 client
+  sends neither method. Every method the client does send carries the correct
+  `Mcp-Method` and `Mcp-Name` headers.
 
 See [protocol-compliance.md](../guides/protocol-compliance.md) for architecture and
 [MRTR documentation](../guides/interactive-operations.md) for semantics and remaining limits.

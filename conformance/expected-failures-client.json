@@ -1,0 +1,756 @@
+{
+  "failures": [
+    {
+      "key": "auth/metadata-default:prm-pathbased-requested",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/metadata-default:authorization-server-metadata",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/metadata-default:client-registration",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/metadata-default:authorization-request",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/metadata-default:token-request",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/metadata-var1:prm-pathbased-requested",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/metadata-var1:authorization-server-metadata",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/metadata-var1:client-registration",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/metadata-var1:authorization-request",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/metadata-var1:token-request",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/metadata-var2:authorization-server-metadata",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/metadata-var2:client-registration",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/metadata-var2:authorization-request",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/metadata-var2:token-request",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/metadata-var3:authorization-server-metadata",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/metadata-var3:client-registration",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/metadata-var3:authorization-request",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/metadata-var3:token-request",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/basic-cimd:cimd-client-id-used",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/scope-from-www-authenticate:scope-from-www-authenticate",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/scope-from-scopes-supported:scope-from-scopes-supported",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/scope-omitted-when-undefined:scope-omitted-when-undefined",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/scope-step-up:scope-step-up-initial",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/scope-step-up:scope-step-up-escalation",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/scope-step-up:sep-2350-scope-union-on-reauth",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/scope-retry-limit:scope-retry-limit",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/token-endpoint-auth-basic:token-endpoint-auth-method",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/token-endpoint-auth-basic:resource-parameter-in-authorization",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/token-endpoint-auth-basic:resource-parameter-in-token",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/token-endpoint-auth-post:token-endpoint-auth-method",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/token-endpoint-auth-post:resource-parameter-in-authorization",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/token-endpoint-auth-post:resource-parameter-in-token",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/token-endpoint-auth-none:token-endpoint-auth-method",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/token-endpoint-auth-none:resource-parameter-in-authorization",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/token-endpoint-auth-none:resource-parameter-in-token",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/pre-registration:pre-registration-auth",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/offline-access-scope:sep-2207-offline-access-requested",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/offline-access-not-supported:sep-2207-offline-access-not-requested",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/authorization-server-migration:sep-2352-reregister-on-as-change",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/iss-supported:sep-2468-client-compare-iss-supported",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/iss-not-advertised:sep-2468-client-proceed-no-iss",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/iss-supported-missing:sep-2468-client-reject-missing-iss",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/iss-wrong-issuer:sep-2468-client-compare-iss-supported",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/iss-unexpected:sep-2468-client-compare-iss-unadvertised",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/iss-normalized:sep-2468-client-no-normalization",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/metadata-issuer-mismatch:sep-2468-client-validate-metadata-issuer",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "http-custom-headers:sep-2243-client-supports-custom-headers",
+      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
+    },
+    {
+      "key": "http-custom-headers:sep-2243-client-mirrors-designated-params[1]",
+      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
+    },
+    {
+      "key": "http-custom-headers:sep-2243-client-encode-values[1]",
+      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
+    },
+    {
+      "key": "http-custom-headers:sep-2243-client-encode-values[2]",
+      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
+    },
+    {
+      "key": "http-custom-headers:sep-2243-client-encode-values[3]",
+      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
+    },
+    {
+      "key": "http-custom-headers:sep-2243-client-mirrors-designated-params[2]",
+      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
+    },
+    {
+      "key": "http-custom-headers:sep-2243-client-mirrors-designated-params[3]",
+      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
+    },
+    {
+      "key": "http-custom-headers:sep-2243-client-base64-unsafe[1]",
+      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
+    },
+    {
+      "key": "http-custom-headers:sep-2243-client-base64-unsafe[2]",
+      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
+    },
+    {
+      "key": "http-custom-headers:sep-2243-client-base64-unsafe[3]",
+      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
+    },
+    {
+      "key": "http-custom-headers:sep-2243-client-base64-unsafe[4]",
+      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
+    },
+    {
+      "key": "http-custom-headers:sep-2243-client-mirrors-designated-params[5]",
+      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
+    },
+    {
+      "key": "http-custom-headers:sep-2243-client-base64-unsafe[5]",
+      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
+    },
+    {
+      "key": "http-custom-headers:sep-2243-client-base64-unsafe[6]",
+      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
+    },
+    {
+      "key": "http-custom-headers:sep-2243-client-base64-unsafe[7]",
+      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
+    },
+    {
+      "key": "http-invalid-tool-headers:sep-2243-x-mcp-header-not-empty",
+      "reason": "Snodo.Client does not validate x-mcp-header annotations or exclude tools that carry invalid ones (#25)."
+    },
+    {
+      "key": "http-invalid-tool-headers:sep-2243-x-mcp-header-primitive-only[1]",
+      "reason": "Snodo.Client does not validate x-mcp-header annotations or exclude tools that carry invalid ones (#25)."
+    },
+    {
+      "key": "http-invalid-tool-headers:sep-2243-x-mcp-header-primitive-only[2]",
+      "reason": "Snodo.Client does not validate x-mcp-header annotations or exclude tools that carry invalid ones (#25)."
+    },
+    {
+      "key": "http-invalid-tool-headers:sep-2243-x-mcp-header-primitive-only[3]",
+      "reason": "Snodo.Client does not validate x-mcp-header annotations or exclude tools that carry invalid ones (#25)."
+    },
+    {
+      "key": "http-invalid-tool-headers:sep-2243-x-mcp-header-unique[1]",
+      "reason": "Snodo.Client does not validate x-mcp-header annotations or exclude tools that carry invalid ones (#25)."
+    },
+    {
+      "key": "http-invalid-tool-headers:sep-2243-x-mcp-header-unique[2]",
+      "reason": "Snodo.Client does not validate x-mcp-header annotations or exclude tools that carry invalid ones (#25)."
+    },
+    {
+      "key": "http-invalid-tool-headers:sep-2243-x-mcp-header-charset[1]",
+      "reason": "Snodo.Client does not validate x-mcp-header annotations or exclude tools that carry invalid ones (#25)."
+    },
+    {
+      "key": "http-invalid-tool-headers:sep-2243-x-mcp-header-charset[2]",
+      "reason": "Snodo.Client does not validate x-mcp-header annotations or exclude tools that carry invalid ones (#25)."
+    },
+    {
+      "key": "http-invalid-tool-headers:sep-2243-x-mcp-header-charset[3]",
+      "reason": "Snodo.Client does not validate x-mcp-header annotations or exclude tools that carry invalid ones (#25)."
+    },
+    {
+      "key": "http-invalid-tool-headers:sep-2243-x-mcp-header-charset[4]",
+      "reason": "Snodo.Client does not validate x-mcp-header annotations or exclude tools that carry invalid ones (#25)."
+    },
+    {
+      "key": "auth/client-credentials-jwt:client-credentials-jwt-verified",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/client-credentials-basic:client-credentials-basic-auth",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/enterprise-managed-authorization:complete-flow-token-exchange",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/enterprise-managed-authorization:complete-flow-jwt-bearer",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/dpop:sep-1932-client-token-request-proof",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/dpop:sep-1932-client-dpop-auth-scheme",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/dpop:sep-1932-client-fresh-proof",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/dpop-nonce:sep-1932-client-token-request-proof",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/dpop-nonce:sep-1932-client-dpop-auth-scheme",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/dpop-nonce:sep-1932-client-fresh-proof",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/dpop-nonce:sep-1932-client-as-nonce",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/dpop-nonce:sep-1932-client-rs-nonce",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    },
+    {
+      "key": "auth/wif-jwt-bearer:wif-assertion-verified",
+      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+    }
+  ],
+  "exclusions": [
+    {
+      "key": "request-metadata",
+      "reason": "Snodo.Client does not send io.modelcontextprotocol/clientInfo (WARNING). It declares only elicitation, so the deprecated roots and sampling capability checks are SKIPPED."
+    },
+    {
+      "key": "http-standard-headers",
+      "reason": "The initialize and notifications/initialized header checks are SKIPPED: a 2026-07-28 client sends neither method."
+    }
+  ],
+  "checkInventory": {
+    "auth/authorization-server-migration": {
+      "sep-2352-reregister-on-as-change": [
+        "FAILURE"
+      ],
+      "sep-2352-no-reuse-on-as-change": [
+        "SUCCESS"
+      ],
+      "sep-2352-no-cross-as-credential-reuse": [
+        "SUCCESS"
+      ]
+    },
+    "auth/basic-cimd": {
+      "cimd-client-id-used": [
+        "FAILURE"
+      ]
+    },
+    "auth/client-credentials-basic": {
+      "client-credentials-basic-auth": [
+        "FAILURE"
+      ]
+    },
+    "auth/client-credentials-jwt": {
+      "client-credentials-jwt-verified": [
+        "FAILURE"
+      ]
+    },
+    "auth/dpop": {
+      "sep-1932-client-token-request-proof": [
+        "FAILURE"
+      ],
+      "sep-1932-client-dpop-auth-scheme": [
+        "FAILURE"
+      ],
+      "sep-1932-client-fresh-proof": [
+        "FAILURE"
+      ]
+    },
+    "auth/dpop-nonce": {
+      "sep-1932-client-token-request-proof": [
+        "FAILURE"
+      ],
+      "sep-1932-client-dpop-auth-scheme": [
+        "FAILURE"
+      ],
+      "sep-1932-client-fresh-proof": [
+        "FAILURE"
+      ],
+      "sep-1932-client-as-nonce": [
+        "FAILURE"
+      ],
+      "sep-1932-client-rs-nonce": [
+        "FAILURE"
+      ]
+    },
+    "auth/enterprise-managed-authorization": {
+      "complete-flow-token-exchange": [
+        "FAILURE"
+      ],
+      "complete-flow-jwt-bearer": [
+        "FAILURE"
+      ]
+    },
+    "auth/iss-normalized": {
+      "sep-2468-client-no-normalization": [
+        "FAILURE"
+      ]
+    },
+    "auth/iss-not-advertised": {
+      "sep-2468-client-proceed-no-iss": [
+        "FAILURE"
+      ]
+    },
+    "auth/iss-supported": {
+      "sep-2468-client-compare-iss-supported": [
+        "FAILURE"
+      ]
+    },
+    "auth/iss-supported-missing": {
+      "sep-2468-client-reject-missing-iss": [
+        "FAILURE"
+      ]
+    },
+    "auth/iss-unexpected": {
+      "sep-2468-client-compare-iss-unadvertised": [
+        "FAILURE"
+      ]
+    },
+    "auth/iss-wrong-issuer": {
+      "sep-2468-client-compare-iss-supported": [
+        "FAILURE"
+      ]
+    },
+    "auth/metadata-default": {
+      "prm-pathbased-requested": [
+        "FAILURE"
+      ],
+      "authorization-server-metadata": [
+        "FAILURE"
+      ],
+      "client-registration": [
+        "FAILURE"
+      ],
+      "authorization-request": [
+        "FAILURE"
+      ],
+      "token-request": [
+        "FAILURE"
+      ]
+    },
+    "auth/metadata-issuer-mismatch": {
+      "sep-2468-client-validate-metadata-issuer": [
+        "FAILURE"
+      ]
+    },
+    "auth/metadata-var1": {
+      "prm-pathbased-requested": [
+        "FAILURE"
+      ],
+      "authorization-server-metadata": [
+        "FAILURE"
+      ],
+      "client-registration": [
+        "FAILURE"
+      ],
+      "authorization-request": [
+        "FAILURE"
+      ],
+      "token-request": [
+        "FAILURE"
+      ]
+    },
+    "auth/metadata-var2": {
+      "authorization-server-metadata": [
+        "FAILURE"
+      ],
+      "client-registration": [
+        "FAILURE"
+      ],
+      "authorization-request": [
+        "FAILURE"
+      ],
+      "token-request": [
+        "FAILURE"
+      ]
+    },
+    "auth/metadata-var3": {
+      "authorization-server-metadata": [
+        "FAILURE"
+      ],
+      "client-registration": [
+        "FAILURE"
+      ],
+      "authorization-request": [
+        "FAILURE"
+      ],
+      "token-request": [
+        "FAILURE"
+      ]
+    },
+    "auth/offline-access-not-supported": {
+      "sep-2207-offline-access-not-requested": [
+        "FAILURE"
+      ]
+    },
+    "auth/offline-access-scope": {
+      "sep-2207-client-metadata-grant-types": [
+        "INFO"
+      ],
+      "sep-2207-offline-access-requested": [
+        "FAILURE"
+      ]
+    },
+    "auth/pre-registration": {
+      "pre-registration-auth": [
+        "FAILURE"
+      ]
+    },
+    "auth/resource-mismatch": {
+      "resource-mismatch-rejected": [
+        "SUCCESS"
+      ]
+    },
+    "auth/scope-from-scopes-supported": {
+      "scope-from-scopes-supported": [
+        "FAILURE"
+      ]
+    },
+    "auth/scope-from-www-authenticate": {
+      "scope-from-www-authenticate": [
+        "FAILURE"
+      ]
+    },
+    "auth/scope-omitted-when-undefined": {
+      "scope-omitted-when-undefined": [
+        "FAILURE"
+      ]
+    },
+    "auth/scope-retry-limit": {
+      "scope-retry-limit": [
+        "FAILURE"
+      ]
+    },
+    "auth/scope-step-up": {
+      "scope-step-up-initial": [
+        "FAILURE"
+      ],
+      "scope-step-up-escalation": [
+        "FAILURE"
+      ],
+      "sep-2350-scope-union-on-reauth": [
+        "FAILURE"
+      ]
+    },
+    "auth/token-endpoint-auth-basic": {
+      "token-endpoint-auth-method": [
+        "FAILURE"
+      ],
+      "resource-parameter-in-authorization": [
+        "FAILURE"
+      ],
+      "resource-parameter-in-token": [
+        "FAILURE"
+      ]
+    },
+    "auth/token-endpoint-auth-none": {
+      "token-endpoint-auth-method": [
+        "FAILURE"
+      ],
+      "resource-parameter-in-authorization": [
+        "FAILURE"
+      ],
+      "resource-parameter-in-token": [
+        "FAILURE"
+      ]
+    },
+    "auth/token-endpoint-auth-post": {
+      "token-endpoint-auth-method": [
+        "FAILURE"
+      ],
+      "resource-parameter-in-authorization": [
+        "FAILURE"
+      ],
+      "resource-parameter-in-token": [
+        "FAILURE"
+      ]
+    },
+    "auth/wif-jwt-bearer": {
+      "wif-assertion-verified": [
+        "FAILURE"
+      ]
+    },
+    "http-custom-headers": {
+      "sep-2243-client-supports-custom-headers": [
+        "FAILURE"
+      ],
+      "sep-2243-client-mirrors-designated-params": [
+        "FAILURE",
+        "FAILURE",
+        "FAILURE",
+        "SUCCESS",
+        "FAILURE",
+        "SUCCESS"
+      ],
+      "sep-2243-client-encode-values": [
+        "FAILURE",
+        "FAILURE",
+        "FAILURE"
+      ],
+      "sep-2243-client-base64-unsafe": [
+        "FAILURE",
+        "FAILURE",
+        "FAILURE",
+        "FAILURE",
+        "FAILURE",
+        "FAILURE",
+        "FAILURE"
+      ],
+      "sep-2243-client-omit-null": [
+        "SUCCESS"
+      ]
+    },
+    "http-invalid-tool-headers": {
+      "sep-2243-client-reject-invalid-tool": [
+        "SUCCESS"
+      ],
+      "sep-2243-x-mcp-header-not-empty": [
+        "FAILURE"
+      ],
+      "sep-2243-x-mcp-header-primitive-only": [
+        "FAILURE",
+        "FAILURE",
+        "FAILURE"
+      ],
+      "sep-2243-x-mcp-header-unique": [
+        "FAILURE",
+        "FAILURE"
+      ],
+      "sep-2243-x-mcp-header-charset": [
+        "FAILURE",
+        "FAILURE",
+        "FAILURE",
+        "FAILURE"
+      ]
+    },
+    "http-standard-headers": {
+      "sep-2243-client-includes-standard-headers": [
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS",
+        "SKIPPED",
+        "SKIPPED"
+      ]
+    },
+    "json-schema-2020-12-preservation": {
+      "json-schema-2020-12-client-tool-found": [
+        "SUCCESS"
+      ],
+      "json-schema-2020-12-client-echo-completed": [
+        "SUCCESS"
+      ],
+      "json-schema-2020-12-client-$schema-preserved": [
+        "SUCCESS"
+      ],
+      "json-schema-2020-12-client-$defs-preserved": [
+        "SUCCESS"
+      ],
+      "json-schema-2020-12-client-additionalProperties-preserved": [
+        "SUCCESS"
+      ],
+      "sep-2106-client-composition-keywords-preserved": [
+        "SUCCESS"
+      ],
+      "sep-2106-client-conditional-keywords-preserved": [
+        "SUCCESS"
+      ],
+      "sep-2106-client-anchor-keyword-preserved": [
+        "SUCCESS"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "json-schema-ref-no-deref": {
+      "sep-2106-no-network-ref-deref": [
+        "SUCCESS"
+      ]
+    },
+    "request-metadata": {
+      "sep-2575-http-client-sends-version-header": [
+        "SUCCESS"
+      ],
+      "sep-2575-client-populates-meta": [
+        "SUCCESS"
+      ],
+      "sep-2575-client-sends-client-info": [
+        "WARNING"
+      ],
+      "sep-2575-http-version-header-matches-meta": [
+        "SUCCESS"
+      ],
+      "sep-2575-client-declares-roots-capability": [
+        "SKIPPED"
+      ],
+      "sep-2575-client-declares-sampling-capability": [
+        "SKIPPED"
+      ],
+      "sep-2575-client-declares-elicitation-capability": [
+        "SUCCESS"
+      ],
+      "sep-2575-client-retry-supported-version": [
+        "SUCCESS"
+      ]
+    },
+    "sep-2322-client-request-state": {
+      "sep-2322-client-request-state-echoed": [
+        "SUCCESS"
+      ],
+      "sep-2322-client-jsonrpc-id-different": [
+        "SUCCESS"
+      ],
+      "sep-2322-client-no-state-omitted": [
+        "SUCCESS"
+      ],
+      "sep-2322-client-parallel-isolation": [
+        "SUCCESS"
+      ],
+      "sep-2322-default-result-type-complete": [
+        "SUCCESS"
+      ]
+    },
+    "tools_call": {
+      "tool-add-numbers": [
+        "SUCCESS"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    }
+  }
+}
