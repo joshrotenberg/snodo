@@ -101,6 +101,17 @@ defmodule Snodo.MixProject do
 
   defp aliases do
     [
+      # Fetch dependencies for the core, the five sibling packages, and the
+      # conformance fixture. Run it after pulling a change to any mix.lock.
+      setup: [
+        "deps.get",
+        "cmd --cd extensions/tasks mix deps.get",
+        "cmd --cd extensions/tasks_postgres mix deps.get",
+        "cmd --cd extensions/tasks_sqlite mix deps.get",
+        "cmd --cd integrations/plug mix deps.get",
+        "cmd --cd integrations/schema_jsv mix deps.get",
+        "cmd --cd conformance/fixture mix deps.get"
+      ],
       quality: [
         "format --check-formatted",
         "compile --warnings-as-errors",
