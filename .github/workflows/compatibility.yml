@@ -92,7 +92,7 @@ jobs:
         run: npm run check 2>&1 | tee official-client.log
       - name: Upload official-client evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: official-client-acceptance
           path: interop/official_client/official-client.log

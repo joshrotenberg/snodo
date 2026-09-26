@@ -42,7 +42,7 @@ jobs:
           npm run check --prefix interop/schema_validation 2>&1 | tee tmp/schema-validation/check.log
       - name: Preserve independent schema evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: protocol-wire-schema
           path: tmp/schema-validation/
@@ -81,7 +81,7 @@ jobs:
         run: npm run check
       - name: Preserve raw failures and separate conformance score
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: protocol-conformance
           path: tmp/conformance/server/
@@ -122,7 +122,7 @@ jobs:
         run: node run.mjs ${{ matrix.lane }}
       - name: Preserve raw results and separate score
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: protocol-conformance-${{ matrix.lane }}
           path: tmp/conformance/${{ matrix.lane }}/
@@ -159,7 +159,7 @@ jobs:
         run: npm run check:client
       - name: Preserve raw client results and separate client score
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: protocol-conformance-client
           path: tmp/conformance/client/
