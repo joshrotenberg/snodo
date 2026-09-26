@@ -11,8 +11,14 @@ database clock functions, and `FOR UPDATE SKIP LOCKED`.
 
 ## Dependencies and Repo ownership
 
-Add this package and a PostgreSQL driver to the host application, then
-configure and supervise the Repo normally:
+Add this package and a PostgreSQL driver to the host application:
+
+```elixir
+{:snodo_tasks_postgres, "~> 0.1.0"},
+{:postgrex, "~> 0.22"}
+```
+
+Then configure and supervise the Repo normally:
 
 ```elixir
 defmodule MyApp.Repo do
