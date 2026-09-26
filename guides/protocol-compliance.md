@@ -21,7 +21,7 @@ code and reports:
 | Ordinary progress | Correlated progress precedes normal/error/MRTR terminal messages; cancellation and no-token behavior are checked over stdio and HTTP | Passing wire and controlled client checks; [SDK callback caveat](https://github.com/joshrotenberg/snodo/blob/main/interop/official_client/PROGRESS.md) |
 | Independent wire-schema corpus | Representative real emissions validate against named definitions and concrete result branches in the pinned official schema using AJV | 78 emissions across direct/stdio/HTTP; 78 negative mutations and 7 unit controls; not every possible message |
 
-`mix snodo.contract` prints the core buckets without converting internal evidence
+The repository's `snodo.contract` Mix task prints the core buckets without converting internal evidence
 or unsupported features into an official score. The one-way-dependent Tasks
 package owns its local evidence and runs it with `mix tasks.contract` from
 `extensions/tasks`.

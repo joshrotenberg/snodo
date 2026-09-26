@@ -87,6 +87,16 @@ defmodule Snodo.MixProject do
         "CHANGELOG.md"
       ],
       groups_for_extras: [Guides: ~r{^guides/}],
+      # Repository tooling under lib/mix, which the Hex package leaves out.
+      filter_modules: fn module, _metadata ->
+        module not in [
+          Snodo.Compliance,
+          Snodo.Compliance.QuietFormatter,
+          Mix.Tasks.Examples,
+          Mix.Tasks.Snodo.Contract,
+          Mix.Tasks.Snodo.Example
+        ]
+      end,
       groups_for_modules: [
         Server: [
           ~r/^Snodo\.Server/,

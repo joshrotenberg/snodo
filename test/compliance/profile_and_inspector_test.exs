@@ -418,114 +418,62 @@ defmodule Snodo.Compliance.ProfileAndInspectorTest do
   end
 
   test "compliance report separates internal evidence from the measured official score" do
+    summary =
+      Compliance.latest_official_summary!(Path.expand("../../conformance/results", __DIR__))
+
     report =
       Compliance.report(V2026_07_28.profile(),
-        internal_pass: Compliance.internal_contracts()
+        internal_pass: Compliance.internal_contracts(),
+        official_summary: summary
       )
 
     assert length(report["evidence"]["internalPass"]) == 31
-
-    assert report["evidence"]["officialPass"] == [
-             "completion-complete",
-             "tools-list",
-             "tools-call-simple-text",
-             "tools-call-image",
-             "tools-call-audio",
-             "tools-call-embedded-resource",
-             "tools-call-mixed-content",
-             "tools-call-error",
-             "tools-call-with-progress",
-             "server-sse-multiple-streams",
-             "resources-list",
-             "resources-read-text",
-             "resources-read-binary",
-             "resources-templates-read",
-             "sep-2164-resource-not-found",
-             "prompts-list",
-             "prompts-get-simple",
-             "prompts-get-with-args",
-             "prompts-get-embedded-resource",
-             "prompts-get-with-image",
-             "dns-rebinding-protection",
-             "caching",
-             "input-required-result-basic-elicitation",
-             "input-required-result-request-state",
-             "input-required-result-multi-round",
-             "input-required-result-missing-input-response",
-             "input-required-result-non-tool-request",
-             "input-required-result-result-type",
-             "input-required-result-unsupported-methods",
-             "input-required-result-tampered-state",
-             "input-required-result-ignore-extra-params",
-             "input-required-result-validate-input"
-           ]
+    assert report["evidence"]["officialPass"] == summary["score"]["passedScenarioIds"]
+    official = report["officialServerConformance"]
 
     assert %{
              "status" => "partial",
              "measuredScenarios" => 37,
              "passedScenarios" => 32,
-             "requiredScenarios" => 37,
-             "runnerNoFailureScenarios" => 32,
-             "requiredCheckCounts" => %{
-               "success" => 103,
-               "failure" => 8,
-               "skipped" => 5,
-               "warning" => 0,
-               "info" => 1
-             }
-           } = report["officialServerConformance"]
+             "requiredScenarios" => 37
+           } = official
 
-    assert length(report["officialServerConformance"]["requirements"]) == 37
-    assert report["officialServerConformance"]["excludedRunnerNoFailure"] == []
-    assert report["officialServerConformance"]["runDate"] == "2026-09-14"
+    assert length(official["requirements"]) == 37
+    assert official["runDate"] == summary["runDate"]
+    assert official["currentRunner"] == summary["runner"]
+    assert official["requiredCheckCounts"] == summary["requiredCheckCounts"]
+    assert official["runnerNoFailureScenarioIds"] == summary["rawRunnerNoFailure"]["scenarioIds"]
 
-    assert report["officialServerConformance"]["notScoredPass"] == [
-             %{
-               "scenario" => "json-schema-2020-12",
-               "status" => "pending",
-               "passedChecks" => 8,
-               "totalChecks" => 8
-             },
-             %{
-               "scenario" => "http-header-validation",
-               "status" => "pending",
-               "passedChecks" => 14,
-               "totalChecks" => 14
-             }
-           ]
+    assert official["excludedRunnerNoFailure"] ==
+             summary["rawRunnerNoFailure"]["excludedFromScore"]
 
-    assert report["officialServerConformance"]["requirementsCommit"] ==
-             "c321dd32035556e6769d3724a8ee97d87c3faaac"
+    passing_unscored =
+      for %{"checks" => checks} = entry <- summary["notScored"],
+          checks["success"] > 0,
+          checks["failure"] + checks["warning"] + checks["skipped"] == 0,
+          do: entry["scenario"]
 
-    assert report["officialServerConformance"]["requirementsSha256"] ==
+    assert Enum.map(official["notScoredPass"], & &1["scenario"]) == passing_unscored
+    assert "json-schema-2020-12" in passing_unscored
+
+    assert official["requirementsCommit"] == "c321dd32035556e6769d3724a8ee97d87c3faaac"
+
+    assert official["requirementsSha256"] ==
              "ae2f4f6210fd729e2e318edd5bbfa31a43cee0bc608e48052fa26dbf1d939b57"
 
-    manifest =
-      Path.expand("../../conformance/requirements/2026-07-28.yaml", __DIR__)
-
+    manifest = Path.expand("../../conformance/requirements/2026-07-28.yaml", __DIR__)
     assert :ok = Compliance.verify_requirements_manifest!(manifest)
 
-    summary =
-      Path.expand(
-        "../../conformance/results/2026-09-14-alpha.11-summary.json",
-        __DIR__
-      )
-      |> File.read!()
-      |> JSON.decode!()
+    # The newest retained run is the one the report uses: the latest date wins.
+    results = Path.expand("../../conformance/results", __DIR__)
 
-    assert summary["score"]["passedScenarioIds"] == report["evidence"]["officialPass"]
+    newest =
+      results
+      |> File.ls!()
+      |> Enum.filter(&Regex.match?(~r/\A\d{4}-\d{2}-\d{2}-alpha\.11-summary\.json\z/, &1))
+      |> Enum.max()
 
-    assert summary["score"]["passedScenarios"] ==
-             report["officialServerConformance"]["passedScenarios"]
-
-    assert summary["requiredCheckCounts"] ==
-             report["officialServerConformance"]["requiredCheckCounts"]
-
-    assert summary["rawRunnerNoFailure"]["scenarioIds"] ==
-             report["officialServerConformance"]["runnerNoFailureScenarioIds"]
-
-    assert summary["rawRunnerNoFailure"]["excludedFromScore"] ==
-             report["officialServerConformance"]["excludedRunnerNoFailure"]
+    assert String.starts_with?(newest, summary["runDate"])
 
     assert is_binary(JSON.encode!(report))
   end

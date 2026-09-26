@@ -113,7 +113,7 @@ is a returned user choice, separate from cancelling an active protocol request.
 Verified on Elixir 1.20.4 / OTP 29.0.6 with `ERL_FLAGS='+S 4:4'`:
 
 - Core `mix test --warnings-as-errors`: **272 passing** (one doctest, 271 tests).
-- `mix snodo.contract`: **107 passing tests**, **29 evidence groups**.
+- The `snodo.contract` Mix task: **107 passing tests**, **29 evidence groups**.
 - Core formatting, strict Credo, dev warnings-as-errors compilation, and dev
   Dialyzer: passed; zero Dialyzer errors/skips and no new suppressions.
 - Tasks `mix test --warnings-as-errors`: **85 passing**, including five new
