@@ -5,11 +5,13 @@ defmodule Snodo.Compliance do
   Internal contract checks, unsupported surfaces, unmeasured surfaces, and
   official conformance results remain separate buckets. Passing the internal
   contract never becomes an official conformance score.
+
+  This is repository tooling for `mix snodo.contract`. It is not part of the
+  Hex package.
   """
 
   alias Snodo.Protocol.Profile
 
-  @official_runner "@modelcontextprotocol/conformance@0.2.0-alpha.11"
   @requirements_commit "c321dd32035556e6769d3724a8ee97d87c3faaac"
   @requirements_anchor "@modelcontextprotocol/conformance@0.2.0-alpha.10"
   @requirements_sha256 "ae2f4f6210fd729e2e318edd5bbfa31a43cee0bc608e48052fa26dbf1d939b57"
@@ -55,66 +57,8 @@ defmodule Snodo.Compliance do
     "input-required-result-validate-input"
   ]
 
-  @official_exercised_pass [
-    "completion-complete",
-    "tools-list",
-    "tools-call-simple-text",
-    "tools-call-image",
-    "tools-call-audio",
-    "tools-call-embedded-resource",
-    "tools-call-mixed-content",
-    "tools-call-error",
-    "tools-call-with-progress",
-    "server-sse-multiple-streams",
-    "resources-list",
-    "resources-read-text",
-    "resources-read-binary",
-    "resources-templates-read",
-    "sep-2164-resource-not-found",
-    "prompts-list",
-    "prompts-get-simple",
-    "prompts-get-with-args",
-    "prompts-get-embedded-resource",
-    "prompts-get-with-image",
-    "dns-rebinding-protection",
-    "caching",
-    "input-required-result-basic-elicitation",
-    "input-required-result-request-state",
-    "input-required-result-multi-round",
-    "input-required-result-missing-input-response",
-    "input-required-result-non-tool-request",
-    "input-required-result-result-type",
-    "input-required-result-unsupported-methods",
-    "input-required-result-tampered-state",
-    "input-required-result-ignore-extra-params",
-    "input-required-result-validate-input"
-  ]
-
-  @official_runner_no_failure @official_exercised_pass
-  @excluded_runner_no_failure []
-
-  @required_check_counts %{
-    "success" => 103,
-    "failure" => 8,
-    "skipped" => 5,
-    "warning" => 0,
-    "info" => 1
-  }
-
-  @not_scored_pass [
-    %{
-      "scenario" => "json-schema-2020-12",
-      "status" => "pending",
-      "passedChecks" => 8,
-      "totalChecks" => 8
-    },
-    %{
-      "scenario" => "http-header-validation",
-      "status" => "pending",
-      "passedChecks" => 14,
-      "totalChecks" => 14
-    }
-  ]
+  # The newest retained server-lane summary, `conformance/results/<date>-alpha.11-summary.json`.
+  @official_summary_pattern ~r/\A\d{4}-\d{2}-\d{2}-alpha\.11-summary\.json\z/
 
   @internal_contracts [
     "profile-manifest",
@@ -161,7 +105,7 @@ defmodule Snodo.Compliance do
   `Snodo.Protocol.V2026_07_28.profile()`. The report is a string-keyed map
   with `"protocolProfile"` (the profile's manifest), `"evidence"`
   (`"internalPass"`, `"unsupported"`, `"unmeasured"`, and `"officialPass"`),
-  and `"officialServerConformance"` (the frozen result of the official
+  and `"officialServerConformance"` (the retained result of the official
   conformance run). `mix snodo.contract --format json` prints this map.
 
   Options:
@@ -169,10 +113,14 @@ defmodule Snodo.Compliance do
     * `:internal_pass` - the internal contract IDs whose evidence passed,
       each from `internal_contracts/0` and listed once. Defaults to `[]`.
       Any other value raises `ArgumentError`.
+    * `:official_summary` - a decoded official server-lane summary. Defaults
+      to `latest_official_summary!/0`.
   """
   @spec report(Profile.t(), keyword()) :: map()
   def report(%Profile{version: "2026-07-28"} = profile, opts \\ []) do
     internal_pass = validate_internal_pass!(Keyword.get(opts, :internal_pass, []))
+    summary = Keyword.get_lazy(opts, :official_summary, &latest_official_summary!/0)
+    raw = summary["rawRunnerNoFailure"]
 
     limitations = Profile.to_map(profile)["limitations"]
     transports = Profile.to_map(profile)["transports"]
@@ -183,29 +131,51 @@ defmodule Snodo.Compliance do
         "internalPass" => internal_pass,
         "unsupported" => evidence_names(limitations, transports, "unsupported"),
         "unmeasured" => evidence_names(limitations, transports, "unmeasured"),
-        "officialPass" => @official_exercised_pass
+        "officialPass" => summary["score"]["passedScenarioIds"]
       },
       "officialServerConformance" => %{
-        "status" => "partial",
-        "measuredScenarios" => length(@official_server_requirements),
-        "passedScenarios" => length(@official_exercised_pass),
+        "status" => summary["score"]["status"],
+        "measuredScenarios" => summary["requirements"]["attemptedScenarios"],
+        "passedScenarios" => summary["score"]["passedScenarios"],
         "requiredScenarios" => length(@official_server_requirements),
         "requirements" => @official_server_requirements,
         "requirementsSource" => @requirements_source,
         "requirementsAnchor" => @requirements_anchor,
         "requirementsCommit" => @requirements_commit,
         "requirementsSha256" => @requirements_sha256,
-        "currentRunner" => @official_runner,
-        "runDate" => "2026-09-14",
-        "scoreBasis" =>
-          "whole required scenarios with semantic success and no FAILURE, WARNING, or SKIPPED checks",
-        "requiredCheckCounts" => @required_check_counts,
-        "runnerNoFailureScenarios" => length(@official_runner_no_failure),
-        "runnerNoFailureScenarioIds" => @official_runner_no_failure,
-        "excludedRunnerNoFailure" => @excluded_runner_no_failure,
-        "notScoredPass" => @not_scored_pass
+        "currentRunner" => summary["runner"],
+        "runDate" => summary["runDate"],
+        "scoreBasis" => summary["score"]["basis"],
+        "requiredCheckCounts" => summary["requiredCheckCounts"],
+        "runnerNoFailureScenarios" => raw["scenarios"],
+        "runnerNoFailureScenarioIds" => raw["scenarioIds"],
+        "excludedRunnerNoFailure" => raw["excludedFromScore"],
+        "notScoredPass" => not_scored_pass(summary["notScored"])
       }
     }
+  end
+
+  @doc """
+  Reads the newest retained official server-lane summary from `dir`, a file
+  named `<date>-alpha.11-summary.json`, and checks that it is for the pinned
+  `2026-07-28` requirement set.
+  """
+  @spec latest_official_summary!(Path.t()) :: map()
+  def latest_official_summary!(dir \\ "conformance/results") do
+    file =
+      dir
+      |> File.ls!()
+      |> Enum.filter(&Regex.match?(@official_summary_pattern, &1))
+      |> Enum.max(fn -> raise ArgumentError, "no official server summary in #{dir}" end)
+
+    summary = dir |> Path.join(file) |> File.read!() |> JSON.decode!()
+
+    unless summary["protocolVersion"] == "2026-07-28" and
+             summary["requirements"]["requirementsSha256"] == @requirements_sha256 do
+      raise ArgumentError, "#{file} is not a run of the pinned 2026-07-28 requirements"
+    end
+
+    summary
   end
 
   @doc "Returns the canonical IDs that the internal contract suite must evidence."
@@ -299,6 +269,20 @@ defmodule Snodo.Compliance do
     |> Enum.drop(1)
     |> Enum.take_while(&String.starts_with?(&1, "  - "))
     |> Enum.map(&String.replace_prefix(&1, "  - ", ""))
+  end
+
+  # Unscored scenarios whose every check succeeded.
+  defp not_scored_pass(not_scored) do
+    for %{"checks" => checks} = entry <- not_scored,
+        checks["success"] > 0,
+        checks["failure"] + checks["warning"] + checks["skipped"] == 0 do
+      %{
+        "scenario" => entry["scenario"],
+        "status" => entry["reason"],
+        "passedChecks" => checks["success"],
+        "totalChecks" => checks |> Map.values() |> Enum.sum()
+      }
+    end
   end
 
   defp join_or_none([]), do: "none"
