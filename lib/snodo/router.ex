@@ -339,7 +339,7 @@ defmodule Snodo.Router do
       # Invalid arguments are a tool execution error the model can read and
       # correct (2026-07-28 tools, SEP-1303), not a protocol error.
       {:invalid_arguments, %Error{} = error} ->
-        {:ok, Result.error(error.message, error: error)}
+        {:ok, Result.error(error.message)}
 
       {:error, %Error{}} = error ->
         error
@@ -797,7 +797,7 @@ defmodule Snodo.Router do
         {:error, error}
 
       {:error, reason} ->
-        {:ok, Result.error(format_reason(reason), error: Error.execution(reason))}
+        {:ok, Result.error(format_reason(reason))}
 
       other ->
         {:error, Error.internal("Tool returned an invalid result", other)}
