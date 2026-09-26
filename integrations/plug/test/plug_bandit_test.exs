@@ -179,6 +179,53 @@ defmodule Snodo.Transport.PlugBanditTest do
     assert eventually(fn -> Executor.stats(executor).running == 0 end)
   end
 
+  test "a client disconnect cancels a silent handler before the request deadline" do
+    %{port: port, executor: executor} = server(request_timeout: 30_000, disconnect_probe_ms: 50)
+    socket = connect(port)
+
+    send_rpc(
+      socket,
+      request("tools/call", %{"name" => "inspect_context", "arguments" => %{"wait" => true}}, 83),
+      auth: :alpha
+    )
+
+    assert_receive {:tool_entered, 83, worker, token}, 1_000
+    monitor = Process.monitor(worker)
+    :ok = :gen_tcp.close(socket)
+    assert_receive {:DOWN, ^monitor, :process, ^worker, _reason}, 2_000
+    assert Snodo.Cancellation.cancelled?(token)
+    assert eventually(fn -> Executor.stats(executor).running == 0 end)
+  end
+
+  test "a handler that outlasts the probe returns its result as the final event" do
+    %{port: port} = server(disconnect_probe_ms: 50)
+    socket = connect(port)
+    arguments = %{"sleep_ms" => 300, "text" => "slow"}
+
+    send_rpc(
+      socket,
+      request("tools/call", %{"name" => "inspect_context", "arguments" => arguments}, 84),
+      auth: :alpha
+    )
+
+    raw = read_all(socket)
+    assert raw =~ "HTTP/1.1 200"
+    assert String.downcase(raw) =~ "content-type: text/event-stream"
+    assert raw =~ ": keepalive"
+
+    assert [%{"id" => 84, "result" => %{"structuredContent" => %{"text" => "slow"}}}] =
+             sse_messages(raw)
+  end
+
+  test ":infinity keeps a plain JSON response for a slow handler" do
+    %{port: port} = server(disconnect_probe_ms: :infinity)
+    arguments = %{"sleep_ms" => 150, "text" => "json"}
+    body = request("tools/call", %{"name" => "inspect_context", "arguments" => arguments}, 85)
+
+    assert {200, %{"id" => 85, "result" => %{"structuredContent" => %{"text" => "json"}}}} =
+             rpc(port, body, auth: :alpha)
+  end
+
   test "queue wait is included in the finite request deadline" do
     %{port: port, executor: executor} =
       server(max_concurrency: 1, max_queue: 1, request_timeout: 60)

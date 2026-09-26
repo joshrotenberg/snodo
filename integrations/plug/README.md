@@ -99,6 +99,7 @@ contract.
 | `max_body_bytes` | 2,000,000 | Raw-body byte bound before JSON decoding. |
 | `read_timeout` | 5,000 ms | Plug body-read timeout per underlying read. |
 | `subscription_keepalive_ms` | 15,000 ms | Idle SSE comment-write interval; must be finite and positive. |
+| `disconnect_probe_ms` | 5,000 ms | After this long without a result, switch to SSE and write keepalives at this interval so a disconnect cancels the work; `:infinity` keeps JSON. |
 | `allowed_origin_hosts` | localhost / loopback | Existing core host-based Origin allowlist, not a full CORS policy. |
 
 Configure Bandit/reverse-proxy connection counts, header/read limits, timeouts,
@@ -133,15 +134,19 @@ idle keepalives; a failed write cancels the execution. HTTP status is already 20
 after the first progress frame, so later errors are JSON-RPC errors in that stream,
 not a second HTTP response. Core progress limits and producer checks still apply.
 
-**Important limitation:** portable Plug APIs do not report an idle client
-disconnect while an ordinary handler is silent before its first progress update.
-Such work may continue until the finite request deadline, cancellation,
-completion, or server-process death.
-SSE disconnect detection also depends on the HTTP adapter and operating system
-reporting a failed write; keepalive timing is not a strict TCP failure-detection
-deadline. This package does not access Bandit socket internals or claim the
-native listener's immediate read-side disconnect cancellation. General content
-streaming beyond progress is not implemented by this slice.
+Portable Plug APIs only reveal a client disconnect when a write fails. So that
+a disconnect cancels a silent handler, as the 2026-07-28 cancellation rules
+require, a request still running after `disconnect_probe_ms` switches its
+response to SSE and writes a keepalive comment every interval; a failed write
+cancels the execution, and a result that arrives later is the terminal SSE
+message, exactly as after progress. A peer's write can succeed once after it
+closes, so detection takes up to two intervals. Set `disconnect_probe_ms:
+:infinity` to keep ordinary JSON responses and rely on `request_timeout`
+instead. Detection still depends on the HTTP adapter and operating system
+reporting a failed write. This package does not access Bandit socket internals
+or claim the native listener's immediate read-side disconnect cancellation.
+A cancelled request is answered with 204, as the native listener does. General
+content streaming beyond progress is not implemented by this slice.
 
 Source `open/3` and `close/3` must be prompt and resource-safe, as required by the
 core source contract. External work must still implement its own timeouts and
