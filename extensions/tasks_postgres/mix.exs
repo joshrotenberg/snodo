@@ -56,7 +56,7 @@ defmodule Snodo.Extensions.Tasks.Postgres.MixProject do
       snodo_dep(:snodo_tasks, "../tasks"),
       {:ecto_sql, "~> 3.14"},
       {:jason, "~> 1.4"},
-      {:postgrex, "~> 0.22.4", optional: true},
+      {:postgrex, "~> 0.22", optional: true},
       {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.40", only: :dev, runtime: false}

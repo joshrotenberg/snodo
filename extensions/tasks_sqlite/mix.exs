@@ -54,7 +54,7 @@ defmodule Snodo.Extensions.Tasks.SQLite.MixProject do
       snodo_dep(:snodo_tasks, "../tasks"),
       {:ecto_sql, "~> 3.14"},
       {:jason, "~> 1.4"},
-      {:ecto_sqlite3, "~> 0.24.1", optional: true},
+      {:ecto_sqlite3, "~> 0.24", optional: true},
       {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.40", only: :dev, runtime: false}
