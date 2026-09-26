@@ -3,6 +3,7 @@ defmodule Snodo.Transport.StreamableHTTP.AdapterAcceptanceTest do
 
   alias Snodo.Transport.StreamableHTTP
   alias Snodo.Transport.StreamableHTTP.Request
+  alias Snodo.Transport.StreamableHTTP.Response
   alias Snodo.Transport.StreamableHTTP.StreamResponse
   alias SnodoTest.TestCompletions.PackagePrompt
   alias SnodoTest.TestExtensions.HTTPPolicy
@@ -43,6 +44,26 @@ defmodule Snodo.Transport.StreamableHTTP.AdapterAcceptanceTest do
   end
 
   @tag mcp_contract: ["streamable-http-admission"]
+  test "accepts a response object with 202 and no body" do
+    raw = %{"jsonrpc" => "2.0", "id" => 9, "result" => %{}}
+
+    request = %Request{
+      method: "POST",
+      path: "/mcp",
+      headers: [
+        {"Content-Type", "application/json"},
+        {"Accept", "application/json, text/event-stream"},
+        {"MCP-Protocol-Version", @protocol}
+      ],
+      body: JSON.encode!(raw),
+      peer: {{127, 0, 0, 1}, 50_000},
+      connection_ref: make_ref()
+    }
+
+    assert %Response{status: 202, body: ""} =
+             StreamableHTTP.handle(TestFixtures.runtime(tools: [Echo]), request)
+  end
+
   test "serves final-era discovery over a sessionless JSON response" do
     runtime = TestFixtures.runtime()
     raw = TestFixtures.request("discover-http", "server/discover")

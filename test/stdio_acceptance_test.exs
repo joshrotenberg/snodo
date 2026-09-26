@@ -420,4 +420,36 @@ defmodule Snodo.Transport.StdioAcceptanceTest do
   defp await_global_name(name, 0) do
     flunk("stdio coordinator #{inspect(name)} was not registered")
   end
+
+  test "a response object does not occupy an in-flight request id" do
+    {:ok, input} = TestInput.start_link()
+    {:ok, output} = StringIO.open("")
+
+    server =
+      Task.async(fn ->
+        Stdio.serve(TestFixtures.runtime(tools: [Echo]), input: input, output: output)
+      end)
+
+    call =
+      TestFixtures.request("shared", "tools/call", %{
+        "name" => "echo",
+        "arguments" => %{"text" => "done", "delayMs" => 100}
+      })
+
+    TestInput.push(input, JSON.encode!(call) <> "\n")
+
+    TestInput.push(
+      input,
+      JSON.encode!(%{"jsonrpc" => "2.0", "id" => "shared", "result" => %{}}) <> "\n"
+    )
+
+    TestInput.eof(input)
+    assert :ok = Task.await(server, 5_000)
+
+    {_input, raw_output} = StringIO.contents(output)
+    assert [line] = String.split(raw_output, "\n", trim: true)
+
+    assert %{"id" => "shared", "result" => %{"content" => [%{"text" => "done"}]}} =
+             JSON.decode!(line)
+  end
 end

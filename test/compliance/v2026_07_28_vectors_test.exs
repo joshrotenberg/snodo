@@ -193,6 +193,34 @@ defmodule Snodo.Compliance.V2026_07_28VectorsTest do
     end
   end
 
+  @tag mcp_contract: ["direct-stdio-negative-vectors"]
+  test "literal response objects and malformed notifications get no reply" do
+    runtime = TestFixtures.runtime(tools: [Echo])
+
+    silent = [
+      {"result-response", %{"jsonrpc" => "2.0", "id" => 21, "result" => %{}}},
+      {"error-response",
+       %{"jsonrpc" => "2.0", "id" => 22, "error" => %{"code" => -32_601, "message" => "Nope"}}},
+      {"notification-with-array-params",
+       %{"jsonrpc" => "2.0", "method" => "notifications/cancelled", "params" => []}},
+      {"notification-without-jsonrpc",
+       %{"method" => "notifications/cancelled", "params" => %{"requestId" => 1}}}
+    ]
+
+    for {label, message} <- silent, transport <- [:direct, :stdio] do
+      assert dispatch(runtime, message, transport) == nil,
+             "#{label} over #{transport} was answered"
+    end
+
+    # A malformed request is still answered with its own id.
+    malformed = %{"jsonrpc" => "2.0", "id" => 23, "method" => "tools/list", "params" => []}
+
+    for transport <- [:direct, :stdio] do
+      assert %{"id" => 23, "error" => %{"code" => -32_602}} =
+               dispatch(runtime, malformed, transport)
+    end
+  end
+
   @tag mcp_contract: ["response-free-cancellation"]
   test "literal cancellation notification is response-free on both bindings" do
     runtime = TestFixtures.runtime(tools: [Echo])

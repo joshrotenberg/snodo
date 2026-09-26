@@ -349,6 +349,10 @@ defmodule Snodo.Client do
   defp put_present(params, _key, nil), do: params
   defp put_present(params, key, value), do: Map.put(params, key, value)
 
+  defp decode_response(%{"result" => _result, "error" => _error} = response) do
+    {:error, Transport.connection_error("The server sent both a result and an error", response)}
+  end
+
   defp decode_response(%{"result" => %{"resultType" => "input_required"} = result}),
     do: {:input_required, result}
 
