@@ -17,7 +17,7 @@ code and reports:
 | Released-client interop | A real official TypeScript client can discover, list, call, cancel, and call again over stdio | Passing with client 2.0.0 |
 | Target application acceptance | The real Hex.pm server's catalog, tool outcomes, prompts, and resource reads work with seeded domain responses over stdio and HTTP | Passing with client 2.0.0; [scope and commands](https://github.com/joshrotenberg/snodo/blob/main/docs/history/target-application-findings.md) |
 | MRTR client acceptance | Ordinary tool/resource/prompt elicitation, signed state, automatic retries, and URL consent work over stdio and HTTP | Passing with client 2.0.0; [scope and commands](interactive-operations.md) |
-| Official server requirements | The implementation passes the frozen upstream scenarios for the released revision | Partial: 32/37 exercised whole scenarios pass (2026-09-14); all 37 attempted |
+| Official server requirements | The implementation passes the frozen upstream scenarios for the released revision | Partial: 32/37 exercised whole scenarios pass (2026-09-26); all 37 attempted |
 | Ordinary progress | Correlated progress precedes normal/error/MRTR terminal messages; cancellation and no-token behavior are checked over stdio and HTTP | Passing wire and controlled client checks; [SDK callback caveat](https://github.com/joshrotenberg/snodo/blob/main/interop/official_client/PROGRESS.md) |
 | Independent wire-schema corpus | Representative real emissions validate against named definitions and concrete result branches in the pinned official schema using AJV | 78 emissions across direct/stdio/HTTP; 78 negative mutations and 7 unit controls; not every possible message |
 
@@ -241,19 +241,22 @@ security, the Tasks boundary, and the empty-input-map SDK caveat.
 
 The native Streamable HTTP fixture has been exercised by the frozen official
 server runner. All 37 required scenarios were attempted. The honest score is
-**32/37 exercised whole scenarios passed** in the 2026-09-14 run. All 32 have
+**32/37 exercised whole scenarios passed** in the 2026-09-26 run. All 32 have
 semantic successes and no failure, warning, or skipped checks. Ordinary MRTR
-fixtures replace the three formerly unexercised false-positive paths.
+fixtures replace the three formerly unexercised false-positive paths. The five
+failing scenarios all depend on the deprecated sampling and roots features.
 
-The required checks total 103 `SUCCESS`, 8 `FAILURE`, 5 `SKIPPED`, 0 `WARNING`,
-and 1 `INFO`. Two pending, not-scored scenarios pass completely:
+The required checks total 110 `SUCCESS`, 6 `FAILURE`, 0 `SKIPPED`, 0 `WARNING`,
+and 1 `INFO`. The subscription checks in `server-stateless` run against a
+fixture subscription hub. Two pending, not-scored scenarios pass completely:
 `json-schema-2020-12` (8/8) and `http-header-validation` (14/14). The remaining
 custom-header pending failure stays visible in the checked-in report. The exact
 pass list, raw no-failure list, and exclusion reasons are checked in as both
-[JSON](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-09-14-alpha.11-summary.json) and
-[Markdown](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-09-14-alpha.11-summary.md), with
-[per-check outcomes](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-09-14-alpha.11-checks.json).
-The August 25 summaries are retained as historical evidence, not current scores.
+[JSON](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-09-26-alpha.11-summary.json) and
+[Markdown](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-09-26-alpha.11-summary.md), with
+[per-check outcomes](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-09-26-alpha.11-checks.json).
+The September 14 and August 25 summaries are retained as historical evidence,
+not current scores.
 
 The frozen `2026-07-28` requirement manifest contains 37 scored server
 scenarios. The manifest declares `conformance@0.2.0-alpha.10` as its historical

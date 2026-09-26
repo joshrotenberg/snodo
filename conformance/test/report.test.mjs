@@ -128,7 +128,7 @@ async function frozenEvidence() {
   const json = async (file) => JSON.parse(await readFile(new URL(file, import.meta.url), "utf8"));
   return {
     manifest: parse(await readFile(new URL("../requirements/2026-07-28.yaml", import.meta.url), "utf8")),
-    results: await json("../results/2026-09-14-alpha.11-checks.json"),
+    results: await json("../results/2026-09-26-alpha.11-checks.json"),
     baseline: await json("../expected-failures.json"),
   };
 }
