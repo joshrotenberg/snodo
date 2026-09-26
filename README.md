@@ -149,6 +149,7 @@ in [docs/history](https://github.com/joshrotenberg/snodo/blob/main/docs/history/
 ## Development
 
 ```sh
+mix setup            # fetch dependencies for every package; rerun after a mix.lock changes
 mix quality          # format, compile, Credo, tests, examples, and every sibling package
 mix quality.types    # Dialyzer across all six packages
 mix snodo.contract   # the protocol contract inventory

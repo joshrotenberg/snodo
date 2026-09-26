@@ -43,13 +43,7 @@ jobs:
           mix local.hex --force
           mix local.rebar --force
       - name: Fetch all package dependencies
-        run: |
-          mix deps.get
-          mix cmd --cd extensions/tasks mix deps.get
-          mix cmd --cd extensions/tasks_postgres mix deps.get
-          mix cmd --cd extensions/tasks_sqlite mix deps.get
-          mix cmd --cd integrations/plug mix deps.get
-          mix cmd --cd integrations/schema_jsv mix deps.get
+        run: mix setup
       - name: Run aggregate quality
         run: mix quality
       - name: Run aggregate type analysis on the current lane
