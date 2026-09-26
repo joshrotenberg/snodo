@@ -163,10 +163,10 @@ defmodule Snodo.Compliance do
   @spec latest_official_summary!(Path.t()) :: map()
   def latest_official_summary!(dir \\ "conformance/results") do
     file =
-      dir
-      |> File.ls!()
-      |> Enum.filter(&Regex.match?(@official_summary_pattern, &1))
-      |> Enum.max(fn -> raise ArgumentError, "no official server summary in #{dir}" end)
+      case Enum.filter(File.ls!(dir), &Regex.match?(@official_summary_pattern, &1)) do
+        [] -> raise ArgumentError, "no official server summary in #{dir}"
+        files -> Enum.max(files)
+      end
 
     summary = dir |> Path.join(file) |> File.read!() |> JSON.decode!()
 
