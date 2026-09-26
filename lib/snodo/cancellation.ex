@@ -18,13 +18,16 @@ defmodule Snodo.Cancellation do
 
   @doc """
   Marks the token cancelled. Cancelling an already cancelled token is a no-op.
-
-  The token does not record `reason`; it is accepted and ignored.
   """
-  @spec cancel(t(), term()) :: :ok
-  def cancel(%__MODULE__{state: state}, _reason \\ nil) do
+  @spec cancel(t()) :: :ok
+  def cancel(%__MODULE__{state: state}) do
     :ok = :atomics.put(state, 1, 1)
   end
+
+  @doc false
+  @deprecated "The token does not keep a reason; use cancel/1"
+  @spec cancel(t(), term()) :: :ok
+  def cancel(%__MODULE__{} = token, _reason), do: cancel(token)
 
   @doc """
   Returns whether the token has been cancelled.

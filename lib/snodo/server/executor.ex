@@ -246,7 +246,7 @@ defmodule Snodo.Server.Executor do
   def handle_info({:execution_timeout, execution_ref}, state) do
     case Map.fetch(state.jobs, execution_ref) do
       {:ok, %{status: :running} = job} ->
-        Cancellation.cancel(job.token, "execution timeout")
+        Cancellation.cancel(job.token)
         {:noreply, stop_running_job(state, job, {:timed_out, job.timeout})}
 
       _not_running ->
@@ -311,7 +311,7 @@ defmodule Snodo.Server.Executor do
 
   defp cancel_job(state, execution_ref, reason) do
     job = Map.fetch!(state.jobs, execution_ref)
-    Cancellation.cancel(job.token, reason)
+    Cancellation.cancel(job.token)
 
     case job.status do
       :running ->
@@ -398,7 +398,7 @@ defmodule Snodo.Server.Executor do
   defp abandon_job(state, execution_ref, reason) do
     case Map.fetch(state.jobs, execution_ref) do
       {:ok, job} ->
-        Cancellation.cancel(job.token, {:reply_owner_down, reason})
+        Cancellation.cancel(job.token)
 
         case job.status do
           :running ->
