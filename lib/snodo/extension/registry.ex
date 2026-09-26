@@ -306,10 +306,6 @@ defmodule Snodo.Extension.Registry do
     end
   end
 
-  @doc false
-  @spec installed_ids(t()) :: [String.t()]
-  def installed_ids(%__MODULE__{} = registry), do: registry.by_id |> Map.keys() |> Enum.sort()
-
   defp register(%__MODULE__{} = registry, entry, protocol_registry) do
     {extension, options} = normalize_entry!(entry)
     validate_module!(extension)
