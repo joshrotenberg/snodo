@@ -54,6 +54,53 @@ defmodule Snodo.Server.Runtime do
     pagination: %Pagination{}
   ]
 
+  @doc """
+  Builds and validates a runtime. It starts no process.
+
+  A module that uses `Snodo.Server` builds its runtime with `runtime/1`, which
+  calls this function with the declared options and any overrides.
+
+  Required options:
+
+    * `:router` - the `Snodo.Router` with the registered components.
+    * `:protocols` - the protocol dialect modules to enable, in preference
+      order, such as `[Snodo.Protocol.V2026_07_28]`.
+    * `:server_info` - a map with string `"name"` and `"version"` and,
+      optionally, `"title"`, `"description"`, `"websiteUrl"`, and `"icons"`.
+
+  Other options:
+
+    * `:capabilities` - the server capabilities map. Defaults to `"tools"`,
+      `"prompts"`, and `"resources"` for each kind the router has
+      registered, plus `"completions"` when a registered prompt or resource
+      template supports completion.
+    * `:extensions` - `Snodo.Extension` modules or `{module, options}`
+      tuples. Defaults to `[]`.
+    * `:instructions` - a string returned in `server/discover` and
+      `initialize` results, or `nil` (the default).
+    * `:schema_validator` - a `Snodo.Schema.Validator` module. Defaults to
+      `Snodo.Schema.Validator.Passthrough`.
+    * `:subscription_source` - a `Snodo.Subscription.Source` module or
+      `{module, options}`. Defaults to `nil`, which leaves
+      `subscriptions/listen` unavailable.
+    * `:instrumentation` - a `Snodo.Instrumentation` sink module or
+      `{module, options}`. Defaults to `nil`.
+    * `:authorization` - a `Snodo.Authorization` policy module or
+      `{module, options}`. Defaults to `nil`.
+    * `:discovery_cache`, `:tools_cache`, `:prompts_cache`,
+      `:resources_cache` - `[ttl_ms: non_neg_integer, scope: "private" |
+      "public"]`. Each defaults to `ttl_ms: 0, scope: "private"`.
+    * `:pagination` - `[page_size: pos_integer]`. Defaults to a page size
+      of 100.
+
+  A missing required option raises `KeyError`. An invalid value raises
+  `ArgumentError`, including a capability an enabled protocol profile does
+  not support, `"completions"` without a completion-capable component, a
+  `listChanged` or `subscribe` setting of `true` without a
+  `:subscription_source`, and an advertised extension that is not installed.
+  When an initialize-era dialect is enabled, a warning is logged naming any
+  tool those clients cannot list.
+  """
   @spec new(keyword()) :: t()
   def new(opts) when is_list(opts) do
     router = Keyword.fetch!(opts, :router)

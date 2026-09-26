@@ -34,6 +34,7 @@ defmodule Snodo.Protocol.Profile.Method do
     lifecycle: :active
   ]
 
+  @doc false
   @spec new!(keyword()) :: t()
   def new!(opts) when is_list(opts) do
     method = struct!(__MODULE__, opts)
@@ -183,12 +184,14 @@ defmodule Snodo.Protocol.Profile do
   ]
   defstruct @enforce_keys
 
+  @doc false
   @spec new!(keyword()) :: t()
   def new!(opts) when is_list(opts) do
     profile = struct!(__MODULE__, opts)
     validate!(profile)
   end
 
+  @doc false
   @spec fetch_method(t(), String.t()) :: {:ok, Method.t()} | :error
   def fetch_method(%__MODULE__{methods: methods}, name) when is_binary(name) do
     case Enum.find(methods, &(&1.name == name)) do
@@ -197,6 +200,7 @@ defmodule Snodo.Protocol.Profile do
     end
   end
 
+  @doc false
   @spec fetch_method(t(), String.t(), Method.direction()) :: {:ok, Method.t()} | :error
   def fetch_method(%__MODULE__{methods: methods}, name, direction)
       when is_binary(name) and direction in [:client_to_server, :server_to_client] do
@@ -206,6 +210,7 @@ defmodule Snodo.Protocol.Profile do
     end
   end
 
+  @doc false
   @spec method_names(t(), keyword()) :: [String.t()]
   def method_names(%__MODULE__{methods: methods}, filters \\ []) do
     methods
@@ -220,9 +225,11 @@ defmodule Snodo.Protocol.Profile do
     |> Enum.uniq()
   end
 
+  @doc false
   @spec metadata_policy(t(), :request | :notification) :: :required | :optional
   def metadata_policy(%__MODULE__{request_metadata: policy}, kind), do: Map.fetch!(policy, kind)
 
+  @doc false
   @spec unsupported_capabilities(t(), map()) :: [String.t()]
   def unsupported_capabilities(%__MODULE__{} = profile, capabilities) when is_map(capabilities) do
     unsupported_names =
@@ -234,6 +241,7 @@ defmodule Snodo.Protocol.Profile do
     Enum.sort(unsupported_names ++ unsupported_settings)
   end
 
+  @doc false
   @spec project_capabilities(t(), map()) :: map()
   def project_capabilities(%__MODULE__{} = profile, capabilities) when is_map(capabilities) do
     Map.take(capabilities, profile.capabilities ++ @open_capabilities)
@@ -257,6 +265,7 @@ defmodule Snodo.Protocol.Profile do
     end)
   end
 
+  @doc false
   @spec to_map(t()) :: map()
   def to_map(%__MODULE__{} = profile) do
     %{

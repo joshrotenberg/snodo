@@ -29,6 +29,7 @@ defmodule Snodo.Protocol.Registry do
   @enforce_keys [:protocols, :by_version]
   defstruct [:protocols, :by_version]
 
+  @doc false
   @spec new([module()]) :: t()
   def new(protocols) when is_list(protocols) do
     {ordered, by_version} =
@@ -46,6 +47,7 @@ defmodule Snodo.Protocol.Registry do
     %__MODULE__{protocols: Enum.reverse(ordered), by_version: by_version}
   end
 
+  @doc false
   @spec versions(t(), keyword()) :: [String.t()]
   def versions(%__MODULE__{} = registry, opts \\ []) do
     case Keyword.get(opts, :era) do
@@ -55,9 +57,11 @@ defmodule Snodo.Protocol.Registry do
     |> Enum.map(& &1.profile().version)
   end
 
+  @doc false
   @spec profiles(t()) :: [Profile.t()]
   def profiles(%__MODULE__{} = registry), do: Enum.map(registry.protocols, & &1.profile())
 
+  @doc false
   @spec fetch(t(), String.t()) :: {:ok, module()} | {:error, Error.t()}
   def fetch(%__MODULE__{} = registry, version) when is_binary(version) do
     case Map.fetch(registry.by_version, version) do
@@ -73,6 +77,7 @@ defmodule Snodo.Protocol.Registry do
     end
   end
 
+  @doc false
   @spec select(t(), Envelope.t()) :: {:ok, module()} | {:error, Error.t()}
   def select(
         %__MODULE__{} = registry,

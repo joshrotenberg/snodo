@@ -50,6 +50,7 @@ defmodule Snodo.Extension.Registry do
   @enforce_keys [:by_id, :routes, :versions_by_id, :options_by_id, :ordered_ids]
   defstruct [:by_id, :routes, :versions_by_id, :options_by_id, :ordered_ids]
 
+  @doc false
   @spec new([entry()], ProtocolRegistry.t()) :: t()
   def new(extensions, %ProtocolRegistry{} = protocol_registry) when is_list(extensions) do
     Enum.reduce(extensions, empty(), fn entry, registry ->
@@ -57,6 +58,7 @@ defmodule Snodo.Extension.Registry do
     end)
   end
 
+  @doc false
   @spec empty() :: t()
   def empty do
     %__MODULE__{
@@ -79,6 +81,7 @@ defmodule Snodo.Extension.Registry do
     %{context | extension_options: options}
   end
 
+  @doc false
   @spec validate_advertisement!(t(), map()) :: :ok
   def validate_advertisement!(%__MODULE__{} = registry, capabilities) when is_map(capabilities) do
     advertised = Map.get(capabilities, "extensions", %{})
@@ -89,6 +92,7 @@ defmodule Snodo.Extension.Registry do
     end
   end
 
+  @doc false
   @spec negotiate(t(), Context.t()) :: {:ok, Context.t()} | {:error, Error.t()}
   def negotiate(%__MODULE__{} = registry, %Context{} = context) do
     Enum.reduce_while(context.extensions, {:ok, %{}}, fn
@@ -108,6 +112,7 @@ defmodule Snodo.Extension.Registry do
     end
   end
 
+  @doc false
   @spec resolve(t(), String.t(), Envelope.t(), Context.t()) ::
           {:ok, Route.t()} | {:error, Error.t()}
   def resolve(
@@ -122,6 +127,7 @@ defmodule Snodo.Extension.Registry do
     end
   end
 
+  @doc false
   @spec validate(t(), Route.t(), map(), Context.t()) :: :ok | {:error, Error.t()}
   def validate(%__MODULE__{}, %Route{} = route, params, %Context{} = context) do
     safe_callback(route.module, :validate_operation, [route.method.operation, params, context], fn
@@ -131,6 +137,7 @@ defmodule Snodo.Extension.Registry do
     end)
   end
 
+  @doc false
   @spec dispatch(t(), Route.t(), map(), Context.t()) ::
           {:ok, Result.t()} | {:error, Error.t()}
   def dispatch(%__MODULE__{}, %Route{} = route, params, %Context{} = context) do
@@ -251,6 +258,7 @@ defmodule Snodo.Extension.Registry do
     end
   end
 
+  @doc false
   @spec shape_result(t(), Route.t(), Result.t(), Context.t()) ::
           {:ok, map()} | {:error, Error.t()}
   def shape_result(%__MODULE__{}, %Route{} = route, %Result{} = result, %Context{} = context) do
@@ -265,6 +273,7 @@ defmodule Snodo.Extension.Registry do
     end)
   end
 
+  @doc false
   @spec shape_error(t(), Route.t(), Error.t(), Context.t()) ::
           {:ok, map()} | {:error, Error.t()}
   def shape_error(%__MODULE__{}, %Route{} = route, %Error{} = error, %Context{} = context) do
@@ -280,6 +289,7 @@ defmodule Snodo.Extension.Registry do
     end)
   end
 
+  @doc false
   @spec project_capabilities(t(), String.t(), map()) :: map()
   def project_capabilities(%__MODULE__{} = registry, version, capabilities)
       when is_binary(version) and is_map(capabilities) do
@@ -296,6 +306,7 @@ defmodule Snodo.Extension.Registry do
     end
   end
 
+  @doc false
   @spec installed_ids(t()) :: [String.t()]
   def installed_ids(%__MODULE__{} = registry), do: registry.by_id |> Map.keys() |> Enum.sort()
 

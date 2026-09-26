@@ -91,24 +91,55 @@ defmodule Snodo.Tool do
     end
   end
 
+  @doc """
+  Sets the description that `c:description/0` returns, replacing the
+  `:description` option given to `use Snodo.Tool`.
+
+  The value must be a string or `nil`; the router checks it on registration.
+  """
   defmacro description(value) do
     quote do
       @mcp_tool_description unquote(value)
     end
   end
 
+  @doc """
+  Sets the input JSON Schema that `c:input_schema/0` returns.
+
+  The value must be a map of JSON values with `"type" => "object"` at the
+  root, and any `x-mcp-header` annotations must be valid; otherwise the module
+  does not compile. Defaults to `%{"type" => "object"}`.
+  """
   defmacro input_schema(value) do
     quote do
       @mcp_tool_input_schema unquote(value)
     end
   end
 
+  @doc """
+  Sets the output JSON Schema that `c:output_schema/0` returns.
+
+  The value must be `nil` (the default) or a JSON Schema map; otherwise the
+  module does not compile. When a schema is set, a call must return
+  structured content (`Snodo.Result.structured/2`, a non-binary value, or a
+  `Snodo.Result.raw/1` map with `"structuredContent"`) unless it returns
+  `Snodo.Result.error/2` or `Snodo.Result.input_required/1`. The runtime's
+  schema validator checks that content. Any other result fails the request
+  with a -32603 error.
+  """
   defmacro output_schema(value) do
     quote do
       @mcp_tool_output_schema unquote(value)
     end
   end
 
+  @doc """
+  Sets the tool annotations map that `c:annotations/0` returns, for example
+  `%{"readOnlyHint" => true}`.
+
+  The value must be a map of JSON values; otherwise the module does not
+  compile. Defaults to `%{}`.
+  """
   defmacro annotations(value) do
     quote do
       @mcp_tool_annotations unquote(value)

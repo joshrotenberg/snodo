@@ -154,6 +154,22 @@ defmodule Snodo.Compliance do
     raise "the frozen 2026-07-28 server requirement inventory must contain 37 scenarios"
   end
 
+  @doc """
+  Builds the evidence report for the `2026-07-28` profile.
+
+  `profile` must have version `"2026-07-28"`, such as
+  `Snodo.Protocol.V2026_07_28.profile()`. The report is a string-keyed map
+  with `"protocolProfile"` (the profile's manifest), `"evidence"`
+  (`"internalPass"`, `"unsupported"`, `"unmeasured"`, and `"officialPass"`),
+  and `"officialServerConformance"` (the frozen result of the official
+  conformance run). `mix snodo.contract --format json` prints this map.
+
+  Options:
+
+    * `:internal_pass` - the internal contract IDs whose evidence passed,
+      each from `internal_contracts/0` and listed once. Defaults to `[]`.
+      Any other value raises `ArgumentError`.
+  """
   @spec report(Profile.t(), keyword()) :: map()
   def report(%Profile{version: "2026-07-28"} = profile, opts \\ []) do
     internal_pass = validate_internal_pass!(Keyword.get(opts, :internal_pass, []))
@@ -217,6 +233,10 @@ defmodule Snodo.Compliance do
     :ok
   end
 
+  @doc """
+  Renders a `report/2` map as a short Markdown summary, as
+  `mix snodo.contract --format markdown` prints it.
+  """
   @spec to_markdown(map()) :: String.t()
   def to_markdown(report) when is_map(report) do
     profile = report["protocolProfile"]

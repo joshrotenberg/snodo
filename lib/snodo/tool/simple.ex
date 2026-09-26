@@ -86,6 +86,29 @@ defmodule Snodo.Tool.Simple do
     end
   end
 
+  @doc """
+  Declares one property of the tool's input schema.
+
+  `name` is the property name as a string. `type` is a JSON type atom
+  (`:string`, `:integer`, `:number`, `:boolean`, `:array`, `:object`, or
+  `:null`), `{:array, type}` for an array whose `"items"` has that type, or a
+  raw property-schema map.
+
+  Options:
+
+    * `:required` - when `true`, adds `name` to the schema's `"required"`
+      list. Defaults to `false`.
+    * `:description`, `:default`, `:enum`, `:pattern` - set the JSON Schema
+      keyword of the same name.
+    * `:min_length`, `:max_length`, `:min_items`, `:max_items`, `:minimum`,
+      `:maximum`, `:exclusive_minimum`, `:exclusive_maximum`, `:unique_items` -
+      set the camel-case JSON Schema keyword, such as `"minLength"`.
+    * `:schema` - a map of other JSON Schema keywords, merged into the
+      property last, so it overrides the generated keys.
+
+  An empty or repeated name, an unknown or repeated option, or an option
+  value of the wrong type is a compile error.
+  """
   defmacro argument(name, type, opts \\ []) do
     quote do
       @mcp_tool_input_schema Snodo.Tool.Simple.add_argument!(

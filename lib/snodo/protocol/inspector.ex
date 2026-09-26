@@ -15,6 +15,7 @@ defmodule Snodo.Protocol.Inspector do
 
   @type direction :: :client_to_server | :server_to_client
 
+  @doc false
   @spec inspect(Profile.t(), Envelope.t(), direction()) ::
           {:ok, Inspection.t()} | {:error, Error.t()}
   def inspect(%Profile{} = profile, %Envelope{} = envelope, direction)

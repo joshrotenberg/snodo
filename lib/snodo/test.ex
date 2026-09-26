@@ -14,6 +14,37 @@ defmodule Snodo.Test do
   alias Snodo.Server.Runtime
   alias Snodo.Transport.Context, as: TransportContext
 
+  @doc """
+  Builds one JSON-RPC request and dispatches it with `Snodo.Server.dispatch/3`
+  over the `:direct` transport.
+
+  Options:
+
+    * `:method` - the JSON-RPC method. Required.
+    * `:params` - the request params. Defaults to `%{}`.
+    * `:id` - the request ID. Defaults to `1`.
+    * `:protocol` - a protocol version enabled in `runtime`. When set, the
+      dialect's request metadata is added to `params["_meta"]` (keys already
+      in `params["_meta"]` win) and the `mcp-protocol-version` header is set.
+      A version the runtime does not enable raises `MatchError`. Defaults to
+      `nil`, which adds neither.
+    * `:client_capabilities` - the client capabilities put in the metadata
+      when `:protocol` is set. Defaults to `%{}`.
+    * `:transport_metadata` - the transport context metadata, for example
+      `%{auth: principal}`, which handlers read as `context.auth`. Defaults
+      to `%{}`.
+
+  Returns what `Snodo.Server.dispatch/3` returns: `{:ok, response}` with the
+  JSON-RPC response map, or `{:stream, subscription}` for
+  `subscriptions/listen`.
+
+      {:ok, %{"result" => result}} =
+        Snodo.Test.dispatch(MyServer.runtime(),
+          method: "tools/call",
+          params: %{"name" => "echo", "arguments" => %{"text" => "hi"}},
+          protocol: "2026-07-28"
+        )
+  """
   @spec dispatch(Runtime.t(), keyword()) :: Server.dispatch_result()
   def dispatch(%Runtime{} = runtime, opts) when is_list(opts) do
     params = Keyword.get(opts, :params, %{})

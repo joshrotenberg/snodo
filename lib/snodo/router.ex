@@ -46,9 +46,20 @@ defmodule Snodo.Router do
 
   defstruct tools: %{}, prompts: %{}, resources: %{}, resource_templates: %{}, resource_names: %{}
 
+  @doc "Returns an empty router."
   @spec new() :: t()
   def new, do: %__MODULE__{}
 
+  @doc """
+  Registers a tool module under the name its `c:Snodo.Tool.name/0` returns.
+
+  The module must implement `Snodo.Tool` with a valid definition. Registering
+  the same module again returns the router unchanged.
+
+  Raises `ArgumentError` when the module cannot be loaded, does not export the
+  `Snodo.Tool` callbacks, returns an invalid definition, or uses a name that
+  another module already registered.
+  """
   @spec register_tool(t(), module()) :: t()
   def register_tool(%__MODULE__{} = router, tool) when is_atom(tool) do
     Tool.validate_module!(tool)
@@ -68,6 +79,11 @@ defmodule Snodo.Router do
     end
   end
 
+  @doc """
+  Returns the definition of every registered tool, sorted by name.
+
+  No authorization policy is applied.
+  """
   @spec list_tools(t()) :: [Definition.t()]
   def list_tools(%__MODULE__{} = router) do
     router.tools
@@ -75,6 +91,13 @@ defmodule Snodo.Router do
     |> Enum.map(fn {_name, module} -> Tool.definition(module) end)
   end
 
+  @doc """
+  Registers a prompt module under the name in its definition.
+
+  Registering the same module again returns the router unchanged. Raises
+  `ArgumentError` when the module is not a valid `Snodo.Prompt` or another
+  module already registered the name.
+  """
   @spec register_prompt(t(), module()) :: t()
   def register_prompt(%__MODULE__{} = router, prompt) when is_atom(prompt) do
     Prompt.validate_module!(prompt)
@@ -90,6 +113,11 @@ defmodule Snodo.Router do
     end
   end
 
+  @doc """
+  Returns the definition of every registered prompt, sorted by name.
+
+  No authorization policy is applied.
+  """
   @spec list_prompts(t()) :: [PromptDefinition.t()]
   def list_prompts(%__MODULE__{} = router) do
     router.prompts
@@ -97,6 +125,19 @@ defmodule Snodo.Router do
     |> Enum.map(fn {_name, module} -> Prompt.definition(module) end)
   end
 
+  @doc """
+  Registers a resource module.
+
+  A definition with a `:uri` registers a direct resource under that URI. A
+  definition with a `:uri_template` registers a resource template, which
+  answers any URI its `c:Snodo.Resource.matches?/1` accepts. Registering the
+  same module again returns the router unchanged.
+
+  Raises `ArgumentError` when the module is not a valid `Snodo.Resource`, or
+  when its name, URI, or URI template is already registered by another
+  module. A direct URI that an existing template matches, and a template that
+  matches an existing direct URI, are also refused.
+  """
   @spec register_resource(t(), module()) :: t()
   def register_resource(%__MODULE__{} = router, resource) when is_atom(resource) do
     Resource.validate_module!(resource)
@@ -112,6 +153,11 @@ defmodule Snodo.Router do
     end
   end
 
+  @doc """
+  Returns the definition of every direct resource, sorted by URI.
+
+  No authorization policy is applied.
+  """
   @spec list_resources(t()) :: [ResourceDefinition.t()]
   def list_resources(%__MODULE__{} = router) do
     router.resources
@@ -119,6 +165,11 @@ defmodule Snodo.Router do
     |> Enum.map(fn {_uri, module} -> Resource.definition(module) end)
   end
 
+  @doc """
+  Returns the definition of every resource template, sorted by URI template.
+
+  No authorization policy is applied.
+  """
   @spec list_resource_templates(t()) :: [ResourceDefinition.t()]
   def list_resource_templates(%__MODULE__{} = router) do
     router.resource_templates
@@ -137,6 +188,50 @@ defmodule Snodo.Router do
       end)
   end
 
+  @doc """
+  Runs one operation against the registered components.
+
+  Operations and the `params` each reads:
+
+    * `:tools_list`, `:prompts_list`, `:resources_list`, and
+      `:resource_templates_list` - the whole sorted catalog, less any
+      component the authorization policy refuses in the `:discovery` phase.
+      `params` is ignored. Pagination and cache hints are applied later by
+      `Snodo.Server`.
+    * `{:tools_call, name}` - calls the tool with `params["arguments"]`
+      (default `%{}`).
+    * `{:resource_read, uri}` - reads the direct resource or the one
+      template that matches `uri`. Template variables are merged into
+      `params` before `c:Snodo.Resource.read/2` runs.
+    * `{:prompt_get, name}` - renders the prompt with `params["arguments"]`,
+      a map of strings to strings.
+    * `:completion_complete` - completes a prompt or resource template
+      argument from the `completion/complete` params.
+
+  Any other operation returns a -32601 error.
+
+  Returns `{:ok, %Snodo.Result{}}` or `{:error, %Snodo.Error{}}`:
+
+    * An unknown name or URI, an `"arguments"` value of the wrong shape, or a
+      missing required prompt argument is a -32602 error.
+    * A missing required tool argument, tool arguments the schema validator
+      rejects, and a tool that returns `{:error, reason}` without an
+      `Snodo.Error` produce `{:ok, result}` with a `Snodo.Result.error/2`
+      result.
+    * An `Snodo.Error` returned by a component, or by the authorization
+      policy in the `:invocation` phase, is returned unchanged.
+    * A component that raises, exits, or returns an invalid value is a
+      -32603 error.
+
+  Options:
+
+    * `:schema_validator` - the `Snodo.Schema.Validator` module that checks
+      tool arguments and structured output. Defaults to
+      `Snodo.Schema.Validator.Passthrough`.
+    * `:authorization` - `nil` or a `{module, options}` policy, as held in
+      the runtime's `authorization` field. Defaults to `nil`, which allows
+      everything.
+  """
   @spec dispatch(t(), operation(), map(), Context.t(), keyword()) ::
           {:ok, Result.t()} | {:error, Error.t()}
   def dispatch(router, operation, params, context, opts \\ [])

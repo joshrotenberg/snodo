@@ -121,6 +121,14 @@ defmodule Snodo.Server do
           "Snodo.Server expects #{inspect(field)} to be a string literal or module attribute"
   end
 
+  @doc """
+  Registers an existing tool module, one that implements `Snodo.Tool`
+  directly or through `Snodo.Tool.Simple`.
+
+  The module is registered with `Snodo.Router.register_tool/2` each time
+  `router/0` or `runtime/1` runs, which raises `ArgumentError` for an invalid
+  module or a duplicate tool name.
+  """
   defmacro tool(module_ast) do
     module = Macro.expand(module_ast, __CALLER__)
 
@@ -129,6 +137,14 @@ defmodule Snodo.Server do
     end
   end
 
+  @doc """
+  Registers an existing resource module, one that implements `Snodo.Resource`
+  directly or through `Snodo.Resource.Simple`.
+
+  The module is registered with `Snodo.Router.register_resource/2` each time
+  `router/0` or `runtime/1` runs, which raises `ArgumentError` for an invalid
+  module or a colliding name, URI, or URI template.
+  """
   defmacro resource(module_ast) do
     module = Macro.expand(module_ast, __CALLER__)
 
@@ -137,6 +153,14 @@ defmodule Snodo.Server do
     end
   end
 
+  @doc """
+  Registers an existing prompt module, one that implements `Snodo.Prompt`
+  directly or through `Snodo.Prompt.Simple`.
+
+  The module is registered with `Snodo.Router.register_prompt/2` each time
+  `router/0` or `runtime/1` runs, which raises `ArgumentError` for an invalid
+  module or a duplicate prompt name.
+  """
   defmacro prompt(module_ast) do
     module = Macro.expand(module_ast, __CALLER__)
 

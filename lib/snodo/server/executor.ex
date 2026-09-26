@@ -35,6 +35,24 @@ defmodule Snodo.Server.Executor do
   @default_max_queue 256
   @default_timeout 30_000
 
+  @doc """
+  Starts an executor linked to the calling process.
+
+  Options:
+
+    * `:name` - a name to register the executor under.
+    * `:max_concurrency` - the most work that runs at once. A positive
+      integer, default 32.
+    * `:max_queue` - the most admitted work that waits for a free slot. A
+      non-negative integer, default 256. When both limits are reached,
+      `submit/4` returns `{:error, :overloaded}`.
+    * `:default_timeout` - the deadline in milliseconds for work submitted
+      without `:timeout`. A non-negative integer or `:infinity`, default
+      30,000.
+
+  An invalid option raises `ArgumentError` in the executor process, and the
+  start fails.
+  """
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) when is_list(opts) do
     GenServer.start_link(__MODULE__, opts, Keyword.take(opts, [:name]))
