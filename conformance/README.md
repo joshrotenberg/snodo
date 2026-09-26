@@ -67,7 +67,25 @@ not a moving `npx` dependency resolution, for comparable runs.
 
 [Protocol CI](../.github/workflows/protocol.yml) runs this lane and uploads raw
 checks, runner/fixture logs, and the summary even when the regression check fails.
+Each run also appends its Markdown summary to the job's step summary.
 The workflow being checked in does not mean its remote job has already passed.
+
+## Canary and dependency updates
+
+The [conformance canary](../.github/workflows/canary.yml) runs weekly and on
+demand. It runs both legs against the runner's `alpha` dist-tag and against a
+build of upstream `main`, with `MCP_CONFORMANCE_RUNNER` pointing `run.mjs` at
+that build. In that mode the pinned version and installed-manifest checks are
+skipped. The runner's own frozen manifest is used, so scenarios added after the
+pin appear as baseline differences. The job never fails the workflow. Its step
+summary notes whether the `alpha` tag has moved past the pin and shows every
+difference from the reviewed baselines, and its artifacts keep the raw checks.
+
+[Dependabot](../.github/dependabot.yml) proposes weekly updates for the npm
+lockfiles in `conformance/`, `interop/official_client/`, and
+`interop/schema_validation/`, and for the GitHub Actions in use. A runner or
+official client bump fails its pinned lane until the pin, the baseline, and the
+check inventory are updated in a reviewed change.
 
 ## Honest baseline policy
 

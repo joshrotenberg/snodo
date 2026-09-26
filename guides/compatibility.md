@@ -42,6 +42,8 @@ wire correctness and the SDK's callback scheduling limitation are recorded
 the exact frozen alpha.11 conformance runner's server and client legs, each with
 a strict per-check regression baseline, and AJV validation of representative real emitted messages against a
 digest-pinned official schema. Both upload their local evidence as artifacts.
+A weekly [canary](https://github.com/joshrotenberg/snodo/blob/main/.github/workflows/canary.yml)
+runs both conformance legs against newer runner builds without gating anything.
 A baseline pass is not full conformance, and a corpus pass is not a proof of all
 possible protocol output. No remote CI execution is inferred from local results.
 

@@ -1,0 +1,20 @@
+version: 2
+updates:
+  # A bump of the pinned conformance runner or official client fails its lane
+  # until the pin, the baseline, and the inventory are reviewed and updated.
+  - package-ecosystem: npm
+    directory: /conformance
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /interop/official_client
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /interop/schema_validation
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
