@@ -347,7 +347,7 @@ defmodule Snodo.Extensions.Tasks.Runner do
   @impl true
   def terminate(_reason, state) do
     Enum.each(state.jobs, fn {_task_id, job} ->
-      terminate_worker(job, :runner_stopped)
+      terminate_worker(job)
       _released = Store.release(state.store, job.lease)
     end)
 
@@ -697,7 +697,7 @@ defmodule Snodo.Extensions.Tasks.Runner do
   defp stop_job(state, task_id, reason) do
     case Map.fetch(state.jobs, task_id) do
       {:ok, job} ->
-        terminate_worker(job, reason)
+        terminate_worker(job)
         release_result = Store.release(state.store, job.lease)
 
         state
@@ -715,8 +715,8 @@ defmodule Snodo.Extensions.Tasks.Runner do
     end
   end
 
-  defp terminate_worker(job, reason) do
-    Cancellation.cancel(job.token, reason)
+  defp terminate_worker(job) do
+    Cancellation.cancel(job.token)
 
     if Process.alive?(job.pid) do
       Process.exit(job.pid, :kill)
