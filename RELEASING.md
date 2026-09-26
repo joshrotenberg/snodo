@@ -32,18 +32,25 @@ push to `main` ([release-please.yml](.github/workflows/release-please.yml)):
    change bumps the minor version and a feature bumps the patch version. The
    first release is 0.1.0 (`initial-version`); without it, release-please
    starts at 1.0.0.
-2. Pull requests opened by the workflow token do not start other workflows, so
-   the same workflow dispatches the Compatibility and Protocol workflows on the
-   release branch. Their runs satisfy the required checks.
+2. release-please acts with the `RELEASE_PLEASE_TOKEN` secret, so its pull
+   request runs the usual pull request workflows and gets the required checks.
+   A pull request opened with the workflow token would start no workflows.
 3. Merging the release pull request tags `v<version>`, creates the GitHub
    release, and runs the `publish-hex` job. That job publishes the core, then
    `snodo_tasks`, `snodo_plug`, and `snodo_jsv`, then the two Tasks stores,
    waiting for each tier to appear in the Hex index. It skips a package whose
    version is already on Hex, so a failed run can be rerun.
 
-The job authenticates with the repository secret `HEX_API_KEY`. The repository
-setting "Allow GitHub Actions to create and approve pull requests" must stay on
-for release-please to open its pull request.
+The workflow needs two repository secrets:
+
+- `RELEASE_PLEASE_TOKEN`: a fine-grained personal access token for this
+  repository with read and write access to Contents, Pull requests, and Issues.
+  Without it, release-please falls back to the workflow token: the release pull
+  request then runs no checks and needs an admin merge.
+- `HEX_API_KEY`: a Hex API key that can publish the six packages.
+
+The repository setting "Allow GitHub Actions to create and approve pull
+requests" must stay on for the fallback to work.
 
 ## Before merging a release pull request
 
@@ -57,8 +64,15 @@ each sibling.
 
 ## Publishing by hand
 
-If the `publish-hex` job cannot run, publish from a clean checkout of the tag,
-in the same order, after `mix hex.user auth` or with `HEX_API_KEY` set:
+To publish an existing tag again, for example after `publish-hex` failed partway,
+run the workflow by hand. Packages already on Hex are skipped:
+
+```sh
+gh workflow run release-please.yml -f tag=v0.1.0
+```
+
+Without CI, publish from a clean checkout of the tag, in the same order, after
+`mix hex.user auth` or with `HEX_API_KEY` set:
 
 ```sh
 mix hex.publish

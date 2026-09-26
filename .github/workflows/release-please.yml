@@ -3,53 +3,57 @@ name: Release Please
 on:
   push:
     branches: [main]
+  # Publishes an existing release tag, for when publish-hex did not run or
+  # failed partway. Packages already on Hex are skipped.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish, such as v0.1.0"
+        required: true
 
 permissions:
   contents: write
   pull-requests: write
-  # To dispatch the check workflows on the release pull request.
-  actions: write
 
 jobs:
   release-please:
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
+      # A pull request opened or updated with the workflow token starts no
+      # other workflows, so the release pull request would never get its
+      # required checks. RELEASE_PLEASE_TOKEN (a fine-grained token with
+      # read-write Contents, Pull requests, and Issues on this repository)
+      # avoids that.
+      # Without it the workflow token is used, and the release pull request
+      # needs an admin merge.
       - uses: googleapis/release-please-action@v5
         id: release
         with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-      # A pull request opened or updated with the workflow token starts no
-      # other workflows, so the release pull request would wait forever on
-      # the required checks. workflow_dispatch is exempt: dispatch the check
-      # workflows on the release branch, and their runs report on its head
-      # commit.
-      - name: Run the required checks on the release pull request
-        if: steps.release.outputs.pr
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BRANCH: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
-        run: |
-          gh workflow run compatibility.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
-          gh workflow run protocol.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
 
   publish-hex:
     name: Publish to Hex.pm
     needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
+    if: >-
+      always() &&
+      (needs.release-please.outputs.release_created == 'true' ||
+      github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       MIX_ENV: dev
       HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
-      TAG: ${{ needs.release-please.outputs.tag_name }}
+      TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
       - uses: erlef/setup-beam@v1
         with:
           elixir-version: "1.20"
