@@ -266,6 +266,23 @@ defmodule Snodo.ClientTest do
       assert {:error, %Error{code: -32_000, kind: :transport}} = Client.discover(client)
     end
 
+    test "a response with both result and error is a transport error" do
+      {:ok, client} = Client.connect({CannedTransport, self()})
+
+      send(
+        self(),
+        {:canned_response,
+         %{
+           "jsonrpc" => "2.0",
+           "id" => 1,
+           "result" => %{},
+           "error" => %{"code" => 1, "message" => "x"}
+         }}
+      )
+
+      assert {:error, %Error{code: -32_000, kind: :transport}} = Client.discover(client)
+    end
+
     test "rejects a target that is not a transport" do
       assert_raise ArgumentError, ~r/got a tuple starting with :stdio/, fn ->
         Client.connect({:stdio, "elixir"})
