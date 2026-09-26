@@ -87,7 +87,17 @@ defmodule Snodo.Test do
   end
 
   defp put_protocol_metadata(runtime, params, version, capabilities) do
-    {:ok, protocol} = Registry.fetch(runtime.protocol_registry, version)
+    protocol =
+      case Registry.fetch(runtime.protocol_registry, version) do
+        {:ok, protocol} ->
+          protocol
+
+        {:error, _error} ->
+          enabled = runtime.protocol_registry |> Registry.versions() |> Enum.join(", ")
+
+          raise ArgumentError,
+                "the runtime does not enable protocol #{inspect(version)}; enabled: #{enabled}"
+      end
 
     metadata =
       protocol.request_metadata(capabilities)

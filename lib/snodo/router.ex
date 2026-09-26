@@ -228,9 +228,10 @@ defmodule Snodo.Router do
     * `:schema_validator` - the `Snodo.Schema.Validator` module that checks
       tool arguments and structured output. Defaults to
       `Snodo.Schema.Validator.Passthrough`.
-    * `:authorization` - `nil` or a `{module, options}` policy, as held in
-      the runtime's `authorization` field. Defaults to `nil`, which allows
-      everything.
+    * `:authorization` - a `Snodo.Authorization` policy module,
+      `{module, options}`, or `nil`, as `Snodo.Server.Runtime.new/1`
+      accepts. Defaults to `nil`, which allows everything. Any other value
+      raises `ArgumentError`.
   """
   @spec dispatch(t(), operation(), map(), Context.t(), keyword()) ::
           {:ok, Result.t()} | {:error, Error.t()}
@@ -349,7 +350,15 @@ defmodule Snodo.Router do
     {:error, Error.method_not_found("unregistered operation")}
   end
 
-  defp authorization(opts), do: Keyword.get(opts, :authorization)
+  # A runtime holds its policy already normalized; a bare module or an
+  # invalid value from a direct caller goes through the same normalization.
+  defp authorization(opts) do
+    case Keyword.get(opts, :authorization) do
+      nil -> nil
+      {module, _options} = policy when is_atom(module) -> policy
+      other -> Authorization.normalize!(other)
+    end
+  end
 
   # Discovery filtering runs before Snodo.Pagination slices the catalog, so a
   # cursor is always minted against the catalog this context can actually see.
