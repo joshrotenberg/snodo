@@ -106,7 +106,8 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
           ),
         adapter_opts:
           Keyword.take(opts, [
-            :allowed_origin_hosts
+            :allowed_origin_hosts,
+            :allowed_hosts
           ])
       }
 

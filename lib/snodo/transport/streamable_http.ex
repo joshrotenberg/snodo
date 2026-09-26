@@ -49,6 +49,7 @@ defmodule Snodo.Transport.StreamableHTTP do
   def prepare(%Runtime{} = runtime, %Request{} = request, opts \\ []) do
     with :ok <- validate_http_method(request),
          :ok <- validate_origin(request, opts),
+         :ok <- validate_host(request, opts),
          :ok <- validate_content_type(request),
          :ok <- validate_accept(request),
          {:ok, raw} <- decode_body(request.body),
@@ -160,17 +161,73 @@ defmodule Snodo.Transport.StreamableHTTP do
     end
   end
 
+  # An allowlist entry is a host, or a host and port ("localhost:3000") that
+  # pins the port. Origins carrying userinfo are never browser-generated.
   defp valid_origin?(origin, allowed_hosts) when is_list(allowed_hosts) do
     case URI.new(origin) do
-      {:ok, %URI{scheme: scheme, host: host}}
-      when scheme in ["http", "https"] and is_binary(host) ->
-        normalized = String.downcase(host)
-        Enum.any?(allowed_hosts, &(String.downcase(&1) == normalized))
+      {:ok, %URI{scheme: scheme, host: host, port: port, userinfo: nil}}
+      when scheme in ["http", "https"] and is_binary(host) and host != "" ->
+        Enum.any?(allowed_hosts, &host_allowed?(&1, host, port))
 
       _invalid ->
         false
     end
   end
+
+  # Host checking is opt-in: behind a reverse proxy the Host header commonly
+  # carries the public name, so a loopback default would refuse proxied
+  # requests. Origin, which browsers send, is checked by default.
+  defp validate_host(%Request{} = request, opts) do
+    case Keyword.get(opts, :allowed_hosts) do
+      nil ->
+        :ok
+
+      allowed when is_list(allowed) ->
+        with [authority] <- authority_values(request.headers),
+             {:ok, host, port} <- parse_authority(authority),
+             true <- Enum.any?(allowed, &host_allowed?(&1, host, port)) do
+          :ok
+        else
+          _refused -> {:http_error, 403, Error.invalid_request("Host is not allowed"), nil}
+        end
+    end
+  end
+
+  defp authority_values(headers) do
+    case header_values(headers, "host") do
+      [] -> header_values(headers, ":authority")
+      values -> values
+    end
+  end
+
+  defp host_allowed?(entry, host, port) do
+    case parse_authority(entry) do
+      {:ok, allowed_host, nil} ->
+        String.downcase(allowed_host) == String.downcase(host)
+
+      {:ok, allowed_host, allowed_port} ->
+        String.downcase(allowed_host) == String.downcase(host) and allowed_port == port
+
+      :error ->
+        false
+    end
+  end
+
+  # "host", "host:port", "[v6]", "[v6]:port", or a bare IPv6 literal.
+  defp parse_authority(value) when is_binary(value) do
+    cond do
+      match = Regex.run(~r/^\[([^\]]+)\](?::(\d+))?$/, value) -> authority(match)
+      match = Regex.run(~r/^([^:\[\]]+)(?::(\d+))?$/, value) -> authority(match)
+      String.contains?(value, ":") -> {:ok, value, nil}
+      true -> :error
+    end
+  end
+
+  defp parse_authority(_value), do: :error
+
+  defp authority([_all, host]), do: {:ok, host, nil}
+  defp authority([_all, host, ""]), do: {:ok, host, nil}
+  defp authority([_all, host, port]), do: {:ok, host, String.to_integer(port)}
 
   defp validate_content_type(%Request{} = request) do
     case media_types(request.headers, "content-type") do

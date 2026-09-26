@@ -55,8 +55,12 @@ A dependency-free listener that binds to `127.0.0.1` by default and serves
 - 405 for GET and DELETE. No session IDs are issued.
 
 It checks media types, the mirrored `MCP-Protocol-Version`, `Mcp-Method`, and
-`Mcp-Name` headers, and `Origin` when present (loopback names by default,
-`:allowed_origin_hosts` to change). A client disconnect cancels the request.
+`Mcp-Name` headers, and `Origin` when present: loopback names by default,
+`:allowed_origin_hosts` to change, where an entry with a port
+(`"localhost:3000"`) pins the port and an Origin with userinfo is refused.
+`:allowed_hosts` additionally requires the `Host` header to name a listed host.
+It is off by default, because a reverse proxy commonly forwards the public name.
+A client disconnect cancels the request.
 Options include `:ip`, `:port`, `:path`, `:request_timeout`, `:read_timeout`,
 `:max_header_bytes`, and `:max_body_bytes` (2 MB).
 

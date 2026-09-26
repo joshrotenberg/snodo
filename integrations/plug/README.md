@@ -99,7 +99,8 @@ contract.
 | `max_body_bytes` | 2,000,000 | Raw-body byte bound before JSON decoding. |
 | `read_timeout` | 5,000 ms | Plug body-read timeout per underlying read. |
 | `subscription_keepalive_ms` | 15,000 ms | Idle SSE comment-write interval; must be finite and positive. |
-| `allowed_origin_hosts` | localhost / loopback | Existing core host-based Origin allowlist, not a full CORS policy. |
+| `allowed_origin_hosts` | localhost / loopback | Existing core host-based Origin allowlist, not a full CORS policy. An entry with a port (`"localhost:3000"`) pins the port. |
+| `allowed_hosts` | unset (any Host) | When set, the `Host` header must name one of these hosts or the request gets 403. Leave unset behind a proxy that forwards a public `Host`. |
 
 Configure Bandit/reverse-proxy connection counts, header/read limits, timeouts,
 TLS, and shutdown policy separately. Executor capacity bounds pending application

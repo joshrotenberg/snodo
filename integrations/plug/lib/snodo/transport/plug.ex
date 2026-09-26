@@ -59,7 +59,7 @@ defmodule Snodo.Transport.Plug do
       max_body_bytes: positive_option!(opts, :max_body_bytes, 2_000_000),
       read_timeout: positive_option!(opts, :read_timeout, 5_000),
       subscription_keepalive_ms: positive_option!(opts, :subscription_keepalive_ms, 15_000),
-      adapter_opts: Keyword.take(opts, [:allowed_origin_hosts])
+      adapter_opts: Keyword.take(opts, [:allowed_origin_hosts, :allowed_hosts])
     }
   end
 
