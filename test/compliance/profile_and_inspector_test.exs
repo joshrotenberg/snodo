@@ -449,7 +449,8 @@ defmodule Snodo.Compliance.ProfileAndInspectorTest do
 
     passing_unscored =
       for %{"checks" => checks} = entry <- summary["notScored"],
-          checks["success"] > 0 and checks["failure"] + checks["warning"] + checks["skipped"] == 0,
+          checks["success"] > 0,
+          checks["failure"] + checks["warning"] + checks["skipped"] == 0,
           do: entry["scenario"]
 
     assert Enum.map(official["notScoredPass"], & &1["scenario"]) == passing_unscored
