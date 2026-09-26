@@ -101,18 +101,25 @@ defmodule Snodo.Conformance.ClientHarness do
     call_tool(client, "json_schema_echo", %{"schema" => focal["inputSchema"]}, [], 1)
   end
 
-  defp call_tools(client, _scenario, _tools, %{"toolCalls" => calls}) do
-    Enum.each(calls, &call_tool(client, &1["name"], Map.get(&1, "arguments", %{}), [], 1))
+  # Calls pass the listed definition when there is one, so Snodo.Client can
+  # send Mcp-Param headers for x-mcp-header arguments.
+  defp call_tools(client, _scenario, tools, %{"toolCalls" => calls}) do
+    Enum.each(calls, fn call ->
+      tool = Enum.find(tools, &(&1["name"] == call["name"])) || call["name"]
+      call_tool(client, tool, Map.get(call, "arguments", %{}), [], 1)
+    end)
   end
 
   defp call_tools(client, _scenario, tools, _context) do
     Enum.each(tools, fn tool ->
-      call_tool(client, tool["name"], sample(Map.get(tool, "inputSchema", %{})), [], 1)
+      call_tool(client, tool, sample(Map.get(tool, "inputSchema", %{})), [], 1)
     end)
   end
 
-  defp call_tool(client, name, arguments, opts, round) do
-    case Client.call_tool(client, name, arguments, opts) do
+  defp call_tool(client, tool, arguments, opts, round) do
+    name = if is_map(tool), do: tool["name"], else: tool
+
+    case Client.call_tool(client, tool, arguments, opts) do
       {:input_required, pending} when round < @max_rounds ->
         log("tools/call #{name}", {:input_required, pending})
 
@@ -123,7 +130,7 @@ defmodule Snodo.Conformance.ClientHarness do
               :error -> []
             end
 
-        call_tool(client, name, arguments, retry, round + 1)
+        call_tool(client, tool, arguments, retry, round + 1)
 
       other ->
         log("tools/call #{name}", other)

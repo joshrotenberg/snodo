@@ -133,11 +133,13 @@ every listed tool with arguments sampled from its schema), answer
 server advertises them. The runner scores the traffic its scenario server
 records.
 
-The first measurement, on 2026-09-26, passes **4/32** whole required scenarios:
-`tools_call`, `sep-2322-client-request-state`, `json-schema-ref-no-deref`, and
+The 2026-09-26 run passes **6/32** whole required scenarios: `tools_call`,
+`sep-2322-client-request-state`, `http-custom-headers`,
+`http-invalid-tool-headers`, `json-schema-ref-no-deref`, and
 `auth/resource-mismatch`. The last passes only because the harness never starts
 authorization; it is not evidence of OAuth support. The unscored
-`json-schema-2020-12-preservation` scenario passes.
+`json-schema-2020-12-preservation` scenario passes. The first run that day,
+before `Snodo.Client` sent `Mcp-Param-*` headers, passed 4/32.
 
 - [Client report](results/2026-09-26-client-alpha.11-summary.md)
 - [Client machine-readable report](results/2026-09-26-client-alpha.11-summary.json)
@@ -149,9 +151,6 @@ pinned. The remaining gaps:
 
 - The 25 required and 6 unscored `auth/*` scenarios: `Snodo.Client` has no
   OAuth support, and the harness exits before sending a request.
-- `http-custom-headers` and `http-invalid-tool-headers`: `Snodo.Client` does not
-  mirror `x-mcp-header` parameters into `Mcp-Param-*` headers or exclude tools
-  with invalid annotations.
 - `request-metadata` is excluded from the score: the client does not send
   `io.modelcontextprotocol/clientInfo` (a warning), and the deprecated roots and
   sampling capability checks are skipped because the client does not declare

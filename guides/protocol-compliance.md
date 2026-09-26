@@ -256,7 +256,7 @@ pass list, raw no-failure list, and exclusion reasons are checked in as both
 The August 25 summaries are retained as historical evidence, not current scores.
 
 The runner's client leg measures `Snodo.Client` separately, through a harness
-that drives it against each scenario server. The 2026-09-26 run passes 4 of 32
+that drives it against each scenario server. The 2026-09-26 run passes 6 of 32
 required client scenarios. 25 of the 32 cover OAuth, which the client does not
 implement, and one of the four passes (`auth/resource-mismatch`) only because
 the harness never starts authorization. See the

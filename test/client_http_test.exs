@@ -1,6 +1,8 @@
 defmodule Snodo.ClientHTTPTest do
   use ExUnit.Case, async: true
 
+  import ExUnit.CaptureLog
+
   alias Snodo.Client
   alias Snodo.Client.HTTP
   alias Snodo.Error
@@ -9,6 +11,7 @@ defmodule Snodo.ClientHTTPTest do
   alias SnodoTest.TestFixtures
   alias SnodoTest.TestPrompts.PackageAnalysis
   alias SnodoTest.TestResources.StaticText
+  alias SnodoTest.TestTools.Routed
 
   defmodule Staged do
     use Snodo.Tool, name: "staged"
@@ -161,6 +164,85 @@ defmodule Snodo.ClientHTTPTest do
                )
 
       assert {:ok, _result} = Client.call_tool(client, "echo", %{"text" => "fast"})
+    end
+  end
+
+  describe "x-mcp-header parameters" do
+    test "a call with the tool definition sends the headers the native listener checks" do
+      client = connect(serve(TestFixtures.runtime(tools: [Routed])))
+      assert {:ok, [routed]} = Client.list_tools(client)
+      arguments = %{"region" => " padded ", "priority" => 7, "target" => %{"zone" => "b"}}
+
+      assert {:ok, %{"structuredContent" => ^arguments}} =
+               Client.call_tool(client, routed, arguments)
+    end
+
+    test "a call by name is refused once, then retried with the listed definition" do
+      client = connect(serve(TestFixtures.runtime(tools: [Routed])))
+
+      assert {:ok, %{"structuredContent" => %{"region" => "us-west1"}}} =
+               Client.call_tool(client, "routed", %{"region" => "us-west1"})
+    end
+
+    test "encodes each argument type and omits null arguments" do
+      url = FakeHTTP.start(self(), fn _headers, message -> json(message, %{"content" => []}) end)
+      client = connect(url)
+
+      properties =
+        for {name, type} <- [
+              {"plain", "string"},
+              {"empty", "string"},
+              {"unsafe", "string"},
+              {"count", "integer"},
+              {"flag", "boolean"},
+              {"missing", "string"}
+            ],
+            into: %{},
+            do: {name, %{"type" => type, "x-mcp-header" => String.capitalize(name)}}
+
+      tool = %{
+        "name" => "encoded",
+        "inputSchema" => %{"type" => "object", "properties" => properties}
+      }
+
+      arguments = %{
+        "plain" => "us west 1",
+        "empty" => "",
+        "unsafe" => "line1\nline2",
+        "count" => 42,
+        "flag" => true,
+        "missing" => nil
+      }
+
+      assert {:ok, _result} = Client.call_tool(client, tool, arguments)
+      assert_receive {:fake_http, headers, %{"method" => "tools/call"}}
+
+      assert headers["mcp-param-plain"] == "us west 1"
+      assert headers["mcp-param-empty"] == ""
+      assert headers["mcp-param-unsafe"] == "=?base64?" <> Base.encode64("line1\nline2") <> "?="
+      assert headers["mcp-param-count"] == "42"
+      assert headers["mcp-param-flag"] == "true"
+      refute Map.has_key?(headers, "mcp-param-missing")
+    end
+
+    test "list_tools leaves out and logs tools with invalid annotations" do
+      tools = [
+        %{"name" => "valid", "inputSchema" => %{"type" => "object"}},
+        %{
+          "name" => "invalid",
+          "inputSchema" => %{
+            "type" => "object",
+            "properties" => %{"v" => %{"type" => "object", "x-mcp-header" => "V"}}
+          }
+        }
+      ]
+
+      url = FakeHTTP.start(self(), fn _headers, message -> json(message, %{"tools" => tools}) end)
+      client = connect(url)
+
+      {result, log} = with_log(fn -> Client.list_tools(client) end)
+      assert {:ok, [%{"name" => "valid"}]} = result
+      assert log =~ ~s(Ignoring tool "invalid")
     end
   end
 

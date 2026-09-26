@@ -33,6 +33,7 @@ defmodule Snodo.Client.HTTP do
   alias Snodo.Client.Transport
   alias Snodo.Envelope
   alias Snodo.Transport.Context, as: TransportContext
+  alias Snodo.Transport.ParamHeaders
   alias Snodo.Transport.Policy
 
   @type state :: %{
@@ -74,7 +75,8 @@ defmodule Snodo.Client.HTTP do
     headers =
       [
         {"accept", Enum.join(policy.required_accept_types, ", ")}
-        | mirrored_headers(policy, message)
+        | mirrored_headers(policy, message) ++
+            parameter_headers(policy, message, Keyword.get(opts, :tool))
       ]
       |> Enum.map(&charlist_header/1)
       |> Kernel.++(state.headers)
@@ -129,6 +131,34 @@ defmodule Snodo.Client.HTTP do
       end
     end)
   end
+
+  # `x-mcp-header` arguments of a tools/call, when the caller passed the tool
+  # definition. A null or absent argument sends no header.
+  defp parameter_headers(
+         %Policy{tool_parameter_headers?: true},
+         %{"params" => %{"arguments" => arguments}},
+         %{"inputSchema" => schema}
+       )
+       when is_map(arguments) and is_map(schema) do
+    case ParamHeaders.annotations(schema) do
+      {:ok, annotations} ->
+        Enum.flat_map(annotations, fn annotation ->
+          case arguments |> dig(annotation.path) |> ParamHeaders.plain_value() do
+            nil -> []
+            value -> [{ParamHeaders.header_name(annotation), encode_sentinel(value)}]
+          end
+        end)
+
+      {:error, _reason} ->
+        []
+    end
+  end
+
+  defp parameter_headers(_policy, _message, _tool), do: []
+
+  defp dig(value, []), do: value
+  defp dig(%{} = map, [key | rest]), do: map |> Map.get(key) |> dig(rest)
+  defp dig(_value, _path), do: nil
 
   defp encode(value, :plain), do: value
   defp encode(value, :base64_sentinel), do: encode_sentinel(value)

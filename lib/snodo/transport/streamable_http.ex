@@ -21,7 +21,9 @@ defmodule Snodo.Transport.StreamableHTTP do
   alias Snodo.Protocol.Registry
   alias Snodo.Server
   alias Snodo.Server.Runtime
+  alias Snodo.Tool
   alias Snodo.Transport.Context, as: TransportContext
+  alias Snodo.Transport.ParamHeaders
   alias Snodo.Transport.Policy
   alias Snodo.Transport.StreamableHTTP.Prepared
   alias Snodo.Transport.StreamableHTTP.Request
@@ -66,6 +68,7 @@ defmodule Snodo.Transport.StreamableHTTP do
              runtime.capabilities,
              base_policy
            ),
+         policy = with_tool_parameter_mirrors(policy, runtime, envelope),
          :ok <- validate_policy(request, raw, policy, envelope.id) do
       {:ok,
        %Prepared{
@@ -293,6 +296,28 @@ defmodule Snodo.Transport.StreamableHTTP do
     end
   end
 
+  # Mirrors for the `x-mcp-header` arguments of the called tool. An unknown
+  # tool adds none; dispatch reports it.
+  defp with_tool_parameter_mirrors(
+         %Policy{tool_parameter_headers?: true} = policy,
+         %Runtime{router: router},
+         %Envelope{params: %{"name" => name}}
+       )
+       when is_binary(name) do
+    with {:ok, tool} <- Map.fetch(router.tools, name),
+         {:ok, [_first | _rest] = annotations} <-
+           ParamHeaders.annotations(Tool.definition(tool).input_schema) do
+      %{
+        policy
+        | mirrored_headers: Map.merge(policy.mirrored_headers, ParamHeaders.mirrors(annotations))
+      }
+    else
+      _none -> policy
+    end
+  end
+
+  defp with_tool_parameter_mirrors(policy, _runtime, _envelope), do: policy
+
   defp validate_policy(%Request{} = request, raw, %Policy{} = policy, id) do
     with :ok <- validate_allowed_method(request.method, policy),
          :ok <- validate_required_headers(request.headers, policy.required_headers, id),
@@ -346,9 +371,13 @@ defmodule Snodo.Transport.StreamableHTTP do
 
   defp compare_mirror(expected, [header], encoding, name, id) do
     case decode_header_value(header, encoding) do
-      {:ok, ^expected} -> :ok
-      {:ok, _mismatch} -> header_error("#{name} does not match the request body", id)
-      :error -> header_error("#{name} is malformed", id)
+      {:ok, decoded} ->
+        if ParamHeaders.matches?(decoded, expected),
+          do: :ok,
+          else: header_error("#{name} does not match the request body", id)
+
+      :error ->
+        header_error("#{name} is malformed", id)
     end
   end
 
@@ -376,11 +405,18 @@ defmodule Snodo.Transport.StreamableHTTP do
 
   defp decode_header_value(value, :plain), do: {:ok, value}
 
+  # A plain value may carry only visible ASCII, space, and tab; anything else
+  # must arrive base64-encoded.
   defp decode_header_value(value, :base64_sentinel) do
-    if String.starts_with?(value, "=?base64?") and String.ends_with?(value, "?=") do
-      decode_base64_sentinel(value)
-    else
-      {:ok, value}
+    cond do
+      String.starts_with?(value, "=?base64?") and String.ends_with?(value, "?=") ->
+        decode_base64_sentinel(value)
+
+      Enum.all?(:binary.bin_to_list(value), &(&1 == 0x09 or &1 in 0x20..0x7E)) ->
+        {:ok, value}
+
+      true ->
+        :error
     end
   end
 

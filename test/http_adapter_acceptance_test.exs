@@ -13,6 +13,7 @@ defmodule Snodo.Transport.StreamableHTTP.AdapterAcceptanceTest do
   alias SnodoTest.TestSubscriptionHub
   alias SnodoTest.TestSubscriptionSource
   alias SnodoTest.TestTools.Echo
+  alias SnodoTest.TestTools.Routed
   alias SnodoTest.TestTools.Structured
 
   @protocol "2026-07-28"
@@ -41,6 +42,87 @@ defmodule Snodo.Transport.StreamableHTTP.AdapterAcceptanceTest do
 
     assert :ok = Snodo.Subscription.close(subscription, :disconnected)
     assert_receive {:subscription_closed, "adapter-sub", :disconnected}
+  end
+
+  describe "x-mcp-header parameters" do
+    setup do
+      %{runtime: TestFixtures.runtime(tools: [Routed])}
+    end
+
+    defp routed(runtime, arguments, param_headers) do
+      raw =
+        TestFixtures.request("routed", "tools/call", %{
+          "name" => "routed",
+          "arguments" => arguments
+        })
+
+      response =
+        StreamableHTTP.handle(runtime, request(raw, headers: headers(raw) ++ param_headers))
+
+      {response.status, JSON.decode!(response.body)}
+    end
+
+    test "accepts headers that match the body, whatever their case or encoding", %{
+      runtime: runtime
+    } do
+      arguments = %{
+        "region" => "Hello, 世界",
+        "priority" => 42,
+        "verbose" => false,
+        "target" => %{"zone" => "b"},
+        "query" => "not mirrored"
+      }
+
+      headers = [
+        {"Mcp-Param-Region", "=?base64?" <> Base.encode64("Hello, 世界") <> "?="},
+        {"mcp-param-priority", "42.0"},
+        {"MCP-PARAM-VERBOSE", "false"},
+        {"Mcp-Param-Zone", "b"}
+      ]
+
+      assert {200, %{"result" => %{"structuredContent" => ^arguments}}} =
+               routed(runtime, arguments, headers)
+    end
+
+    test "expects no header for a null or absent argument", %{runtime: runtime} do
+      assert {200, %{"result" => _result}} =
+               routed(runtime, %{"region" => "us-east1", "verbose" => nil}, [
+                 {"Mcp-Param-Region", "us-east1"}
+               ])
+    end
+
+    test "refuses a missing, mismatched, or malformed header with 400 and -32020",
+         %{runtime: runtime} do
+      arguments = %{"region" => "Hello", "priority" => 1}
+      priority = {"Mcp-Param-Priority", "1"}
+
+      for region <- [
+            [],
+            [{"Mcp-Param-Region", "Goodbye"}],
+            [{"Mcp-Param-Region", "=?base64?SGVsbG8?="}],
+            [{"Mcp-Param-Region", "=?base64?SGVs!!!bG8=?="}],
+            [{"Mcp-Param-Region", "Hello"}, {"Mcp-Param-Region", "Hello"}]
+          ] do
+        assert {400, %{"error" => %{"code" => -32_020}}} =
+                 routed(runtime, arguments, [priority | region])
+      end
+
+      assert {400, %{"error" => %{"code" => -32_020}}} =
+               routed(runtime, %{"region" => "Héllo"}, [{"Mcp-Param-Region", "Héllo"}])
+
+      assert {400, %{"error" => %{"code" => -32_020}}} =
+               routed(runtime, %{"region" => "a", "verbose" => true}, [
+                 {"Mcp-Param-Region", "a"},
+                 {"Mcp-Param-Verbose", "True"}
+               ])
+    end
+
+    test "treats a value without the full sentinel as a literal", %{runtime: runtime} do
+      for literal <- ["SGVsbG8=", "=?base64?SGVsbG8="] do
+        assert {200, %{"result" => _result}} =
+                 routed(runtime, %{"region" => literal}, [{"Mcp-Param-Region", literal}])
+      end
+    end
   end
 
   describe "Host and Origin admission" do

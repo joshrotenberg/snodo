@@ -41,12 +41,17 @@ defmodule Snodo.Tool do
   keys; a call missing one gets an `isError` result. Every other keyword is advertised but only enforced when the runtime
   installs a `Snodo.Schema.Validator`; the default is pass-through. See
   `Snodo.Schema.Validator.Basic` for the bundled common subset.
+
+  A property may carry `"x-mcp-header": "Name"` to be mirrored into an
+  `Mcp-Param-Name` header over Streamable HTTP. The annotation is checked when
+  the tool compiles: see the Components guide for the rules.
   """
 
   alias Snodo.Context
   alias Snodo.JSONValue
   alias Snodo.Result
   alias Snodo.Tool.Definition
+  alias Snodo.Transport.ParamHeaders
 
   @callback name() :: String.t()
   @callback description() :: String.t() | nil
@@ -194,6 +199,11 @@ defmodule Snodo.Tool do
     unless is_map(schema) and Map.get(schema, "type") == "object" and JSONValue.valid?(schema) do
       compile_error!(env, "MCP tool input_schema must evaluate to an object-root JSON Schema map")
     end
+
+    case ParamHeaders.annotations(schema) do
+      {:ok, _annotations} -> :ok
+      {:error, reason} -> compile_error!(env, "MCP tool input_schema: " <> reason)
+    end
   end
 
   defp validate_compile_output_schema!(env, schema) do
@@ -229,6 +239,11 @@ defmodule Snodo.Tool do
     unless is_map(schema) and Map.get(schema, "type") == "object" and JSONValue.valid?(schema) do
       raise ArgumentError,
             "tool #{inspect(tool)} must return an object-root JSON Schema input schema"
+    end
+
+    case ParamHeaders.annotations(schema) do
+      {:ok, _annotations} -> :ok
+      {:error, reason} -> raise ArgumentError, "tool #{inspect(tool)} input schema: " <> reason
     end
   end
 
