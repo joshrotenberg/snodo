@@ -1391,7 +1391,7 @@ defmodule Snodo.Protocol.V2026_07_28 do
     }
   end
 
-  defp shape_tool_result(%Result{kind: :resource, value: value}) do
+  defp shape_tool_result(%Result{kind: :content, value: value}) do
     %{"content" => List.wrap(value), "isError" => false}
   end
 

@@ -466,7 +466,7 @@ defmodule Snodo.Protocol.Legacy do
       "isError" => false
     }
 
-  defp tool_result(%Result{kind: :resource, value: content}),
+  defp tool_result(%Result{kind: :content, value: content}),
     do: %{"content" => List.wrap(content), "isError" => false}
 
   defp tool_result(%Result{kind: :error, value: message}),
