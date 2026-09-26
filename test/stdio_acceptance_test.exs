@@ -190,6 +190,8 @@ defmodule Snodo.Transport.StdioAcceptanceTest do
       end)
 
     coordinator = await_global_name(global_name)
+    # The name is registered before init/1 monitors the caller; wait for init.
+    _state = :sys.get_state(coordinator)
     coordinator_monitor = Process.monitor(coordinator)
     Process.exit(serving_caller, :kill)
 

@@ -87,6 +87,7 @@ See [Interactive operations](interactive-operations.md) for the server side.
 | `:auth` | `direct/2` | the value handlers and policies read as `context.auth` |
 | `:protocol` | all | the protocol version; defaults to `2026-07-28` |
 | `:env`, `:cd` | stdio | environment and working directory for the command |
+| `:max_line_bytes` | stdio | the largest response line to accept (16 MiB); the rest of a longer line is discarded and its request times out |
 | `:headers`, `:ssl`, `:connect_timeout` | HTTP | extra headers, `:ssl` options (peers are verified against the OS trust store by default), connect timeout |
 
 `request/4` also accepts `:meta` for extra `_meta` entries such as a

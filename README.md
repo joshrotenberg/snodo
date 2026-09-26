@@ -130,7 +130,8 @@ They cover tools, resources, prompts, completion, and pagination over stateless
 HTTP. They add no session storage.
 
 Against the frozen official conformance suite, 32 of 37 `2026-07-28` server
-scenarios pass. The [compliance guide](guides/protocol-compliance.md) lists
+scenarios pass. On the client side, 4 of 32 pass: 25 of the client scenarios
+cover OAuth, which `Snodo.Client` does not implement. The [compliance guide](guides/protocol-compliance.md) lists
 what is measured and what is not. Design records from the project's history are
 in [docs/history](https://github.com/joshrotenberg/snodo/blob/main/docs/history/README.md).
 

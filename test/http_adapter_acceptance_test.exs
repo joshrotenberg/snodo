@@ -84,6 +84,16 @@ defmodule Snodo.Transport.StreamableHTTP.AdapterAcceptanceTest do
   end
 
   @tag mcp_contract: ["streamable-http-admission"]
+  test "a leading byte order mark on the body is ignored" do
+    raw = TestFixtures.request("bom", "server/discover")
+    request = request(raw)
+    request = %{request | body: <<0xEF, 0xBB, 0xBF>> <> request.body}
+
+    response = StreamableHTTP.handle(TestFixtures.runtime(), request)
+    assert response.status == 200
+    assert %{"id" => "bom", "result" => %{"supportedVersions" => _}} = JSON.decode!(response.body)
+  end
+
   test "accepts a response object with 202 and no body" do
     raw = %{"jsonrpc" => "2.0", "id" => 9, "result" => %{}}
 

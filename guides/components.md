@@ -100,15 +100,23 @@ atom-keyed domain value.
 
 ### Validation
 
-The router always rejects a call missing an argument listed in the schema's
-`required`. Everything else in the schema is advertised but only enforced when
-the server installs a validator:
+The router always checks the arguments listed in the schema's `required`.
+Everything else in the schema is advertised but only enforced when the server
+installs a validator:
 
 | Validator | Coverage |
 |---|---|
 | `Snodo.Schema.Validator.Passthrough` (default) | none |
 | `Snodo.Schema.Validator.Basic` | objects, arrays, primitives, `enum`, `const`, size and numeric bounds |
 | `Snodo.Schema.Validator.JSV` from `snodo_jsv` | full JSON Schema 2020-12 |
+
+A call that fails either check never reaches `call/2`. It gets a result with
+`isError: true` and a message the model can act on, such as
+`Missing required arguments: query` or
+`Invalid arguments at /page: value is not one of the declared JSON types`,
+following the 2026-07-28 tools specification. Messages name the location and
+the rule, never the argument's value. Unknown tools and non-object `arguments`
+remain JSON-RPC errors (-32602).
 
 ## Resources
 
