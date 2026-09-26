@@ -14,6 +14,12 @@ defmodule Snodo.Transport.Stdio do
   the transport cancels its work and closes subscriptions, without attempting
   further writes. A timed-out device may already have accepted some bytes, so
   the transport never retries. Supplied I/O devices are never stopped or killed.
+
+  `:max_line_bytes` limits one input message, defaulting to 2,000,000 bytes to
+  match the HTTP listener's `:max_body_bytes`. A longer line is answered with
+  -32600 and a null id without being decoded, and the next line is served
+  normally. The VM's I/O server buffers each line in full before returning it,
+  so this bounds decoding and dispatch, not that read buffer.
   """
 
   @behaviour Snodo.Transport
@@ -46,6 +52,7 @@ defmodule Snodo.Transport.Stdio do
           subscriptions_by_id: map(),
           subscriptions_by_worker: map(),
           max_subscriptions: pos_integer(),
+          max_line_bytes: pos_integer(),
           eof?: boolean()
         }
 
@@ -89,6 +96,7 @@ defmodule Snodo.Transport.Stdio do
 
   @impl true
   def init(opts) do
+    max_line_bytes = validate_max_line_bytes!(Keyword.get(opts, :max_line_bytes, 2_000_000))
     _previous_trap_exit = Process.flag(:trap_exit, true)
     runtime = Keyword.fetch!(opts, :runtime)
     input = Keyword.get(opts, :input, :stdio)
@@ -123,6 +131,7 @@ defmodule Snodo.Transport.Stdio do
        subscriptions_by_id: %{},
        subscriptions_by_worker: %{},
        max_subscriptions: validate_max_subscriptions!(Keyword.get(opts, :max_subscriptions, 32)),
+       max_line_bytes: max_line_bytes,
        eof?: false
      }}
   end
@@ -148,6 +157,12 @@ defmodule Snodo.Transport.Stdio do
   end
 
   @impl true
+  def handle_info({:stdio_line, line}, state) when byte_size(line) > state.max_line_bytes do
+    error = Error.invalid_request("Message exceeds the #{state.max_line_bytes}-byte line limit")
+    write_error(state.writer, error)
+    {:noreply, state}
+  end
+
   def handle_info({:stdio_line, line}, state) do
     case Framing.decode_line(line) do
       {:ok, message} ->
@@ -801,6 +816,12 @@ defmodule Snodo.Transport.Stdio do
 
   defp validate_max_subscriptions!(_invalid) do
     raise ArgumentError, ":max_subscriptions must be a positive integer"
+  end
+
+  defp validate_max_line_bytes!(value) when is_integer(value) and value > 0, do: value
+
+  defp validate_max_line_bytes!(_invalid) do
+    raise ArgumentError, ":max_line_bytes must be a positive integer"
   end
 
   defp validate_write_timeout!(value) when is_integer(value) and value > 0, do: value

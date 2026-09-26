@@ -34,7 +34,9 @@ response. Output escapes non-ASCII characters as JSON `\u` escapes, so the
 bytes do not depend on the device's encoding.
 
 Options include `:input` and `:output` devices, `:write_timeout` (default
-5,000 ms; a blocked write is terminal), `:request_timeout`, and `:executor`.
+5,000 ms; a blocked write is terminal), `:max_line_bytes` (default 2,000,000;
+a longer message is refused with -32600 before decoding), `:request_timeout`,
+and `:executor`. A leading UTF-8 byte order mark is ignored.
 Logger output is redirected away from stdout by default, because stdout carries
 only protocol messages.
 
