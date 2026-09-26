@@ -193,6 +193,9 @@ defmodule Snodo.Transport.StreamableHTTP do
     end
   end
 
+  # A leading UTF-8 byte order mark is not JSON, but some clients send one.
+  defp decode_body(<<0xEF, 0xBB, 0xBF, body::binary>>), do: decode_body(body)
+
   defp decode_body(body) when is_binary(body) do
     case JSON.decode(body) do
       {:ok, raw} -> {:ok, raw}

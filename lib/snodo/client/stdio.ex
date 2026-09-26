@@ -13,6 +13,9 @@ defmodule Snodo.Client.Stdio do
     * `:env` - extra environment variables, as `{name, value}` string pairs.
       A `nil` value unsets the variable.
     * `:cd` - the working directory for the command.
+    * `:max_line_bytes` - the largest response line to accept, default 16 MiB.
+      The rest of a longer line is discarded as it arrives, so the request it
+      answered times out; later responses are unaffected.
 
   The connection process monitors the process that called `connect/2` and
   closes when it exits. When a request times out, the transport answers the
@@ -33,13 +36,21 @@ defmodule Snodo.Client.Stdio do
   alias Snodo.Transport.Stdio.Framing
 
   @line_bytes 65_536
+  @default_max_line_bytes 16 * 1024 * 1024
 
   @impl Transport
   def connect({command, args}, opts) when is_binary(command) and is_list(args) do
+    max_line_bytes = Keyword.get(opts, :max_line_bytes, @default_max_line_bytes)
+
+    unless is_integer(max_line_bytes) and max_line_bytes > 0 do
+      raise ArgumentError, ":max_line_bytes must be a positive integer"
+    end
+
     with {:ok, executable} <- find_executable(command) do
       port_options = port_options(args, opts)
+      init_arg = {executable, port_options, self(), max_line_bytes}
 
-      case GenServer.start(__MODULE__, {executable, port_options, self()}) do
+      case GenServer.start(__MODULE__, init_arg) do
         {:ok, pid} -> {:ok, pid}
         {:error, %Error{} = error} -> {:error, error}
       end
@@ -62,7 +73,7 @@ defmodule Snodo.Client.Stdio do
   end
 
   @impl GenServer
-  def init({executable, port_options, owner}) do
+  def init({executable, port_options, owner, max_line_bytes}) do
     port = Port.open({:spawn_executable, executable}, port_options)
 
     {:ok,
@@ -71,6 +82,9 @@ defmodule Snodo.Client.Stdio do
        owner: Process.monitor(owner),
        pending: %{},
        buffer: [],
+       buffer_bytes: 0,
+       discarding?: false,
+       max_line_bytes: max_line_bytes,
        closed: nil
      }}
   rescue
@@ -96,12 +110,16 @@ defmodule Snodo.Client.Stdio do
 
   @impl GenServer
   def handle_info({port, {:data, {:noeol, chunk}}}, %{port: port} = state) do
-    {:noreply, %{state | buffer: [state.buffer, chunk]}}
+    {:noreply, append(state, chunk)}
   end
 
   def handle_info({port, {:data, {:eol, chunk}}}, %{port: port} = state) do
-    line = IO.iodata_to_binary([state.buffer, chunk])
-    {:noreply, handle_line(%{state | buffer: []}, line)}
+    state = append(state, chunk)
+    line = IO.iodata_to_binary(state.buffer)
+    discarded? = state.discarding?
+    state = %{state | buffer: [], buffer_bytes: 0, discarding?: false}
+
+    {:noreply, if(discarded?, do: state, else: handle_line(state, line))}
   end
 
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
@@ -137,6 +155,18 @@ defmodule Snodo.Client.Stdio do
   def terminate(_reason, state) do
     if is_nil(state.closed), do: close_port(state.port)
     :ok
+  end
+
+  # Once a line passes the limit, its remaining chunks are dropped as they
+  # arrive instead of being held until the newline.
+  defp append(%{discarding?: true} = state, _chunk), do: state
+
+  defp append(state, chunk) do
+    bytes = state.buffer_bytes + byte_size(chunk)
+
+    if bytes > state.max_line_bytes,
+      do: %{state | buffer: [], buffer_bytes: 0, discarding?: true},
+      else: %{state | buffer: [state.buffer, chunk], buffer_bytes: bytes}
   end
 
   defp handle_line(state, line) do

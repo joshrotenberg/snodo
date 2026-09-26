@@ -3,11 +3,16 @@ defmodule Snodo.Transport.Stdio.Framing do
 
   alias Snodo.Error
 
+  @doc """
+  Decodes one line of JSON. A trailing newline and carriage return, and a
+  leading UTF-8 byte order mark, are ignored.
+  """
   @spec decode_line(iodata()) :: {:ok, term()} | {:error, Error.t()}
   def decode_line(line) do
     line =
       line
       |> IO.iodata_to_binary()
+      |> strip_byte_order_mark()
       |> String.trim_trailing("\n")
       |> String.trim_trailing("\r")
 
@@ -21,6 +26,9 @@ defmodule Snodo.Transport.Stdio.Framing do
   rescue
     _exception -> {:error, Error.parse_error()}
   end
+
+  defp strip_byte_order_mark(<<0xEF, 0xBB, 0xBF, rest::binary>>), do: rest
+  defp strip_byte_order_mark(line), do: line
 
   @doc """
   Encodes one message as a line of JSON.

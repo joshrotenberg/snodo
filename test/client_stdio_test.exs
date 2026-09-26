@@ -45,6 +45,27 @@ defmodule Snodo.ClientStdioTest do
     end
   end
 
+  test "a response over :max_line_bytes is discarded and later responses still arrive" do
+    client = connect(max_line_bytes: 100_000)
+
+    assert {:error, %Error{code: -32_001}} =
+             Client.call_tool(client, "large", %{"bytes" => 300_000}, timeout: 1_000)
+
+    assert {:ok, %{"content" => [%{"text" => "still here"}]}} =
+             Client.call_tool(client, "echo", %{"text" => "still here"})
+
+    assert {:ok, %{"content" => [%{"text" => text}]}} =
+             Client.call_tool(client, "large", %{"bytes" => 50_000})
+
+    assert byte_size(text) == 50_000
+  end
+
+  test ":max_line_bytes must be a positive integer" do
+    assert_raise ArgumentError, ~r/:max_line_bytes/, fn ->
+      Client.connect({:stdio, System.find_executable("elixir"), []}, max_line_bytes: 0)
+    end
+  end
+
   test "correlates concurrent requests that complete out of order" do
     client = connect()
 

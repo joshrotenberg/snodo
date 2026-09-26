@@ -18,6 +18,54 @@ defmodule Snodo.Transport.StdioEncodingTest do
     assert {:ok, %{"text" => @text}} = Framing.decode_line(line)
   end
 
+  test "a leading byte order mark is ignored" do
+    line = <<0xEF, 0xBB, 0xBF>> <> ~s({"jsonrpc":"2.0","id":1,"method":"ping"}\n)
+    assert {:ok, %{"id" => 1, "method" => "ping"}} = Framing.decode_line(line)
+  end
+
+  test "a line over :max_line_bytes is refused without decoding and the next is served" do
+    {:ok, input} = TestInput.start_link()
+    {:ok, output} = StringIO.open("")
+
+    server =
+      Task.async(fn ->
+        Stdio.serve(TestFixtures.runtime(), input: input, output: output, max_line_bytes: 400)
+      end)
+
+    long =
+      TestFixtures.request("long", "tools/call", %{
+        "name" => "echo",
+        "arguments" => %{"text" => String.duplicate("x", 500)}
+      })
+
+    TestInput.push(input, JSON.encode!(long) <> "\n")
+    TestInput.push(input, JSON.encode!(echo_request("after")) <> "\n")
+    TestInput.eof(input)
+    assert :ok = Task.await(server, 5_000)
+
+    {_input, raw_output} = StringIO.contents(output)
+    [refused, served] = raw_output |> String.split("\n", trim: true) |> Enum.map(&JSON.decode!/1)
+
+    assert %{"id" => nil, "error" => %{"code" => -32_600, "message" => message}} = refused
+    assert message =~ "400-byte line limit"
+    assert %{"id" => "after", "result" => %{"isError" => false}} = served
+  end
+
+  test ":max_line_bytes must be a positive integer" do
+    Process.flag(:trap_exit, true)
+    {:ok, io} = StringIO.open("")
+
+    assert {:error, {%ArgumentError{message: message}, _stacktrace}} =
+             Stdio.start_link(
+               runtime: TestFixtures.runtime(),
+               input: io,
+               output: io,
+               max_line_bytes: 0
+             )
+
+    assert message =~ ":max_line_bytes"
+  end
+
   test "ASCII-only messages are encoded unchanged" do
     message = %{"jsonrpc" => "2.0", "id" => 1, "result" => %{"text" => "plain"}}
 
