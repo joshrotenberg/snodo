@@ -1,0 +1,97 @@
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  # To dispatch the check workflows on the release pull request.
+  actions: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-24.04
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+      # A pull request opened or updated with the workflow token starts no
+      # other workflows, so the release pull request would wait forever on
+      # the required checks. workflow_dispatch is exempt: dispatch the check
+      # workflows on the release branch, and their runs report on its head
+      # commit.
+      - name: Run the required checks on the release pull request
+        if: steps.release.outputs.pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
+        run: |
+          gh workflow run compatibility.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
+          gh workflow run protocol.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
+
+  publish-hex:
+    name: Publish to Hex.pm
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      MIX_ENV: dev
+      HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
+      TAG: ${{ needs.release-please.outputs.tag_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.20"
+          otp-version: "29"
+      - name: Install package managers
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+      # The siblings depend on the released snodo (and the Tasks stores on the
+      # released snodo_tasks), so publish in dependency order. A package whose
+      # version is already on Hex is skipped, so the job can be rerun.
+      - name: Publish all six packages
+        run: |
+          version="${TAG#v}"
+
+          published() {
+            mix hex.info "$1" "$version" >/dev/null 2>&1
+          }
+
+          # Wait for the previous tier to appear in the Hex index.
+          fetch() {
+            for attempt in $(seq 1 20); do
+              if SNODO_HEX=1 mix deps.get; then return 0; fi
+              echo "Waiting for the Hex index ($attempt)"
+              sleep 30
+            done
+            return 1
+          }
+
+          publish() {
+            package="$1"
+            dir="$2"
+            if published "$package"; then
+              echo "$package $version is already on Hex"
+              return 0
+            fi
+            (cd "$dir" && fetch && SNODO_HEX=1 mix hex.publish --yes)
+          }
+
+          publish snodo .
+          publish snodo_tasks extensions/tasks
+          publish snodo_plug integrations/plug
+          publish snodo_jsv integrations/schema_jsv
+          publish snodo_tasks_postgres extensions/tasks_postgres
+          publish snodo_tasks_sqlite extensions/tasks_sqlite
