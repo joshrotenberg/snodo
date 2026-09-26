@@ -14,8 +14,6 @@ defmodule Snodo.Result do
   converts an atom-keyed domain value into one.
   """
 
-  alias Snodo.Error
-
   @type kind ::
           :text
           | :structured
@@ -35,12 +33,11 @@ defmodule Snodo.Result do
   @type t :: %__MODULE__{
           kind: kind(),
           value: term(),
-          error: Error.t() | nil,
           metadata: map()
         }
 
   @enforce_keys [:kind]
-  defstruct [:kind, :value, :error, metadata: %{}]
+  defstruct [:kind, :value, metadata: %{}]
 
   @doc """
   Builds a text result.
@@ -252,20 +249,11 @@ defmodule Snodo.Result do
 
   Options:
 
-    * `:error` - an `Snodo.Error` kept in the result's `error` field. It is
-      not sent to the client. Defaults to `Snodo.Error.execution(message)`.
     * `:metadata` - as for `text/2`.
   """
   @spec error(String.t(), keyword()) :: t()
   def error(message, opts \\ []) when is_binary(message) do
-    error = Keyword.get_lazy(opts, :error, fn -> Error.execution(message) end)
-
-    %__MODULE__{
-      kind: :error,
-      value: message,
-      error: error,
-      metadata: Keyword.get(opts, :metadata, %{})
-    }
+    %__MODULE__{kind: :error, value: message, metadata: Keyword.get(opts, :metadata, %{})}
   end
 
   @doc """

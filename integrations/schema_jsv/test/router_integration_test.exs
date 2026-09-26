@@ -1,7 +1,6 @@
 defmodule Snodo.Schema.Validator.JSV.RouterIntegrationTest do
   use ExUnit.Case, async: true
 
-  alias Snodo.Error
   alias Snodo.Result
   alias Snodo.Router
   alias Snodo.Schema.Validator.JSV, as: Validator
@@ -65,7 +64,7 @@ defmodule Snodo.Schema.Validator.JSV.RouterIntegrationTest do
                schema_validator: Validator
              )
 
-    assert {:ok, %Result{kind: :error, error: %Error{code: -32_602}}} =
+    assert {:ok, %Result{kind: :error, value: "Tool arguments failed schema validation"}} =
              Router.dispatch(
                router,
                {:tools_call, "echo"},
