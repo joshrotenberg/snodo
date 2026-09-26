@@ -29,7 +29,9 @@ push to `main` ([release-please.yml](.github/workflows/release-please.yml)):
    adds the release's `CHANGELOG.md` entry. Both come from the
    conventional commit titles merged since the last release: `feat` and `fix`
    entries, and breaking changes marked with `!`. Before 1.0, a breaking
-   change bumps the minor version and a feature bumps the patch version.
+   change bumps the minor version and a feature bumps the patch version. The
+   first release is 0.1.0 (`initial-version`); without it, release-please
+   starts at 1.0.0.
 2. Pull requests opened by the workflow token do not start other workflows, so
    the same workflow dispatches the Compatibility and Protocol workflows on the
    release branch. Their runs satisfy the required checks.
