@@ -316,31 +316,31 @@
   "http-custom-headers": [
     {
       "id": "sep-2243-client-supports-custom-headers",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-client-mirrors-designated-params",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-client-encode-values",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-client-encode-values",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-client-encode-values",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-client-mirrors-designated-params",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-client-mirrors-designated-params",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-client-mirrors-designated-params",
@@ -348,35 +348,35 @@
     },
     {
       "id": "sep-2243-client-base64-unsafe",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-client-base64-unsafe",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-client-base64-unsafe",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-client-base64-unsafe",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-client-mirrors-designated-params",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-client-base64-unsafe",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-client-base64-unsafe",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-client-base64-unsafe",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-client-mirrors-designated-params",
@@ -394,43 +394,43 @@
     },
     {
       "id": "sep-2243-x-mcp-header-not-empty",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-x-mcp-header-primitive-only",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-x-mcp-header-primitive-only",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-x-mcp-header-primitive-only",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-x-mcp-header-unique",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-x-mcp-header-unique",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-x-mcp-header-charset",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-x-mcp-header-charset",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-x-mcp-header-charset",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-x-mcp-header-charset",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     }
   ],
   "http-standard-headers": [

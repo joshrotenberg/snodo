@@ -6,18 +6,20 @@ Requirements SHA-256: `ae2f4f6210fd729e2e318edd5bbfa31a43cee0bc608e48052fa26dbf1
 
 ## Exercised score
 
-**4/32** required scenarios pass.
+**6/32** required scenarios pass.
 whole required scenarios with semantic success and no FAILURE, WARNING, or SKIPPED checks. The runner also attempts extension and pending scenarios separately.
 Raw runner exit code: **1**. Regression gate: **pass**.
 A passing regression gate does not mean full protocol conformance.
 
-Required checks: 29 success, 71 failure, 4 skipped, 1 warning, 1 info.
+Required checks: 54 success, 46 failure, 4 skipped, 1 warning, 1 info.
 
 ## Passing required scenarios
 
 - `tools_call`
 - `auth/resource-mismatch`
 - `sep-2322-client-request-state`
+- `http-custom-headers`
+- `http-invalid-tool-headers`
 - `json-schema-ref-no-deref`
 
 ## Remaining failing checks (including unscored lanes)
@@ -68,31 +70,6 @@ Required checks: 29 success, 71 failure, 4 skipped, 1 warning, 1 info.
 - `auth/iss-unexpected:sep-2468-client-compare-iss-unadvertised`
 - `auth/iss-normalized:sep-2468-client-no-normalization`
 - `auth/metadata-issuer-mismatch:sep-2468-client-validate-metadata-issuer`
-- `http-custom-headers:sep-2243-client-supports-custom-headers`
-- `http-custom-headers:sep-2243-client-mirrors-designated-params[1]`
-- `http-custom-headers:sep-2243-client-encode-values[1]`
-- `http-custom-headers:sep-2243-client-encode-values[2]`
-- `http-custom-headers:sep-2243-client-encode-values[3]`
-- `http-custom-headers:sep-2243-client-mirrors-designated-params[2]`
-- `http-custom-headers:sep-2243-client-mirrors-designated-params[3]`
-- `http-custom-headers:sep-2243-client-base64-unsafe[1]`
-- `http-custom-headers:sep-2243-client-base64-unsafe[2]`
-- `http-custom-headers:sep-2243-client-base64-unsafe[3]`
-- `http-custom-headers:sep-2243-client-base64-unsafe[4]`
-- `http-custom-headers:sep-2243-client-mirrors-designated-params[5]`
-- `http-custom-headers:sep-2243-client-base64-unsafe[5]`
-- `http-custom-headers:sep-2243-client-base64-unsafe[6]`
-- `http-custom-headers:sep-2243-client-base64-unsafe[7]`
-- `http-invalid-tool-headers:sep-2243-x-mcp-header-not-empty`
-- `http-invalid-tool-headers:sep-2243-x-mcp-header-primitive-only[1]`
-- `http-invalid-tool-headers:sep-2243-x-mcp-header-primitive-only[2]`
-- `http-invalid-tool-headers:sep-2243-x-mcp-header-primitive-only[3]`
-- `http-invalid-tool-headers:sep-2243-x-mcp-header-unique[1]`
-- `http-invalid-tool-headers:sep-2243-x-mcp-header-unique[2]`
-- `http-invalid-tool-headers:sep-2243-x-mcp-header-charset[1]`
-- `http-invalid-tool-headers:sep-2243-x-mcp-header-charset[2]`
-- `http-invalid-tool-headers:sep-2243-x-mcp-header-charset[3]`
-- `http-invalid-tool-headers:sep-2243-x-mcp-header-charset[4]`
 - `auth/client-credentials-jwt:client-credentials-jwt-verified`
 - `auth/client-credentials-basic:client-credentials-basic-auth`
 - `auth/enterprise-managed-authorization:complete-flow-token-exchange`

@@ -22,6 +22,26 @@ defmodule SnodoTest.Conformance.Tools.HeaderProbe do
   def call(_arguments, _context), do: {:ok, Snodo.Result.text("Header probe accepted")}
 end
 
+defmodule SnodoTest.Conformance.Tools.CustomHeader do
+  # The first tool with an x-mcp-header argument, which
+  # http-custom-header-server-validation calls with Mcp-Param-Region headers.
+  use Snodo.Tool,
+    name: "custom_header_region",
+    description: "Returns its region, which also travels in the Mcp-Param-Region header"
+
+  input_schema(%{
+    "type" => "object",
+    "properties" => %{
+      "region" => %{"type" => "string", "x-mcp-header" => "Region"},
+      "query" => %{"type" => "string"}
+    },
+    "required" => ["region", "query"]
+  })
+
+  @impl true
+  def call(%{"region" => region}, _context), do: {:ok, Snodo.Result.text("Region: #{region}")}
+end
+
 defmodule SnodoTest.Conformance.Tools.ImageContent do
   use Snodo.Tool,
     name: "test_image_content",
@@ -329,6 +349,7 @@ defmodule SnodoTest.Conformance.Fixture do
   alias SnodoTest.Conformance.Stateless
   alias SnodoTest.Conformance.Tasks, as: TasksFixture
   alias SnodoTest.Conformance.Tools.AudioContent
+  alias SnodoTest.Conformance.Tools.CustomHeader
   alias SnodoTest.Conformance.Tools.EmbeddedResource
   alias SnodoTest.Conformance.Tools.ErrorHandling
   alias SnodoTest.Conformance.Tools.HeaderProbe
@@ -339,6 +360,7 @@ defmodule SnodoTest.Conformance.Fixture do
 
   @tools [
            HeaderProbe,
+           CustomHeader,
            SimpleText,
            ImageContent,
            AudioContent,

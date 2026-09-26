@@ -100,10 +100,23 @@ See [Interactive operations](interactive-operations.md) for the server side.
   pending and later requests fail with -32000. The connection closes when the
   process that opened it exits. `close/1` closes the server's stdin.
 - **HTTP.** One POST per request through OTP's `:httpc`. The headers the
-  protocol requires (`MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`) come from
+  protocol requires (`MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`, and
+  `Mcp-Param-*` for `x-mcp-header` arguments) come from
   the dialect's transport policy, the same declaration the server checks. JSON
   and event-stream responses are both accepted; progress notifications in a
   stream are skipped.
+
+  `Mcp-Param-*` headers need the tool's input schema, so pass the definition
+  from `list_tools/1` to `call_tool/4` in place of the name. Called by name, a
+  tool that needs them is refused with -32020; the client then lists the tools
+  and retries once with the definition. `list_tools/1` over HTTP leaves out
+  tools with an invalid `x-mcp-header` annotation and logs a warning for each.
+
+  ```elixir
+  {:ok, tools} = Snodo.Client.list_tools(client)
+  search = Enum.find(tools, &(&1["name"] == "search"))
+  {:ok, result} = Snodo.Client.call_tool(client, search, %{"region" => "eu", "query" => "json"})
+  ```
 
 Progress notifications and `subscriptions/listen` streams are not delivered to
 the caller yet, and `request/4` raises for `subscriptions/listen`.

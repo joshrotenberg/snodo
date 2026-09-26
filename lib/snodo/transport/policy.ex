@@ -11,7 +11,8 @@ defmodule Snodo.Transport.Policy do
           required_accept_types: [String.t()],
           required_headers: [String.t()],
           forbidden_headers: [String.t()],
-          mirrored_headers: %{optional(String.t()) => mirror()}
+          mirrored_headers: %{optional(String.t()) => mirror()},
+          tool_parameter_headers?: boolean()
         }
 
   @type mirror :: %{
@@ -28,5 +29,8 @@ defmodule Snodo.Transport.Policy do
             required_accept_types: ["application/json", "text/event-stream"],
             required_headers: [],
             forbidden_headers: [],
-            mirrored_headers: %{}
+            mirrored_headers: %{},
+            # Whether `x-mcp-header` tool arguments are mirrored into
+            # `Mcp-Param-*` headers (tools/call on 2026-07-28).
+            tool_parameter_headers?: false
 end

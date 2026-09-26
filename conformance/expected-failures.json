@@ -55,26 +55,6 @@
     {
       "key": "tasks-mrtr-composition:wire-schema-valid",
       "reason": "alpha.11 validates the extension-defined flat task result against core CallToolResult; Tasks-specific assertions pass. Preserve the runner failure until extension unions are supported."
-    },
-    {
-      "key": "http-custom-header-server-validation:sep-2243-server-no-xmcp-tool",
-      "reason": "Pending, unscored custom x-mcp-header fixture/validation is not implemented."
-    },
-    {
-      "key": "http-custom-header-server-validation:sep-2243-server-decode-base64",
-      "reason": "Pending, unscored custom x-mcp-header fixture/validation is not implemented."
-    },
-    {
-      "key": "http-custom-header-server-validation:sep-2243-server-validate-param-match",
-      "reason": "Pending, unscored custom x-mcp-header fixture/validation is not implemented."
-    },
-    {
-      "key": "http-custom-header-server-validation:sep-2243-server-reject-invalid-param-chars",
-      "reason": "Pending, unscored custom x-mcp-header fixture/validation is not implemented."
-    },
-    {
-      "key": "http-custom-header-server-validation:sep-2243-server-reject-param-mismatch",
-      "reason": "Pending, unscored custom x-mcp-header fixture/validation is not implemented."
     }
   ],
   "exclusions": [],
@@ -98,11 +78,10 @@
       "localhost-host-valid-accepted": ["SUCCESS"]
     },
     "http-custom-header-server-validation": {
-      "sep-2243-server-no-xmcp-tool": ["FAILURE"],
-      "sep-2243-server-decode-base64": ["FAILURE"],
-      "sep-2243-server-validate-param-match": ["FAILURE"],
-      "sep-2243-server-reject-invalid-param-chars": ["FAILURE"],
-      "sep-2243-server-reject-param-mismatch": ["FAILURE"],
+      "sep-2243-server-decode-base64": ["SUCCESS"],
+      "sep-2243-server-reject-invalid-param-chars": ["SUCCESS","SUCCESS"],
+      "sep-2243-server-reject-param-mismatch": ["SUCCESS","SUCCESS","SUCCESS"],
+      "sep-2243-server-validate-param-match": ["SUCCESS","SUCCESS","SUCCESS"],
       "wire-schema-valid": ["SUCCESS"]
     },
     "http-header-validation": {

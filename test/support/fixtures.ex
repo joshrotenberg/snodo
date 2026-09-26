@@ -9,7 +9,7 @@ defmodule SnodoTest.TestTools.Echo do
     "$defs" => %{"text" => %{"type" => "string", "x-vendor-nested" => [true, 7, nil]}},
     "type" => "object",
     "properties" => %{
-      "text" => %{"$ref" => "#/$defs/text", "x-mcp-header" => "Echo-Text"},
+      "text" => %{"$ref" => "#/$defs/text", "x-vendor-header" => "Echo-Text"},
       "mode" => %{"oneOf" => [%{"const" => "plain"}, %{"const" => "loud"}]},
       "delayMs" => %{"type" => "integer", "minimum" => 0}
     },
@@ -45,6 +45,31 @@ defmodule SnodoTest.TestTools.ComplexSchema do
 
   @impl true
   def call(_arguments, _context), do: {:ok, Snodo.Result.structured([])}
+end
+
+defmodule SnodoTest.TestTools.Routed do
+  use Snodo.Tool,
+    name: "routed",
+    description:
+      "Returns its arguments; region, priority, and verbose travel as Mcp-Param headers"
+
+  input_schema(%{
+    "type" => "object",
+    "properties" => %{
+      "region" => %{"type" => "string", "x-mcp-header" => "Region"},
+      "priority" => %{"type" => "integer", "x-mcp-header" => "Priority"},
+      "verbose" => %{"type" => "boolean", "x-mcp-header" => "Verbose"},
+      "target" => %{
+        "type" => "object",
+        "properties" => %{"zone" => %{"type" => "string", "x-mcp-header" => "Zone"}}
+      },
+      "query" => %{"type" => "string"}
+    },
+    "required" => ["region"]
+  })
+
+  @impl true
+  def call(arguments, _context), do: {:ok, Snodo.Result.structured(arguments)}
 end
 
 defmodule SnodoTest.TestTools.ContextEcho do

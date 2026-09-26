@@ -185,106 +185,6 @@
       "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
     },
     {
-      "key": "http-custom-headers:sep-2243-client-supports-custom-headers",
-      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
-    },
-    {
-      "key": "http-custom-headers:sep-2243-client-mirrors-designated-params[1]",
-      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
-    },
-    {
-      "key": "http-custom-headers:sep-2243-client-encode-values[1]",
-      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
-    },
-    {
-      "key": "http-custom-headers:sep-2243-client-encode-values[2]",
-      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
-    },
-    {
-      "key": "http-custom-headers:sep-2243-client-encode-values[3]",
-      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
-    },
-    {
-      "key": "http-custom-headers:sep-2243-client-mirrors-designated-params[2]",
-      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
-    },
-    {
-      "key": "http-custom-headers:sep-2243-client-mirrors-designated-params[3]",
-      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
-    },
-    {
-      "key": "http-custom-headers:sep-2243-client-base64-unsafe[1]",
-      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
-    },
-    {
-      "key": "http-custom-headers:sep-2243-client-base64-unsafe[2]",
-      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
-    },
-    {
-      "key": "http-custom-headers:sep-2243-client-base64-unsafe[3]",
-      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
-    },
-    {
-      "key": "http-custom-headers:sep-2243-client-base64-unsafe[4]",
-      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
-    },
-    {
-      "key": "http-custom-headers:sep-2243-client-mirrors-designated-params[5]",
-      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
-    },
-    {
-      "key": "http-custom-headers:sep-2243-client-base64-unsafe[5]",
-      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
-    },
-    {
-      "key": "http-custom-headers:sep-2243-client-base64-unsafe[6]",
-      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
-    },
-    {
-      "key": "http-custom-headers:sep-2243-client-base64-unsafe[7]",
-      "reason": "Snodo.Client does not mirror x-mcp-header tool parameters into Mcp-Param headers (#25)."
-    },
-    {
-      "key": "http-invalid-tool-headers:sep-2243-x-mcp-header-not-empty",
-      "reason": "Snodo.Client does not validate x-mcp-header annotations or exclude tools that carry invalid ones (#25)."
-    },
-    {
-      "key": "http-invalid-tool-headers:sep-2243-x-mcp-header-primitive-only[1]",
-      "reason": "Snodo.Client does not validate x-mcp-header annotations or exclude tools that carry invalid ones (#25)."
-    },
-    {
-      "key": "http-invalid-tool-headers:sep-2243-x-mcp-header-primitive-only[2]",
-      "reason": "Snodo.Client does not validate x-mcp-header annotations or exclude tools that carry invalid ones (#25)."
-    },
-    {
-      "key": "http-invalid-tool-headers:sep-2243-x-mcp-header-primitive-only[3]",
-      "reason": "Snodo.Client does not validate x-mcp-header annotations or exclude tools that carry invalid ones (#25)."
-    },
-    {
-      "key": "http-invalid-tool-headers:sep-2243-x-mcp-header-unique[1]",
-      "reason": "Snodo.Client does not validate x-mcp-header annotations or exclude tools that carry invalid ones (#25)."
-    },
-    {
-      "key": "http-invalid-tool-headers:sep-2243-x-mcp-header-unique[2]",
-      "reason": "Snodo.Client does not validate x-mcp-header annotations or exclude tools that carry invalid ones (#25)."
-    },
-    {
-      "key": "http-invalid-tool-headers:sep-2243-x-mcp-header-charset[1]",
-      "reason": "Snodo.Client does not validate x-mcp-header annotations or exclude tools that carry invalid ones (#25)."
-    },
-    {
-      "key": "http-invalid-tool-headers:sep-2243-x-mcp-header-charset[2]",
-      "reason": "Snodo.Client does not validate x-mcp-header annotations or exclude tools that carry invalid ones (#25)."
-    },
-    {
-      "key": "http-invalid-tool-headers:sep-2243-x-mcp-header-charset[3]",
-      "reason": "Snodo.Client does not validate x-mcp-header annotations or exclude tools that carry invalid ones (#25)."
-    },
-    {
-      "key": "http-invalid-tool-headers:sep-2243-x-mcp-header-charset[4]",
-      "reason": "Snodo.Client does not validate x-mcp-header annotations or exclude tools that carry invalid ones (#25)."
-    },
-    {
       "key": "auth/client-credentials-jwt:client-credentials-jwt-verified",
       "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
     },
@@ -601,29 +501,29 @@
     },
     "http-custom-headers": {
       "sep-2243-client-supports-custom-headers": [
-        "FAILURE"
+        "SUCCESS"
       ],
       "sep-2243-client-mirrors-designated-params": [
-        "FAILURE",
-        "FAILURE",
-        "FAILURE",
         "SUCCESS",
-        "FAILURE",
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS",
         "SUCCESS"
       ],
       "sep-2243-client-encode-values": [
-        "FAILURE",
-        "FAILURE",
-        "FAILURE"
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS"
       ],
       "sep-2243-client-base64-unsafe": [
-        "FAILURE",
-        "FAILURE",
-        "FAILURE",
-        "FAILURE",
-        "FAILURE",
-        "FAILURE",
-        "FAILURE"
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS"
       ],
       "sep-2243-client-omit-null": [
         "SUCCESS"
@@ -634,22 +534,22 @@
         "SUCCESS"
       ],
       "sep-2243-x-mcp-header-not-empty": [
-        "FAILURE"
+        "SUCCESS"
       ],
       "sep-2243-x-mcp-header-primitive-only": [
-        "FAILURE",
-        "FAILURE",
-        "FAILURE"
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS"
       ],
       "sep-2243-x-mcp-header-unique": [
-        "FAILURE",
-        "FAILURE"
+        "SUCCESS",
+        "SUCCESS"
       ],
       "sep-2243-x-mcp-header-charset": [
-        "FAILURE",
-        "FAILURE",
-        "FAILURE",
-        "FAILURE"
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS"
       ]
     },
     "http-standard-headers": {

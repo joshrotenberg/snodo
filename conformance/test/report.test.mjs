@@ -176,16 +176,19 @@ test("the frozen client check inventory passes without waiving its partial score
   const report = summarize(evidence.manifest, evidence.results, evidence.baseline, "client");
   assert.equal(report.regression.passed, true);
   assert.deepEqual(report.regression.checkStatusDrift, []);
-  assert.equal(report.score.passedScenarios, 4);
+  assert.equal(report.score.passedScenarios, 6);
   assert.equal(report.score.status, "partial");
 });
 
-test("a client that starts sending Mcp-Param headers must update the client baseline", async () => {
+test("a regression in the Mcp-Param checks fails the client gate", async () => {
   const evidence = await frozenEvidence("2026-09-26-client-alpha.11-checks.json", "expected-failures-client.json");
-  for (const check of evidence.results["http-custom-headers"]) check.status = "SUCCESS";
+  for (const check of evidence.results["http-custom-headers"]) {
+    if (check.id !== "sep-2243-client-omit-null") check.status = "FAILURE";
+  }
   const report = summarize(evidence.manifest, evidence.results, evidence.baseline, "client");
   assert.equal(report.regression.passed, false);
-  assert.equal(report.regression.staleFailures.length, 15);
+  assert.equal(report.regression.unexpectedFailures.length, 17);
+  assert.equal(report.score.passedScenarios, 5);
 });
 
 test("the frozen 2025-11-25 lane inventory passes without waiving its partial score", async () => {

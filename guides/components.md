@@ -118,6 +118,37 @@ following the 2026-07-28 tools specification. Messages name the location and
 the rule, never the argument's value. Unknown tools and non-object `arguments`
 remain JSON-RPC errors (-32602).
 
+### Arguments in HTTP headers
+
+A property marked with `x-mcp-header` is also sent as an `Mcp-Param-<Name>`
+header over Streamable HTTP, so gateways and load balancers can route on it
+without reading the body:
+
+```elixir
+input_schema(%{
+  "type" => "object",
+  "properties" => %{
+    "region" => %{"type" => "string", "x-mcp-header" => "Region"},
+    "query" => %{"type" => "string"}
+  },
+  "required" => ["region", "query"]
+})
+```
+
+The name must be a non-empty HTTP token (letters, digits, and
+``!#$%&'*+-.^_`|~``), unique ignoring case. The property's `type` must be
+`"string"`, `"integer"`, or `"boolean"`, and the property must be reached from
+the root through `properties` only, not inside `items`, `oneOf`, or `$defs`. A
+tool that breaks these rules does not compile, or is refused by
+`Snodo.Router.register_tool/2` if it implements the behaviour by hand.
+
+Both HTTP listeners check the headers against the body before the tool runs. A
+missing, mismatched, repeated, or malformed header gets HTTP 400 with
+JSON-RPC error -32020. A null or absent argument needs no header. Values that
+are not printable ASCII, or that have leading or trailing whitespace, arrive
+base64-encoded as `=?base64?...?=`. Integers compare numerically. Stdio and
+direct dispatch have no headers and ignore the annotation.
+
 ## Resources
 
 A resource has an exact `:uri` or a `:uri_template`. Templates in the simple

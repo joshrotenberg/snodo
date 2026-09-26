@@ -46,6 +46,9 @@ defmodule Snodo.Client do
   alias Snodo.Error
   alias Snodo.Protocol.Registry
   alias Snodo.Server.Runtime
+  alias Snodo.Transport.ParamHeaders
+
+  require Logger
 
   @type response :: {:ok, map()} | {:input_required, map()} | {:error, Error.t()}
   @type list_kind :: :tools | :resources | :resource_templates | :prompts
@@ -143,7 +146,12 @@ defmodule Snodo.Client do
   @spec discover(t()) :: response()
   def discover(%__MODULE__{} = client), do: request(client, "server/discover")
 
-  @doc "Lists every tool, following `nextCursor` to the last page."
+  @doc """
+  Lists every tool, following `nextCursor` to the last page.
+
+  Over HTTP, a tool whose input schema has an invalid `x-mcp-header`
+  annotation is left out and a warning is logged, as 2026-07-28 requires.
+  """
   @spec list_tools(t()) :: {:ok, [map()]} | {:error, Error.t()}
   def list_tools(%__MODULE__{} = client), do: list_all(client, :tools)
 
@@ -175,7 +183,7 @@ defmodule Snodo.Client do
       {:ok, result} ->
         {:ok,
          %Page{
-           items: Map.get(result, key, []),
+           items: usable(client, kind, Map.get(result, key, [])),
            next_cursor: Map.get(result, "nextCursor"),
            result: result
          }}
@@ -186,15 +194,39 @@ defmodule Snodo.Client do
   end
 
   @doc """
-  Calls a tool.
+  Calls a tool, by name or with its definition from `list_tools/1`.
 
   Options are those of `request/4`. A result with `"isError" => true` is
   returned as `{:ok, result}`: the tool ran and reported its own failure.
+
+  Over HTTP, arguments whose input schema property carries `x-mcp-header`
+  are also sent as `Mcp-Param-*` headers, which needs the tool's
+  `inputSchema`. Pass the definition map to send them on the first request.
+  Called by name, a tool that requires them is refused with -32020; the
+  client then lists the tools and retries once with the definition.
   """
-  @spec call_tool(t(), String.t(), map(), keyword()) :: response()
-  def call_tool(%__MODULE__{} = client, name, arguments \\ %{}, opts \\ [])
+  @spec call_tool(t(), String.t() | map(), map(), keyword()) :: response()
+  def call_tool(client, tool, arguments \\ %{}, opts \\ [])
+
+  def call_tool(%__MODULE__{} = client, %{"name" => name} = tool, arguments, opts)
       when is_binary(name) and is_map(arguments) do
-    request(client, "tools/call", %{"name" => name, "arguments" => arguments}, opts)
+    request(
+      client,
+      "tools/call",
+      %{"name" => name, "arguments" => arguments},
+      Keyword.put(opts, :tool, tool)
+    )
+  end
+
+  def call_tool(%__MODULE__{} = client, name, arguments, opts)
+      when is_binary(name) and is_map(arguments) do
+    case request(client, "tools/call", %{"name" => name, "arguments" => arguments}, opts) do
+      {:error, %Error{code: -32_020}} = error ->
+        retry_with_definition(client, name, arguments, opts, error)
+
+      response ->
+        response
+    end
   end
 
   @doc "Reads a resource by exact URI. Options are those of `request/4`."
@@ -246,10 +278,9 @@ defmodule Snodo.Client do
 
     {module, state} = client.transport
 
-    transport_opts = [
-      dialect: client.dialect,
-      timeout: Keyword.get(opts, :timeout, client.timeout)
-    ]
+    transport_opts =
+      [dialect: client.dialect, timeout: Keyword.get(opts, :timeout, client.timeout)] ++
+        Keyword.take(opts, [:tool])
 
     case module.request(state, raw, transport_opts) do
       {:ok, response} -> decode_response(response)
@@ -372,6 +403,41 @@ defmodule Snodo.Client do
   defp error_kind(code) when code in [-32_601, -32_602], do: :protocol
   defp error_kind(-32_603), do: :execution
   defp error_kind(_code), do: :protocol
+
+  defp retry_with_definition(
+         %__MODULE__{transport: {HTTP, _state}} = client,
+         name,
+         arguments,
+         opts,
+         error
+       ) do
+    with {:ok, tools} <- list_tools(client),
+         %{"inputSchema" => schema} = tool <- Enum.find(tools, &(&1["name"] == name)),
+         {:ok, [_annotation | _others]} <- ParamHeaders.annotations(schema) do
+      call_tool(client, tool, arguments, opts)
+    else
+      _no_headers_to_add -> error
+    end
+  end
+
+  defp retry_with_definition(_client, _name, _arguments, _opts, error), do: error
+
+  # Only Streamable HTTP mirrors `x-mcp-header` arguments, so only there does an
+  # invalid annotation make a tool unusable.
+  defp usable(%__MODULE__{transport: {HTTP, _state}}, :tools, tools) do
+    Enum.filter(tools, fn tool ->
+      case ParamHeaders.annotations(Map.get(tool, "inputSchema", %{})) do
+        {:ok, _annotations} ->
+          true
+
+        {:error, reason} ->
+          Logger.warning("Ignoring tool #{inspect(tool["name"])}: #{reason}")
+          false
+      end
+    end)
+  end
+
+  defp usable(_client, _kind, items), do: items
 
   defp list_all(client, kind), do: collect_pages(client, kind, nil, %{}, [])
 
