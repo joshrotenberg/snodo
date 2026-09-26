@@ -21,7 +21,7 @@ defmodule Snodo.Transport.Plug.Lease do
       {:DOWN, ^monitor, :process, ^owner, _reason} ->
         :ok
 
-      {:snodoecution, _executor, _reference, _key, _outcome} = event ->
+      {:mcp_execution, _executor, _reference, _key, _outcome} = event ->
         send(owner, event)
         forward(owner, monitor)
     end
