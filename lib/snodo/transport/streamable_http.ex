@@ -98,8 +98,7 @@ defmodule Snodo.Transport.StreamableHTTP do
         %Response{status: 202}
 
       {:ok, response} when is_map(response) ->
-        status = response_status(response)
-        json_response(status, response)
+        json_response(execution_status(prepared.protocol, response), response)
 
       {:stream, subscription} when prepared.policy.stream_mode == :sse ->
         %StreamResponse{subscription: subscription}
@@ -353,6 +352,14 @@ defmodule Snodo.Transport.StreamableHTTP do
         "supported" => Registry.versions(runtime.protocol_registry)
       }
     }
+  end
+
+  # Initialize-era clients treat any non-2xx answer to a request as a
+  # transport failure, and 404 as an expired session, so their JSON-RPC
+  # errors travel with 200. Admission failures in prepare/3 keep 4xx on
+  # every dialect.
+  defp execution_status(protocol, response) do
+    if protocol.era() == :stateless, do: response_status(response), else: 200
   end
 
   defp response_status(%{"error" => %{"code" => code}}) when is_integer(code) do
