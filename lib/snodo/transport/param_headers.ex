@@ -78,33 +78,21 @@ defmodule Snodo.Transport.ParamHeaders do
 
   defp collect(schema, path, reachable?, found) when is_map(schema) do
     with {:ok, found} <- own_annotation(schema, path, reachable?, found) do
-      Enum.reduce_while(schema, {:ok, found}, fn {keyword, value}, {:ok, found} ->
-        case collect_keyword(keyword, value, path, reachable?, found) do
-          {:ok, found} -> {:cont, {:ok, found}}
-          error -> {:halt, error}
-        end
+      reduce_ok(schema, found, fn {keyword, value}, found ->
+        collect_keyword(keyword, value, path, reachable?, found)
       end)
     end
   end
 
-  defp collect(values, _path, _reachable?, found) when is_list(values) do
-    Enum.reduce_while(values, {:ok, found}, fn value, {:ok, found} ->
-      case collect(value, [], false, found) do
-        {:ok, found} -> {:cont, {:ok, found}}
-        error -> {:halt, error}
-      end
-    end)
-  end
+  defp collect(values, _path, _reachable?, found) when is_list(values),
+    do: reduce_ok(values, found, &collect(&1, [], false, &2))
 
   defp collect(_scalar, _path, _reachable?, found), do: {:ok, found}
 
   defp collect_keyword("properties", properties, path, reachable?, found)
        when is_map(properties) do
-    Enum.reduce_while(properties, {:ok, found}, fn {name, property}, {:ok, found} ->
-      case collect(property, path ++ [name], reachable?, found) do
-        {:ok, found} -> {:cont, {:ok, found}}
-        error -> {:halt, error}
-      end
+    reduce_ok(properties, found, fn {name, property}, found ->
+      collect(property, path ++ [name], reachable?, found)
     end)
   end
 
@@ -114,6 +102,16 @@ defmodule Snodo.Transport.ParamHeaders do
 
   defp collect_keyword(_keyword, value, _path, _reachable?, found),
     do: collect(value, [], false, found)
+
+  # Enum.reduce over `{:ok, acc}` results, stopping at the first error.
+  defp reduce_ok(enumerable, acc, fun) do
+    Enum.reduce_while(enumerable, {:ok, acc}, fn item, {:ok, acc} ->
+      case fun.(item, acc) do
+        {:ok, acc} -> {:cont, {:ok, acc}}
+        error -> {:halt, error}
+      end
+    end)
+  end
 
   defp own_annotation(schema, path, reachable?, found) do
     case Map.fetch(schema, @annotation) do

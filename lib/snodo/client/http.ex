@@ -141,20 +141,19 @@ defmodule Snodo.Client.HTTP do
        )
        when is_map(arguments) and is_map(schema) do
     case ParamHeaders.annotations(schema) do
-      {:ok, annotations} ->
-        Enum.flat_map(annotations, fn annotation ->
-          case arguments |> dig(annotation.path) |> ParamHeaders.plain_value() do
-            nil -> []
-            value -> [{ParamHeaders.header_name(annotation), encode_sentinel(value)}]
-          end
-        end)
-
-      {:error, _reason} ->
-        []
+      {:ok, annotations} -> Enum.flat_map(annotations, &parameter_header(&1, arguments))
+      {:error, _reason} -> []
     end
   end
 
   defp parameter_headers(_policy, _message, _tool), do: []
+
+  defp parameter_header(annotation, arguments) do
+    case arguments |> dig(annotation.path) |> ParamHeaders.plain_value() do
+      nil -> []
+      value -> [{ParamHeaders.header_name(annotation), encode_sentinel(value)}]
+    end
+  end
 
   defp dig(value, []), do: value
   defp dig(%{} = map, [key | rest]), do: map |> Map.get(key) |> dig(rest)
