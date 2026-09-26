@@ -5,11 +5,14 @@ defmodule Snodo.Server.Runtime do
   alias Snodo.Extension.Registry, as: ExtensionRegistry
   alias Snodo.Instrumentation
   alias Snodo.Pagination
+  alias Snodo.Protocol.Legacy
   alias Snodo.Protocol.Profile
   alias Snodo.Protocol.Registry
   alias Snodo.Router
   alias Snodo.Schema.Validator.Passthrough
   alias Snodo.Subscription.Source
+
+  require Logger
 
   @meta_key ~r/^(?:(?:[A-Za-z](?:[A-Za-z0-9-]*[A-Za-z0-9])?)(?:\.(?:[A-Za-z](?:[A-Za-z0-9-]*[A-Za-z0-9])?))*\/)?(?:[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)?$/
 
@@ -78,6 +81,7 @@ defmodule Snodo.Server.Runtime do
     ExtensionRegistry.validate_advertisement!(extension_registry, capabilities)
     _validated_instructions = validate_instructions!(instructions)
     validate_schema_validator!(schema_validator)
+    warn_inexpressible_legacy_tools(router, protocols)
 
     %__MODULE__{
       router: router,
@@ -96,6 +100,22 @@ defmodule Snodo.Server.Runtime do
       resources_cache: cache_policy(Keyword.get(opts, :resources_cache, [])),
       pagination: Pagination.new(Keyword.get(opts, :pagination, []))
     }
+  end
+
+  defp warn_inexpressible_legacy_tools(router, protocols) do
+    legacy_versions =
+      for protocol <- protocols, protocol.era() == :session, do: protocol.version()
+
+    names = if legacy_versions == [], do: [], else: Legacy.inexpressible_tools(router)
+
+    if names != [] do
+      Logger.warning(
+        "Tools without object input and output schemas are hidden from " <>
+          "initialize-era clients (#{Enum.join(legacy_versions, ", ")}): #{Enum.join(names, ", ")}"
+      )
+    end
+
+    :ok
   end
 
   defp default_capabilities(%Router{} = router) do

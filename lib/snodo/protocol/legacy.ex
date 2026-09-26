@@ -1,7 +1,7 @@
 defmodule Snodo.Protocol.Legacy do
   @moduledoc false
 
-  alias Snodo.{Context, Envelope, Error, Progress, Prompt, Resource, Result}
+  alias Snodo.{Context, Envelope, Error, Progress, Prompt, Resource, Result, Router, Tool}
   alias Snodo.Protocol.Profile
   alias Snodo.Protocol.Profile.Method
   alias Snodo.Transport.Context, as: TransportContext
@@ -140,7 +140,8 @@ defmodule Snodo.Protocol.Legacy do
     with :ok <- validate_transport(envelope.transport),
          :ok <- validate_version(envelope, protocol.version()),
          :ok <- validate_progress(envelope.params),
-         :ok <- validate_unsupported_params(envelope.params) do
+         :ok <- validate_unsupported_params(envelope.params),
+         :ok <- validate_expressible_tool(envelope, runtime.router, protocol.version()) do
       initialize? = envelope.method == "initialize"
 
       context = %Context{
@@ -167,6 +168,44 @@ defmodule Snodo.Protocol.Legacy do
        %{context | progress: Progress.bind(envelope.transport.metadata[:progress_sink], context)}}
     end
   end
+
+  # A tool hidden from legacy tools/list is refused before it runs, the same
+  # way as an unknown tool.
+  defp validate_expressible_tool(
+         %Envelope{method: "tools/call", params: %{"name" => name}},
+         %Router{tools: tools},
+         version
+       )
+       when is_binary(name) do
+    with {:ok, module} <- Map.fetch(tools, name),
+         false <- expressible?(Tool.definition(module)) do
+      {:error,
+       Error.invalid_params(
+         "Tool #{name} is not available on #{version}: " <>
+           "its input and output schemas must be JSON objects"
+       )}
+    else
+      _available -> :ok
+    end
+  end
+
+  defp validate_expressible_tool(_envelope, _router, _version), do: :ok
+
+  @doc false
+  # Names of the tools whose schemas an initialize-era dialect cannot express.
+  # Those revisions require object input and output schemas, so these tools are
+  # left out of tools/list and refused by tools/call.
+  def inexpressible_tools(%Router{} = router) do
+    router
+    |> Router.list_tools()
+    |> Enum.reject(&expressible?/1)
+    |> Enum.map(& &1.name)
+  end
+
+  defp expressible?(tool),
+    do:
+      object_schema?(tool.input_schema) and
+        (is_nil(tool.output_schema) or object_schema?(tool.output_schema))
 
   defp validate_transport(%TransportContext{transport: transport})
        when transport in [:stdio, Snodo.Transport.Stdio],
@@ -344,15 +383,6 @@ defmodule Snodo.Protocol.Legacy do
     if valid, do: :ok, else: {:error, Error.internal("Invalid legacy tool result")}
   end
 
-  def validate_result(:tools_list, %Result{value: tools}, _context) do
-    if Enum.all?(tools, fn tool ->
-         object_schema?(tool.input_schema) and
-           (is_nil(tool.output_schema) or object_schema?(tool.output_schema))
-       end),
-       do: :ok,
-       else: {:error, Error.internal("Legacy tools require object input/output schemas")}
-  end
-
   def validate_result(_operation, _result, _context), do: :ok
   defp object_schema?(%{"type" => "object"}), do: true
   defp object_schema?(_schema), do: false
@@ -361,8 +391,10 @@ defmodule Snodo.Protocol.Legacy do
     operation |> shape(result, context) |> metadata(result)
   end
 
-  defp shape(:tools_list, %Result{value: tools} = result, _context),
-    do: paginated(%{"tools" => Enum.map(tools, &tool_definition/1)}, result)
+  defp shape(:tools_list, %Result{value: tools} = result, _context) do
+    tools = tools |> Enum.filter(&expressible?/1) |> Enum.map(&tool_definition/1)
+    paginated(%{"tools" => tools}, result)
+  end
 
   defp shape(:prompts_list, %Result{value: prompts} = result, context),
     do:
