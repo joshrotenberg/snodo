@@ -8,14 +8,8 @@ silently change any server's validation policy.
 
 ## Use from an application
 
-The repository packages are not yet published. With this checkout available,
-add a path dependency alongside the application's `snodo` dependency:
-
-```elixir
-{:snodo_jsv, path: "../snodo/integrations/schema_jsv"}
-```
-
-Select the backend on the server:
+Add `snodo_jsv` next to `snodo` (see [Packages](https://github.com/joshrotenberg/snodo#packages) for how to depend on
+them), then select the backend on the server:
 
 ```elixir
 defmodule MyApp.MCPServer do

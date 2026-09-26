@@ -2,9 +2,10 @@
 
 This independent `:snodo_tasks` Mix package implements the released SEP-2663
 Tasks extension for MCP `2026-07-28` without adding task methods or capabilities
-to the core protocol catalog. Its only runtime dependency is the standalone
-`snodo` core through the one-way path dependency in this spike; the core does
-not compile or depend on Tasks.
+to the core protocol catalog. Its only runtime dependency is the `snodo` core;
+the core does not compile or depend on Tasks. See
+[Packages](https://github.com/joshrotenberg/snodo#packages) for how to depend on
+it.
 
 The package owns its source, tests, contract evidence, formatting, Credo, and
 Dialyzer gates. From this directory, run:
@@ -25,7 +26,7 @@ child package where appropriate.
 for many-writer compare-and-set contention and repeated Runner batches. It
 produces exact invariant results plus descriptive timings, and accepts `--json`
 for artifact collection. See
-[`stress-testing.md`](stress-testing.md).
+[`stress-testing.md`](https://github.com/joshrotenberg/snodo/blob/main/extensions/tasks/stress-testing.md).
 
 The frozen Tasks conformance fixture combines core and extension tools. Start
 it from this directory so both applications are available:
@@ -116,7 +117,7 @@ runtime =
 The optional instrumentation sink receives bounded job start/stop and timed
 store-transition events. It never receives work input, access values, results,
 errors, or input responses. The shared event catalog and a `:telemetry` bridge
-are documented in [the instrumentation guide](../../guides/instrumentation.md).
+are documented in [the instrumentation guide](https://github.com/joshrotenberg/snodo/blob/main/guides/instrumentation.md).
 The included stress harness consumes those same events to prove balanced job
 lifecycle and runner drain behavior without making latency thresholds part of
 correctness.
@@ -331,10 +332,10 @@ event-replay, authority, claim, and reaping contract.
 - `Store.Dets` is a local, single-node reference adapter, not a production
   distributed store. Its GenServer serializes operations in one BEAM, DETS has
   a 2 GB file limit, and it does not coordinate claims across nodes. The
-  separate [`:snodo_tasks_postgres`](../tasks_postgres/README.md) package
+  separate [`:snodo_tasks_postgres`](https://github.com/joshrotenberg/snodo/blob/main/extensions/tasks_postgres/README.md) package
   implements the same contract with an application-owned `Ecto.Repo`, row
   locks, database time, and fenced leases without adding Ecto to this package.
-  The separate [`:snodo_tasks_sqlite`](../tasks_sqlite/README.md) package keeps
+  The separate [`:snodo_tasks_sqlite`](https://github.com/joshrotenberg/snodo/blob/main/extensions/tasks_sqlite/README.md) package keeps
   the same Repo/migration ownership while providing file-backed, single-host
   durability through SQLite `IMMEDIATE` transactions and one serialized writer.
 - `Store.reap/1` and the runner's optional `:reap_interval_ms` implement this
@@ -365,7 +366,7 @@ event-replay, authority, claim, and reaping contract.
 See the focused tests under `test/tasks_*` and the executable memory, durable
 recovery, retry, and subscription walkthroughs:
 
-- [`07_tasks_memory.exs`](../../examples/07_tasks_memory.exs)
-- [`08_tasks_durable.exs`](../../examples/08_tasks_durable.exs)
-- [`09_tasks_retry.exs`](../../examples/09_tasks_retry.exs)
-- [`17_tasks_subscriptions.exs`](../../examples/17_tasks_subscriptions.exs)
+- [`07_tasks_memory.exs`](https://github.com/joshrotenberg/snodo/blob/main/examples/07_tasks_memory.exs)
+- [`08_tasks_durable.exs`](https://github.com/joshrotenberg/snodo/blob/main/examples/08_tasks_durable.exs)
+- [`09_tasks_retry.exs`](https://github.com/joshrotenberg/snodo/blob/main/examples/09_tasks_retry.exs)
+- [`17_tasks_subscriptions.exs`](https://github.com/joshrotenberg/snodo/blob/main/examples/17_tasks_subscriptions.exs)

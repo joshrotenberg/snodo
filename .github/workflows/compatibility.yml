@@ -59,6 +59,37 @@ jobs:
         if: matrix.lane == 'current'
         run: MIX_ENV=dev mix docs --warnings-as-errors
 
+  packaging:
+    name: Hex packaging dry run
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      MIX_ENV: dev
+    steps:
+      - uses: actions/checkout@v7
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.20"
+          otp-version: "29"
+      - name: Install package managers
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+      - name: Build the core package
+        run: |
+          mix deps.get
+          mix hex.build
+      # Each sibling builds with SNODO_HEX=1, as it is published, and builds
+      # its HexDocs with the in-repository path dependencies.
+      - name: Build each sibling package and its docs
+        run: |
+          for dir in extensions/tasks integrations/plug integrations/schema_jsv \
+            extensions/tasks_postgres extensions/tasks_sqlite; do
+            echo "::group::$dir"
+            (cd "$dir" && SNODO_HEX=1 mix hex.build && mix deps.get && mix docs --warnings-as-errors)
+            echo "::endgroup::"
+          done
+
   official-client:
     name: Official TypeScript client 2.0.0
     runs-on: ubuntu-24.04
