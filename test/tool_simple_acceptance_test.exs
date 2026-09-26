@@ -134,6 +134,25 @@ defmodule Snodo.Tool.SimpleAcceptanceTest do
            }
   end
 
+  test "a tool description that is not a string fails at compile time" do
+    for {label, source} <- [
+          {"use option", ~s|use Snodo.Tool, name: "bad_description", description: 42|},
+          {"macro", ~s|use Snodo.Tool, name: "bad_description"\n  description(:not_a_string)|}
+        ] do
+      module = """
+      defmodule SnodoTest.BadDescription#{String.replace(label, " ", "")} do
+        #{source}
+        @impl true
+        def call(_arguments, _context), do: {:ok, "never"}
+      end
+      """
+
+      assert_raise CompileError, ~r/description must evaluate to a string or nil/, fn ->
+        Code.compile_string(module)
+      end
+    end
+  end
+
   test "Snodo.Test.dispatch/2 names the enabled protocols when asked for another" do
     runtime = SnodoTest.TestFixtures.runtime()
 
