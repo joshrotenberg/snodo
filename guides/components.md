@@ -87,6 +87,7 @@ end
 | `{:ok, binary}` | a text content result |
 | `{:ok, value}` (any other JSON value) | structured content |
 | `{:ok, %Snodo.Result{}}` | exactly that result, for example `Snodo.Result.text/2` with metadata |
+| `{:ok, Snodo.Result.content(blocks)}` | the given content blocks, such as `"image"`, `"audio"`, or an embedded `"resource"` |
 | `{:ok, Snodo.Result.error("hex.pm returned 503")}` | a result with `isError: true`: the tool ran and reports a failure the model can read |
 | `{:error, %Snodo.Error{}}` | a JSON-RPC error: the request itself was wrong |
 | `{:error, reason}` | a result with `isError: true`, for compatibility |

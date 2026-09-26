@@ -19,7 +19,7 @@ defmodule Snodo.Result do
   @type kind ::
           :text
           | :structured
-          | :resource
+          | :content
           | :tools
           | :resources
           | :resource_templates
@@ -85,10 +85,15 @@ defmodule Snodo.Result do
 
     * `:metadata` - as for `text/2`.
   """
-  @spec resource(term(), keyword()) :: t()
-  def resource(contents, opts \\ []) do
-    %__MODULE__{kind: :resource, value: contents, metadata: Keyword.get(opts, :metadata, %{})}
+  @spec content(map() | [map()], keyword()) :: t()
+  def content(contents, opts \\ []) do
+    %__MODULE__{kind: :content, value: contents, metadata: Keyword.get(opts, :metadata, %{})}
   end
+
+  @doc false
+  @deprecated "Use Snodo.Result.content/2"
+  @spec resource(map() | [map()], keyword()) :: t()
+  def resource(contents, opts \\ []), do: content(contents, opts)
 
   @doc """
   Builds a `tools/list` result from `Snodo.Tool.Definition` structs.
