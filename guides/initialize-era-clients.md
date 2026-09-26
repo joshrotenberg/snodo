@@ -51,34 +51,17 @@ no session ID is issued. See the
 
 ## Native client evidence
 
-Isolated loopback checks on 2026-09-21 used actual Custode identity verification,
-finite argument conversion and shared memory/operator callbacks, with scratch data.
-Claude Code 2.1.273 `mcp list` initializes using 2025-11-25 and now connects and
-lists tools. Codex 0.149.0 initializes using 2025-06-18, lists tools/resources and
-templates, calls identity_echo and reads both a fixed resource and an instantiated memory
-template URI without model inference.
-Claude's restricted print session instead uses 2026 server/discover and successfully
-calls the same identity tool. That two-turn check reports $0.01224, below its $0.50
-cap, and exposes no built-in tools. Exact child process groups were bounded and
-cleaned. These checks prove the implemented workflows, not general SDK conformance.
+Loopback checks on 2026-09-21 against a real application server:
 
-Private local traces remain outside the repository because they contain local
-fixture details. Unit/integration tests in this PR exercise literal legacy
-requests, shared routing, pagination, rejection cases, mixed-version routing,
-HTTP progress, and cross-principal cancellation. Existing 2026 schema, client and
-conformance lanes remain in place.
+- Claude Code 2.1.273 `mcp list` initializes with 2025-11-25, connects, and
+  lists tools.
+- Codex 0.149.0 initializes with 2025-06-18, lists tools, resources, and
+  resource templates, calls a tool, and reads both a fixed resource and a
+  templated one.
+- A restricted Claude print session uses 2026-07-28 `server/discover` and calls
+  the same tool.
 
-## Stack and distribution
-
-This is stacked on private PR #1's exact head
-`4a98d8393da586c039c173cfb80b07fcbc2ba961`. Keep the inherited SQLite Tasks failure
-separate from compatibility results; no gate is removed or weakened.
-
-Both Custode and snodo are private repositories. The owner explicitly confirmed
-that snodo remains private during development.
-Do not publish source or packages. This issue does not authorize a merge, a default
-Custode dependency migration, or a live fleet cutover. A later local-only pilot can
-use private path dependencies and narrow adapters around actual Custode callbacks,
-shared operations and existing declared schemas: identity, journal_read,
-remember/recall and one shared operator action. Replacing transport and removing
-Anubis schema macros are separate changes.
+These checks show that the implemented workflows work with those clients. They
+are not general SDK conformance. The test suite covers literal legacy requests,
+shared routing, pagination, rejection cases, mixed-version routing, HTTP
+progress, and cross-principal cancellation.
