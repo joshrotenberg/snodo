@@ -369,10 +369,18 @@ defmodule Snodo.Server do
   defp dispatch_uninstrumented(runtime, raw, transport) do
     case Envelope.decode(raw, transport) do
       {:ok, envelope} -> dispatch_envelope(runtime, raw, envelope)
-      {:error, %Error{} = error} -> {:ok, generic_error_response(error, readable_id(raw))}
+      {:error, %Error{} = error} -> reject_undecodable(raw, error)
     end
   rescue
     _exception -> {:ok, generic_error_response(Error.internal(), readable_id(raw))}
+  end
+
+  # A response object has nothing to answer, and JSON-RPC forbids replying to
+  # a notification even when it is malformed.
+  defp reject_undecodable(raw, error) do
+    if Envelope.response?(raw) or Envelope.notification?(raw),
+      do: {:ok, nil},
+      else: {:ok, generic_error_response(error, readable_id(raw))}
   end
 
   defp dispatch_metadata(raw, transport) do

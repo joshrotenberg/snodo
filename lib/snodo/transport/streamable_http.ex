@@ -52,6 +52,7 @@ defmodule Snodo.Transport.StreamableHTTP do
          :ok <- validate_content_type(request),
          :ok <- validate_accept(request),
          {:ok, raw} <- decode_body(request.body),
+         :ok <- reject_response_object(raw),
          transport = transport_context(request),
          {:ok, envelope} <- decode_envelope(raw, transport),
          {:ok, protocol} <- select_protocol(runtime, envelope),
@@ -74,6 +75,9 @@ defmodule Snodo.Transport.StreamableHTTP do
          policy: policy
        }}
     else
+      :response_object ->
+        {:response, %Response{status: 202}}
+
       {:http_error, status, %Error{} = error, id} ->
         {:response, error_response(status, error, id)}
 
@@ -198,6 +202,12 @@ defmodule Snodo.Transport.StreamableHTTP do
       {:ok, raw} -> {:ok, raw}
       {:error, _reason} -> {:http_error, 400, Error.parse_error(), nil}
     end
+  end
+
+  # A response object has nothing to answer. The transport accepts it with
+  # 202 and no body, as it does a notification.
+  defp reject_response_object(raw) do
+    if Envelope.response?(raw), do: :response_object, else: :ok
   end
 
   defp decode_envelope(raw, transport) do
