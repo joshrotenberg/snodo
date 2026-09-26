@@ -8,6 +8,7 @@ defmodule SnodoTest.PlugFixtures.Tool do
     owner = auth[:observer]
     if owner, do: send(owner, {:tool_entered, context.request_id, self(), context.cancellation})
     if arguments["wait"], do: Process.sleep(:infinity)
+    if ms = arguments["sleep_ms"], do: Process.sleep(ms)
     if arguments["progress"], do: report_progress(context, owner)
     if arguments["wait_after_progress"], do: Process.sleep(:infinity)
 

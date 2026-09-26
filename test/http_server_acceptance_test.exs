@@ -241,6 +241,28 @@ defmodule Snodo.Transport.StreamableHTTP.ServerAcceptanceTest do
     assert reason == :disconnected or match?({:disconnected, _socket_error}, reason)
   end
 
+  test "a request cancelled through the executor is answered with 204" do
+    executor = start_supervised!({Executor, []})
+    runtime = TestFixtures.runtime(tools: [Echo])
+    {:ok, server} = start_supervised({HTTPServer, runtime: runtime, port: 0, executor: executor})
+    {_ip, port, _path} = HTTPServer.address(server)
+
+    raw =
+      TestFixtures.request("cancel-me", "tools/call", %{
+        "name" => "echo",
+        "arguments" => %{"text" => "never", "delayMs" => 5_000}
+      })
+
+    {:ok, socket} = :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: false])
+    :ok = :gen_tcp.send(socket, encoded_request("POST", "/mcp", headers(raw), JSON.encode!(raw)))
+
+    assert eventually(fn -> map_size(:sys.get_state(executor).jobs_by_key) == 1 end)
+    [key] = Map.keys(:sys.get_state(executor).jobs_by_key)
+    assert :ok = Executor.cancel(executor, key, :test)
+
+    assert recv_all(socket, "") =~ "HTTP/1.1 204"
+  end
+
   defp post(port, raw) do
     raw_request(port, "POST", "/mcp", headers(raw), JSON.encode!(raw))
   end

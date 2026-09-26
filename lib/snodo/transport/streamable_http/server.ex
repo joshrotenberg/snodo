@@ -380,7 +380,8 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     )
   end
 
-  defp execution_response({:cancelled, _reason}, _prepared, _opts), do: nil
+  # Matches the Plug adapter. After a disconnect the write simply fails.
+  defp execution_response({:cancelled, _reason}, _prepared, _opts), do: %Response{status: 204}
 
   defp execution_response(_invalid, prepared, opts) do
     StreamableHTTP.reject(
