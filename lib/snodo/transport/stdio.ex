@@ -25,6 +25,7 @@ defmodule Snodo.Transport.Stdio do
   @behaviour Snodo.Transport
   use GenServer
 
+  alias Snodo.Envelope
   alias Snodo.Error
   alias Snodo.Progress
   alias Snodo.Server
@@ -305,7 +306,15 @@ defmodule Snodo.Transport.Stdio do
     %{state | executions_by_id: %{}, executions_by_ref: %{}}
   end
 
+  # A response object is not work: it must not occupy the client's id or
+  # produce a reply.
   defp handle_message(message, state) do
+    if Envelope.response?(message),
+      do: {:noreply, state},
+      else: handle_request_or_notification(message, state)
+  end
+
+  defp handle_request_or_notification(message, state) do
     id = request_id(message)
 
     case {id, Server.resolve_notification(state.runtime, message, transport_context(state))} do

@@ -38,6 +38,29 @@ defmodule Snodo.Envelope do
 
   def decode(_raw, %TransportContext{}), do: {:error, Error.invalid_request()}
 
+  @doc """
+  Whether a decoded JSON value is a JSON-RPC response object: no `method`,
+  and a `result` or `error` member. A server has nothing to answer to one.
+  """
+  @spec response?(term()) :: boolean()
+  def response?(raw) when is_map(raw) do
+    not Map.has_key?(raw, "method") and
+      (Map.has_key?(raw, "result") or Map.has_key?(raw, "error"))
+  end
+
+  def response?(_raw), do: false
+
+  @doc """
+  Whether a decoded JSON value identifies itself as a notification: a string
+  `method` and no `id`. JSON-RPC forbids replying to one, even when it is
+  otherwise malformed.
+  """
+  @spec notification?(term()) :: boolean()
+  def notification?(%{"method" => method} = raw) when is_binary(method),
+    do: not Map.has_key?(raw, "id")
+
+  def notification?(_raw), do: false
+
   defp validate_jsonrpc(%{"jsonrpc" => "2.0"}), do: :ok
 
   defp validate_jsonrpc(_raw) do
