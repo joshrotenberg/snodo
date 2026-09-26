@@ -72,6 +72,16 @@ defmodule Snodo.ClientTest do
                Client.direct(runtime, protocol: "2099-01-01")
     end
 
+    test "the server receives and accepts the client's clientInfo" do
+      info = %{"name" => "my-app", "version" => "2.1.0"}
+      {:ok, client} = Client.direct(TestFixtures.runtime(), client_info: info)
+
+      assert {:ok, %{"structuredContent" => %{"metadata" => metadata}}} =
+               Client.call_tool(client, "context_echo")
+
+      assert metadata["io.modelcontextprotocol/clientInfo"] == info
+    end
+
     test "rejects capabilities that are not a map" do
       assert_raise ArgumentError, ~r/:client_capabilities must be a map/, fn ->
         Client.direct(TestFixtures.runtime(), client_capabilities: [:elicitation])
@@ -257,6 +267,35 @@ defmodule Snodo.ClientTest do
 
       assert :ok = Client.close(client)
       assert_receive :canned_closed
+    end
+
+    test "every request carries clientInfo, snodo's own unless :client_info is given" do
+      {:ok, client} = Client.connect({CannedTransport, self()})
+      assert {:ok, _result} = Client.discover(client)
+      assert_receive {:canned_request, message, _opts}
+      version = to_string(Application.spec(:snodo, :vsn))
+
+      assert message["params"]["_meta"]["io.modelcontextprotocol/clientInfo"] ==
+               %{"name" => "snodo", "version" => version}
+
+      info = %{"name" => "my-app", "version" => "2.1.0", "title" => "My App"}
+      {:ok, client} = Client.connect({CannedTransport, self()}, client_info: info)
+      assert {:ok, _result} = Client.call_tool(client, "anything")
+      assert_receive {:canned_request, message, _opts}
+      assert message["params"]["_meta"]["io.modelcontextprotocol/clientInfo"] == info
+    end
+
+    test ":client_info must name the client and its version" do
+      for invalid <- [
+            %{"name" => "x"},
+            %{"name" => "", "version" => "1"},
+            %{name: "x", version: "1"},
+            "x"
+          ] do
+        assert_raise ArgumentError, ~r/:client_info must/, fn ->
+          Client.connect({CannedTransport, self()}, client_info: invalid)
+        end
+      end
     end
 
     test "a response that is neither a result nor an error object is a transport error" do

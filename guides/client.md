@@ -83,6 +83,7 @@ See [Interactive operations](interactive-operations.md) for the server side.
 | Option | Applies to | Meaning |
 |---|---|---|
 | `:client_capabilities` | all | capabilities sent with every request |
+| `:client_info` | all | the `Implementation` sent as `io.modelcontextprotocol/clientInfo`; defaults to `%{"name" => "snodo", "version" => ...}` with this library's version |
 | `:timeout` | all | default request timeout in milliseconds |
 | `:auth` | `direct/2` | the value handlers and policies read as `context.auth` |
 | `:protocol` | all | the protocol version; defaults to `2026-07-28` |

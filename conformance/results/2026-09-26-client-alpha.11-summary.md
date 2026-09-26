@@ -11,7 +11,7 @@ whole required scenarios with semantic success and no FAILURE, WARNING, or SKIPP
 Raw runner exit code: **1**. Regression gate: **pass**.
 A passing regression gate does not mean full protocol conformance.
 
-Required checks: 54 success, 46 failure, 4 skipped, 1 warning, 1 info.
+Required checks: 55 success, 46 failure, 4 skipped, 0 warning, 1 info.
 
 ## Passing required scenarios
 

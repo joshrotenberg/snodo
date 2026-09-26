@@ -61,13 +61,22 @@ defmodule Snodo.Client do
           protocol: String.t(),
           dialect: module(),
           client_capabilities: map(),
+          client_info: map(),
           timeout: timeout()
         }
 
   @enforce_keys [:transport, :protocol, :dialect]
-  defstruct [:transport, :protocol, :dialect, client_capabilities: %{}, timeout: 30_000]
+  defstruct [
+    :transport,
+    :protocol,
+    :dialect,
+    client_capabilities: %{},
+    client_info: %{},
+    timeout: 30_000
+  ]
 
   @remote_dialects [Snodo.Protocol.V2026_07_28]
+  @version Mix.Project.config()[:version]
 
   @list_operations %{
     tools: {"tools/list", "tools"},
@@ -87,6 +96,11 @@ defmodule Snodo.Client do
       a session, which a direct client does not hold, so they are refused.
     * `:client_capabilities` - the capabilities sent with every request, for
       example `%{"elicitation" => %{"form" => %{}}}`. Defaults to `%{}`.
+    * `:client_info` - the `Implementation` sent as
+      `io.modelcontextprotocol/clientInfo` with every request: a map with
+      string `"name"` and `"version"` and, optionally, `"title"`,
+      `"description"`, `"websiteUrl"`, and `"icons"`. Defaults to
+      `%{"name" => "snodo", "version" => <this library's version>}`.
     * `:auth` - the value handlers and authorization policies read as
       `context.auth`, as a transport would supply it after authenticating.
   """
@@ -114,7 +128,7 @@ defmodule Snodo.Client do
   Options for every target:
 
     * `:protocol` - defaults to `"2026-07-28"`, the only supported version.
-    * `:client_capabilities` - as for `direct/2`.
+    * `:client_capabilities` and `:client_info` - as for `direct/2`.
     * `:timeout` - the default request timeout in milliseconds, 30,000 unless
       set. Each request can override it with `timeout:`.
   """
@@ -301,6 +315,9 @@ defmodule Snodo.Client do
             ":timeout must be a positive integer or :infinity, got: #{inspect(timeout)}"
     end
 
+    client_info = Keyword.get_lazy(opts, :client_info, &default_client_info/0)
+    validate_client_info!(client_info)
+
     with {:ok, state} <- module.connect(init_arg, opts) do
       {:ok,
        %__MODULE__{
@@ -308,9 +325,24 @@ defmodule Snodo.Client do
          protocol: dialect.version(),
          dialect: dialect,
          client_capabilities: capabilities,
+         client_info: client_info,
          timeout: timeout
        }}
     end
+  end
+
+  defp default_client_info, do: %{"name" => "snodo", "version" => @version}
+
+  defp validate_client_info!(%{"name" => name, "version" => version} = info)
+       when is_binary(name) and name != "" and is_binary(version) do
+    unless Enum.all?(Map.keys(info), &is_binary/1) do
+      raise ArgumentError, ":client_info must have string keys, got: #{inspect(info)}"
+    end
+  end
+
+  defp validate_client_info!(info) do
+    raise ArgumentError,
+          ":client_info must be a map with string \"name\" and \"version\", got: #{inspect(info)}"
   end
 
   defp remote_dialect(nil), do: {:ok, hd(@remote_dialects)}
@@ -368,6 +400,7 @@ defmodule Snodo.Client do
   defp build_params(client, params, opts) do
     metadata =
       client.dialect.request_metadata(client.client_capabilities)
+      |> put_client_info(client)
       |> Map.merge(Map.get(params, "_meta", %{}))
       |> Map.merge(Keyword.get(opts, :meta, %{}))
 
@@ -375,6 +408,13 @@ defmodule Snodo.Client do
     |> put_present("inputResponses", Keyword.get(opts, :input_responses))
     |> put_present("requestState", Keyword.get(opts, :request_state))
     |> Map.put("_meta", metadata)
+  end
+
+  # Only stateless dialects carry client info on every request.
+  defp put_client_info(metadata, %__MODULE__{dialect: dialect, client_info: info}) do
+    if function_exported?(dialect, :client_info_key, 0),
+      do: Map.put(metadata, dialect.client_info_key(), info),
+      else: metadata
   end
 
   defp put_present(params, _key, nil), do: params

@@ -27,10 +27,10 @@
     ]
   },
   "requiredCheckCounts": {
-    "success": 54,
+    "success": 55,
     "failure": 46,
     "skipped": 4,
-    "warning": 1,
+    "warning": 0,
     "info": 1
   },
   "rawRunnerNoFailure": {

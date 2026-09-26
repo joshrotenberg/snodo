@@ -534,7 +534,7 @@
     },
     {
       "id": "sep-2575-client-sends-client-info",
-      "status": "WARNING"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2575-http-version-header-matches-meta",
