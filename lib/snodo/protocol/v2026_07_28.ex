@@ -679,7 +679,8 @@ defmodule Snodo.Protocol.V2026_07_28 do
           path: name_source_path(method),
           encoding: :base64_sentinel
         }
-      }
+      },
+      tool_parameter_headers?: method == "tools/call"
     }
   end
 
