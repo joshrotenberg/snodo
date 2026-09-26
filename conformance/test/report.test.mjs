@@ -138,10 +138,11 @@ test("the client leg scores only its own required and unscored scenarios", () =>
   assert.throws(() => summarize(legs, results, baseline, "authorization"));
 });
 
-async function frozenEvidence(results = "2026-09-26-alpha.11-checks.json", baseline = "expected-failures.json") {
+async function frozenEvidence(results = "2026-09-26-alpha.11-checks.json", baseline = "expected-failures.json",
+  revision = "2026-07-28") {
   const json = async (file) => JSON.parse(await readFile(new URL(file, import.meta.url), "utf8"));
   return {
-    manifest: parse(await readFile(new URL("../requirements/2026-07-28.yaml", import.meta.url), "utf8")),
+    manifest: parse(await readFile(new URL(`../requirements/${revision}.yaml`, import.meta.url), "utf8")),
     results: await json(`../results/${results}`),
     baseline: await json(`../${baseline}`),
   };
@@ -188,4 +189,28 @@ test("a regression in the Mcp-Param checks fails the client gate", async () => {
   assert.equal(report.regression.passed, false);
   assert.equal(report.regression.unexpectedFailures.length, 17);
   assert.equal(report.score.passedScenarios, 5);
+});
+
+test("the frozen 2025-11-25 lane inventory passes without waiving its partial score", async () => {
+  const evidence = await frozenEvidence("2026-09-26-2025-11-25-alpha.11-checks.json",
+    "expected-failures-2025-11-25.json", "2025-11-25");
+  const report = summarize(evidence.manifest, evidence.results, evidence.baseline);
+  assert.equal(report.regression.passed, true);
+  assert.equal(report.score.requiredScenarios, 30);
+  assert.equal(report.score.passedScenarios, 21);
+  assert.equal(report.score.status, "partial");
+});
+
+test("the 2025-06-18 lane scores nothing, and its inventory still gates", async () => {
+  const json = async (file) => JSON.parse(await readFile(new URL(file, import.meta.url), "utf8"));
+  const results = await json("../results/2026-09-26-2025-06-18-alpha.11-checks.json");
+  const baseline = await json("../expected-failures-2025-06-18.json");
+  const manifest = { server: [], not_scored: Object.keys(results).map((scenario) =>
+    ({ scenario, leg: "server", reason: "no frozen requirement set for 2025-06-18" })) };
+  const report = summarize(manifest, results, baseline);
+  assert.equal(report.regression.passed, true);
+  assert.equal(report.score.requiredScenarios, 0);
+  assert.equal(report.notScored.length, 27);
+  results["tools-list"][0].status = "FAILURE";
+  assert.equal(summarize(manifest, results, baseline).regression.passed, false);
 });

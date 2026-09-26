@@ -1,0 +1,377 @@
+{
+  "schemaVersion": 2,
+  "leg": "server",
+  "lane": "server-2025-06-18",
+  "runDate": "2026-09-26",
+  "protocolVersion": "2025-06-18",
+  "runner": "@modelcontextprotocol/conformance@0.2.0-alpha.11",
+  "runnerExitCode": 1,
+  "requirements": {
+    "attemptedScenarios": 27,
+    "requiredScenarios": 0,
+    "selection": "--spec-version 2025-06-18 --suite active"
+  },
+  "score": {
+    "status": "complete",
+    "basis": "whole required scenarios with semantic success and no FAILURE, WARNING, or SKIPPED checks",
+    "passedScenarios": 0,
+    "requiredScenarios": 0,
+    "passedScenarioIds": []
+  },
+  "requiredCheckCounts": {
+    "success": 0,
+    "failure": 0,
+    "skipped": 0,
+    "warning": 0,
+    "info": 0
+  },
+  "rawRunnerNoFailure": {
+    "scenarios": 0,
+    "requiredScenarios": 0,
+    "scenarioIds": [],
+    "excludedFromScore": []
+  },
+  "notScored": [
+    {
+      "scenario": "completion-complete",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 2,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "logging-set-level",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 1,
+        "failure": 1,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "ping",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 2,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "prompts-get-embedded-resource",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 2,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "prompts-get-simple",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 2,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "prompts-get-with-args",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 2,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "prompts-get-with-image",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 2,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "prompts-list",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 2,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "resources-list",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 2,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "resources-read-binary",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 2,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "resources-read-text",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 2,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "resources-subscribe",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 1,
+        "failure": 1,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "resources-templates-read",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 2,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "resources-unsubscribe",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 1,
+        "failure": 1,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "server-initialize",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 2,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 1
+      }
+    },
+    {
+      "scenario": "server-session-lifecycle",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 0,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 1
+      }
+    },
+    {
+      "scenario": "tools-call-audio",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 2,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "tools-call-elicitation",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 1,
+        "failure": 1,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "tools-call-embedded-resource",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 2,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "tools-call-error",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 2,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "tools-call-image",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 2,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "tools-call-mixed-content",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 2,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "tools-call-sampling",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 1,
+        "failure": 1,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "tools-call-simple-text",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 2,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "tools-call-with-logging",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 1,
+        "failure": 1,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "tools-call-with-progress",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 2,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "tools-list",
+      "leg": "server",
+      "reason": "no frozen requirement set for 2025-06-18",
+      "checks": {
+        "success": 3,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    }
+  ],
+  "failures": [
+    "logging-set-level:logging-set-level",
+    "resources-subscribe:resources-subscribe",
+    "resources-unsubscribe:resources-unsubscribe",
+    "tools-call-elicitation:tools-call-elicitation",
+    "tools-call-sampling:tools-call-sampling",
+    "tools-call-with-logging:tools-call-with-logging"
+  ],
+  "regression": {
+    "passed": true,
+    "unexpectedFailures": [],
+    "staleFailures": [],
+    "unexpectedExclusions": [],
+    "staleExclusions": [],
+    "checkStatusDrift": [],
+    "note": "A passing regression gate does not convert expected failures into conformance passes."
+  }
+}

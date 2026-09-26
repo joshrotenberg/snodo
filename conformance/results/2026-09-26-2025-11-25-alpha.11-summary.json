@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 2,
+  "leg": "server",
+  "lane": "server-2025-11-25",
+  "runDate": "2026-09-26",
+  "protocolVersion": "2025-11-25",
+  "runner": "@modelcontextprotocol/conformance@0.2.0-alpha.11",
+  "runnerExitCode": 1,
+  "requirements": {
+    "attemptedScenarios": 30,
+    "requiredScenarios": 30,
+    "requirementsAnchor": "@modelcontextprotocol/conformance@0.2.0-alpha.10 (reconstructed)",
+    "requirementsCommit": null,
+    "requirementsSha256": "f33a304dfa2cbd999c24026a3453a64f377bba0c8aa80addadaf05862d212371"
+  },
+  "score": {
+    "status": "partial",
+    "basis": "whole required scenarios with semantic success and no FAILURE, WARNING, or SKIPPED checks",
+    "passedScenarios": 21,
+    "requiredScenarios": 30,
+    "passedScenarioIds": [
+      "server-initialize",
+      "ping",
+      "completion-complete",
+      "tools-list",
+      "tools-call-simple-text",
+      "tools-call-image",
+      "tools-call-audio",
+      "tools-call-embedded-resource",
+      "tools-call-mixed-content",
+      "tools-call-error",
+      "tools-call-with-progress",
+      "resources-list",
+      "resources-read-text",
+      "resources-read-binary",
+      "resources-templates-read",
+      "prompts-list",
+      "prompts-get-simple",
+      "prompts-get-with-args",
+      "prompts-get-embedded-resource",
+      "prompts-get-with-image",
+      "dns-rebinding-protection"
+    ]
+  },
+  "requiredCheckCounts": {
+    "success": 51,
+    "failure": 8,
+    "skipped": 0,
+    "warning": 1,
+    "info": 1
+  },
+  "rawRunnerNoFailure": {
+    "scenarios": 22,
+    "requiredScenarios": 30,
+    "scenarioIds": [
+      "server-initialize",
+      "ping",
+      "completion-complete",
+      "tools-list",
+      "tools-call-simple-text",
+      "tools-call-image",
+      "tools-call-audio",
+      "tools-call-embedded-resource",
+      "tools-call-mixed-content",
+      "tools-call-error",
+      "tools-call-with-progress",
+      "server-sse-multiple-streams",
+      "resources-list",
+      "resources-read-text",
+      "resources-read-binary",
+      "resources-templates-read",
+      "prompts-list",
+      "prompts-get-simple",
+      "prompts-get-with-args",
+      "prompts-get-embedded-resource",
+      "prompts-get-with-image",
+      "dns-rebinding-protection"
+    ],
+    "excludedFromScore": [
+      {
+        "scenario": "server-sse-multiple-streams",
+        "reason": "warning/skipped checks or no semantic success; not an exercised whole-scenario pass"
+      }
+    ]
+  },
+  "notScored": [
+    {
+      "scenario": "server-session-lifecycle",
+      "leg": "server",
+      "reason": "added-after-release",
+      "checks": {
+        "success": 0,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 1
+      }
+    },
+    {
+      "scenario": "json-schema-2020-12",
+      "leg": "server",
+      "reason": "pending",
+      "note": "the reference fixture cannot pass it yet; the implementation under test might",
+      "checks": {
+        "success": 8,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "server-sse-polling",
+      "leg": "server",
+      "reason": "pending",
+      "note": "on hold pending server-side SSE improvements in the reference fixture",
+      "checks": {
+        "success": 0,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 1,
+        "info": 3
+      }
+    }
+  ],
+  "failures": [
+    "logging-set-level:logging-set-level",
+    "tools-call-with-logging:tools-call-with-logging",
+    "tools-call-sampling:tools-call-sampling",
+    "tools-call-elicitation:tools-call-elicitation",
+    "elicitation-sep1034-defaults:elicitation-sep1034-general",
+    "elicitation-sep1330-enums:elicitation-sep1330-general",
+    "resources-subscribe:resources-subscribe",
+    "resources-unsubscribe:resources-unsubscribe"
+  ],
+  "regression": {
+    "passed": true,
+    "unexpectedFailures": [],
+    "staleFailures": [],
+    "unexpectedExclusions": [],
+    "staleExclusions": [],
+    "checkStatusDrift": [],
+    "note": "A passing regression gate does not convert expected failures into conformance passes."
+  }
+}

@@ -1,0 +1,250 @@
+{
+  "failures": [
+    {
+      "key": "logging-set-level:logging-set-level",
+      "reason": "The initialize-era slice does not implement logging/setLevel or notifications/message."
+    },
+    {
+      "key": "resources-subscribe:resources-subscribe",
+      "reason": "The initialize-era slice does not implement resources/subscribe."
+    },
+    {
+      "key": "resources-unsubscribe:resources-unsubscribe",
+      "reason": "The initialize-era slice does not implement resources/subscribe or resources/unsubscribe."
+    },
+    {
+      "key": "tools-call-elicitation:tools-call-elicitation",
+      "reason": "Server-initiated elicitation needs a session, which the initialize-era slice does not keep; the fixture has no such tool."
+    },
+    {
+      "key": "tools-call-sampling:tools-call-sampling",
+      "reason": "Server-initiated sampling needs a session, which the initialize-era slice does not keep; the fixture has no such tool."
+    },
+    {
+      "key": "tools-call-with-logging:tools-call-with-logging",
+      "reason": "The initialize-era slice does not implement logging/setLevel or notifications/message."
+    }
+  ],
+  "exclusions": [],
+  "checkInventory": {
+    "completion-complete": {
+      "completion-complete": [
+        "SUCCESS"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "logging-set-level": {
+      "logging-set-level": [
+        "FAILURE"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "ping": {
+      "ping": [
+        "SUCCESS"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "prompts-get-embedded-resource": {
+      "prompts-get-embedded-resource": [
+        "SUCCESS"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "prompts-get-simple": {
+      "prompts-get-simple": [
+        "SUCCESS"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "prompts-get-with-args": {
+      "prompts-get-with-args": [
+        "SUCCESS"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "prompts-get-with-image": {
+      "prompts-get-with-image": [
+        "SUCCESS"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "prompts-list": {
+      "prompts-list": [
+        "SUCCESS"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "resources-list": {
+      "resources-list": [
+        "SUCCESS"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "resources-read-binary": {
+      "resources-read-binary": [
+        "SUCCESS"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "resources-read-text": {
+      "resources-read-text": [
+        "SUCCESS"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "resources-subscribe": {
+      "resources-subscribe": [
+        "FAILURE"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "resources-templates-read": {
+      "resources-templates-read": [
+        "SUCCESS"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "resources-unsubscribe": {
+      "resources-unsubscribe": [
+        "FAILURE"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "server-initialize": {
+      "server-initialize": [
+        "SUCCESS"
+      ],
+      "server-session-id-visible-ascii": [
+        "INFO"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "server-session-lifecycle": {
+      "server-session-lifecycle-skipped": [
+        "INFO"
+      ]
+    },
+    "tools-call-audio": {
+      "tools-call-audio": [
+        "SUCCESS"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "tools-call-elicitation": {
+      "tools-call-elicitation": [
+        "FAILURE"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "tools-call-embedded-resource": {
+      "tools-call-embedded-resource": [
+        "SUCCESS"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "tools-call-error": {
+      "tools-call-error": [
+        "SUCCESS"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "tools-call-image": {
+      "tools-call-image": [
+        "SUCCESS"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "tools-call-mixed-content": {
+      "tools-call-mixed-content": [
+        "SUCCESS"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "tools-call-sampling": {
+      "tools-call-sampling": [
+        "FAILURE"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "tools-call-simple-text": {
+      "tools-call-simple-text": [
+        "SUCCESS"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "tools-call-with-logging": {
+      "tools-call-with-logging": [
+        "FAILURE"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "tools-call-with-progress": {
+      "tools-call-with-progress": [
+        "SUCCESS"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    },
+    "tools-list": {
+      "tools-list": [
+        "SUCCESS"
+      ],
+      "tools-name-format": [
+        "SUCCESS"
+      ],
+      "wire-schema-valid": [
+        "SUCCESS"
+      ]
+    }
+  }
+}

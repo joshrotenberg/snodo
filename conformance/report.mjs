@@ -137,11 +137,15 @@ function validateBaseline(entries, kind) {
 export function renderMarkdown(report) {
   const { score, regression } = report;
   const list = (items) => items.length ? items.map((item) => `- \`${item}\``).join("\n") : "None.";
-  return `# Frozen ${report.protocolVersion} ${report.leg ?? "server"} conformance run
+  const frozen = Boolean(report.requirements.requirementsSha256);
+  const selection = frozen
+    ? `Requirements SHA-256: \`${report.requirements.requirementsSha256}\``
+    : `Scenario selection: \`${report.requirements.selection}\`. No frozen requirement set exists for ${report.protocolVersion}, so every scenario is unscored and only the per-check regression baseline applies.`;
+  return `# ${frozen ? "Frozen " : ""}${report.protocolVersion} ${report.lane ?? report.leg ?? "server"} conformance run
 
 Run date: ${report.runDate}  
 Runner: \`${report.runner}\`  
-Requirements SHA-256: \`${report.requirements.requirementsSha256}\`
+${selection}
 
 ## Exercised score
 

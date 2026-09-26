@@ -65,7 +65,7 @@ jobs:
           cache: npm
           cache-dependency-path: conformance/package-lock.json
       - name: Prepare combined fixture
-        working-directory: extensions/tasks
+        working-directory: conformance/fixture
         run: |
           mix local.hex --force
           mix local.rebar --force
@@ -85,6 +85,47 @@ jobs:
         with:
           name: protocol-conformance
           path: tmp/conformance/server/
+          if-no-files-found: warn
+  conformance-lanes:
+    name: Official conformance lane ${{ matrix.lane }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [server-plug, server-2025-11-25, server-2025-06-18]
+    env:
+      MIX_ENV: dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.20"
+          otp-version: "29"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.21.0"
+          cache: npm
+          cache-dependency-path: conformance/package-lock.json
+      - name: Prepare fixture
+        working-directory: conformance/fixture
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+          mix compile --warnings-as-errors
+      - name: Install pinned runner
+        working-directory: conformance
+        run: npm ci --ignore-scripts
+      - name: Run the lane with its strict per-check regression baseline
+        working-directory: conformance
+        run: node run.mjs ${{ matrix.lane }}
+      - name: Preserve raw results and separate score
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: protocol-conformance-${{ matrix.lane }}
+          path: tmp/conformance/${{ matrix.lane }}/
           if-no-files-found: warn
   client-conformance:
     name: Frozen MCP 2026-07-28 client regression
