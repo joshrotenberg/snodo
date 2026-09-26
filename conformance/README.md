@@ -10,19 +10,26 @@ the runner's own scenario servers. Each leg has its own score and baseline.
 ## Latest external measurement
 
 The frozen alpha.11 runner passes **32/37 exercised whole required scenarios**
-on 2026-09-14, up from the August 25 measurement of 22/37. Nine newly exercised
-ordinary MRTR scenarios and ordinary progress now pass. All 37 required scenarios and 13 unscored
+on 2026-09-26, the same score as the 2026-09-14 run and up from the August 25
+measurement of 22/37. All 37 required scenarios and 13 unscored
 extension/pending scenarios were attempted.
 
-Required checks: **103 success, 8 failure, 5 skipped, 0 warning, 1 info**.
-The five remaining required scenarios concern deprecated sampling/roots, mixed
-inputs requiring those features and incomplete diagnostic
-fixtures. Internal and official-client elicitation capability tests do not
-substitute for the frozen runner's sampling-specific diagnostics.
+Required checks: **110 success, 6 failure, 0 skipped, 0 warning, 1 info**.
+Since 2026-09-14, the fixture has a subscription hub and the diagnostic tools
+`server-stateless` calls: `test_trigger_tool_change`, `test_trigger_prompt_change`,
+`test_streaming_elicitation`, and `test_logging_tool`. Five subscription checks
+that were skipped and two diagnostics that failed now pass. `test_logging_tool`
+passes because Snodo never sends the deprecated `notifications/message`.
 
-- [Current human-readable report](results/2026-09-14-alpha.11-summary.md)
-- [Current machine-readable report](results/2026-09-14-alpha.11-summary.json)
-- [Retained per-check outcomes](results/2026-09-14-alpha.11-checks.json)
+The five remaining required scenarios all depend on the deprecated sampling
+and roots features, which Snodo does not implement. Internal and
+official-client elicitation capability tests do not substitute for the frozen
+runner's sampling-specific diagnostics.
+
+- [Current human-readable report](results/2026-09-26-alpha.11-summary.md)
+- [Current machine-readable report](results/2026-09-26-alpha.11-summary.json)
+- [Retained per-check outcomes](results/2026-09-26-alpha.11-checks.json)
+- [Historical September 14 report](results/2026-09-14-alpha.11-summary.md)
 - [Historical August 25 report](results/2026-07-28-alpha.11-summary.md)
 
 ## Reproducible regression lane

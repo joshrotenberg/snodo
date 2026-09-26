@@ -9,14 +9,6 @@
       "reason": "The frozen diagnostic requires deprecated sampling/roots, which remain unsupported; elicitation capability evidence is measured separately."
     },
     {
-      "key": "server-stateless:sep-2575-http-server-no-independent-requests-on-stream",
-      "reason": "The required ordinary streaming elicitation diagnostic fixture is not implemented yet."
-    },
-    {
-      "key": "server-stateless:sep-2575-server-no-log-without-loglevel",
-      "reason": "The required request-scoped logging diagnostic fixture is not implemented yet."
-    },
-    {
       "key": "input-required-result-basic-sampling:sep-2322-sampling-incomplete",
       "reason": "The frozen diagnostic requires deprecated sampling/roots, which remain unsupported; elicitation capability evidence is measured separately."
     },
@@ -259,13 +251,13 @@
       "sep-2575-http-server-method-not-found-404-resources-subscribe": ["SUCCESS"],
       "sep-2575-http-server-method-not-found-404-resources-unsubscribe": ["SUCCESS"],
       "sep-2575-http-server-method-not-found-404": ["SUCCESS"],
-      "sep-2575-http-server-no-independent-requests-on-stream": ["FAILURE"],
-      "sep-2575-server-no-log-without-loglevel": ["FAILURE"],
-      "sep-2575-server-sends-subscription-ack": ["SKIPPED"],
-      "sep-2575-server-tags-subscription-id": ["SKIPPED"],
-      "sep-2575-server-honors-notification-filter": ["SKIPPED"],
-      "sep-2575-server-sends-prompts-list-changed-on-subscription": ["SKIPPED"],
-      "sep-2575-server-sends-tools-list-changed-on-subscription": ["SKIPPED"],
+      "sep-2575-http-server-no-independent-requests-on-stream": ["SUCCESS"],
+      "sep-2575-server-no-log-without-loglevel": ["SUCCESS"],
+      "sep-2575-server-sends-subscription-ack": ["SUCCESS"],
+      "sep-2575-server-tags-subscription-id": ["SUCCESS"],
+      "sep-2575-server-honors-notification-filter": ["SUCCESS"],
+      "sep-2575-server-sends-prompts-list-changed-on-subscription": ["SUCCESS"],
+      "sep-2575-server-sends-tools-list-changed-on-subscription": ["SUCCESS"],
       "sep-2575-http-server-error-jsonrpc-id": ["SUCCESS"]
     },
     "tasks-capability-negotiation": {

@@ -11,6 +11,8 @@ port =
     _invalid -> raise "MCP_PORT must be an integer from 0 to 65535"
   end
 
+{:ok, _hub} = Snodo.Subscription.Hub.start_link(name: SnodoTest.Conformance.Stateless.hub())
+
 {:ok, server} =
   Snodo.Transport.StreamableHTTP.Server.start_link(
     runtime: SnodoTest.Conformance.Fixture.runtime(),
