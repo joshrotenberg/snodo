@@ -166,7 +166,7 @@ defmodule Snodo.Transport.Stdio do
   end
 
   def handle_info(
-        {:snodoecution, executor, reference, _key, outcome},
+        {:mcp_execution, executor, reference, _key, outcome},
         %{executor: executor} = state
       ) do
     case Map.pop(state.executions_by_ref, reference) do

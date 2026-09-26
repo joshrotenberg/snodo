@@ -201,7 +201,7 @@ defmodule Snodo.Transport.Plug do
     } = state
 
     receive do
-      {:snodoecution, ^executor, ^reference, ^key, outcome} ->
+      {:mcp_execution, ^executor, ^reference, ^key, outcome} ->
         send_response(state.conn, execution_response(outcome, opts, prepared), opts)
 
       {:DOWN, ^monitor, :process, _pid, _reason} ->

@@ -284,7 +284,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
 
   defp await_execution_message(socket, executor, execution_ref, key, prepared, opts) do
     receive do
-      {:snodoecution, ^executor, ^execution_ref, ^key, outcome} ->
+      {:mcp_execution, ^executor, ^execution_ref, ^key, outcome} ->
         :ok = Progress.close(opts.progress.sink)
         finish_execution(socket, execution_response(outcome, prepared, opts), opts)
 
