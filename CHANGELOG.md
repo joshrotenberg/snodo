@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.2.0](https://github.com/joshrotenberg/snodo/compare/v0.1.0...v0.2.0) (2026-09-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* tool content results carry kind :content instead of :resource.
+* Snodo.Result has no error field, and Result.error/2 no longer takes an :error option.
+
+### Features
+
+* add Result.content/2 and deprecate Result.resource/2 (closes [#59](https://github.com/joshrotenberg/snodo/issues/59)) ([#72](https://github.com/joshrotenberg/snodo/issues/72)) ([68c9340](https://github.com/joshrotenberg/snodo/commit/68c9340e9ca4934283bea72c54fc386bf2ba9116))
+
+
+### Bug Fixes
+
+* accept a bare authorization module in Router.dispatch/5 (closes [#56](https://github.com/joshrotenberg/snodo/issues/56)) ([#65](https://github.com/joshrotenberg/snodo/issues/65)) ([456c816](https://github.com/joshrotenberg/snodo/commit/456c8160a05391b99eba1284131da2d9f5125d55))
+* build the compliance report from the retained conformance run (closes [#62](https://github.com/joshrotenberg/snodo/issues/62)) ([#73](https://github.com/joshrotenberg/snodo/issues/73)) ([04e4685](https://github.com/joshrotenberg/snodo/commit/04e468514f73305b44130928311a6bf75426f0ec))
+* deprecate Cancellation.cancel/2, whose reason is discarded (closes [#57](https://github.com/joshrotenberg/snodo/issues/57)) ([#70](https://github.com/joshrotenberg/snodo/issues/70)) ([3d9e1cd](https://github.com/joshrotenberg/snodo/commit/3d9e1cdc3d1a6f246bd2f36f683342fcf2fb7312))
+* explain a disabled protocol in Snodo.Test.dispatch/2 (closes [#60](https://github.com/joshrotenberg/snodo/issues/60)) ([#66](https://github.com/joshrotenberg/snodo/issues/66)) ([3361a3d](https://github.com/joshrotenberg/snodo/commit/3361a3d8b962ce1b8ff6a56585c9c133655e9de0))
+* validate the Snodo.Tool description at compile time (closes [#61](https://github.com/joshrotenberg/snodo/issues/61)) ([#67](https://github.com/joshrotenberg/snodo/issues/67)) ([45b0531](https://github.com/joshrotenberg/snodo/commit/45b0531a2d12c3b69d8975fd3f0adaaab48fbabb))
+
+
+### Code Refactoring
+
+* remove the unread error field from Snodo.Result (closes [#58](https://github.com/joshrotenberg/snodo/issues/58)) ([#71](https://github.com/joshrotenberg/snodo/issues/71)) ([30aad07](https://github.com/joshrotenberg/snodo/commit/30aad070566a08a206e6036a840c87b880f48534))
+
 ## 0.1.0 (2026-09-26)
 
 
