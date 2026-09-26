@@ -759,9 +759,28 @@ defmodule Snodo.Protocol.V2026_07_28 do
     }
   end
 
+  @doc """
+  Returns `"io.modelcontextprotocol/protocolVersion"`, the request `_meta` key
+  for the protocol version. Every request must carry it.
+  """
   def protocol_version_key, do: @protocol_version_key
+
+  @doc """
+  Returns `"io.modelcontextprotocol/clientInfo"`, the optional request `_meta`
+  key for the client's implementation name and version.
+  """
   def client_info_key, do: @client_info_key
+
+  @doc """
+  Returns `"io.modelcontextprotocol/clientCapabilities"`, the request `_meta`
+  key for the client's capabilities. Every request must carry it.
+  """
   def client_capabilities_key, do: @client_capabilities_key
+
+  @doc """
+  Returns `"io.modelcontextprotocol/serverInfo"`, the result `_meta` key under
+  which the server sends the runtime's `server_info` with every result.
+  """
   def server_info_key, do: @server_info_key
 
   @doc false

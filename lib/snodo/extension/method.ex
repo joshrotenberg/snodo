@@ -24,6 +24,31 @@ defmodule Snodo.Extension.Method do
     params: :required
   ]
 
+  @doc """
+  Builds a method for an extension's `c:Snodo.Extension.methods/0` list.
+
+  Options:
+
+    * `:protocol_version` - the exact protocol version the method belongs
+      to, such as `"2026-07-28"`. Required.
+    * `:name` - the JSON-RPC method name. Required.
+    * `:operation` - the term passed to the extension's
+      `c:Snodo.Extension.validate_operation/3`, `c:Snodo.Extension.dispatch/3`,
+      and `c:Snodo.Extension.shape_result/3`. Required.
+    * `:params` - `:required` (the default) or `:optional`: whether a request
+      must carry `params`.
+    * `:kind` and `:direction` - only `:request` and `:client_to_server`,
+      the defaults, are supported.
+
+  A missing required option raises `KeyError`; an invalid value raises
+  `ArgumentError`.
+
+      Snodo.Extension.Method.new!(
+        protocol_version: "2026-07-28",
+        name: "dev.example/greet",
+        operation: :greet
+      )
+  """
   @spec new!(keyword()) :: t()
   def new!(opts) when is_list(opts) do
     version = Keyword.fetch!(opts, :protocol_version)

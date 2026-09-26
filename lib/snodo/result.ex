@@ -42,31 +42,94 @@ defmodule Snodo.Result do
   @enforce_keys [:kind]
   defstruct [:kind, :value, :error, metadata: %{}]
 
+  @doc """
+  Builds a text result.
+
+  As a `tools/call` result it becomes one `"text"` content block with
+  `"isError" => false`.
+
+  Options:
+
+    * `:metadata` - a map. String keys are added to the result's `"_meta"`;
+      atom keys are not sent.
+  """
   @spec text(String.t(), keyword()) :: t()
   def text(text, opts \\ []) when is_binary(text) do
     %__MODULE__{kind: :text, value: text, metadata: Keyword.get(opts, :metadata, %{})}
   end
 
+  @doc """
+  Builds a structured result from a JSON value.
+
+  As a `tools/call` result, `value` becomes `"structuredContent"` and is also
+  encoded as JSON into one `"text"` content block. When the tool declares an
+  output schema, the runtime's schema validator checks `value` against it.
+
+  Options:
+
+    * `:metadata` - as for `text/2`.
+  """
   @spec structured(term(), keyword()) :: t()
   def structured(value, opts \\ []) do
     %__MODULE__{kind: :structured, value: value, metadata: Keyword.get(opts, :metadata, %{})}
   end
 
+  @doc """
+  Builds a `tools/call` result from content blocks.
+
+  `contents` is one content block map, such as an `"image"` or embedded
+  `"resource"` block, or a list of them. It becomes the result's `"content"`
+  unchanged, with `"isError" => false`.
+
+  Options:
+
+    * `:metadata` - as for `text/2`.
+  """
   @spec resource(term(), keyword()) :: t()
   def resource(contents, opts \\ []) do
     %__MODULE__{kind: :resource, value: contents, metadata: Keyword.get(opts, :metadata, %{})}
   end
 
+  @doc """
+  Builds a `tools/list` result from `Snodo.Tool.Definition` structs.
+
+  `Snodo.Router.dispatch/5` returns this for `:tools_list`. The server then
+  pages it and adds cache hints.
+  """
   @spec tools([map()]) :: t()
   def tools(definitions), do: %__MODULE__{kind: :tools, value: definitions}
 
+  @doc """
+  Builds a `resources/list` result from `Snodo.Resource.Definition` structs.
+
+  `Snodo.Router.dispatch/5` returns this for `:resources_list`.
+  """
   @spec resources([term()]) :: t()
   def resources(definitions), do: %__MODULE__{kind: :resources, value: definitions}
 
+  @doc """
+  Builds a `resources/templates/list` result from `Snodo.Resource.Definition`
+  structs.
+
+  `Snodo.Router.dispatch/5` returns this for `:resource_templates_list`.
+  """
   @spec resource_templates([term()]) :: t()
   def resource_templates(definitions),
     do: %__MODULE__{kind: :resource_templates, value: definitions}
 
+  @doc """
+  Builds a `resources/read` result.
+
+  `contents` is one resource-content map or a list of them, built with
+  `Snodo.Resource.text/3`, `Snodo.Resource.json/3`, or `Snodo.Resource.blob/3`.
+
+  Options:
+
+    * `:metadata` - a map. String keys are added to the result's `"_meta"`.
+      The atom keys `:ttl_ms` (a non-negative integer) and `:cache_scope`
+      (`"public"` or `"private"`) override the runtime's `resources_cache`
+      policy for this read.
+  """
   @spec resource_read([map()] | map(), keyword()) :: t()
   def resource_read(contents, opts \\ []) do
     %__MODULE__{
@@ -76,9 +139,25 @@ defmodule Snodo.Result do
     }
   end
 
+  @doc """
+  Builds a `prompts/list` result from `Snodo.Prompt.Definition` structs.
+
+  `Snodo.Router.dispatch/5` returns this for `:prompts_list`.
+  """
   @spec prompts([term()]) :: t()
   def prompts(definitions), do: %__MODULE__{kind: :prompts, value: definitions}
 
+  @doc """
+  Builds a `prompts/get` result.
+
+  `messages` is one message or a list of them, built with
+  `Snodo.Prompt.message/2`.
+
+  Options:
+
+    * `:description` - a string sent as the result's `"description"`.
+    * `:metadata` - as for `text/2`.
+  """
   @spec prompt_get([map()] | map(), keyword()) :: t()
   def prompt_get(messages, opts \\ []) do
     %__MODULE__{
@@ -105,6 +184,15 @@ defmodule Snodo.Result do
     }
   end
 
+  @doc """
+  Wraps a map that is already in wire shape.
+
+  As a `tools/call` result, the map is sent as the result, with `"content"`
+  defaulting to `[]` and `"isError"` to `false`. When the tool declares an
+  output schema, the map must carry `"structuredContent"`, which is validated.
+  Extensions also return `raw/1` from `c:Snodo.Extension.dispatch/3` and shape
+  the value in `c:Snodo.Extension.shape_result/3`.
+  """
   @spec raw(term()) :: t()
   def raw(value), do: %__MODULE__{kind: :raw, value: value}
 
@@ -156,6 +244,18 @@ defmodule Snodo.Result do
     %__MODULE__{kind: :wire, value: value, metadata: Keyword.get(opts, :metadata, %{})}
   end
 
+  @doc """
+  Builds a `tools/call` result that reports a failure.
+
+  `message` becomes one `"text"` content block and `"isError"` is `true`. The
+  JSON-RPC request itself succeeds. Output schema validation is skipped.
+
+  Options:
+
+    * `:error` - an `Snodo.Error` kept in the result's `error` field. It is
+      not sent to the client. Defaults to `Snodo.Error.execution(message)`.
+    * `:metadata` - as for `text/2`.
+  """
   @spec error(String.t(), keyword()) :: t()
   def error(message, opts \\ []) when is_binary(message) do
     error = Keyword.get_lazy(opts, :error, fn -> Error.execution(message) end)
@@ -168,6 +268,12 @@ defmodule Snodo.Result do
     }
   end
 
+  @doc """
+  Converts a tool's `{:ok, value}` payload into a result.
+
+  A `Snodo.Result` is returned unchanged, a binary becomes `text/1`, and any
+  other value becomes `structured/1`.
+  """
   @spec normalize(t() | term()) :: t()
   def normalize(%__MODULE__{} = result), do: result
   def normalize(value) when is_binary(value), do: text(value)
