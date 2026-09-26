@@ -5,7 +5,10 @@ unsupported, unmeasured, and official evidence buckets stay separate.
 
 The official runner has two legs. The server leg runs its scenarios against
 the combined fixture. The [client leg](#client-leg) runs `Snodo.Client` against
-the runner's own scenario servers. Each leg has its own score and baseline.
+the runner's own scenario servers. `run.mjs` runs them as lanes, each with its
+own score and baseline: `server`, `client`, and the
+[additional server lanes](#additional-server-lanes) `server-plug`,
+`server-2025-11-25`, and `server-2025-06-18`.
 
 ## Latest external measurement
 
@@ -39,15 +42,22 @@ From the repository root:
 ```sh
 mix deps.get
 mix compile --warnings-as-errors
-cd extensions/tasks
+cd conformance/fixture
 mix deps.get
 mix compile --warnings-as-errors
-cd ../../conformance
+cd ..
 npm ci --ignore-scripts
 npm test
 npm run check
 npm run check:client
+npm run check:plug
+npm run check:2025-11-25
+npm run check:2025-06-18
 ```
+
+`conformance/fixture` is a small Mix project, never published, that puts the
+core, `snodo_tasks`, `snodo_plug`, and Bandit on one code path for
+`fixture_server.exs`.
 
 The launcher uses the dev build and starts the combined fixture on an
 OS-assigned loopback port. Startup, runner execution, and shutdown are bounded;
@@ -118,9 +128,12 @@ call a passing regression gate full protocol conformance.
 To investigate a single case:
 
 ```sh
-cd extensions/tasks
-MCP_PORT=3001 mix run ../../conformance/fixture_server.exs
+cd conformance/fixture
+MCP_PORT=3001 mix run ../fixture_server.exs
 ```
+
+Set `MCP_FIXTURE_TRANSPORT=plug` to serve it through `Snodo.Transport.Plug` on
+Bandit, and `MCP_FIXTURE_PROFILE=legacy` for the initialize-era runtime.
 
 In another terminal, from `conformance`:
 
@@ -144,6 +157,33 @@ the core `CallToolResult`, which requires `content`; they are not erased.
 The pending JSON Schema and standard HTTP-header probes pass 8/8 and 14/14,
 respectively. Five pending custom-header checks remain unexercised failures.
 These results do not establish general complete schema validation.
+
+## Additional server lanes
+
+- `server-plug` runs the same 2026-07-28 fixture through `Snodo.Transport.Plug`
+  on Bandit instead of the native listener. On 2026-09-26 it matched the native
+  lane check for check (32/37), so it shares `expected-failures.json`: any
+  difference between the two listeners fails one of the gates.
+- `server-2025-11-25` enables the initialize-era dialects next to 2026-07-28 on
+  a fixture with tools, resources, prompts, and completion, and runs the frozen
+  2025-11-25 requirement set. That set is the upstream reconstruction from
+  alpha.10 (see the header of
+  [requirements/2025-11-25.yaml](requirements/2025-11-25.yaml)), pinned by
+  SHA-256. It passes **21/30** required scenarios. The failures are features
+  the initialize-era slice does not implement: `logging/setLevel`,
+  server-initiated sampling and elicitation (which need a session),
+  `resources/subscribe`, and SSE session IDs. They are listed with reasons in
+  [expected-failures-2025-11-25.json](expected-failures-2025-11-25.json).
+- `server-2025-06-18` runs `--spec-version 2025-06-18 --suite active` on the
+  same fixture. No frozen requirement set exists for 2025-06-18, so all 27
+  scenarios are unscored; 21 pass, and the other 6 fail for the same missing
+  features. The per-check baseline in
+  [expected-failures-2025-06-18.json](expected-failures-2025-06-18.json) still
+  gates every change.
+
+Results: [Plug](results/2026-09-26-plug-alpha.11-summary.md),
+[2025-11-25](results/2026-09-26-2025-11-25-alpha.11-summary.md),
+[2025-06-18](results/2026-09-26-2025-06-18-alpha.11-summary.md).
 
 ## Client leg
 

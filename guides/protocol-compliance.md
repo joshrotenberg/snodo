@@ -266,19 +266,28 @@ the harness never starts authorization. See the
 [client leg notes](https://github.com/joshrotenberg/snodo/blob/main/conformance/README.md#client-leg)
 for the remaining gaps.
 
+Three more server lanes run in CI. The same fixture served through
+`Snodo.Transport.Plug` on Bandit matches the native listener check for check.
+The initialize-era dialects pass 21 of 30 required scenarios of the frozen
+2025-11-25 set, and 21 of 27 unscored 2025-06-18 scenarios. The remaining
+failures are logging, server-initiated sampling and elicitation,
+`resources/subscribe`, and SSE sessions, which that slice does not implement.
+See the
+[additional server lanes](https://github.com/joshrotenberg/snodo/blob/main/conformance/README.md#additional-server-lanes).
+
 The frozen `2026-07-28` requirement manifest contains 37 scored server
 scenarios. The manifest declares `conformance@0.2.0-alpha.10` as its historical
 anchor, but was added retrospectively and first shipped with the alpha.11
 runner. This project vendors the alpha.11 artifact from commit `c321dd3` and
 verifies its exact SHA-256
 `ae2f4f6210fd729e2e318edd5bbfa31a43cee0bc608e48052fa26dbf1d939b57`
-before every core contract run. The combined frozen fixture includes Tasks, so
-start it from the child package to put both applications on the code path, then
+before every core contract run. The combined frozen fixture includes Tasks and
+the Plug adapter, so start it from the `conformance/fixture` Mix project, then
 use the pinned runner with the frozen manifest:
 
 ```sh
-cd extensions/tasks
-MCP_PORT=3001 mix run ../../conformance/fixture_server.exs
+cd conformance/fixture
+MCP_PORT=3001 mix run ../fixture_server.exs
 ```
 
 ```sh

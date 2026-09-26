@@ -312,6 +312,8 @@ defmodule SnodoTest.Conformance.Resources.TemplateData do
 end
 
 defmodule SnodoTest.Conformance.Fixture do
+  alias Snodo.Protocol.V2025_06_18
+  alias Snodo.Protocol.V2025_11_25
   alias Snodo.Protocol.V2026_07_28
   alias Snodo.Router
   alias Snodo.Server.Runtime
@@ -350,22 +352,25 @@ defmodule SnodoTest.Conformance.Fixture do
   @resources [StaticText, StaticBinary, TemplateData] ++ MRTRFixture.resources()
   @prompts [Simple, WithArguments, WithEmbeddedResource, WithImage] ++ MRTRFixture.prompts()
 
+  # The initialize-era slice serves tools, resources, prompts, and completion;
+  # Tasks, input_required, and subscriptions are 2026-07-28 only.
+  @legacy_tools [
+    HeaderProbe,
+    SimpleText,
+    ImageContent,
+    AudioContent,
+    EmbeddedResource,
+    MixedContent,
+    ErrorHandling,
+    JSONSchema2020,
+    ProgressTool
+  ]
+  @legacy_resources [StaticText, StaticBinary, TemplateData]
+  @legacy_prompts [Simple, WithArguments, WithEmbeddedResource, WithImage]
+
   def runtime do
     SnodoTest.Conformance.MRTR.Workflow.configure()
-
-    router =
-      @tools
-      |> Enum.reduce(Router.new(), &Router.register_tool(&2, &1))
-      |> then(
-        &Enum.reduce(@prompts, &1, fn prompt, acc ->
-          Router.register_prompt(acc, prompt)
-        end)
-      )
-      |> then(
-        &Enum.reduce(@resources, &1, fn resource, acc ->
-          Router.register_resource(acc, resource)
-        end)
-      )
+    router = router(@tools, @resources, @prompts)
 
     capabilities =
       TasksFixture.capabilities()
@@ -385,5 +390,24 @@ defmodule SnodoTest.Conformance.Fixture do
       prompts_cache: [ttl_ms: 0, scope: "private"],
       resources_cache: [ttl_ms: 0, scope: "private"]
     )
+  end
+
+  @doc "The same components for initialize-era clients, with 2026-07-28 still enabled."
+  def legacy_runtime do
+    Runtime.new(
+      router: router(@legacy_tools, @legacy_resources, @legacy_prompts),
+      protocols: [V2026_07_28, V2025_11_25, V2025_06_18],
+      server_info: %{"name" => "snodo-conformance", "version" => "0.1.0"},
+      capabilities: %{"tools" => %{}, "prompts" => %{}, "resources" => %{}, "completions" => %{}},
+      tools_cache: [ttl_ms: 0, scope: "private"],
+      prompts_cache: [ttl_ms: 0, scope: "private"],
+      resources_cache: [ttl_ms: 0, scope: "private"]
+    )
+  end
+
+  defp router(tools, resources, prompts) do
+    router = Enum.reduce(tools, Router.new(), &Router.register_tool(&2, &1))
+    router = Enum.reduce(prompts, router, &Router.register_prompt(&2, &1))
+    Enum.reduce(resources, router, &Router.register_resource(&2, &1))
   end
 end

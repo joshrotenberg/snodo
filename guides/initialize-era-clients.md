@@ -39,6 +39,16 @@ runtime, use the implemented base tools/prompts/resources/completions capabiliti
 listChanged and subscribe remain unavailable on this legacy slice. Applications
 that need latest-only subscriptions can expose a separate 2026-only runtime.
 
+## Official conformance
+
+The official runner's frozen 2025-11-25 requirement set runs in CI against a
+fixture with these dialects enabled: 21 of 30 required scenarios pass. The
+2025-06-18 run has no frozen set; 21 of its 27 scenarios pass. The failures are
+`logging/setLevel`, server-initiated sampling and elicitation, and
+`resources/subscribe`, which this slice does not implement, plus a warning that
+no session ID is issued. See the
+[conformance lanes](https://github.com/joshrotenberg/snodo/blob/main/conformance/README.md#additional-server-lanes).
+
 ## Native client evidence
 
 Isolated loopback checks on 2026-09-21 used actual Custode identity verification,

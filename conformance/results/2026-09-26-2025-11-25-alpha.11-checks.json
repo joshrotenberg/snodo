@@ -1,0 +1,364 @@
+{
+  "completion-complete": [
+    {
+      "id": "completion-complete",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "dns-rebinding-protection": [
+    {
+      "id": "localhost-host-rebinding-rejected",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "localhost-host-valid-accepted",
+      "status": "SUCCESS"
+    }
+  ],
+  "elicitation-sep1034-defaults": [
+    {
+      "id": "elicitation-sep1034-general",
+      "status": "FAILURE"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "elicitation-sep1330-enums": [
+    {
+      "id": "elicitation-sep1330-general",
+      "status": "FAILURE"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "json-schema-2020-12": [
+    {
+      "id": "json-schema-2020-12-tool-found",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "json-schema-2020-12-$schema",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "json-schema-2020-12-$defs",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "json-schema-2020-12-additionalProperties",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2106-composition-keywords-preserved",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2106-conditional-keywords-preserved",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2106-anchor-keyword-preserved",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "logging-set-level": [
+    {
+      "id": "logging-set-level",
+      "status": "FAILURE"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "ping": [
+    {
+      "id": "ping",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "prompts-get-embedded-resource": [
+    {
+      "id": "prompts-get-embedded-resource",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "prompts-get-simple": [
+    {
+      "id": "prompts-get-simple",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "prompts-get-with-args": [
+    {
+      "id": "prompts-get-with-args",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "prompts-get-with-image": [
+    {
+      "id": "prompts-get-with-image",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "prompts-list": [
+    {
+      "id": "prompts-list",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "resources-list": [
+    {
+      "id": "resources-list",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "resources-read-binary": [
+    {
+      "id": "resources-read-binary",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "resources-read-text": [
+    {
+      "id": "resources-read-text",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "resources-subscribe": [
+    {
+      "id": "resources-subscribe",
+      "status": "FAILURE"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "resources-templates-read": [
+    {
+      "id": "resources-templates-read",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "resources-unsubscribe": [
+    {
+      "id": "resources-unsubscribe",
+      "status": "FAILURE"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "server-initialize": [
+    {
+      "id": "server-initialize",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "server-session-id-visible-ascii",
+      "status": "INFO"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "server-session-lifecycle": [
+    {
+      "id": "server-session-lifecycle-skipped",
+      "status": "INFO"
+    }
+  ],
+  "server-sse-multiple-streams": [
+    {
+      "id": "server-sse-multiple-streams-session",
+      "status": "WARNING"
+    }
+  ],
+  "server-sse-polling": [
+    {
+      "id": "server-sse-polling-session",
+      "status": "WARNING"
+    },
+    {
+      "id": "outgoing-request",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-response",
+      "status": "INFO"
+    },
+    {
+      "id": "server-sse-content-type",
+      "status": "INFO"
+    }
+  ],
+  "tools-call-audio": [
+    {
+      "id": "tools-call-audio",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "tools-call-elicitation": [
+    {
+      "id": "tools-call-elicitation",
+      "status": "FAILURE"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "tools-call-embedded-resource": [
+    {
+      "id": "tools-call-embedded-resource",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "tools-call-error": [
+    {
+      "id": "tools-call-error",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "tools-call-image": [
+    {
+      "id": "tools-call-image",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "tools-call-mixed-content": [
+    {
+      "id": "tools-call-mixed-content",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "tools-call-sampling": [
+    {
+      "id": "tools-call-sampling",
+      "status": "FAILURE"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "tools-call-simple-text": [
+    {
+      "id": "tools-call-simple-text",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "tools-call-with-logging": [
+    {
+      "id": "tools-call-with-logging",
+      "status": "FAILURE"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "tools-call-with-progress": [
+    {
+      "id": "tools-call-with-progress",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "tools-list": [
+    {
+      "id": "tools-list",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "tools-name-format",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ]
+}

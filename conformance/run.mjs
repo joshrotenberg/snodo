@@ -11,18 +11,41 @@ import { renderMarkdown, summarize } from "./report.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const project = path.resolve(here, "..");
-const revision = "2026-07-28";
-// The server leg runs the official scenarios against the combined fixture; the
-// client leg runs Snodo.Client, through client.exs, against the runner's own
-// scenario servers. Each leg has its own reviewed baseline.
-const legs = {
-  server: { required: 37, baseline: "expected-failures.json", artifact: /^server-(.+)-\d{4}-\d{2}-\d{2}T/ },
-  client: { required: 32, baseline: "expected-failures-client.json", artifact: /^(.+)-\d{4}-\d{2}-\d{2}T/ },
+// Vendored requirement sets, pinned by hash. 2025-11-25 is the upstream
+// reconstruction from alpha.10 (see its header), vendored from alpha.11.
+const requirementSets = {
+  "2026-07-28": { sha: "ae2f4f6210fd729e2e318edd5bbfa31a43cee0bc608e48052fa26dbf1d939b57",
+    required: { server: 37, client: 32 }, anchor: "@modelcontextprotocol/conformance@0.2.0-alpha.10",
+    commit: "c321dd32035556e6769d3724a8ee97d87c3faaac" },
+  "2025-11-25": { sha: "f33a304dfa2cbd999c24026a3453a64f377bba0c8aa80addadaf05862d212371",
+    required: { server: 30, client: 18 },
+    anchor: "@modelcontextprotocol/conformance@0.2.0-alpha.10 (reconstructed)", commit: null },
 };
-const leg = process.argv[2] ?? "server";
-assert.ok(Object.hasOwn(legs, leg), `unknown leg: ${leg}`);
-const spec = legs[leg];
-const sha = "ae2f4f6210fd729e2e318edd5bbfa31a43cee0bc608e48052fa26dbf1d939b57";
+// A lane runs one leg of the official runner against one requirement set and
+// keeps its own reviewed baseline. Server lanes start fixture_server.exs with
+// a runtime profile and a transport; the client lane runs Snodo.Client through
+// client.exs against the runner's own scenario servers. 2025-06-18 has no
+// frozen requirement set, so its lane runs the runner's active suite for that
+// version and every scenario is unscored. The Plug lane shares the native
+// server baseline, so any difference between the two listeners fails a gate.
+const lanes = {
+  server: { leg: "server", revision: "2026-07-28", baseline: "expected-failures.json",
+    fixture: { profile: "latest", transport: "native" } },
+  client: { leg: "client", revision: "2026-07-28", baseline: "expected-failures-client.json" },
+  "server-plug": { leg: "server", revision: "2026-07-28", baseline: "expected-failures.json",
+    fixture: { profile: "latest", transport: "plug" } },
+  "server-2025-11-25": { leg: "server", revision: "2025-11-25",
+    baseline: "expected-failures-2025-11-25.json", fixture: { profile: "legacy", transport: "native" } },
+  "server-2025-06-18": { leg: "server", specVersion: "2025-06-18",
+    baseline: "expected-failures-2025-06-18.json", fixture: { profile: "legacy", transport: "native" } },
+};
+const laneName = process.argv[2] ?? "server";
+assert.ok(Object.hasOwn(lanes, laneName), `unknown lane: ${laneName}`);
+const lane = lanes[laneName];
+const { leg } = lane;
+const revision = lane.revision ?? lane.specVersion;
+const requirementSet = lane.revision ? requirementSets[lane.revision] : null;
+const artifact = leg === "server" ? /^server-(.+)-\d{4}-\d{2}-\d{2}T/ : /^(.+)-\d{4}-\d{2}-\d{2}T/;
 const pinned = "0.2.0-alpha.11";
 // MCP_CONFORMANCE_RUNNER points the scheduled canary at another runner build
 // (the alpha dist-tag or upstream main). The pinned lane never sets it.
@@ -30,28 +53,37 @@ const canary = process.env.MCP_CONFORMANCE_RUNNER !== undefined;
 const runnerPackage = path.resolve(process.env.MCP_CONFORMANCE_RUNNER ??
   path.join(here, "node_modules/@modelcontextprotocol/conformance"));
 const runnerVersion = JSON.parse(await readFile(path.join(runnerPackage, "package.json"))).version;
-const bytes = await readFile(path.join(here, `requirements/${revision}.yaml`));
-assert.equal(createHash("sha256").update(bytes).digest("hex"), sha, "vendored requirements changed");
-const runnerBytes = await readFile(path.join(runnerPackage, `requirements/${revision}.yaml`));
-if (!canary) {
-  assert.deepEqual(runnerBytes, bytes, "installed runner requirements differ from frozen inventory");
-  assert.equal(runnerVersion, pinned);
+if (!canary) assert.equal(runnerVersion, pinned);
+let manifest = null;
+let requirementsSha256 = null;
+if (requirementSet) {
+  const bytes = await readFile(path.join(here, `requirements/${revision}.yaml`));
+  assert.equal(createHash("sha256").update(bytes).digest("hex"), requirementSet.sha,
+    "vendored requirements changed");
+  const runnerBytes = await readFile(path.join(runnerPackage, `requirements/${revision}.yaml`));
+  if (!canary) {
+    assert.deepEqual(runnerBytes, bytes, "installed runner requirements differ from frozen inventory");
+  }
+  // A canary scores against the manifest its runner ships, so scenarios added
+  // after the pin show up as missing from the baseline rather than crashing.
+  const used = canary ? runnerBytes : bytes;
+  manifest = parse(used.toString());
+  requirementsSha256 = createHash("sha256").update(used).digest("hex");
+  assert.equal(manifest[leg].length, requirementSet.required[leg]);
 }
-// A canary scores against the manifest its runner ships, so scenarios added
-// after the pin show up as missing from the baseline rather than crashing.
-const manifest = parse((canary ? runnerBytes : bytes).toString());
-assert.equal(manifest[leg].length, spec.required);
-const output = path.resolve(process.env.MCP_CONFORMANCE_OUTPUT ?? path.join(project, "tmp/conformance", leg));
+const output = path.resolve(process.env.MCP_CONFORMANCE_OUTPUT ??
+  path.join(project, "tmp/conformance", laneName));
 // Each run gets its own directory: stale files can never supply missing results.
 const runDir = path.join(output, new Date().toISOString().replaceAll(":", "-"));
 await mkdir(runDir, { recursive: true });
 const erlFlags = process.env.ERL_FLAGS ?? "+S 4:4";
 // Only the server leg needs the fixture; the client leg's runner starts one
 // scenario server per scenario and runs the client command against it.
-const child = leg === "server"
-  ? spawn("mix", ["run", "--no-compile", "--no-deps-check", "../../conformance/fixture_server.exs"], {
-    cwd: path.join(project, "extensions/tasks"), stdio: ["pipe", "pipe", "pipe"],
-    env: { ...process.env, MIX_ENV: "dev", ERL_FLAGS: erlFlags, MCP_PORT: "0", MCP_CONFORMANCE_MANAGED: "1" },
+const child = lane.fixture
+  ? spawn("mix", ["run", "--no-compile", "--no-deps-check", "../fixture_server.exs"], {
+    cwd: path.join(here, "fixture"), stdio: ["pipe", "pipe", "pipe"],
+    env: { ...process.env, MIX_ENV: "dev", ERL_FLAGS: erlFlags, MCP_PORT: "0", MCP_CONFORMANCE_MANAGED: "1",
+      MCP_FIXTURE_PROFILE: lane.fixture.profile, MCP_FIXTURE_TRANSPORT: lane.fixture.transport },
   })
   : null;
 const exited = child && once(child, "exit");
@@ -87,8 +119,11 @@ try {
   } else {
     args = ["client", "--command", "mix run --no-compile --no-deps-check conformance/client.exs"];
   }
+  const selection = requirementSet
+    ? ["--requirements", revision]
+    : ["--spec-version", revision, "--suite", "active"];
   runner = spawn(process.execPath, [path.join(runnerPackage, "dist/index.js"), ...args,
-    "--requirements", revision, "--output-dir", runDir],
+    ...selection, "--output-dir", runDir],
   { cwd: leg === "server" ? here : project, stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, MIX_ENV: "dev", ERL_FLAGS: erlFlags } });
   runnerExit = once(runner, "exit");
@@ -106,20 +141,26 @@ try {
   for (const entry of await readdir(runDir, { recursive: true })) {
     if (path.basename(entry) !== "checks.json") continue;
     const directory = path.dirname(entry).split(path.sep).join("/");
-    const match = spec.artifact.exec(directory);
+    const match = artifact.exec(directory);
     assert.ok(match, `unexpected artifact directory: ${directory}`);
     assert.ok(!Object.hasOwn(scenarios, match[1]), `duplicate scenario: ${match[1]}`);
     scenarios[match[1]] = JSON.parse(await readFile(path.join(runDir, entry)));
   }
-  const baseline = JSON.parse(await readFile(path.join(here, spec.baseline)));
+  const baseline = JSON.parse(await readFile(path.join(here, lane.baseline)));
+  // Without a frozen set, every scenario the runner ran is unscored.
+  const scored = manifest ?? { [leg]: [], not_scored: Object.keys(scenarios).sort().map((scenario) =>
+    ({ scenario, leg, reason: `no frozen requirement set for ${revision}` })) };
   report = {
-    schemaVersion: 2, leg, runDate: new Date().toISOString().slice(0, 10), protocolVersion: revision,
-    runner: `@modelcontextprotocol/conformance@${runnerVersion}`, runnerExitCode: code,
-    requirements: { attemptedScenarios: manifest[leg].length, requiredScenarios: spec.required,
-      requirementsAnchor: "@modelcontextprotocol/conformance@0.2.0-alpha.10",
-      requirementsCommit: "c321dd32035556e6769d3724a8ee97d87c3faaac",
-      requirementsSha256: canary ? createHash("sha256").update(runnerBytes).digest("hex") : sha },
-    ...summarize(manifest, scenarios, baseline, leg),
+    schemaVersion: 2, leg, lane: laneName, runDate: new Date().toISOString().slice(0, 10),
+    protocolVersion: revision, runner: `@modelcontextprotocol/conformance@${runnerVersion}`,
+    runnerExitCode: code,
+    requirements: requirementSet
+      ? { attemptedScenarios: manifest[leg].length, requiredScenarios: requirementSet.required[leg],
+        requirementsAnchor: requirementSet.anchor, requirementsCommit: requirementSet.commit,
+        requirementsSha256 }
+      : { attemptedScenarios: Object.keys(scenarios).length, requiredScenarios: 0,
+        selection: `--spec-version ${revision} --suite active` },
+    ...summarize(scored, scenarios, baseline, leg),
   };
   await writeFile(path.join(runDir, "summary.json"), `${JSON.stringify(report, null, 2)}\n`);
   const markdown = renderMarkdown(report);
