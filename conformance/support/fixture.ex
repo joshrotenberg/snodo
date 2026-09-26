@@ -1,5 +1,6 @@
 Code.require_file("mrtr.ex", __DIR__)
 Code.require_file("progress.ex", __DIR__)
+Code.require_file("stateless.ex", __DIR__)
 
 defmodule SnodoTest.Conformance.Tools.SimpleText do
   use Snodo.Tool,
@@ -323,6 +324,7 @@ defmodule SnodoTest.Conformance.Fixture do
   alias SnodoTest.Conformance.Resources.StaticBinary
   alias SnodoTest.Conformance.Resources.StaticText
   alias SnodoTest.Conformance.Resources.TemplateData
+  alias SnodoTest.Conformance.Stateless
   alias SnodoTest.Conformance.Tasks, as: TasksFixture
   alias SnodoTest.Conformance.Tools.AudioContent
   alias SnodoTest.Conformance.Tools.EmbeddedResource
@@ -343,7 +345,7 @@ defmodule SnodoTest.Conformance.Fixture do
            ErrorHandling,
            JSONSchema2020,
            ProgressTool
-         ] ++ TasksFixture.tools() ++ MRTRFixture.tools()
+         ] ++ TasksFixture.tools() ++ MRTRFixture.tools() ++ Stateless.tools()
 
   @resources [StaticText, StaticBinary, TemplateData] ++ MRTRFixture.resources()
   @prompts [Simple, WithArguments, WithEmbeddedResource, WithImage] ++ MRTRFixture.prompts()
@@ -367,8 +369,9 @@ defmodule SnodoTest.Conformance.Fixture do
 
     capabilities =
       TasksFixture.capabilities()
+      |> Map.update!("tools", &Map.put(&1, "listChanged", true))
       |> Map.put("completions", %{})
-      |> Map.put("prompts", %{})
+      |> Map.put("prompts", %{"listChanged" => true})
       |> Map.put("resources", %{})
 
     Runtime.new(
@@ -377,6 +380,7 @@ defmodule SnodoTest.Conformance.Fixture do
       extensions: [TasksFixture.extension()],
       server_info: %{"name" => "snodo-conformance", "version" => "0.1.0"},
       capabilities: capabilities,
+      subscription_source: Snodo.Subscription.Hub.source(Stateless.hub()),
       tools_cache: [ttl_ms: 0, scope: "private"],
       prompts_cache: [ttl_ms: 0, scope: "private"],
       resources_cache: [ttl_ms: 0, scope: "private"]

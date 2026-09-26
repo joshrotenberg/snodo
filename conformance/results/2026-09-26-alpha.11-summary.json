@@ -1,0 +1,301 @@
+{
+  "schemaVersion": 2,
+  "runDate": "2026-09-26",
+  "protocolVersion": "2026-07-28",
+  "runner": "@modelcontextprotocol/conformance@0.2.0-alpha.11",
+  "runnerExitCode": 1,
+  "requirements": {
+    "attemptedScenarios": 37,
+    "requiredScenarios": 37,
+    "requirementsAnchor": "@modelcontextprotocol/conformance@0.2.0-alpha.10",
+    "requirementsCommit": "c321dd32035556e6769d3724a8ee97d87c3faaac",
+    "requirementsSha256": "ae2f4f6210fd729e2e318edd5bbfa31a43cee0bc608e48052fa26dbf1d939b57"
+  },
+  "score": {
+    "status": "partial",
+    "basis": "whole required scenarios with semantic success and no FAILURE, WARNING, or SKIPPED checks",
+    "passedScenarios": 32,
+    "requiredScenarios": 37,
+    "passedScenarioIds": [
+      "completion-complete",
+      "tools-list",
+      "tools-call-simple-text",
+      "tools-call-image",
+      "tools-call-audio",
+      "tools-call-embedded-resource",
+      "tools-call-mixed-content",
+      "tools-call-error",
+      "tools-call-with-progress",
+      "server-sse-multiple-streams",
+      "resources-list",
+      "resources-read-text",
+      "resources-read-binary",
+      "resources-templates-read",
+      "sep-2164-resource-not-found",
+      "prompts-list",
+      "prompts-get-simple",
+      "prompts-get-with-args",
+      "prompts-get-embedded-resource",
+      "prompts-get-with-image",
+      "dns-rebinding-protection",
+      "caching",
+      "input-required-result-basic-elicitation",
+      "input-required-result-request-state",
+      "input-required-result-multi-round",
+      "input-required-result-missing-input-response",
+      "input-required-result-non-tool-request",
+      "input-required-result-result-type",
+      "input-required-result-unsupported-methods",
+      "input-required-result-tampered-state",
+      "input-required-result-ignore-extra-params",
+      "input-required-result-validate-input"
+    ]
+  },
+  "requiredCheckCounts": {
+    "success": 110,
+    "failure": 6,
+    "skipped": 0,
+    "warning": 0,
+    "info": 1
+  },
+  "rawRunnerNoFailure": {
+    "scenarios": 32,
+    "requiredScenarios": 37,
+    "scenarioIds": [
+      "completion-complete",
+      "tools-list",
+      "tools-call-simple-text",
+      "tools-call-image",
+      "tools-call-audio",
+      "tools-call-embedded-resource",
+      "tools-call-mixed-content",
+      "tools-call-error",
+      "tools-call-with-progress",
+      "server-sse-multiple-streams",
+      "resources-list",
+      "resources-read-text",
+      "resources-read-binary",
+      "resources-templates-read",
+      "sep-2164-resource-not-found",
+      "prompts-list",
+      "prompts-get-simple",
+      "prompts-get-with-args",
+      "prompts-get-embedded-resource",
+      "prompts-get-with-image",
+      "dns-rebinding-protection",
+      "caching",
+      "input-required-result-basic-elicitation",
+      "input-required-result-request-state",
+      "input-required-result-multi-round",
+      "input-required-result-missing-input-response",
+      "input-required-result-non-tool-request",
+      "input-required-result-result-type",
+      "input-required-result-unsupported-methods",
+      "input-required-result-tampered-state",
+      "input-required-result-ignore-extra-params",
+      "input-required-result-validate-input"
+    ],
+    "excludedFromScore": []
+  },
+  "notScored": [
+    {
+      "scenario": "tasks-lifecycle",
+      "leg": "server",
+      "reason": "extension",
+      "note": "io.modelcontextprotocol/tasks (SEP-2663); pending against the reference fixture, run for visibility",
+      "checks": {
+        "success": 8,
+        "failure": 1,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "tasks-capability-negotiation",
+      "leg": "server",
+      "reason": "extension",
+      "note": "io.modelcontextprotocol/tasks (SEP-2663); pending against the reference fixture, run for visibility",
+      "checks": {
+        "success": 4,
+        "failure": 1,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "tasks-wire-fields",
+      "leg": "server",
+      "reason": "extension",
+      "note": "io.modelcontextprotocol/tasks (SEP-2663); pending against the reference fixture, run for visibility",
+      "checks": {
+        "success": 3,
+        "failure": 1,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "tasks-request-state-removal",
+      "leg": "server",
+      "reason": "extension",
+      "note": "io.modelcontextprotocol/tasks (SEP-2663); pending against the reference fixture, run for visibility",
+      "checks": {
+        "success": 2,
+        "failure": 1,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "tasks-mrtr-input",
+      "leg": "server",
+      "reason": "extension",
+      "note": "io.modelcontextprotocol/tasks (SEP-2663); pending against the reference fixture, run for visibility",
+      "checks": {
+        "success": 3,
+        "failure": 1,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "tasks-request-headers",
+      "leg": "server",
+      "reason": "extension",
+      "note": "io.modelcontextprotocol/tasks (SEP-2663); pending against the reference fixture, run for visibility",
+      "checks": {
+        "success": 4,
+        "failure": 1,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "tasks-dispatch-and-envelope",
+      "leg": "server",
+      "reason": "extension",
+      "note": "io.modelcontextprotocol/tasks (SEP-2663); pending against the reference fixture, run for visibility",
+      "checks": {
+        "success": 8,
+        "failure": 1,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "tasks-status-notifications",
+      "leg": "server",
+      "reason": "extension",
+      "note": "io.modelcontextprotocol/tasks (SEP-2663); pending against the reference fixture, run for visibility",
+      "checks": {
+        "success": 0,
+        "failure": 0,
+        "skipped": 1,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "tasks-required-task-error",
+      "leg": "server",
+      "reason": "extension",
+      "note": "io.modelcontextprotocol/tasks (SEP-2663); pending against the reference fixture, run for visibility",
+      "checks": {
+        "success": 3,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "tasks-mrtr-composition",
+      "leg": "server",
+      "reason": "extension",
+      "note": "io.modelcontextprotocol/tasks (SEP-2663); pending against the reference fixture, run for visibility",
+      "checks": {
+        "success": 1,
+        "failure": 1,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "json-schema-2020-12",
+      "leg": "server",
+      "reason": "pending",
+      "note": "the reference fixture cannot pass it yet; the implementation under test might",
+      "checks": {
+        "success": 8,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "http-header-validation",
+      "leg": "server",
+      "reason": "pending",
+      "note": "SEP-2243; pending against the reference fixture",
+      "checks": {
+        "success": 14,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "http-custom-header-server-validation",
+      "leg": "server",
+      "reason": "pending",
+      "note": "SEP-2243; pending against the reference fixture",
+      "checks": {
+        "success": 1,
+        "failure": 5,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    }
+  ],
+  "failures": [
+    "server-stateless:sep-2575-server-rejects-undeclared-capability",
+    "server-stateless:sep-2575-missing-capability-http-400",
+    "input-required-result-basic-sampling:sep-2322-sampling-incomplete",
+    "input-required-result-basic-list-roots:sep-2322-list-roots-incomplete",
+    "input-required-result-multiple-input-requests:sep-2322-multiple-inputs-incomplete",
+    "input-required-result-capability-check:sep-2322-respect-client-capabilities",
+    "tasks-lifecycle:wire-schema-valid",
+    "tasks-capability-negotiation:wire-schema-valid",
+    "tasks-wire-fields:wire-schema-valid",
+    "tasks-request-state-removal:wire-schema-valid",
+    "tasks-mrtr-input:wire-schema-valid",
+    "tasks-request-headers:wire-schema-valid",
+    "tasks-dispatch-and-envelope:wire-schema-valid",
+    "tasks-mrtr-composition:wire-schema-valid",
+    "http-custom-header-server-validation:sep-2243-server-no-xmcp-tool",
+    "http-custom-header-server-validation:sep-2243-server-decode-base64",
+    "http-custom-header-server-validation:sep-2243-server-validate-param-match",
+    "http-custom-header-server-validation:sep-2243-server-reject-invalid-param-chars",
+    "http-custom-header-server-validation:sep-2243-server-reject-param-mismatch"
+  ],
+  "regression": {
+    "passed": true,
+    "unexpectedFailures": [],
+    "staleFailures": [],
+    "unexpectedExclusions": [],
+    "staleExclusions": [],
+    "checkStatusDrift": [],
+    "note": "A passing regression gate does not convert expected failures into conformance passes."
+  }
+}

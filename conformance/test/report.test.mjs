@@ -138,7 +138,7 @@ test("the client leg scores only its own required and unscored scenarios", () =>
   assert.throws(() => summarize(legs, results, baseline, "authorization"));
 });
 
-async function frozenEvidence(results = "2026-09-14-alpha.11-checks.json", baseline = "expected-failures.json") {
+async function frozenEvidence(results = "2026-09-26-alpha.11-checks.json", baseline = "expected-failures.json") {
   const json = async (file) => JSON.parse(await readFile(new URL(file, import.meta.url), "utf8"));
   return {
     manifest: parse(await readFile(new URL("../requirements/2026-07-28.yaml", import.meta.url), "utf8")),

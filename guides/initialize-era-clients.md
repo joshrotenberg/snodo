@@ -24,7 +24,11 @@ that need separate request-id namespaces.
 The shared router handles tools, prompts, resource lists/templates/reads,
 completion and pagination. Legacy wire shaping omits 2026 resultType, cache and
 server metadata fields. Legacy structured output and output schemas require an
-object. Execution errors retain readable content with isError; protocol errors
+object. A tool whose input or output schema is not an object is left out of
+`tools/list` on these dialects, and a call to it returns -32602 before it runs;
+`Snodo.Server.Runtime.new/1` logs a warning naming such tools when a legacy
+dialect is enabled. The 2026-07-28 dialect still lists and calls them.
+Execution errors retain readable content with isError; protocol errors
 remain JSON-RPC errors. Request-bound progress can use SSE; cancellation retains
 the executor's authenticated isolation. Unsupported Tasks, continuation inputs,
 subscriptions, server requests and legacy stdio are not advertised. No Tasks or

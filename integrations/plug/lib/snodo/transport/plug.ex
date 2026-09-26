@@ -13,9 +13,13 @@ defmodule Snodo.Transport.Plug do
   value; applications must distinguish authenticated client instances in this
   scope. Anonymous requests cannot cancel each other by guessing request IDs.
 
-  Portable Plug APIs detect streaming disconnects on writes, not while an ordinary
-  handler is silent. A finite total `:request_timeout` bounds pending work and
-  queue wait. See the package README for this important lifecycle limitation.
+  Portable Plug APIs only reveal a disconnect when a write fails. So that a
+  client disconnect cancels a silent handler, as the 2026-07-28 cancellation
+  rules require, a request still running after `:disconnect_probe_ms` (default
+  5,000) turns its response into an event stream and sends a keepalive comment
+  every interval; a failed write cancels the work, and the result arrives as
+  the stream's final event. `:infinity` keeps plain JSON responses. A finite
+  total `:request_timeout` bounds pending work and queue wait.
   """
 
   @behaviour Plug
@@ -59,6 +63,7 @@ defmodule Snodo.Transport.Plug do
       max_body_bytes: positive_option!(opts, :max_body_bytes, 2_000_000),
       read_timeout: positive_option!(opts, :read_timeout, 5_000),
       subscription_keepalive_ms: positive_option!(opts, :subscription_keepalive_ms, 15_000),
+      disconnect_probe_ms: probe_option!(opts),
       adapter_opts: Keyword.take(opts, [:allowed_origin_hosts, :allowed_hosts])
     }
   end
@@ -263,10 +268,17 @@ defmodule Snodo.Transport.Plug do
   defp wait_time(state, opts) do
     remaining = max(state.deadline - System.monotonic_time(:millisecond), 0)
 
-    if state.conn.state == :chunked,
-      do: min(remaining, opts.subscription_keepalive_ms),
-      else: remaining
+    cond do
+      state.conn.state == :chunked -> min(remaining, keepalive_interval(opts))
+      opts.disconnect_probe_ms == :infinity -> remaining
+      true -> min(remaining, opts.disconnect_probe_ms)
+    end
   end
+
+  defp keepalive_interval(%{disconnect_probe_ms: :infinity} = opts),
+    do: opts.subscription_keepalive_ms
+
+  defp keepalive_interval(opts), do: min(opts.subscription_keepalive_ms, opts.disconnect_probe_ms)
 
   defp tick(state, opts, prepared) do
     if System.monotonic_time(:millisecond) >= state.deadline do
@@ -274,9 +286,13 @@ defmodule Snodo.Transport.Plug do
       cancel(state.executor, state.key, :request_timeout)
       send_response(state.conn, reject(opts, prepared, 504, "Request execution timed out"), opts)
     else
-      case Conn.chunk(state.conn, ": keepalive\r\n\r\n") do
+      # A silent request becomes an event stream so a write can reveal a
+      # client that has gone away.
+      conn = progress_connection(state.conn)
+
+      case Conn.chunk(conn, ": keepalive\r\n\r\n") do
         {:ok, conn} -> await_message(%{state | conn: conn}, opts, prepared)
-        {:error, _reason} -> disconnect(state)
+        {:error, _reason} -> disconnect(%{state | conn: conn})
       end
     end
   end
@@ -352,6 +368,19 @@ defmodule Snodo.Transport.Plug do
     case Keyword.get(opts, key, default) do
       value when is_integer(value) and value > 0 -> value
       _invalid -> raise ArgumentError, "#{inspect(key)} must be a positive integer"
+    end
+  end
+
+  defp probe_option!(opts) do
+    case Keyword.get(opts, :disconnect_probe_ms, 5_000) do
+      :infinity ->
+        :infinity
+
+      value when is_integer(value) and value > 0 ->
+        value
+
+      _invalid ->
+        raise ArgumentError, ":disconnect_probe_ms must be a positive integer or :infinity"
     end
   end
 

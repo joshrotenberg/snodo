@@ -1,6 +1,8 @@
 defmodule Snodo.LegacyProtocolAcceptanceTest do
   use ExUnit.Case, async: true
 
+  import ExUnit.CaptureLog
+
   alias Snodo.Protocol.{V2025_06_18, V2025_11_25, V2026_07_28}
   alias Snodo.{Result, Router, Server}
   alias Snodo.Server.Runtime
@@ -211,11 +213,6 @@ defmodule Snodo.LegacyProtocolAcceptanceTest do
                  "arguments" => %{"value" => []}
                })
 
-      router = Router.new() |> Router.register_tool(ComplexSchema)
-
-      assert {:ok, %{"error" => %{"code" => -32_603}}} =
-               dispatch(runtime(router: router), @version, "tools/list")
-
       for meta <- [[], %{"progressToken" => []}] do
         assert {:ok, %{"error" => %{"code" => -32_602}}} =
                  dispatch(runtime(), @version, "tools/list", %{"_meta" => meta})
@@ -228,6 +225,31 @@ defmodule Snodo.LegacyProtocolAcceptanceTest do
       assert {:ok, %{"result" => %{}}} = dispatch(runtime(), @version, "ping")
       initialized = request("notifications/initialized") |> Map.delete("id")
       assert {:ok, nil} = Server.dispatch(runtime(), initialized, transport(@version))
+    end
+
+    test "#{version} hides tools without object schemas and refuses calls to them" do
+      router = Router.new() |> Router.register_tool(Echo) |> Router.register_tool(ComplexSchema)
+
+      {runtime, log} = with_log(fn -> runtime(router: router) end)
+      assert log =~ "hidden from initialize-era clients (2025-11-25, 2025-06-18): complex_schema"
+
+      assert {:ok, %{"result" => %{"tools" => [%{"name" => "echo"}]}}} =
+               dispatch(runtime, @version, "tools/list")
+
+      assert {:ok, %{"error" => %{"code" => -32_602, "message" => message}}} =
+               dispatch(runtime, @version, "tools/call", %{
+                 "name" => "complex_schema",
+                 "arguments" => %{}
+               })
+
+      assert message ==
+               "Tool complex_schema is not available on #{@version}: " <>
+                 "its input and output schemas must be JSON objects"
+
+      assert {:ok, %{"result" => %{"tools" => modern}}} =
+               Snodo.Test.dispatch(runtime, protocol: "2026-07-28", method: "tools/list")
+
+      assert Enum.map(modern, & &1["name"]) == ["complex_schema", "echo"]
     end
 
     test "#{version} list cursors preserve paging and reject cross-dialect reuse" do

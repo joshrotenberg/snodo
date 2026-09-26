@@ -87,7 +87,10 @@ children = [
 ]
 ```
 
-It supports the same JSON, progress SSE, and subscription SSE lifecycles. See
+It supports the same JSON, progress SSE, and subscription SSE lifecycles. Plug
+only reveals a disconnect when a write fails, so a request still running after
+`:disconnect_probe_ms` (default 5,000) switches to SSE and writes keepalive
+comments; a failed write cancels the work. See
 the [package README](https://github.com/joshrotenberg/snodo/blob/main/integrations/plug/README.md) and the
 [application stack](application-stack.md) for choosing between the native
 listener and Plug.
