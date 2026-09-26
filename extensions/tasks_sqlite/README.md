@@ -11,8 +11,14 @@ transactions, WAL behavior, foreign-key enforcement, and a database clock.
 
 ## Dependencies and Repo ownership
 
-Add this package and `ecto_sqlite3` to the host application, then configure and
-supervise the Repo normally:
+Add this package and `ecto_sqlite3` to the host application:
+
+```elixir
+{:snodo_tasks_sqlite, "~> 0.1.0"},
+{:ecto_sqlite3, "~> 0.24"}
+```
+
+Then configure and supervise the Repo normally:
 
 ```elixir
 defmodule MyApp.Repo do

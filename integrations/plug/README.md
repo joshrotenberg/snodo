@@ -12,9 +12,14 @@ mirrored headers, and extension dispatch remain in the core adapter.
 
 ## Application-owned startup
 
-Add `snodo_plug` (see [Packages](https://github.com/joshrotenberg/snodo#packages) for how to depend on it) and an HTTP
-server such as Bandit, `{:bandit, "~> 1.12.5"}`, to your application, then start
-both from your supervision tree:
+Add `snodo_plug` and an HTTP server such as Bandit to your application:
+
+```elixir
+{:snodo_plug, "~> 0.1.0"},
+{:bandit, "~> 1.12"}
+```
+
+Then start both from your supervision tree:
 
 ```elixir
 runtime = MyApp.MCPServer.runtime()

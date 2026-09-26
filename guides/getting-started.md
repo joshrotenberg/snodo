@@ -5,21 +5,20 @@ stdio and HTTP.
 
 ## Install
 
-`snodo` is not on Hex yet. Depend on the repository:
+Add `snodo` to your dependencies:
 
 ```elixir
 def deps do
   [
-    {:snodo, github: "joshrotenberg/snodo"}
+    {:snodo, "~> 0.1.0"}
   ]
 end
 ```
 
-For a Plug or Bandit application, depend on `snodo_plug` instead, which brings
-`snodo` with it:
+For a Plug or Bandit application, also add `snodo_plug`:
 
 ```elixir
-{:snodo_plug, github: "joshrotenberg/snodo", subdir: "integrations/plug"}
+{:snodo_plug, "~> 0.1.0"}
 ```
 
 Elixir 1.18 or later is required. The core has no runtime dependencies.

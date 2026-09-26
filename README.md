@@ -1,10 +1,17 @@
 # snodo
 
+[![Compatibility](https://github.com/joshrotenberg/snodo/actions/workflows/compatibility.yml/badge.svg)](https://github.com/joshrotenberg/snodo/actions/workflows/compatibility.yml)
+[![Protocol regression](https://github.com/joshrotenberg/snodo/actions/workflows/protocol.yml/badge.svg)](https://github.com/joshrotenberg/snodo/actions/workflows/protocol.yml)
+[![Hex.pm](https://img.shields.io/hexpm/v/snodo.svg)](https://hex.pm/packages/snodo)
+[![Docs](https://img.shields.io/badge/hexdocs-docs-purple.svg)](https://hexdocs.pm/snodo)
+![Elixir](https://img.shields.io/badge/Elixir-1.18%2B-blueviolet)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/joshrotenberg/snodo/blob/main/LICENSE)
+
 An Elixir library for building [Model Context Protocol](https://modelcontextprotocol.io)
 servers and clients. It speaks MCP `2026-07-28`, with opt-in support for
 initialize-era HTTP clients (`2025-11-25` and `2025-06-18`).
 
-`snodo` is pre-release and not yet published to Hex. The API may change.
+`snodo` is at 0.x: the API may change between minor versions until 1.0.
 
 - **Servers** from inline blocks or ordinary modules, served over stdio, a
   built-in Streamable HTTP listener, or Plug and Bandit.
@@ -18,24 +25,28 @@ initialize-era HTTP clients (`2025-11-25` and `2025-06-18`).
 
 ## Packages
 
-| Package | Path | Adds |
+| Package | Adds | Docs |
 |---|---|---|
-| `snodo` | `.` | Protocol core, router, server DSL, client, stdio and HTTP transports |
-| `snodo_plug` | `integrations/plug` | `Snodo.Transport.Plug` for Plug and Bandit applications |
-| `snodo_jsv` | `integrations/schema_jsv` | Full JSON Schema 2020-12 validation through JSV |
-| `snodo_tasks` | `extensions/tasks` | The `io.modelcontextprotocol/tasks` extension with an application-owned store and runner |
-| `snodo_tasks_postgres` | `extensions/tasks_postgres` | PostgreSQL store for Tasks |
-| `snodo_tasks_sqlite` | `extensions/tasks_sqlite` | SQLite store for Tasks |
+| [`snodo`](https://hex.pm/packages/snodo) | Protocol core, router, server DSL, client, stdio and HTTP transports | [HexDocs](https://hexdocs.pm/snodo) |
+| [`snodo_plug`](https://hex.pm/packages/snodo_plug) | `Snodo.Transport.Plug` for Plug and Bandit applications | [HexDocs](https://hexdocs.pm/snodo_plug) |
+| [`snodo_jsv`](https://hex.pm/packages/snodo_jsv) | Full JSON Schema 2020-12 validation through JSV | [HexDocs](https://hexdocs.pm/snodo_jsv) |
+| [`snodo_tasks`](https://hex.pm/packages/snodo_tasks) | The `io.modelcontextprotocol/tasks` extension with an application-owned store and runner | [HexDocs](https://hexdocs.pm/snodo_tasks) |
+| [`snodo_tasks_postgres`](https://hex.pm/packages/snodo_tasks_postgres) | PostgreSQL store for Tasks | [HexDocs](https://hexdocs.pm/snodo_tasks_postgres) |
+| [`snodo_tasks_sqlite`](https://hex.pm/packages/snodo_tasks_sqlite) | SQLite store for Tasks | [HexDocs](https://hexdocs.pm/snodo_tasks_sqlite) |
 
-Until the packages are published, depend on the repository. `snodo_plug`
-brings `snodo` with it:
+Add the packages you need to `mix.exs`. Each sibling brings `snodo` with it:
 
 ```elixir
-{:snodo, github: "joshrotenberg/snodo"}
-{:snodo_plug, github: "joshrotenberg/snodo", subdir: "integrations/plug"}
+def deps do
+  [
+    {:snodo, "~> 0.1.0"},
+    {:snodo_plug, "~> 0.1.0"}
+  ]
+end
 ```
 
-Elixir 1.18 or later is required.
+Elixir 1.18 or later is required. The sibling packages live in this repository
+under `integrations/` and `extensions/`.
 
 ## Quick start
 
@@ -144,7 +155,9 @@ mix snodo.contract   # the protocol contract inventory
 ```
 
 Conformance and interop checks against the official TypeScript client live in
-`conformance/` and `interop/`, and run in CI.
+`conformance/` and `interop/`, and run in CI. Releases are made with
+release-please; see
+[RELEASING.md](https://github.com/joshrotenberg/snodo/blob/main/RELEASING.md).
 
 ## License
 

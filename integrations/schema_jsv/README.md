@@ -8,8 +8,13 @@ silently change any server's validation policy.
 
 ## Use from an application
 
-Add `snodo_jsv` next to `snodo` (see [Packages](https://github.com/joshrotenberg/snodo#packages) for how to depend on
-them), then select the backend on the server:
+Add `snodo_jsv` next to `snodo`:
+
+```elixir
+{:snodo_jsv, "~> 0.1.0"}
+```
+
+Then select the backend on the server:
 
 ```elixir
 defmodule MyApp.MCPServer do
