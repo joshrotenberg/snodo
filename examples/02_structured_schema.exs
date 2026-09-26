@@ -216,25 +216,25 @@ defmodule Examples.StructuredSchema.Runner do
     }
   end
 
+  # Invalid arguments are a tool execution error the model can read and
+  # correct, not a JSON-RPC error.
   defp expected_invalid do
-    %{
-      "jsonrpc" => "2.0",
-      "id" => "invalid",
-      "error" => %{
-        "code" => -32_602,
-        "message" => "Tool arguments failed schema validation"
-      }
-    }
+    tool_error("invalid", "Tool arguments failed schema validation")
   end
 
   defp expected_missing do
+    tool_error("missing", "Missing required arguments: labels")
+  end
+
+  defp tool_error(id, message) do
     %{
       "jsonrpc" => "2.0",
-      "id" => "missing",
-      "error" => %{
-        "code" => -32_602,
-        "message" => "Missing required tool arguments",
-        "data" => %{"missing" => ["labels"]}
+      "id" => id,
+      "result" => %{
+        "resultType" => "complete",
+        "content" => [%{"type" => "text", "text" => message}],
+        "isError" => true,
+        "_meta" => @server_metadata
       }
     }
   end

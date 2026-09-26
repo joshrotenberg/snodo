@@ -23,8 +23,9 @@ defmodule Snodo.Schema.Validator.Basic do
   a useful baseline while retaining schemas that require a complete backend.
 
   Validation failures return `Snodo.Schema.Validator.Basic.Error` with a JSON
-  path and the keyword that rejected the value. The MCP router deliberately
-  keeps these details out of public invalid-params responses.
+  path and the keyword that rejected the value. The router puts the path and
+  message, which never quote the value, into the tool's `isError` result so a
+  model can correct its call.
   """
 
   @behaviour Snodo.Schema.Validator

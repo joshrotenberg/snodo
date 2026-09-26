@@ -30,7 +30,7 @@ defmodule Snodo.Schema.Validator.JSV.RouterIntegrationTest do
     response =
       request("tools/call", %{"name" => "echo", "arguments" => %{"count" => "private value"}})
 
-    assert response["error"]["code"] == -32_602
+    assert %{"isError" => true, "content" => [%{"type" => "text"}]} = response["result"]
     refute Process.get(:jsv_echo_arguments)
     refute inspect(response) =~ "private value"
   end
@@ -65,7 +65,7 @@ defmodule Snodo.Schema.Validator.JSV.RouterIntegrationTest do
                schema_validator: Validator
              )
 
-    assert {:error, %Error{code: -32_602}} =
+    assert {:ok, %Result{kind: :error, error: %Error{code: -32_602}}} =
              Router.dispatch(
                router,
                {:tools_call, "echo"},
