@@ -123,9 +123,11 @@ status-notification check skipped, and eight generic wire-schema failures.
 Those failures validate the extension-defined flat `CreateTaskResult` against
 the core `CallToolResult`, which requires `content`; they are not erased.
 
-The pending JSON Schema and standard HTTP-header probes pass 8/8 and 14/14,
-respectively. Five pending custom-header checks remain unexercised failures.
-These results do not establish general complete schema validation.
+The pending JSON Schema, standard HTTP-header, and custom-header server
+validation probes pass 8/8, 14/14, and 10/10 checks. The custom-header scenario
+calls the fixture's `custom_header_region` tool, whose `region` argument carries
+`x-mcp-header`. These results do not establish general complete schema
+validation.
 
 ## Client leg
 

@@ -55,24 +55,40 @@
   ],
   "http-custom-header-server-validation": [
     {
-      "id": "sep-2243-server-no-xmcp-tool",
-      "status": "FAILURE"
-    },
-    {
       "id": "sep-2243-server-decode-base64",
-      "status": "FAILURE"
-    },
-    {
-      "id": "sep-2243-server-validate-param-match",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-server-reject-invalid-param-chars",
-      "status": "FAILURE"
+      "status": "SUCCESS"
     },
     {
       "id": "sep-2243-server-reject-param-mismatch",
-      "status": "FAILURE"
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-server-reject-invalid-param-chars",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-server-reject-param-mismatch",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-server-validate-param-match",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-server-validate-param-match",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-server-validate-param-match",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-server-reject-param-mismatch",
+      "status": "SUCCESS"
     },
     {
       "id": "wire-schema-valid",

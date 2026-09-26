@@ -248,9 +248,9 @@ failing scenarios all depend on the deprecated sampling and roots features.
 
 The required checks total 110 `SUCCESS`, 6 `FAILURE`, 0 `SKIPPED`, 0 `WARNING`,
 and 1 `INFO`. The subscription checks in `server-stateless` run against a
-fixture subscription hub. Two pending, not-scored scenarios pass completely:
-`json-schema-2020-12` (8/8) and `http-header-validation` (14/14). The remaining
-custom-header pending failure stays visible in the checked-in report. The exact
+fixture subscription hub. Three pending, not-scored scenarios pass completely:
+`json-schema-2020-12` (8/8), `http-header-validation` (14/14), and
+`http-custom-header-server-validation` (10/10). The exact
 pass list, raw no-failure list, and exclusion reasons are checked in as both
 [JSON](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-09-26-alpha.11-summary.json) and
 [Markdown](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-09-26-alpha.11-summary.md), with
