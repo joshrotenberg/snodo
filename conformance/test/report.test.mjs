@@ -124,12 +124,26 @@ test("missing inventory cannot silently opt out and malformed inventory is rejec
   }
 });
 
-async function frozenEvidence() {
+test("the client leg scores only its own required and unscored scenarios", () => {
+  const legs = { server: ["one"], client: ["call"],
+    not_scored: [{ scenario: "optional", leg: "server", reason: "extension" },
+      { scenario: "auth/optional", leg: "client", reason: "extension" }] };
+  const results = { call: [check("behavior", "SUCCESS")], "auth/optional": [check("token", "FAILURE")] };
+  const baseline = baselineFor(results, { failures: [{ key: "auth/optional:token", reason: "no OAuth" }] });
+  const report = summarize(legs, results, baseline, "client");
+  assert.equal(report.score.requiredScenarios, 1);
+  assert.equal(report.score.passedScenarios, 1);
+  assert.equal(report.regression.passed, true);
+  assert.throws(() => summarize(legs, results, baseline, "server"));
+  assert.throws(() => summarize(legs, results, baseline, "authorization"));
+});
+
+async function frozenEvidence(results = "2026-09-14-alpha.11-checks.json", baseline = "expected-failures.json") {
   const json = async (file) => JSON.parse(await readFile(new URL(file, import.meta.url), "utf8"));
   return {
     manifest: parse(await readFile(new URL("../requirements/2026-07-28.yaml", import.meta.url), "utf8")),
-    results: await json("../results/2026-09-14-alpha.11-checks.json"),
-    baseline: await json("../expected-failures.json"),
+    results: await json(`../results/${results}`),
+    baseline: await json(`../${baseline}`),
   };
 }
 
@@ -153,4 +167,22 @@ test("the Tasks lifecycle success-to-skipped regression is caught despite its ex
   assert.deepEqual(report.regression.unexpectedFailures, []);
   assert.equal(report.regression.checkStatusDrift.length, 8);
   assert.equal(report.score.passedScenarios, 32);
+});
+
+test("the frozen client check inventory passes without waiving its partial score", async () => {
+  const evidence = await frozenEvidence("2026-09-26-client-alpha.11-checks.json", "expected-failures-client.json");
+  assert.equal(Object.keys(evidence.baseline.checkInventory).length, 39);
+  const report = summarize(evidence.manifest, evidence.results, evidence.baseline, "client");
+  assert.equal(report.regression.passed, true);
+  assert.deepEqual(report.regression.checkStatusDrift, []);
+  assert.equal(report.score.passedScenarios, 4);
+  assert.equal(report.score.status, "partial");
+});
+
+test("a client that starts sending Mcp-Param headers must update the client baseline", async () => {
+  const evidence = await frozenEvidence("2026-09-26-client-alpha.11-checks.json", "expected-failures-client.json");
+  for (const check of evidence.results["http-custom-headers"]) check.status = "SUCCESS";
+  const report = summarize(evidence.manifest, evidence.results, evidence.baseline, "client");
+  assert.equal(report.regression.passed, false);
+  assert.equal(report.regression.staleFailures.length, 15);
 });

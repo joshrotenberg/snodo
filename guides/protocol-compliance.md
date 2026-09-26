@@ -255,6 +255,14 @@ pass list, raw no-failure list, and exclusion reasons are checked in as both
 [per-check outcomes](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-09-14-alpha.11-checks.json).
 The August 25 summaries are retained as historical evidence, not current scores.
 
+The runner's client leg measures `Snodo.Client` separately, through a harness
+that drives it against each scenario server. The 2026-09-26 run passes 4 of 32
+required client scenarios. 25 of the 32 cover OAuth, which the client does not
+implement, and one of the four passes (`auth/resource-mismatch`) only because
+the harness never starts authorization. See the
+[client leg notes](https://github.com/joshrotenberg/snodo/blob/main/conformance/README.md#client-leg)
+for the remaining gaps.
+
 The frozen `2026-07-28` requirement manifest contains 37 scored server
 scenarios. The manifest declares `conformance@0.2.0-alpha.10` as its historical
 anchor, but was added retrospectively and first shipped with the alpha.11

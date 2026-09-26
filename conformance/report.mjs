@@ -4,9 +4,11 @@ const statuses = ["SUCCESS", "FAILURE", "SKIPPED", "WARNING", "INFO"];
 
 // Keep the official result, fixture coverage, and CI regression policy distinct.
 // A schema-only success or warning from a missing fixture is not an exercised pass.
-export function summarize(manifest, scenarios, baseline = { failures: [], exclusions: [], checkInventory: {} }) {
-  const required = manifest.server;
-  const unscored = manifest.not_scored.filter((entry) => entry.leg === "server");
+export function summarize(manifest, scenarios, baseline = { failures: [], exclusions: [], checkInventory: {} },
+  leg = "server") {
+  assert.ok(["server", "client"].includes(leg), `unknown leg: ${leg}`);
+  const required = manifest[leg];
+  const unscored = manifest.not_scored.filter((entry) => entry.leg === leg);
   const expected = [...required, ...unscored.map((entry) => entry.scenario)];
   assert.equal(new Set(expected).size, expected.length, "duplicate manifest scenario");
   assert.deepEqual(Object.keys(scenarios).sort(), [...expected].sort(), "missing/extra scenario results");
@@ -135,7 +137,7 @@ function validateBaseline(entries, kind) {
 export function renderMarkdown(report) {
   const { score, regression } = report;
   const list = (items) => items.length ? items.map((item) => `- \`${item}\``).join("\n") : "None.";
-  return `# Frozen ${report.protocolVersion} conformance run
+  return `# Frozen ${report.protocolVersion} ${report.leg ?? "server"} conformance run
 
 Run date: ${report.runDate}  
 Runner: \`${report.runner}\`  

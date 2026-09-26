@@ -2,7 +2,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node run.mjs",
+    "check": "node run.mjs server",
+    "check:client": "node run.mjs client",
     "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
