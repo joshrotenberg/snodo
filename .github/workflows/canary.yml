@@ -1,0 +1,88 @@
+name: Conformance canary
+
+# Runs the conformance legs against runner builds newer than the pin, so
+# upstream changes show up before a deliberate bump. Informational: it never
+# fails the workflow, and its baseline differences go to the step summary.
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conformance-canary
+  cancel-in-progress: true
+
+jobs:
+  canary:
+    name: Canary against ${{ matrix.runner }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [alpha, upstream-main]
+    env:
+      MIX_ENV: dev
+      PINNED: 0.2.0-alpha.11
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.20"
+          otp-version: "29"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.21.0"
+          cache: npm
+          cache-dependency-path: conformance/package-lock.json
+      - name: Compile the client and the combined fixture
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+          mix compile
+          cd extensions/tasks
+          mix deps.get
+          mix compile
+      - name: Install report dependencies
+        working-directory: conformance
+        run: npm ci --ignore-scripts
+      - name: Install the alpha dist-tag
+        if: matrix.runner == 'alpha'
+        run: |
+          alpha=$(npm view @modelcontextprotocol/conformance dist-tags.alpha)
+          npm install --prefix "$RUNNER_TEMP/runner" --ignore-scripts "@modelcontextprotocol/conformance@$alpha"
+          echo "MCP_CONFORMANCE_RUNNER=$RUNNER_TEMP/runner/node_modules/@modelcontextprotocol/conformance" >> "$GITHUB_ENV"
+          if [ "$alpha" = "$PINNED" ]; then
+            echo "The alpha dist-tag is the pinned version, $PINNED." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "The alpha dist-tag is **$alpha**; the pinned version is $PINNED." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Build upstream main
+        if: matrix.runner == 'upstream-main'
+        run: |
+          git clone --depth 1 https://github.com/modelcontextprotocol/conformance "$RUNNER_TEMP/runner"
+          cd "$RUNNER_TEMP/runner"
+          npm ci
+          npm run build
+          echo "MCP_CONFORMANCE_RUNNER=$RUNNER_TEMP/runner" >> "$GITHUB_ENV"
+          echo "Upstream main is at $(git rev-parse --short HEAD)." >> "$GITHUB_STEP_SUMMARY"
+      - name: Server leg
+        working-directory: conformance
+        continue-on-error: true
+        run: npm run check
+      - name: Client leg
+        working-directory: conformance
+        continue-on-error: true
+        run: npm run check:client
+      - name: Preserve canary results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-canary-${{ matrix.runner }}
+          path: tmp/conformance/
+          if-no-files-found: warn
