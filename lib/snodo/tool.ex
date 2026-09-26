@@ -153,6 +153,7 @@ defmodule Snodo.Tool do
     output_schema = Module.get_attribute(env.module, :mcp_tool_output_schema)
     annotations = Module.get_attribute(env.module, :mcp_tool_annotations)
 
+    validate_compile_description!(env, description)
     validate_compile_input_schema!(env, input_schema)
     validate_compile_output_schema!(env, output_schema)
     validate_compile_annotations!(env, annotations)
@@ -224,6 +225,12 @@ defmodule Snodo.Tool do
     validate_tool_input_schema!(tool, tool.input_schema())
     validate_tool_output_schema!(tool, tool.output_schema())
     validate_tool_annotations!(tool, tool.annotations())
+  end
+
+  defp validate_compile_description!(env, description) do
+    unless is_nil(description) or is_binary(description) do
+      compile_error!(env, "MCP tool description must evaluate to a string or nil")
+    end
   end
 
   defp validate_compile_input_schema!(env, schema) do
