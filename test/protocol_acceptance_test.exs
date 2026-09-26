@@ -302,17 +302,18 @@ defmodule Snodo.ProtocolAcceptanceTest do
   test "applications can plug input and output JSON Schema validation" do
     input_runtime = TestFixtures.runtime(schema_validator: RejectingInputValidator)
 
-    assert {:ok, %{"error" => input_error}} =
+    assert {:ok, %{"result" => input_result}} =
              MCPTest.dispatch(input_runtime,
                protocol: "2026-07-28",
                method: "tools/call",
                params: %{"name" => "echo", "arguments" => %{"text" => "hello"}}
              )
 
-    assert input_error == %{
-             "code" => -32_602,
-             "message" => "Tool arguments failed schema validation"
-           }
+    assert input_result["isError"] == true
+
+    assert input_result["content"] == [
+             %{"type" => "text", "text" => "Tool arguments failed schema validation"}
+           ]
 
     output_runtime =
       TestFixtures.runtime(
@@ -333,24 +334,25 @@ defmodule Snodo.ProtocolAcceptanceTest do
            }
   end
 
-  test "a missing required tool argument is rejected without a schema validator" do
+  test "a missing required tool argument is a tool error without a schema validator" do
     # The advertised inputSchema is the contract. Enforcing it in the router
     # means the pass-through default cannot turn a client's omission into an
-    # internal fault raised by the handler's own pattern match.
+    # internal fault raised by the handler's own pattern match. The failure is
+    # a tool execution error the model can read and correct (SEP-1303).
     runtime = TestFixtures.runtime()
 
-    assert {:ok, %{"error" => error}} =
+    assert {:ok, %{"result" => result}} =
              MCPTest.dispatch(runtime,
                protocol: "2026-07-28",
                method: "tools/call",
                params: %{"name" => "echo", "arguments" => %{}}
              )
 
-    assert error == %{
-             "code" => -32_602,
-             "message" => "Missing required tool arguments",
-             "data" => %{"missing" => ["text"]}
-           }
+    assert result["isError"] == true
+
+    assert result["content"] == [
+             %{"type" => "text", "text" => "Missing required arguments: text"}
+           ]
   end
 
   test "a plugged validator still sees arguments that satisfy the required list" do

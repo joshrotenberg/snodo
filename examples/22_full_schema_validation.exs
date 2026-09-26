@@ -79,7 +79,9 @@ defmodule Examples.FullSchema.Check do
           Map.put(valid, "unexpected", true),
           Map.put(valid, "include_docs", "true")
         ] do
-      %{"error" => %{"code" => -32_602}} = call(runtime, invalid)
+      # Invalid arguments are a tool error the model can read, and the
+      # handler never runs.
+      %{"result" => %{"isError" => true}} = call(runtime, invalid)
     end
 
     %{"result" => %{"tools" => [definition]}} = dispatch(runtime, "tools/list", %{})

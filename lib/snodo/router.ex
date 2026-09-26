@@ -20,6 +20,7 @@ defmodule Snodo.Router do
   alias Snodo.Resource
   alias Snodo.Resource.Definition, as: ResourceDefinition
   alias Snodo.Result
+  alias Snodo.Schema.Validator.Basic.Error, as: BasicError
   alias Snodo.Schema.Validator.Passthrough
   alias Snodo.Tool
   alias Snodo.Tool.Definition
@@ -238,6 +239,14 @@ defmodule Snodo.Router do
          {:ok, result} <- invoke(tool, arguments, context),
          :ok <- validate_output(validator, result, tool.output_schema()) do
       {:ok, result}
+    else
+      # Invalid arguments are a tool execution error the model can read and
+      # correct (2026-07-28 tools, SEP-1303), not a protocol error.
+      {:invalid_arguments, %Error{} = error} ->
+        {:ok, Result.error(error.message, error: error)}
+
+      {:error, %Error{}} = error ->
+        error
     end
   end
 
@@ -555,7 +564,8 @@ defmodule Snodo.Router do
   # so their absence is the client's error regardless of which validator is
   # installed. Without this, a missing argument reaches the handler, fails to
   # match, and is reported as an internal fault. Prompts are checked the same
-  # way in validate_required_prompt_arguments/2.
+  # way in validate_required_prompt_arguments/2, where a missing argument
+  # stays a JSON-RPC error because prompts have no error result.
   defp validate_required_arguments(%{"required" => required}, arguments)
        when is_list(required) do
     case Enum.reject(required, &(is_binary(&1) and Map.has_key?(arguments, &1))) do
@@ -563,9 +573,11 @@ defmodule Snodo.Router do
         :ok
 
       missing ->
-        {:error,
-         Error.invalid_params("Missing required tool arguments", %{
-           "missing" => Enum.filter(missing, &is_binary/1)
+        names = Enum.filter(missing, &is_binary/1)
+
+        {:invalid_arguments,
+         Error.invalid_params("Missing required arguments: #{Enum.join(names, ", ")}", %{
+           "missing" => names
          })}
     end
   end
@@ -699,8 +711,8 @@ defmodule Snodo.Router do
       :ok ->
         :ok
 
-      {:invalid, _reason} ->
-        {:error, Error.invalid_params("Tool arguments failed schema validation")}
+      {:invalid, reason} ->
+        {:invalid_arguments, Error.invalid_params(describe_invalid_arguments(reason))}
 
       {:validator_error, reason} ->
         {:error, Error.internal("Schema validator failed", reason)}
@@ -754,6 +766,17 @@ defmodule Snodo.Router do
   catch
     kind, reason -> {:validator_error, {kind, reason, __STACKTRACE__}}
   end
+
+  # A model needs the location and the rule to correct its call. Basic
+  # errors carry both without quoting the value; other validators' reasons
+  # may quote argument values, which can be secrets, so they stay generic.
+  defp describe_invalid_arguments(%BasicError{path: [], message: message}),
+    do: "Invalid arguments: #{message}"
+
+  defp describe_invalid_arguments(%BasicError{path: path, message: message}),
+    do: "Invalid arguments at /#{Enum.join(path, "/")}: #{message}"
+
+  defp describe_invalid_arguments(_reason), do: "Tool arguments failed schema validation"
 
   defp format_reason(reason) when is_binary(reason), do: reason
   defp format_reason(_reason), do: "Tool execution failed"

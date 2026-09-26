@@ -177,6 +177,22 @@ defmodule Snodo.Compliance.V2026_07_28VectorsTest do
     end)
   end
 
+  @tag mcp_contract: ["direct-stdio-negative-vectors"]
+  test "literal missing required arguments are a tool execution error" do
+    runtime = TestFixtures.runtime(tools: [Echo])
+    raw = request(24, "tools/call", %{"name" => "echo", "arguments" => %{}})
+
+    for transport <- [:direct, :stdio] do
+      assert %{
+               "id" => 24,
+               "result" => %{
+                 "isError" => true,
+                 "content" => [%{"type" => "text", "text" => "Missing required arguments: text"}]
+               }
+             } = dispatch(runtime, raw, transport)
+    end
+  end
+
   @tag mcp_contract: ["response-free-cancellation"]
   test "literal cancellation notification is response-free on both bindings" do
     runtime = TestFixtures.runtime(tools: [Echo])

@@ -23,9 +23,12 @@ defmodule Snodo.Tool do
   look like a broken server.
 
   The second escalates to the protocol. Reserve it for a request that should
-  never have been dispatched. Note that arguments missing from the schema's
-  `required` list are already rejected this way by `Snodo.Router` before
-  `call/2` runs, so a handler rarely needs to raise that case itself.
+  never have been dispatched.
+
+  Arguments that are missing from the schema's `required` list, or that the
+  installed validator rejects, never reach `call/2`. The router answers with
+  an `isError` result naming the problem, as the 2026-07-28 tools
+  specification asks, so a model can correct its call.
 
   For compatibility, `{:error, reason}` without an `Snodo.Error` is normalized
   into a tool error result. Prefer an explicit `Snodo.Result.error/2` for domain
@@ -35,7 +38,7 @@ defmodule Snodo.Tool do
 
   `input_schema/1` is published verbatim in `tools/list`. The router enforces
   its `required` list before dispatch, so a handler may pattern match on those
-  keys. Every other keyword is advertised but only enforced when the runtime
+  keys; a call missing one gets an `isError` result. Every other keyword is advertised but only enforced when the runtime
   installs a `Snodo.Schema.Validator`; the default is pass-through. See
   `Snodo.Schema.Validator.Basic` for the bundled common subset.
   """

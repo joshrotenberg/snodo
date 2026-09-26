@@ -111,7 +111,8 @@ defmodule Snodo.Tool.SimpleAcceptanceTest do
   test "simple schemas use the configured validator without wrapping call/2" do
     missing = dispatch(SimpleServer.runtime(), "tools/call", %{"name" => "search"})
 
-    assert get_in(missing, ["error", "code"]) == -32_602
+    assert %{"isError" => true, "content" => [%{"text" => "Missing required arguments: query"}]} =
+             missing["result"]
 
     invalid =
       dispatch(SimpleServer.runtime(), "tools/call", %{
@@ -119,7 +120,8 @@ defmodule Snodo.Tool.SimpleAcceptanceTest do
         "arguments" => %{"query" => "ecto", "page" => 0}
       })
 
-    assert get_in(invalid, ["error", "code"]) == -32_602
+    assert %{"isError" => true, "content" => [%{"text" => text}]} = invalid["result"]
+    assert text =~ "Invalid arguments at /page"
   end
 
   test "property and root schema escape hatches preserve arbitrary JSON keywords" do
