@@ -134,7 +134,8 @@ no independent validation timeout and is not an untrusted-schema sandbox.
 
 ## Version choice and alternatives
 
-The package allows `jsv ~> 0.22.0`, with **0.22.0 locked for this evidence lane**.
+The package allows `jsv ~> 0.22`. The checked-in lock resolves 0.25.0, and the
+tests pass on both 0.22.0 and 0.25.0.
 JSV supplies runtime compilation and documents 2020-12/Draft 7 support,
 vocabularies, and per-call casting controls. Its own tests pin the JSON Schema
 test suite; this package's tests verify the adapter policy and router behavior,

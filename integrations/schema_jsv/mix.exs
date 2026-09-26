@@ -46,7 +46,7 @@ defmodule Snodo.Schema.Validator.JSV.MixProject do
   defp deps do
     [
       snodo_dep(:snodo, "../.."),
-      {:jsv, "~> 0.22.0"},
+      {:jsv, "~> 0.22"},
       {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.40", only: :dev, runtime: false}
