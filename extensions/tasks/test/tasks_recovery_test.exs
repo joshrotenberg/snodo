@@ -105,6 +105,9 @@ defmodule Snodo.TasksRecoveryTest do
   @runner_name Snodo.TasksRecoveryTest.Runner
   @created_at "2026-08-24T10:00:00.000Z"
   @lease_ms 1_000
+  # How long to wait for a runner to start work. Promptness is asserted
+  # separately where it matters; this only has to outlast a loaded machine.
+  @claim_timeout 5_000
   @heartbeat_ms 900
 
   test "a fresh runner recovers and completes descriptor-bearing unclaimed work" do
@@ -116,7 +119,9 @@ defmodule Snodo.TasksRecoveryTest do
 
     runner = start_runner!(store_ref, "fresh-runner")
 
-    assert_receive {:recovery_execution_started, ^task_id, recovered_work, _worker}, 1_000
+    assert_receive {:recovery_execution_started, ^task_id, recovered_work, _worker},
+                   @claim_timeout
+
     assert recovered_work == snapshot.work
 
     completed = eventually_snapshot!(store_ref, task_id, &(&1.task.status == :completed))
@@ -138,7 +143,9 @@ defmodule Snodo.TasksRecoveryTest do
 
     first_runner = start_runner!(store_ref, "runner-one")
 
-    assert_receive {:recovery_execution_started, ^task_id, first_work, first_worker}, 1_000
+    assert_receive {:recovery_execution_started, ^task_id, first_work, first_worker},
+                   @claim_timeout
+
     assert first_work.idempotency_key == task_id
 
     first_lease = runner_lease!(first_runner, task_id)
@@ -149,7 +156,8 @@ defmodule Snodo.TasksRecoveryTest do
     advance_clock(clock, @lease_ms + 1)
     second_runner = start_runner!(store_ref, "runner-two")
 
-    assert_receive {:recovery_execution_started, ^task_id, second_work, second_worker}, 1_000
+    assert_receive {:recovery_execution_started, ^task_id, second_work, second_worker},
+                   @claim_timeout
 
     second_lease = runner_lease!(second_runner, task_id)
     assert second_work.idempotency_key == first_work.idempotency_key
@@ -183,7 +191,9 @@ defmodule Snodo.TasksRecoveryTest do
 
     runner = start_runner!(store_ref, "replacement-runner")
 
-    assert_receive {:recovery_execution_started, ^task_id, ^descriptor, _first_worker}, 1_000
+    assert_receive {:recovery_execution_started, ^task_id, ^descriptor, _first_worker},
+                   @claim_timeout
+
     first_job = runner_job!(runner, task_id)
     assert first_job.lease.generation == 1
 
@@ -191,7 +201,7 @@ defmodule Snodo.TasksRecoveryTest do
     send(runner, :recover)
 
     assert_receive {:recovery_execution_started, ^task_id, ^descriptor, replacement_worker},
-                   1_000
+                   @claim_timeout
 
     replacement_job = runner_job!(runner, task_id)
     assert replacement_job.ref != first_job.ref
@@ -245,7 +255,9 @@ defmodule Snodo.TasksRecoveryTest do
     snapshot = create_unclaimed!(store_ref, task_id, descriptor)
     send(runner, :recover)
 
-    assert_receive {:recovery_execution_started, ^task_id, ^descriptor, recovered_worker}, 1_000
+    assert_receive {:recovery_execution_started, ^task_id, ^descriptor, recovered_worker},
+                   @claim_timeout
+
     recovered_job = runner_job!(runner, task_id)
     owner = self()
 
@@ -277,7 +289,9 @@ defmodule Snodo.TasksRecoveryTest do
     _snapshot = create_unclaimed!(store_ref, task_id, descriptor)
     runner = start_runner!(store_ref, "trap-exit-runner")
 
-    assert_receive {:recovery_execution_started, ^task_id, ^descriptor, first_worker}, 1_000
+    assert_receive {:recovery_execution_started, ^task_id, ^descriptor, first_worker},
+                   @claim_timeout
+
     first_job = runner_job!(runner, task_id)
     assert first_job.pid == first_worker
     assert first_job.lease.generation == 1
@@ -287,7 +301,7 @@ defmodule Snodo.TasksRecoveryTest do
     send(runner, :recover)
 
     assert_receive {:recovery_execution_started, ^task_id, ^descriptor, replacement_worker},
-                   1_000
+                   @claim_timeout
 
     elapsed_ms = System.monotonic_time(:millisecond) - started_at
     replacement_job = runner_job!(runner, task_id)
@@ -318,7 +332,8 @@ defmodule Snodo.TasksRecoveryTest do
 
     first_runner = start_runner!(store_ref, "input-runner-one")
 
-    assert_receive {:recovery_execution_started, ^task_id, ^descriptor, first_worker}, 1_000
+    assert_receive {:recovery_execution_started, ^task_id, ^descriptor, first_worker},
+                   @claim_timeout
 
     waiting = eventually_snapshot!(store_ref, task_id, &(&1.task.status == :input_required))
     assert waiting.revision == 1
@@ -352,7 +367,8 @@ defmodule Snodo.TasksRecoveryTest do
     advance_clock(clock, @lease_ms + 1)
     _second_runner = start_runner!(store_ref, "input-runner-two")
 
-    assert_receive {:recovery_execution_started, ^task_id, ^descriptor, _second_worker}, 1_000
+    assert_receive {:recovery_execution_started, ^task_id, ^descriptor, _second_worker},
+                   @claim_timeout
 
     assert_receive {:recovery_input_result, ^task_id, "approval", ^request, {:ok, ^response}},
                    1_000
@@ -389,7 +405,9 @@ defmodule Snodo.TasksRecoveryTest do
 
     first_runner = start_runner!(store_ref, "mismatch-runner-one")
 
-    assert_receive {:recovery_execution_started, ^task_id, ^descriptor, first_worker}, 1_000
+    assert_receive {:recovery_execution_started, ^task_id, ^descriptor, first_worker},
+                   @claim_timeout
+
     waiting = eventually_snapshot!(store_ref, task_id, &(&1.task.status == :input_required))
     assert waiting.revision == 1
 
@@ -399,7 +417,8 @@ defmodule Snodo.TasksRecoveryTest do
     _second_runner =
       start_runner!(store_ref, "mismatch-runner-two", request_override: different_request)
 
-    assert_receive {:recovery_execution_started, ^task_id, ^descriptor, _second_worker}, 1_000
+    assert_receive {:recovery_execution_started, ^task_id, ^descriptor, _second_worker},
+                   @claim_timeout
 
     assert_receive {:recovery_input_result, ^task_id, "approval", ^different_request,
                     {:error, :duplicate_input_key}},
