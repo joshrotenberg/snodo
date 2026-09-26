@@ -240,7 +240,7 @@
   "exclusions": [
     {
       "key": "request-metadata",
-      "reason": "Snodo.Client does not send io.modelcontextprotocol/clientInfo (WARNING). It declares only elicitation, so the deprecated roots and sampling capability checks are SKIPPED."
+      "reason": "Snodo.Client declares only elicitation, so the deprecated roots and sampling capability checks are SKIPPED."
     },
     {
       "key": "http-standard-headers",
@@ -609,7 +609,7 @@
         "SUCCESS"
       ],
       "sep-2575-client-sends-client-info": [
-        "WARNING"
+        "SUCCESS"
       ],
       "sep-2575-http-version-header-matches-meta": [
         "SUCCESS"

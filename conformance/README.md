@@ -218,10 +218,9 @@ pinned. The remaining gaps:
 
 - The 25 required and 6 unscored `auth/*` scenarios: `Snodo.Client` has no
   OAuth support, and the harness exits before sending a request.
-- `request-metadata` is excluded from the score: the client does not send
-  `io.modelcontextprotocol/clientInfo` (a warning), and the deprecated roots and
+- `request-metadata` is excluded from the score: the deprecated roots and
   sampling capability checks are skipped because the client does not declare
-  them.
+  them. Its other checks pass, including `io.modelcontextprotocol/clientInfo`.
 - `http-standard-headers` is excluded from the score: its `initialize` and
   `notifications/initialized` checks are skipped because a 2026-07-28 client
   sends neither method. Every method the client does send carries the correct
