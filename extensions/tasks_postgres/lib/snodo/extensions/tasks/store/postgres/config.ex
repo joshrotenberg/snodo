@@ -1,5 +1,9 @@
 defmodule Snodo.Extensions.Tasks.Store.Postgres.Config do
-  @moduledoc false
+  @moduledoc """
+  The store handle that `Snodo.Extensions.Tasks.Store.Postgres.new/1` returns and
+  the other store functions take. Build it with `new/1` or `new!/1`; its fields
+  are internal.
+  """
 
   @type t :: %__MODULE__{
           repo: module(),

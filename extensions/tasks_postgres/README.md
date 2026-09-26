@@ -234,7 +234,7 @@ SNODO_TASKS_DATABASE_URL=ecto://postgres:postgres@127.0.0.1:55432/snodo_tasks \
 
 `mix tasks.postgres.live` runs the same live evidence without the preceding
 format, compile, and executable-example gates. `mix example.postgres` runs only
-[`10_tasks_postgres.exs`](../../examples/10_tasks_postgres.exs). All three
+[`10_tasks_postgres.exs`](https://github.com/joshrotenberg/snodo/blob/main/examples/10_tasks_postgres.exs). All three
 commands fail with a direct configuration error when `SNODO_TASKS_DATABASE_URL`
 is absent.
 

@@ -1,18 +1,28 @@
 defmodule Snodo.Extensions.Tasks.SQLite.MixProject do
   use Mix.Project
 
+  @version "0.1.0"
+  @source_url "https://github.com/joshrotenberg/snodo"
+
   def project do
     [
       app: :snodo_tasks_sqlite,
-      version: "0.1.0",
+      version: @version,
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       description: "SQLite store for snodo Tasks",
-      source_url: "https://github.com/joshrotenberg/snodo",
+      source_url: @source_url,
       package: [
         licenses: ["MIT"],
-        links: %{"GitHub" => "https://github.com/joshrotenberg/snodo"},
+        links: %{"GitHub" => @source_url, "Changelog" => @source_url <> "/blob/main/CHANGELOG.md"},
         files: ~w(lib mix.exs README.md LICENSE .formatter.exs)
+      ],
+      docs: [
+        main: "readme",
+        extras: ["README.md"],
+        source_ref: "v#{@version}",
+        source_url_pattern:
+          "#{@source_url}/blob/v#{@version}/extensions/tasks_sqlite/%{path}#L%{line}"
       ],
       dialyzer: [
         plt_add_apps: [:mix],
@@ -41,12 +51,13 @@ defmodule Snodo.Extensions.Tasks.SQLite.MixProject do
 
   defp deps do
     [
-      {:snodo_tasks, path: "../tasks"},
+      snodo_dep(:snodo_tasks, "../tasks"),
       {:ecto_sql, "~> 3.14"},
       {:jason, "~> 1.4"},
       {:ecto_sqlite3, "~> 0.24.1", optional: true},
       {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4.7", only: [:dev, :test], runtime: false}
+      {:dialyxir, "~> 1.4.7", only: [:dev, :test], runtime: false},
+      {:ex_doc, "~> 0.40", only: :dev, runtime: false}
     ]
   end
 
@@ -66,5 +77,14 @@ defmodule Snodo.Extensions.Tasks.SQLite.MixProject do
       ],
       "quality.types": ["dialyzer --force-check --format short --list-unused-filters"]
     ]
+  end
+
+  # Inside this repository the snodo packages are path dependencies. Hex does
+  # not accept those, so publishing sets SNODO_HEX=1 to depend on the released
+  # packages instead. All snodo packages share one version.
+  defp snodo_dep(app, path) do
+    if System.get_env("SNODO_HEX") == "1",
+      do: {app, "~> " <> @version},
+      else: {app, path: path}
   end
 end

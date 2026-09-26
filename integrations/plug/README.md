@@ -12,8 +12,9 @@ mirrored headers, and extension dispatch remain in the core adapter.
 
 ## Application-owned startup
 
-During this unreleased workspace phase, depend on `snodo_plug` by path and add
-`{:bandit, "~> 1.12.5"}` to your application. For example:
+Add `snodo_plug` (see [Packages](https://github.com/joshrotenberg/snodo#packages) for how to depend on it) and an HTTP
+server such as Bandit, `{:bandit, "~> 1.12.5"}`, to your application, then start
+both from your supervision tree:
 
 ```elixir
 runtime = MyApp.MCPServer.runtime()
@@ -88,7 +89,7 @@ Discovery refusals hide components from the list responses. An invocation
 refusal is the application's own JSON-RPC error inside a 200 response, because
 the request itself was authenticated and admitted; use HTTP 401/403 in the
 authentication Plug for the endpoint-level decision. See the core
-[application stack notes](../../guides/application-stack.md) for the policy
+[application stack notes](https://github.com/joshrotenberg/snodo/blob/main/guides/application-stack.md) for the policy
 contract.
 
 ## Bounds and lifecycle guarantees
@@ -171,7 +172,7 @@ queue deadlines, ordinary owner-death cleanup, and SSE ordering, completion,
 keepalive disconnects, and abrupt owner-death cleanup. HTTP/2 and TLS have not yet
 received equivalent live acceptance here.
 
-[Example 21](../../examples/21_plug_bandit.exs) demonstrates an application-owned
+[Example 21](https://github.com/joshrotenberg/snodo/blob/main/examples/21_plug_bandit.exs) demonstrates an application-owned
 executor and Bandit listener, ephemeral verified credentials passed through
 trusted assigns, a normal tool call, and a finite subscription with cleanup.
 It binds only loopback on an OS-assigned port and contacts no public service.

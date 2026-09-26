@@ -68,7 +68,7 @@ defmodule Snodo.MixProject do
   defp docs do
     [
       main: "readme",
-      source_ref: "main",
+      source_ref: "v#{@version}",
       extras: [
         "README.md",
         "guides/getting-started.md",
