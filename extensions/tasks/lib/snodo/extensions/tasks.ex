@@ -34,6 +34,7 @@ defmodule Snodo.Extensions.Tasks do
   alias Snodo.Context
   alias Snodo.Envelope
   alias Snodo.Error
+  alias Snodo.Extension
   alias Snodo.Extension.Method
   alias Snodo.Extensions.Tasks.Event
   alias Snodo.Extensions.Tasks.ExecutionContext
@@ -324,7 +325,19 @@ defmodule Snodo.Extensions.Tasks do
     {:error, Error.internal("Tasks policy returned an invalid decision", other)}
   end
 
+  # The work is stored and may run on a durable executor that never reaches the
+  # router, so the lookup, authorization, and argument checks run here, before
+  # anything is stored. Invalid arguments return the same tool error result as
+  # a direct call, and no task is created.
   defp create_task({:tools_call, name} = operation, params, context, next, task_overrides) do
+    case Extension.check_dispatch(operation, params, context) do
+      :ok -> create_checked_task(operation, name, params, context, next, task_overrides)
+      {:ok, %Result{}} = tool_error -> tool_error
+      {:error, %Error{}} = error -> error
+    end
+  end
+
+  defp create_checked_task(operation, name, params, context, next, task_overrides) do
     options = task_options(context)
 
     with {:ok, store} <- fetch_store(context),
