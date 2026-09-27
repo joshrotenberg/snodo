@@ -875,7 +875,7 @@ defmodule Snodo.Protocol.V2026_07_28 do
   @doc false
   def inspect_progress_params(params) when is_map(params) do
     cond do
-      not (is_binary(params["progressToken"]) or is_integer(params["progressToken"])) ->
+      not Envelope.bounded_id?(params["progressToken"]) ->
         {:error, "progress notification requires a string or integer progressToken"}
 
       not is_number(params["progress"]) ->
@@ -943,8 +943,13 @@ defmodule Snodo.Protocol.V2026_07_28 do
 
   defp inspect_cancelled_request_id(params) do
     case Map.fetch(params, "requestId") do
-      {:ok, request_id} when is_binary(request_id) or is_integer(request_id) -> :ok
-      _missing_or_invalid -> {:error, "notifications/cancelled requires a requestId"}
+      {:ok, request_id} ->
+        if Envelope.bounded_id?(request_id),
+          do: :ok,
+          else: {:error, "notifications/cancelled requires a requestId"}
+
+      :error ->
+        {:error, "notifications/cancelled requires a requestId"}
     end
   end
 
@@ -1157,11 +1162,14 @@ defmodule Snodo.Protocol.V2026_07_28 do
 
   defp validate_optional_progress_token(metadata) do
     case Map.fetch(metadata, "progressToken") do
-      {:ok, token} when is_binary(token) or is_integer(token) ->
-        :ok
-
-      {:ok, _invalid} ->
-        {:error, Error.invalid_params("progressToken must be a string or integer")}
+      {:ok, token} ->
+        if Envelope.bounded_id?(token),
+          do: :ok,
+          else:
+            {:error,
+             Error.invalid_params(
+               "progressToken must be a string of at most 256 bytes or an int64 integer"
+             )}
 
       :error ->
         :ok

@@ -16,7 +16,7 @@ defmodule Snodo.Transport.Stdio.Framing do
       |> String.trim_trailing("\n")
       |> String.trim_trailing("\r")
 
-    case JSON.decode(line) do
+    case Snodo.JSONValue.decode(line) do
       {:ok, message} ->
         {:ok, message}
 

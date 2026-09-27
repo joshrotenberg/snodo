@@ -54,8 +54,22 @@ defmodule Snodo.Transport.StreamableHTTP do
          :ok <- validate_host(request, opts),
          :ok <- validate_content_type(request),
          :ok <- validate_accept(request),
-         {:ok, raw} <- decode_body(request.body),
-         :ok <- reject_response_object(raw),
+         {:ok, raw} <- decode_body(request.body) do
+      prepare_decoded(runtime, request, raw)
+    else
+      {:http_error, status, %Error{} = error, id} ->
+        {:response, error_response(status, error, id)}
+
+      {:error, %Error{} = error} ->
+        {:response, error_response(status_for(error), error, nil)}
+    end
+  rescue
+    _exception -> {:response, error_response(500, Error.internal(), nil)}
+  end
+
+  # The body is decoded once; errors after this point answer with its id.
+  defp prepare_decoded(runtime, request, raw) do
+    with :ok <- reject_response_object(raw),
          transport = transport_context(request),
          {:ok, envelope} <- decode_envelope(raw, transport),
          {:ok, protocol} <- select_protocol(runtime, envelope),
@@ -86,11 +100,10 @@ defmodule Snodo.Transport.StreamableHTTP do
         {:response, error_response(status, error, id)}
 
       {:error, %Error{} = error} ->
-        {:response, error_response(status_for(error), error, readable_id(request.body))}
+        {:response, error_response(status_for(error), error, readable_id(raw))}
     end
   rescue
-    _exception ->
-      {:response, error_response(500, Error.internal(), readable_id(request.body))}
+    _exception -> {:response, error_response(500, Error.internal(), readable_id(raw))}
   end
 
   @doc "Executes one admitted request; transports may supply a cancellation token."
@@ -260,7 +273,7 @@ defmodule Snodo.Transport.StreamableHTTP do
   defp decode_body(<<0xEF, 0xBB, 0xBF, body::binary>>), do: decode_body(body)
 
   defp decode_body(body) when is_binary(body) do
-    case JSON.decode(body) do
+    case Snodo.JSONValue.decode(body) do
       {:ok, raw} -> {:ok, raw}
       {:error, _reason} -> {:http_error, 400, Error.parse_error(), nil}
     end
@@ -544,18 +557,10 @@ defmodule Snodo.Transport.StreamableHTTP do
 
   defp get_in_path(_value, _path), do: nil
 
+  # An id outside the bounds is not echoed; the error answers with a null id.
   defp readable_id(raw) when is_map(raw) do
-    case Map.get(raw, "id") do
-      id when is_binary(id) or is_integer(id) -> id
-      _invalid -> nil
-    end
-  end
-
-  defp readable_id(body) when is_binary(body) do
-    case JSON.decode(body) do
-      {:ok, raw} -> readable_id(raw)
-      {:error, _reason} -> nil
-    end
+    id = Map.get(raw, "id")
+    if Envelope.bounded_id?(id), do: id, else: nil
   end
 
   defp readable_id(_raw), do: nil
