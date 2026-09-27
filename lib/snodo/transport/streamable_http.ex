@@ -59,9 +59,6 @@ defmodule Snodo.Transport.StreamableHTTP do
     else
       {:http_error, status, %Error{} = error, id} ->
         {:response, error_response(status, error, id)}
-
-      {:error, %Error{} = error} ->
-        {:response, error_response(status_for(error), error, nil)}
     end
   rescue
     _exception -> {:response, error_response(500, Error.internal(), nil)}
