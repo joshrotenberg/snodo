@@ -210,4 +210,58 @@ defmodule Snodo.Server.ExecutorAcceptanceTest do
     assert_receive {:mcp_execution, ^executor, ^recovered_ref, :after_owner,
                     {:completed, :available}}
   end
+
+  test "slots are counted per pool, independent of execution capacity, and freed on owner exit" do
+    {:ok, executor} = start_supervised({Executor, max_concurrency: 1, max_queue: 0})
+
+    first = spawn_holder()
+    second = spawn_holder()
+
+    assert :ok = Executor.acquire_slot(executor, :streams, 2, first)
+    assert :ok = Executor.acquire_slot(executor, :streams, 2, second)
+    assert {:error, :exhausted} = Executor.acquire_slot(executor, :streams, 2)
+    assert :ok = Executor.acquire_slot(executor, :other_streams, 1)
+    assert {:error, :exhausted} = Executor.acquire_slot(executor, :other_streams, 1)
+
+    assert {:ok, reference} = Executor.submit(executor, :work, fn _cancellation -> :done end)
+    assert_receive {:mcp_execution, ^executor, ^reference, :work, {:completed, :done}}, 500
+
+    monitor = Process.monitor(first)
+    Process.exit(first, :kill)
+    assert_receive {:DOWN, ^monitor, :process, ^first, :killed}, 500
+    assert eventually(fn -> Executor.acquire_slot(executor, :streams, 2) == :ok end)
+    assert {:error, :exhausted} = Executor.acquire_slot(executor, :streams, 2)
+
+    monitor = Process.monitor(second)
+    send(second, :exit)
+    assert_receive {:DOWN, ^monitor, :process, ^second, :normal}, 500
+    assert eventually(fn -> Executor.acquire_slot(executor, :streams, 2) == :ok end)
+  end
+
+  test "a slot limit must be a positive integer" do
+    {:ok, executor} = start_supervised(Executor)
+    assert_raise ArgumentError, fn -> Executor.acquire_slot(executor, :streams, 0) end
+  end
+
+  defp spawn_holder do
+    spawn(fn ->
+      receive do
+        :exit -> :ok
+      end
+    end)
+  end
+
+  defp eventually(check, deadline \\ System.monotonic_time(:millisecond) + 1_000) do
+    cond do
+      check.() ->
+        true
+
+      System.monotonic_time(:millisecond) > deadline ->
+        false
+
+      true ->
+        Process.sleep(5)
+        eventually(check, deadline)
+    end
+  end
 end
