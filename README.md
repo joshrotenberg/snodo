@@ -137,8 +137,8 @@ use Snodo.Server,
   protocols: [Snodo.Protocol.V2026_07_28, Snodo.Protocol.V2025_11_25, Snodo.Protocol.V2025_06_18]
 ```
 
-They cover tools, resources, prompts, completion, and pagination over stateless
-HTTP. They add no session storage.
+They cover tools, resources, prompts, completion, and pagination, over HTTP
+without sessions and over stdio. They add no session storage.
 
 Against the frozen official conformance suite, 32 of 37 `2026-07-28` server
 scenarios pass. On the client side, 6 of 32 pass: 25 of the client scenarios
