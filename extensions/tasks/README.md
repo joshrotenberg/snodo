@@ -68,7 +68,9 @@ MCP_PORT=3001 mix run ../fixture_server.exs
 - both volatile `Store.Memory` and local durable `Store.Dets` adapters;
 - Streamable HTTP `Mcp-Name` admission mirrored from `params.taskId`;
 - tool-domain errors as completed `isError` results and protocol failures as
-  failed Tasks.
+  failed Tasks;
+- limits on concurrent workers, stored and active Tasks, worker runtime, work
+  input size, and `taskId` lengths, described under [Limits](#limits).
 
 Removed v1 methods (`tasks/list`, `tasks/result`) remain method-not-found. The
 legacy `tools/call.params.task` hint is tolerated and ignored. There is no
@@ -275,6 +277,56 @@ retries. Ambiguous redelivery after a hard runner/node failure does not consume
 that list, so physical executor invocations can still repeat under repeated
 crashes; that distinction is inherent in the at-least-once model.
 
+## Limits
+
+Every limit has a default, so an application that sets none is still bounded.
+
+| Option | Set on | Default | Over the limit |
+|---|---|---|---|
+| `:max_jobs` | `Runner` | 32 | creation refused, retryable |
+| `:max_runtime_ms` | `Runner` | 3,600,000 (one hour) | worker stopped, Task fails |
+| `:reap_interval_ms` | `Runner` | 60,000 | not a limit; `nil` turns off reaping |
+| `:max_tasks` | each store | 10,000 | creation refused, retryable |
+| `:max_active_tasks_per_scope` | each store | 100 | creation refused, retryable |
+| `:max_work_input_bytes` | `{Tasks, ...}` options | 262,144 (256 KiB) | -32602 |
+
+`:max_runtime_ms`, `:max_tasks`, `:max_active_tasks_per_scope`, and
+`:max_work_input_bytes` also accept `:infinity`. A `taskId` is at most 256
+bytes and one `subscriptions/listen` request takes at most 100 `taskIds`;
+longer IDs or longer lists are refused with -32602.
+
+A refused creation stores nothing and returns this JSON-RPC error, where
+`limit` names the option that refused it:
+
+```json
+{"code": -32603, "message": "Task capacity exhausted",
+ "data": {"retryable": true, "limit": "max_jobs"}}
+```
+
+The same request can succeed once running Tasks finish, or, for `:max_tasks`,
+once expired Tasks are reaped.
+
+Each count lives where it holds:
+
+- `:max_jobs` counts the workers of one runner. Workers are processes in that
+  BEAM and none survive a restart, so the runner's own job map is the count.
+  `Runner.create_task/5` checks it, stores the Task, and starts it in one
+  runner call. A due retry that finds the runner full waits for a free slot,
+  and recovery claims no more work than the free slots.
+- `:max_tasks` and `:max_active_tasks_per_scope` count stored Tasks, so they
+  are options of each store and are checked inside `create/4`. They hold across
+  runners, nodes, and restarts. Active means working or input-required;
+  finished and expired Tasks count toward `:max_tasks` until they are reaped.
+  With `scope: :shared` every principal has the same scope, so
+  `:max_active_tasks_per_scope` bounds all active Tasks together.
+  `Store.Memory` counts its map, `Store.Dets` keeps an index of active Tasks
+  rebuilt from the table on every open, `Store.SQLite` counts inside its
+  `IMMEDIATE` transaction, and `Store.Postgres` counts under a
+  transaction-scoped advisory lock that serializes creation.
+- `:max_runtime_ms` counts from the claim that started a worker and includes
+  time spent waiting for input. A recovered or retried attempt starts a new
+  count.
+
 ## Mid-task input
 
 Ordinary MRTR and task-owned input are separate lifecycles. Complete ordinary
@@ -354,12 +406,22 @@ event-replay, authority, claim, and reaping contract.
   The separate [`:snodo_tasks_sqlite`](https://hexdocs.pm/snodo_tasks_sqlite) package keeps
   the same Repo/migration ownership while providing file-backed, single-host
   durability through SQLite `IMMEDIATE` transactions and one serialized writer.
-- `Store.reap/1` and the runner's optional `:reap_interval_ms` implement this
-  project’s cleanup policy: the whole aggregate becomes removable at
-  `createdAt + ttlMs`, including if it is active, while `ttlMs: nil` is never
-  automatically reaped. The Tasks protocol permits a server to make an expired
-  Task unavailable or delete it; it does not require every implementation to
-  use this adapter's eager deletion policy.
+- `Store.reap/1` and the runner's `:reap_interval_ms` (default 60,000)
+  implement this project’s cleanup policy: the whole aggregate becomes
+  removable at `createdAt + ttlMs`, including if it is active, while
+  `ttlMs: nil` is never automatically reaped. From that moment every store's
+  `get/3` and request transitions treat the Task as unknown, so `tasks/get`,
+  `tasks/update`, `tasks/cancel`, and `subscriptions/listen` report it as
+  unknown before the reaper deletes it. The Tasks protocol permits a server to
+  make an expired Task unavailable or delete it; it does not require every
+  implementation to use this adapter's eager deletion policy.
+- `Store.Memory` and `Store.Dets` reap every expired Task in one call. The SQL
+  stores delete at most `:reap_batch_size` (default 500) per call, so with the
+  default interval each runner removes at most 500 expired Tasks a minute.
+  Raise `:reap_batch_size` or lower `:reap_interval_ms` to remove more.
+- `Store.Dets` rewrites and syncs a Task's whole record, including its event
+  history, on every claim, heartbeat renewal, release, and applied transition,
+  and decodes every record on each recovery claim and reap.
 - Retry/backoff remains at-least-once rather than exactly once. Applications
   own idempotent external effects and decide when their executor explicitly
   returns `{:retry, error, status_message}`.

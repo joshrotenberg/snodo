@@ -135,7 +135,9 @@ sqlite =
       }
     end,
     timeout: 15_000,
-    reap_batch_size: 500
+    reap_batch_size: 500,
+    max_tasks: 10_000,
+    max_active_tasks_per_scope: 100
   )
 
 :ok = SQLite.check_schema(sqlite)
@@ -154,6 +156,22 @@ store_ref = {SQLite, sqlite}
 
 Pass `store_ref` and `runner` to the Tasks extension exactly as with Memory,
 DETS, or PostgreSQL.
+
+The values shown for `:reap_batch_size`, `:max_tasks`, and
+`:max_active_tasks_per_scope` are the defaults. `reap/1` deletes at most
+`:reap_batch_size` expired Tasks per call, so a runner reaping every
+`:reap_interval_ms` (default 60,000) deletes at most that many per interval.
+`get/3` and request transitions report a Task as not found once SQLite's clock
+passes its `createdAt + ttlMs`, before it is reaped.
+
+`create/4` refuses a Task with `{:error, {:capacity_exceeded, limit}}` when the
+table already holds `:max_tasks` Tasks, or the caller's scope already has
+`:max_active_tasks_per_scope` working or input-required Tasks; the Tasks
+extension reports that to the client as a retryable error. Either limit may be
+`:infinity`. The counts are taken inside the creating `IMMEDIATE` transaction,
+so concurrent creations pass the limits one at a time. The per-scope count
+decodes the scope of every active Task, because scopes are compared as decoded
+values rather than as JSON text.
 
 ## Authorization scope
 

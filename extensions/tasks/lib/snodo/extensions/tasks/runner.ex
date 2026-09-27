@@ -20,6 +20,24 @@ defmodule Snodo.Extensions.Tasks.Runner do
   job starts/stops and every store transition attempted by the runner. Events
   include task identity and lifecycle classifications, never work input,
   authorization values, results, errors, or input responses.
+
+  ## Limits
+
+    * `:max_jobs` - the most workers this runner runs at once, default 32.
+      `create_task/5` refuses a new task at the limit with
+      `{:error, {:capacity_exceeded, :max_jobs}}` before storing it, and
+      `start_task/4` returns the same error and leaves the stored task
+      unclaimed. A due retry waits for a free slot, and recovery claims no more
+      work than the free slots. The count is this runner's own: its workers
+      are processes in this BEAM, and none survive a restart.
+    * `:max_runtime_ms` - how long one worker may run, default 3,600,000 (one
+      hour), or `:infinity`. The time counts from the claim that started the
+      worker and includes time spent waiting for input. A worker that runs
+      longer is stopped and its task fails.
+    * `:reap_interval_ms` - how often the runner calls `Store.reap/1`, default
+      60,000. `nil` turns periodic reaping off.
+
+  The store limits on stored and active tasks are options of each store.
   """
 
   use GenServer
@@ -29,11 +47,16 @@ defmodule Snodo.Extensions.Tasks.Runner do
   alias Snodo.Extensions.Tasks.Event
   alias Snodo.Extensions.Tasks.Snapshot
   alias Snodo.Extensions.Tasks.Store
+  alias Snodo.Extensions.Tasks.Task, as: ProtocolTask
   alias Snodo.Extensions.Tasks.Transition
+  alias Snodo.Extensions.Tasks.Work
   alias Snodo.Extensions.Tasks.WorkExecutor
   alias Snodo.Instrumentation
 
   @max_transition_attempts 5
+  @default_max_jobs 32
+  @default_max_runtime_ms 3_600_000
+  @default_reap_interval_ms 60_000
   @default_lease_ms 30_000
   @default_recovery_interval_ms 1_000
   @default_recovery_batch_size 100
@@ -50,7 +73,31 @@ defmodule Snodo.Extensions.Tasks.Runner do
     GenServer.start_link(__MODULE__, opts, Keyword.take(opts, [:name]))
   end
 
-  @doc "Claims and starts work after its descriptor-bearing snapshot is visible."
+  @doc """
+  Stores a new task with `Store.create/4`, then claims and starts its work.
+
+  At `:max_jobs` nothing is stored and the call returns
+  `{:error, {:capacity_exceeded, :max_jobs}}`. A store refusal, including
+  `{:capacity_exceeded, limit}` from a store limit, is returned unchanged.
+  """
+  @spec create_task(
+          server(),
+          ProtocolTask.t(),
+          Work.t(),
+          Store.access(),
+          (Cancellation.t() -> outcome())
+        ) :: {:ok, Snapshot.t()} | {:error, term()}
+  def create_task(runner, %ProtocolTask{} = task, %Work{} = work, access, fallback_work)
+      when is_function(fallback_work, 1) do
+    GenServer.call(runner, {:create_task, task, work, access, fallback_work}, :infinity)
+  end
+
+  @doc """
+  Claims and starts work after its descriptor-bearing snapshot is visible.
+
+  At `:max_jobs` the task is not claimed and the call returns
+  `{:error, {:capacity_exceeded, :max_jobs}}`.
+  """
   @spec start_task(server(), Snapshot.t(), (Cancellation.t() -> outcome()), keyword()) ::
           :ok | {:error, term()}
   def start_task(runner, %Snapshot{} = snapshot, fallback_work, opts \\ [])
@@ -110,11 +157,9 @@ defmodule Snodo.Extensions.Tasks.Runner do
       raise ArgumentError, ":owner_id must be a non-empty string"
     end
 
-    {:ok, supervisor} = Task.Supervisor.start_link()
-
     state = %{
       store: store,
-      supervisor: supervisor,
+      supervisor: nil,
       executor: executor,
       recover?: recover?,
       owner_id: owner_id,
@@ -124,12 +169,22 @@ defmodule Snodo.Extensions.Tasks.Runner do
         positive_option!(opts, :recovery_interval_ms, @default_recovery_interval_ms),
       recovery_batch_size:
         positive_option!(opts, :recovery_batch_size, @default_recovery_batch_size),
-      reap_interval_ms: optional_positive_option!(opts, :reap_interval_ms),
+      reap_interval_ms:
+        optional_positive_option!(opts, :reap_interval_ms, @default_reap_interval_ms),
+      reap_timer: nil,
+      max_jobs: positive_option!(opts, :max_jobs, @default_max_jobs),
+      max_runtime_ms: limit_option!(opts, :max_runtime_ms, @default_max_runtime_ms),
       instrumentation: opts |> Keyword.get(:instrumentation) |> Instrumentation.normalize!(),
       jobs: %{},
       jobs_by_ref: %{},
+      awaiting_slot: :queue.new(),
       waiters: %{}
     }
+
+    # Started after every option is validated, so a rejected option leaves no
+    # linked supervisor behind.
+    {:ok, supervisor} = Task.Supervisor.start_link()
+    state = %{state | supervisor: supervisor}
 
     {:ok, state, {:continue, :bootstrap}}
   end
@@ -145,30 +200,25 @@ defmodule Snodo.Extensions.Tasks.Runner do
   end
 
   @impl true
-  def handle_call({:start_task, snapshot, fallback_work, _opts}, _from, state) do
-    task_id = snapshot.task.id
+  def handle_call({:create_task, task, work, access, fallback_work}, _from, state) do
+    if at_capacity?(state),
+      do: {:reply, {:error, {:capacity_exceeded, :max_jobs}}, state},
+      else: create_and_start(state, task, work, access, fallback_work)
+  end
 
-    case Map.fetch(state.jobs, task_id) do
-      {:ok, _recovery_won_creation_race} ->
+  def handle_call({:start_task, snapshot, fallback_work, _opts}, _from, state) do
+    cond do
+      Map.has_key?(state.jobs, snapshot.task.id) ->
+        # Recovery won the race with creation.
         {:reply, :ok, state}
 
-      :error ->
-        case Store.claim(state.store, task_id, state.owner_id, state.lease_ms) do
-          {:ok, %Snapshot{} = claimed, lease} ->
-            {:reply, :ok, spawn_job(state, claimed, lease, fallback_work)}
+      at_capacity?(state) ->
+        {:reply, {:error, {:capacity_exceeded, :max_jobs}}, state}
 
-          :unavailable ->
-            {:reply, :ok, state}
-
-          {:deferred, remaining_ms} ->
-            schedule_retry_due(task_id, remaining_ms)
-            {:reply, :ok, state}
-
-          :not_found ->
-            {:reply, {:error, :not_found}, state}
-
-          {:error, reason} ->
-            {:reply, {:error, reason}, state}
+      true ->
+        case claim_and_start(state, snapshot, fallback_work) do
+          {:ok, next} -> {:reply, :ok, next}
+          {:error, reason} -> {:reply, {:error, reason}, state}
         end
     end
   end
@@ -246,17 +296,20 @@ defmodule Snodo.Extensions.Tasks.Runner do
 
   def handle_info({:retry_due, task_id}, state) do
     next =
-      if Map.has_key?(state.jobs, task_id) do
-        state
-      else
-        case Store.claim(state.store, task_id, state.owner_id, state.lease_ms) do
-          {:ok, %Snapshot{} = snapshot, lease} -> spawn_job(state, snapshot, lease, nil)
-          {:deferred, remaining_ms} -> schedule_retry_due(state, task_id, remaining_ms)
-          _not_due_claimed_terminal_or_unavailable -> state
-        end
+      cond do
+        Map.has_key?(state.jobs, task_id) -> fill_slot(state)
+        at_capacity?(state) -> await_slot(state, task_id)
+        true -> claim_due_retry(state, task_id)
       end
 
     {:noreply, next}
+  end
+
+  def handle_info({:max_runtime, task_id, job_ref}, state) do
+    case Map.fetch(state.jobs, task_id) do
+      {:ok, %{ref: ^job_ref} = job} -> {:noreply, fail_overrun_job(state, task_id, job)}
+      _missing_or_replaced -> {:noreply, state}
+    end
   end
 
   def handle_info({:retry_release, task_id, lease}, state) do
@@ -435,6 +488,21 @@ defmodule Snodo.Extensions.Tasks.Runner do
     end
   end
 
+  # The worker is stopped before the failure is committed, so a result it
+  # sends afterwards arrives for a job that no longer exists and is dropped.
+  defp fail_overrun_job(state, task_id, job) do
+    terminate_worker(job)
+    message = "Task exceeded its maximum runtime"
+    error = Error.to_json_rpc(Error.internal(message))
+    {store_result, transitioned} = settle(state, task_id, {:failed, error, message})
+    {release_result, _lease, released} = release_job_claim(transitioned, task_id)
+
+    released
+    |> instrument_job_stop(task_id, :max_runtime, store_result, release_result)
+    |> fail_waiters(task_id, :max_runtime)
+    |> remove_job(task_id, job.ref)
+  end
+
   defp park_waiter(state, task_id, key, from) do
     waiter = %{from: from}
 
@@ -576,22 +644,90 @@ defmodule Snodo.Extensions.Tasks.Runner do
 
   defp recover_available(state) do
     Enum.reduce_while(1..state.recovery_batch_size, state, fn _attempt, current ->
-      case Store.claim_next(current.store, current.owner_id, current.lease_ms) do
-        {:ok, %Snapshot{} = snapshot, lease} ->
-          recovered =
-            current
-            |> stop_job(snapshot.task.id, :reclaimed)
-            |> spawn_job(snapshot, lease, nil)
-
-          {:cont, recovered}
-
-        :empty ->
-          {:halt, current}
-
-        {:error, _reason} ->
-          {:halt, current}
-      end
+      if at_capacity?(current), do: {:halt, current}, else: recover_next(current)
     end)
+  end
+
+  defp recover_next(state) do
+    case Store.claim_next(state.store, state.owner_id, state.lease_ms) do
+      {:ok, %Snapshot{} = snapshot, lease} ->
+        recovered =
+          state
+          |> stop_job(snapshot.task.id, :reclaimed)
+          |> spawn_job(snapshot, lease, nil)
+
+        {:cont, recovered}
+
+      :empty ->
+        {:halt, state}
+
+      {:error, _reason} ->
+        {:halt, state}
+    end
+  end
+
+  defp create_and_start(state, task, work, access, fallback_work) do
+    with {:ok, %Snapshot{} = snapshot} <- Store.create(state.store, task, work, access),
+         {:ok, next} <- claim_and_start(state, snapshot, fallback_work) do
+      {:reply, {:ok, snapshot}, next}
+    else
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  defp claim_and_start(state, snapshot, fallback_work) do
+    task_id = snapshot.task.id
+
+    case Store.claim(state.store, task_id, state.owner_id, state.lease_ms) do
+      {:ok, %Snapshot{} = claimed, lease} ->
+        {:ok, spawn_job(state, claimed, lease, fallback_work)}
+
+      :unavailable ->
+        {:ok, state}
+
+      {:deferred, remaining_ms} ->
+        {:ok, schedule_retry_due(state, task_id, remaining_ms)}
+
+      :not_found ->
+        {:error, :not_found}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp claim_due_retry(state, task_id) do
+    case Store.claim(state.store, task_id, state.owner_id, state.lease_ms) do
+      {:ok, %Snapshot{} = snapshot, lease} ->
+        spawn_job(state, snapshot, lease, nil)
+
+      {:deferred, remaining_ms} ->
+        state |> schedule_retry_due(task_id, remaining_ms) |> fill_slot()
+
+      _claimed_terminal_or_unavailable ->
+        fill_slot(state)
+    end
+  end
+
+  defp at_capacity?(state), do: map_size(state.jobs) >= state.max_jobs
+
+  defp await_slot(state, task_id) do
+    if :queue.member(task_id, state.awaiting_slot),
+      do: state,
+      else: %{state | awaiting_slot: :queue.in(task_id, state.awaiting_slot)}
+  end
+
+  # Hands a free slot to the oldest retry that found the runner full. The
+  # retry claims through the store again, so a task that finished or moved to
+  # another runner meanwhile passes the slot on.
+  defp fill_slot(state) do
+    with false <- at_capacity?(state),
+         {{:value, task_id}, rest} <- :queue.out(state.awaiting_slot) do
+      send(self(), {:retry_due, task_id})
+      %{state | awaiting_slot: rest}
+    else
+      _full_or_empty -> state
+    end
   end
 
   defp spawn_job(state, snapshot, lease, fallback_work) do
@@ -616,6 +752,7 @@ defmodule Snodo.Extensions.Tasks.Runner do
     }
 
     schedule_renewal(next, snapshot.task.id, task.ref)
+    schedule_max_runtime(next, snapshot.task.id, task.ref)
 
     Instrumentation.emit(
       state.instrumentation,
@@ -747,11 +884,11 @@ defmodule Snodo.Extensions.Tasks.Runner do
   end
 
   defp remove_job(state, task_id, ref) do
-    %{
+    fill_slot(%{
       state
       | jobs: Map.delete(state.jobs, task_id),
         jobs_by_ref: Map.delete(state.jobs_by_ref, ref)
-    }
+    })
   end
 
   defp drop_job_ref(state, ref) do
@@ -883,6 +1020,13 @@ defmodule Snodo.Extensions.Tasks.Runner do
     Process.send_after(self(), {:renew_claim, task_id, job_ref}, state.heartbeat_ms)
   end
 
+  defp schedule_max_runtime(%{max_runtime_ms: :infinity}, _task_id, _job_ref), do: :ok
+
+  defp schedule_max_runtime(state, task_id, job_ref) do
+    Process.send_after(self(), {:max_runtime, task_id, job_ref}, state.max_runtime_ms)
+    :ok
+  end
+
   defp maybe_schedule_recovery(state, delay \\ nil)
 
   defp maybe_schedule_recovery(%{recover?: false} = state, _delay), do: state
@@ -894,9 +1038,17 @@ defmodule Snodo.Extensions.Tasks.Runner do
 
   defp maybe_schedule_reap(%{reap_interval_ms: nil} = state), do: state
 
+  # One timer at a time, also when `:reap` arrives from elsewhere.
   defp maybe_schedule_reap(state) do
-    Process.send_after(self(), :reap, state.reap_interval_ms)
-    state
+    cancel_timer(state.reap_timer)
+    %{state | reap_timer: Process.send_after(self(), :reap, state.reap_interval_ms)}
+  end
+
+  defp cancel_timer(nil), do: :ok
+
+  defp cancel_timer(timer) do
+    _remaining = Process.cancel_timer(timer)
+    :ok
   end
 
   defp maybe_schedule_retry(
@@ -965,11 +1117,24 @@ defmodule Snodo.Extensions.Tasks.Runner do
     end
   end
 
-  defp optional_positive_option!(opts, key) do
-    case Keyword.get(opts, key) do
+  defp optional_positive_option!(opts, key, default) do
+    case Keyword.get(opts, key, default) do
       nil -> nil
       value when is_integer(value) and value > 0 -> value
       _invalid -> raise ArgumentError, "#{inspect(key)} must be nil or a positive integer"
+    end
+  end
+
+  defp limit_option!(opts, key, default) do
+    case Keyword.get(opts, key, default) do
+      :infinity ->
+        :infinity
+
+      value when is_integer(value) and value > 0 ->
+        value
+
+      _invalid ->
+        raise ArgumentError, "#{inspect(key)} must be a positive integer or :infinity"
     end
   end
 
