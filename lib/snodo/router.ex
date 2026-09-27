@@ -325,13 +325,8 @@ defmodule Snodo.Router do
       )
       when is_binary(name) and is_map(params) and is_list(opts) do
     validator = Keyword.get(opts, :schema_validator, Passthrough)
-    authorization = authorization(opts)
 
-    with {:ok, tool} <- fetch_tool(router, name),
-         :ok <- authorize_invocation(context, authorization, :tool, tool),
-         {:ok, arguments} <- fetch_arguments(params),
-         :ok <- validate_required_arguments(tool.input_schema(), arguments),
-         :ok <- validate_input(validator, arguments, tool.input_schema()),
+    with {:ok, tool, arguments} <- check_tool_call(router, name, params, context, opts),
          {:ok, result} <- invoke(tool, arguments, context),
          :ok <- validate_output(validator, result, tool.output_schema()) do
       {:ok, result}
@@ -348,6 +343,48 @@ defmodule Snodo.Router do
 
   def dispatch(%__MODULE__{}, _operation, _params, %Context{}, _opts) do
     {:error, Error.method_not_found("unregistered operation")}
+  end
+
+  @doc """
+  Runs the checks `dispatch/5` performs before calling a tool, without calling
+  it: the tool lookup, the authorization policy's `:invocation` phase, and
+  argument validation. `opts` are the same as for `dispatch/5`.
+
+  Returns `:ok` when `dispatch/5` would call the tool. Otherwise it returns what
+  `dispatch/5` would: `{:ok, result}` with a `Snodo.Result.error/2` result for
+  missing or invalid arguments, or `{:error, error}`.
+
+  Middleware that defers or persists a call instead of running it, such as
+  the Tasks extension, uses this through `Snodo.Extension.check_dispatch/3`,
+  so deferred work passes the same checks as a direct call.
+  """
+  @spec check(t(), operation(), map(), Context.t(), keyword()) ::
+          :ok | {:ok, Result.t()} | {:error, Error.t()}
+  def check(router, operation, params, context, opts \\ [])
+
+  def check(%__MODULE__{} = router, {:tools_call, name}, params, %Context{} = context, opts)
+      when is_binary(name) and is_map(params) and is_list(opts) do
+    case check_tool_call(router, name, params, context, opts) do
+      {:ok, _tool, _arguments} -> :ok
+      {:invalid_arguments, %Error{} = error} -> {:ok, Result.error(error.message)}
+      {:error, %Error{}} = error -> error
+    end
+  end
+
+  def check(%__MODULE__{}, _operation, _params, %Context{}, _opts) do
+    {:error, Error.method_not_found("no checks are defined for this operation")}
+  end
+
+  defp check_tool_call(router, name, params, context, opts) do
+    validator = Keyword.get(opts, :schema_validator, Passthrough)
+
+    with {:ok, tool} <- fetch_tool(router, name),
+         :ok <- authorize_invocation(context, authorization(opts), :tool, tool),
+         {:ok, arguments} <- fetch_arguments(params),
+         :ok <- validate_required_arguments(tool.input_schema(), arguments),
+         :ok <- validate_input(validator, arguments, tool.input_schema()) do
+      {:ok, tool, arguments}
+    end
   end
 
   # A runtime holds its policy already normalized; a bare module or an

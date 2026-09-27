@@ -136,6 +136,11 @@ invocation without putting policy on the wire.
 
 ## Durable work and recovery
 
+Before a Task is created, the tool call passes the same lookup, authorization,
+and argument checks as a direct call. A refused call, or one with invalid
+arguments, gets the direct call's response and creates no Task, so an executor
+only receives work that was authorized and validated.
+
 Every Task is created with a `Snodo.Extensions.Tasks.Work` descriptor containing
 an application-defined `type`, JSON-safe `input`, and stable
 `idempotency_key`. A versioned immutable `RetryPolicy` is part of that

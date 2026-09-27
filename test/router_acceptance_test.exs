@@ -15,6 +15,22 @@ defmodule Snodo.RouterAcceptanceTest do
   alias SnodoTest.TestTools.Failing
   alias SnodoTest.TestTools.InvalidInputSchema
 
+  defmodule Probe do
+    use Snodo.Tool, name: "probe"
+
+    input_schema(%{
+      "type" => "object",
+      "properties" => %{"text" => %{"type" => "string"}},
+      "required" => ["text"]
+    })
+
+    @impl true
+    def call(_arguments, context) do
+      send(context.metadata.owner, :probe_ran)
+      {:ok, Result.text("ran")}
+    end
+  end
+
   defp context(metadata \\ %{}) do
     %Context{
       protocol_version: "2026-07-28",
@@ -75,6 +91,43 @@ defmodule Snodo.RouterAcceptanceTest do
 
     assert {:ok, %Result{kind: :error, value: "Actionable domain failure"}} =
              Router.dispatch(router, {:tools_call, "failing"}, %{}, context())
+  end
+
+  test "check/5 returns what dispatch/5 would without calling the tool" do
+    router = Router.register_tool(Router.new(), Probe)
+    context = context(%{owner: self()})
+    valid = %{"arguments" => %{"text" => "hi"}}
+
+    assert :ok = Router.check(router, {:tools_call, "probe"}, valid, context)
+
+    assert {:ok, %Result{kind: :error}} =
+             Router.check(router, {:tools_call, "probe"}, %{"arguments" => %{}}, context)
+
+    assert {:error, %Error{code: -32_602}} =
+             Router.check(router, {:tools_call, "missing"}, valid, context)
+
+    assert {:error, %Error{code: -32_004}} =
+             Router.check(router, {:tools_call, "probe"}, valid, context,
+               authorization: SnodoTest.TestAuthorization.DenyAll
+             )
+
+    assert {:error, %Error{code: -32_601}} =
+             Router.check(router, {:prompt_get, "probe"}, %{}, context)
+
+    refute_received :probe_ran
+
+    assert {:ok, %Result{kind: :text}} =
+             Router.dispatch(router, {:tools_call, "probe"}, valid, context)
+
+    assert_received :probe_ran
+  end
+
+  test "Extension.check_dispatch/3 fails closed outside server middleware" do
+    assert {:error, %Error{code: -32_603}} =
+             Snodo.Extension.check_dispatch({:tools_call, "probe"}, %{}, context())
+
+    checked = %{context() | dispatch_check: fn _operation, _params, _context -> :ok end}
+    assert :ok = Snodo.Extension.check_dispatch({:tools_call, "probe"}, %{}, checked)
   end
 
   test "unknown tools remain protocol-neutral errors" do
