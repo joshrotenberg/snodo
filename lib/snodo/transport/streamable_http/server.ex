@@ -394,8 +394,8 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
 
   defp read_request(socket, peer, connection_ref, opts) do
     with {:ok, head, rest} <- recv_head(socket, "", opts),
-         {:ok, method, target, headers} <- parse_head(head),
-         {:ok, content_length} <- content_length(method, headers, opts.max_body_bytes),
+         {:ok, method, target, headers, content_length} <-
+           parse_request_head(head, opts.max_body_bytes),
          {:ok, body} <- recv_body(socket, rest, content_length, opts.read_timeout) do
       {:ok,
        %Request{
@@ -431,6 +431,21 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
           {:ok, chunk} -> recv_head(socket, acc <> chunk, opts)
           {:error, reason} -> {:error, reason}
         end
+    end
+  end
+
+  @doc false
+  # Parses a request head, without its final blank line, into the method,
+  # target, headers, and body length, or a 4xx status and message. The
+  # property tests call it directly, because a raise here reaches the peer only
+  # as a closed connection.
+  @spec parse_request_head(binary(), non_neg_integer()) ::
+          {:ok, String.t(), String.t(), [{String.t(), String.t()}], non_neg_integer()}
+          | {:error, 400..499, String.t()}
+  def parse_request_head(head, max_body_bytes) do
+    with {:ok, method, target, headers} <- parse_head(head),
+         {:ok, content_length} <- content_length(method, headers, max_body_bytes) do
+      {:ok, method, target, headers, content_length}
     end
   end
 
