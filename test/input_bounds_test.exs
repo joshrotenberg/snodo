@@ -13,6 +13,11 @@ defmodule Snodo.InputBoundsTest do
     assert {:ok, [-1, 2.5]} = JSONValue.decode("[-1, 2.5]\n")
 
     assert {:error, :integer_too_long} = JSONValue.decode(~s({"n":#{digits}9}))
+
+    # The sign is not a digit.
+    assert {:ok, %{"n" => negative}} = JSONValue.decode(~s({"n":-#{digits}}))
+    assert negative == -String.to_integer(digits)
+    assert {:error, :integer_too_long} = JSONValue.decode(~s({"n":-#{digits}9}))
     assert {:error, :trailing_data} = JSONValue.decode(~s({"a":1} x))
     assert {:error, _reason} = JSONValue.decode("{not-json")
 
