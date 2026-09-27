@@ -26,6 +26,22 @@ defmodule Snodo.Transport.Plug do
   executor, which lives as long as the runtime; Plugs that share an executor
   share the count. A stream over the limit is closed at its source and the
   request gets 503.
+
+  The request body must arrive within `:body_timeout` (default 10,000 ms from
+  when this Plug starts reading it) or the request gets 408. The Plug reads the
+  body in slices of at most 64 KiB and checks the deadline between them; each
+  read waits at most `:read_timeout` (default 5,000) and never past the
+  deadline. Under Bandit a `Content-Length` body is one socket read per slice,
+  so the deadline bounds the whole body. A request that declares
+  `Transfer-Encoding` gets 411 without its body being read: an adapter returns
+  from a chunked read only once it has the requested bytes, however many
+  socket reads that takes, so no deadline checked between reads can bound it.
+  Over HTTP/2, Bandit returns from a read after a slice of DATA, at the end of
+  the stream, or after `:read_timeout` without a frame, and each DATA frame
+  restarts that wait, so a client that keeps sending small or empty frames can
+  hold the request process past the deadline. After a body error over HTTP/1.x
+  the response closes the connection, so the adapter does not read the rest of
+  the body.
   """
 
   @behaviour Plug
@@ -42,6 +58,11 @@ defmodule Snodo.Transport.Plug do
   alias Snodo.Transport.StreamableHTTP.Request
   alias Snodo.Transport.StreamableHTTP.Response
   alias Snodo.Transport.StreamableHTTP.StreamResponse
+
+  # Bytes requested per body read. A Content-Length read of this size is one
+  # socket read under Bandit, so the deadline is checked after each read.
+  @body_slice 65_536
+  @http1 [:"HTTP/1", :"HTTP/1.0", :"HTTP/1.1"]
 
   @impl true
   def init(opts) do
@@ -68,6 +89,7 @@ defmodule Snodo.Transport.Plug do
       request_timeout: positive_option!(opts, :request_timeout, 30_000),
       max_body_bytes: positive_option!(opts, :max_body_bytes, 2_000_000),
       read_timeout: positive_option!(opts, :read_timeout, 5_000),
+      body_timeout: positive_option!(opts, :body_timeout, 10_000),
       subscription_keepalive_ms: positive_option!(opts, :subscription_keepalive_ms, 15_000),
       max_subscriptions: positive_option!(opts, :max_subscriptions, 256),
       disconnect_probe_ms: probe_option!(opts),
@@ -81,7 +103,7 @@ defmodule Snodo.Transport.Plug do
   def call(%Conn{request_path: path} = conn, %{path: path} = opts) do
     case read_body(conn, opts) do
       {:ok, body, conn} -> admit(conn, body, opts)
-      {:error, status, conn} -> conn |> Conn.send_resp(status, "") |> Conn.halt()
+      {:error, status, conn} -> refuse_body(conn, status)
     end
   end
 
@@ -378,14 +400,62 @@ defmodule Snodo.Transport.Plug do
 
   defp sse(json), do: ["event: message\r\ndata: ", json, "\r\n\r\n"]
 
+  # A chunked read returns only once it has the requested bytes, however many
+  # socket reads that takes, so a chunked body is refused rather than read.
   defp read_body(conn, opts) do
-    case Conn.read_body(conn, length: opts.max_body_bytes + 1, read_timeout: opts.read_timeout) do
-      {:ok, body, conn} when byte_size(body) <= opts.max_body_bytes -> {:ok, body, conn}
-      {:ok, _body, conn} -> {:error, 413, conn}
-      {:more, _body, conn} -> {:error, 413, conn}
+    case Conn.get_req_header(conn, "transfer-encoding") do
+      [] ->
+        deadline = System.monotonic_time(:millisecond) + opts.body_timeout
+        read_body(conn, opts, deadline, [], 0)
+
+      _declared ->
+        {:error, 411, conn}
+    end
+  end
+
+  defp read_body(conn, opts, deadline, acc, size) do
+    remaining = deadline - System.monotonic_time(:millisecond)
+
+    case read_slice(conn, opts, remaining, size) do
+      {:ok, data, conn} -> body_read(conn, opts, [acc, data], size + byte_size(data))
+      {:more, data, conn} -> more_body(conn, opts, deadline, [acc, data], size + byte_size(data))
       {:error, :timeout} -> {:error, 408, conn}
       {:error, _reason} -> {:error, 400, conn}
     end
+  end
+
+  defp read_slice(_conn, _opts, remaining, _size) when remaining <= 0, do: {:error, :timeout}
+
+  defp read_slice(conn, opts, remaining, size) do
+    # Never more than one byte past the limit, and never zero.
+    length = min(@body_slice, opts.max_body_bytes + 1 - size)
+
+    Conn.read_body(conn,
+      length: length,
+      read_length: length,
+      read_timeout: min(opts.read_timeout, remaining)
+    )
+  end
+
+  defp body_read(conn, opts, _acc, size) when size > opts.max_body_bytes, do: {:error, 413, conn}
+  defp body_read(conn, _opts, acc, _size), do: {:ok, IO.iodata_to_binary(acc), conn}
+
+  defp more_body(conn, opts, _deadline, _acc, size) when size > opts.max_body_bytes,
+    do: {:error, 413, conn}
+
+  defp more_body(conn, opts, deadline, acc, size), do: read_body(conn, opts, deadline, acc, size)
+
+  # The rest of the body is unread. Closing the connection keeps an HTTP/1.x
+  # adapter from reading it after this response; Bandit otherwise drains it
+  # with its own limits. HTTP/2 forbids the header, and Bandit resets an
+  # unfinished HTTP/2 stream instead of draining it.
+  defp refuse_body(conn, status) do
+    conn =
+      if Conn.get_http_protocol(conn) in @http1,
+        do: Conn.put_resp_header(conn, "connection", "close"),
+        else: conn
+
+    conn |> Conn.send_resp(status, "") |> Conn.halt()
   end
 
   defp positive_option!(opts, key, default) do

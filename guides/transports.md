@@ -121,7 +121,11 @@ only reveals a disconnect when a write fails, so a request still running after
 `:disconnect_probe_ms` (default 5,000) switches to SSE and writes keepalive
 comments; a failed write cancels the work. `:max_subscriptions` (default 256)
 bounds open subscription streams; the count is held in the executor, so Plugs
-that share an executor share it. See
+that share an executor share it. `:body_timeout` (default 10,000 ms from when
+the Plug starts reading) bounds the whole request body and answers 408; a
+request that declares `Transfer-Encoding` gets 411 without being read. Over
+HTTP/2 the deadline is checked only when an adapter read returns, so it does not
+bound a client that keeps sending small DATA frames. See
 the [`snodo_plug` documentation](https://hexdocs.pm/snodo_plug) and the
 [application stack](application-stack.md) for choosing between the native
 listener and Plug.

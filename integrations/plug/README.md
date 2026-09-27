@@ -43,7 +43,9 @@ The Plug owns `/mcp` by default and returns 404 for other paths. Pass `path:` to
 change the exact full request path, or mount it in an application router with a
 matching path. It halts after handling a request. An already-halted authentication
 rejection is preserved. Place it **before `Plug.Parsers`** or any component that
-consumes the raw body. It supports both Content-Length and chunked request bodies.
+consumes the raw body. A request body needs `Content-Length`: a request that
+declares `Transfer-Encoding` (a chunked body) gets 411 without being read, as
+the native listener refuses a POST without `Content-Length`.
 
 The immutable runtime is application-supplied; there is no global runtime cache,
 hidden listener, or implicit executor. Configure a supervised `Snodo.Subscription.Hub`
@@ -105,7 +107,8 @@ contract.
 | --- | --- | --- |
 | `request_timeout` | 30,000 ms | Finite queue-plus-execution wait; timeout cancels work and returns 504. |
 | `max_body_bytes` | 2,000,000 | Raw-body byte bound before JSON decoding. |
-| `read_timeout` | 5,000 ms | Plug body-read timeout per underlying read. |
+| `read_timeout` | 5,000 ms | Plug body-read timeout per underlying read, never past `body_timeout`. |
+| `body_timeout` | 10,000 ms | Deadline for the whole request body from when the Plug starts reading it; 408 when it passes. Over HTTP/2 it is checked only when a read returns (below). |
 | `subscription_keepalive_ms` | 15,000 ms | Idle SSE comment-write interval; must be finite and positive. |
 | `disconnect_probe_ms` | 5,000 ms | After this long without a result, switch to SSE and write keepalives at this interval so a disconnect cancels the work; `:infinity` keeps JSON. |
 | `max_subscriptions` | 256 | Open `subscriptions/listen` streams; the next one is closed at its source and gets 503. The executor holds the count, so Plugs that share an executor share it. |
@@ -121,9 +124,20 @@ executor, which returns it when the stream process exits for any reason.
 Subscription event buffering is the source's responsibility; the bundled hub
 provides bounded queues. Plug body-read limits are approximate at socket-read
 granularity, so this adapter also checks the returned byte count before decoding.
-`read_timeout` bounds each read. Bandit reads a `Content-Length` body in slices
-of up to 1,000,000 bytes and each slice must arrive within `read_timeout`, so the
-whole body is bounded; a chunked request body is bounded only per read.
+The Plug reads the body in slices of at most 64 KiB and checks `body_timeout`
+between them; each read waits at most `read_timeout` and never past the
+deadline. Under Bandit a `Content-Length` body is one socket read per slice, so
+`body_timeout` bounds the whole body. A chunked body is refused with 411 because
+a chunked read returns only once it has the requested bytes, however many socket
+reads that takes. Over HTTP/2 a Bandit read returns after a slice of DATA, at the
+end of the stream, or after `read_timeout` without a frame, and each DATA frame,
+even an empty one, restarts that wait. An HTTP/2 client that keeps sending small
+or empty frames can therefore hold the request process past `body_timeout`.
+Where that matters, serve untrusted clients over HTTP/1.1 only (Bandit's
+`http_2_options: [enabled: false]`) or behind a proxy that buffers request
+bodies. After a body error (400, 408, 411, 413) over HTTP/1.x the response
+closes the connection; otherwise Bandit reads the rest of the body after the Plug
+returns, with its own limits.
 The Plug cannot enforce its request deadline while an adapter is blocked inside
 a socket write; keep the server's send timeout finite (the startup example uses
 five seconds) and configure equivalent write bounds for another HTTP adapter.
@@ -182,11 +196,12 @@ ERL_FLAGS='+S 4:4' mix example.plug
 The checked-in lock currently resolves Plug 1.20.3 and Bandit 1.12.5. Tests start
 real Bandit listeners on ephemeral loopback ports and use literal HTTP requests,
 not only Plug test connections. They cover trusted auth, admission, raw-body
-limits, ignored legacy session headers, saturated/cross-principal cancellation,
-queue deadlines, ordinary owner-death cleanup, and SSE ordering, completion,
-keepalive disconnects, abrupt owner-death cleanup, the subscription limit, and
-what an open stream retains. HTTP/2 and TLS have not yet
-received equivalent live acceptance here.
+limits and deadlines, the chunked-body refusal, ignored legacy session headers,
+saturated/cross-principal cancellation, queue deadlines, ordinary owner-death
+cleanup, and SSE ordering, completion, keepalive disconnects, abrupt owner-death
+cleanup, the subscription limit, and what an open stream retains. HTTP/2 is
+exercised only for request bodies and a plain JSON response, over cleartext with
+prior knowledge; TLS has not received live acceptance here.
 
 [Example 21](https://github.com/joshrotenberg/snodo/blob/main/examples/21_plug_bandit.exs) demonstrates an application-owned
 executor and Bandit listener, ephemeral verified credentials passed through
