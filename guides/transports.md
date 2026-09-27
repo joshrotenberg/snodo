@@ -46,6 +46,14 @@ Options include `:input` and `:output` devices, `:write_timeout` (default
 5,000 ms; a blocked write is terminal), `:max_line_bytes` (default 2,000,000;
 a longer message is refused with -32600 before decoding), `:request_timeout`,
 and `:executor`. A leading UTF-8 byte order mark is ignored.
+
+Standard input is read in chunks that hold at most `:max_line_bytes` of a line
+when the VM runs with `-noinput`, and on OTP 28 and later when stdin is a
+socket, as Node.js clients provide. Otherwise the VM holds each line in full
+before the limit applies. Clients that start the server with a pipe, as Python
+and Erlang clients do, are bounded only with `-noinput`: `elixir --erl -noinput`,
+`emu_args` for an escript, or `vm.args` for a release.
+
 Logger output is redirected away from stdout by default, because stdout carries
 only protocol messages.
 
