@@ -578,6 +578,32 @@ defmodule Snodo.Router do
     end)
   end
 
+  @doc false
+  # Keeps the URIs the authorization policy lets `context` read, for filtering
+  # subscriptions/listen. A URI that no resource matches is kept, since there is
+  # no component for the policy to decide on; a matcher failure drops the URI.
+  @spec filter_readable(t(), [String.t()], Context.t(), keyword()) :: [String.t()]
+  def filter_readable(%__MODULE__{} = router, uris, %Context{} = context, opts)
+      when is_list(uris) and is_list(opts) do
+    case authorization(opts) do
+      nil -> uris
+      authorization -> Enum.filter(uris, &readable?(router, &1, context, authorization))
+    end
+  end
+
+  defp readable?(router, uri, context, authorization) do
+    case resolve_resource(router, uri) do
+      {:ok, {resource, _variables}} ->
+        authorize_invocation(context, authorization, :resource, resource) == :ok
+
+      {:error, %Error{code: -32_602}} ->
+        true
+
+      {:error, %Error{}} ->
+        false
+    end
+  end
+
   # A route is a module plus the template variables its matcher bound, which is
   # empty for direct resources and for matchers that answer with a bare boolean.
   defp resolve_resource(%__MODULE__{} = router, uri) do

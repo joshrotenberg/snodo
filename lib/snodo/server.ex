@@ -634,6 +634,8 @@ defmodule Snodo.Server do
          %{"notifications" => requested_filter},
          context
        ) do
+    requested_filter = authorize_resource_subscriptions(runtime, requested_filter, context)
+
     with {:ok, %Subscription{} = subscription} <-
            Subscription.open(
              source,
@@ -690,6 +692,25 @@ defmodule Snodo.Server do
       authorization: runtime.authorization
     )
   end
+
+  # A resource the policy does not let this principal read is dropped from the
+  # subscription, the way discovery leaves refused components out of lists.
+  defp authorize_resource_subscriptions(%Runtime{authorization: nil}, filter, _context),
+    do: filter
+
+  defp authorize_resource_subscriptions(
+         %Runtime{} = runtime,
+         %{"resourceSubscriptions" => uris} = filter,
+         context
+       )
+       when is_list(uris) do
+    readable =
+      Router.filter_readable(runtime.router, uris, context, authorization: runtime.authorization)
+
+    Map.put(filter, "resourceSubscriptions", readable)
+  end
+
+  defp authorize_resource_subscriptions(_runtime, filter, _context), do: filter
 
   defp apply_cache_policy(%Result{kind: :input_required} = result, _cache, _label),
     do: {:ok, result}
