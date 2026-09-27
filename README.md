@@ -9,7 +9,7 @@
 
 An Elixir library for building [Model Context Protocol](https://modelcontextprotocol.io)
 servers and clients. It speaks MCP `2026-07-28`, with opt-in support for
-initialize-era HTTP clients (`2025-11-25` and `2025-06-18`).
+initialize-era clients (`2025-11-25` and `2025-06-18`) over HTTP and stdio.
 
 `snodo` is at 0.x: the API may change between minor versions until 1.0.
 
@@ -137,8 +137,8 @@ use Snodo.Server,
   protocols: [Snodo.Protocol.V2026_07_28, Snodo.Protocol.V2025_11_25, Snodo.Protocol.V2025_06_18]
 ```
 
-They cover tools, resources, prompts, completion, and pagination over stateless
-HTTP. They add no session storage.
+They cover tools, resources, prompts, completion, and pagination, over HTTP
+without sessions and over stdio. They add no session storage.
 
 Against the frozen official conformance suite, 32 of 37 `2026-07-28` server
 scenarios pass. On the client side, 6 of 32 pass: 25 of the client scenarios

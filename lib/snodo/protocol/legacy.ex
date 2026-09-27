@@ -117,7 +117,7 @@ defmodule Snodo.Protocol.Legacy do
             )
           ],
       capabilities: ["tools", "prompts", "resources", "completions"],
-      transports: %{direct: :tested, streamable_http: :tested, stdio: :unsupported},
+      transports: %{direct: :tested, streamable_http: :tested, stdio: :tested},
       limitations: %{
         http_sessions: :unsupported,
         server_requests: :unsupported,
@@ -137,8 +137,7 @@ defmodule Snodo.Protocol.Legacy do
   end
 
   def build_context(envelope, runtime, protocol) do
-    with :ok <- validate_transport(envelope.transport),
-         :ok <- validate_version(envelope, protocol.version()),
+    with :ok <- validate_version(envelope, protocol.version()),
          :ok <- validate_progress(envelope.params),
          :ok <- validate_unsupported_params(envelope.params),
          :ok <- validate_expressible_tool(envelope, runtime.router, protocol.version()) do
@@ -206,14 +205,6 @@ defmodule Snodo.Protocol.Legacy do
     do:
       object_schema?(tool.input_schema) and
         (is_nil(tool.output_schema) or object_schema?(tool.output_schema))
-
-  defp validate_transport(%TransportContext{transport: transport})
-       when transport in [:stdio, Snodo.Transport.Stdio],
-       do:
-         {:error,
-          Error.invalid_request("Legacy dialects currently support HTTP and direct dispatch only")}
-
-  defp validate_transport(_transport), do: :ok
 
   defp validate_version(envelope, version) do
     header =
