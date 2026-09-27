@@ -35,6 +35,9 @@ defmodule Snodo.Protocol.V2026_07_28 do
   @name_header "mcp-name"
   @cancel_method "notifications/cancelled"
   @logging_levels ~w(debug info notice warning error critical alert emergency)
+  # Bounds the URI list of one subscriptions/listen request; the Hub and each
+  # subscription worker keep a copy of it.
+  @max_resource_subscriptions 1_000
   @meta_key ~r/^(?:(?:[A-Za-z](?:[A-Za-z0-9-]*[A-Za-z0-9])?)(?:\.(?:[A-Za-z](?:[A-Za-z0-9-]*[A-Za-z0-9])?))*\/)?(?:[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)?$/
 
   @unsupported_server_notifications [
@@ -976,11 +979,19 @@ defmodule Snodo.Protocol.V2026_07_28 do
         :ok
 
       {:ok, subscriptions} when is_list(subscriptions) ->
-        if Enum.all?(subscriptions, &(is_binary(&1) and valid_uri?(&1))),
-          do: :ok,
-          else:
+        cond do
+          length(subscriptions) > @max_resource_subscriptions ->
+            {:error,
+             "subscriptions/listen resourceSubscriptions accepts at most " <>
+               "#{@max_resource_subscriptions} URIs"}
+
+          Enum.all?(subscriptions, &(is_binary(&1) and valid_uri?(&1))) ->
+            :ok
+
+          true ->
             {:error,
              "subscriptions/listen resourceSubscriptions must contain absolute URI strings"}
+        end
 
       {:ok, _invalid} ->
         {:error, "subscriptions/listen resourceSubscriptions must be a list"}

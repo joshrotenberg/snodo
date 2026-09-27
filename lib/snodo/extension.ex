@@ -26,6 +26,10 @@ defmodule Snodo.Extension do
   an installed, advertised, exact-version-compatible extension and retains
   per-extension filter ownership through the stream lifecycle.
 
+  Middleware that defers or persists a call instead of passing it to the
+  continuation must first call `check_dispatch/3`, so the deferred work passes
+  the same lookup, authorization, and argument checks as a direct call.
+
   Other outbound methods and MRTR-embedded operations require additional
   routing infrastructure and cannot be advertised as extension-owned routes
   through this behaviour yet.
@@ -72,4 +76,24 @@ defmodule Snodo.Extension do
                       transport_policy: 2,
                       subscription_filter: 2,
                       shape_subscription_event: 3
+
+  @doc """
+  Runs the core checks for `operation` without running it, from inside
+  `around_dispatch/4`: the component lookup, the authorization policy's
+  `:invocation` phase, and argument validation (see `Snodo.Router.check/5`).
+  Only `{:tools_call, name}` is supported.
+
+  Returns `:ok` when the call would run. Otherwise it returns what the direct
+  call would: `{:ok, result}` with a tool error result for missing or invalid
+  arguments, or `{:error, error}`. Outside middleware run by `Snodo.Server`
+  there is no check to run, and it returns an error.
+  """
+  @spec check_dispatch(term(), map(), Context.t()) ::
+          :ok | {:ok, Result.t()} | {:error, Error.t()}
+  def check_dispatch(operation, params, %Context{dispatch_check: check} = context)
+      when is_function(check, 3) and is_map(params),
+      do: check.(operation, params, context)
+
+  def check_dispatch(_operation, _params, %Context{}),
+    do: {:error, Error.internal("Dispatch checks are only available to server middleware")}
 end

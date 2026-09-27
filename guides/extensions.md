@@ -18,6 +18,10 @@ extension and its callback accepts the negotiation. An advertised, compatible
 extension may also wrap core dispatch and contribute HTTP policy through generic
 hooks. An installed but unadvertised extension does nothing.
 
+Middleware that stores or defers a call instead of passing it on calls
+`Snodo.Extension.check_dispatch/3` first, so the deferred work passes the same
+lookup, authorization, and argument checks as a direct call.
+
 See `examples/06_custom_extension.exs`.
 
 ## Tasks
