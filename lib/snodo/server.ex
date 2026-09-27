@@ -787,11 +787,10 @@ defmodule Snodo.Server do
       else: Error.to_json_rpc(Error.internal())
   end
 
+  # An id outside the bounds is not echoed; the error answers with a null id.
   defp readable_id(raw) when is_map(raw) do
-    case Map.get(raw, "id") do
-      id when is_binary(id) or is_integer(id) -> id
-      _invalid -> nil
-    end
+    id = Map.get(raw, "id")
+    if Envelope.bounded_id?(id), do: id, else: nil
   end
 
   defp readable_id(_raw), do: nil

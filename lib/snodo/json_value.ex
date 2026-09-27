@@ -19,6 +19,29 @@ defmodule Snodo.JSONValue do
   all validate with `valid?/1` and raise on anything else.
   """
 
+  @max_integer_digits 64
+
+  @doc false
+  # Decodes untrusted JSON text. The standard decoder converts integer literals
+  # of any length: a million digits cost a second to decode and encode, and
+  # about 1.25 million raise SystemLimitError. Longer than 64 digits is refused
+  # before conversion.
+  @spec decode(binary()) :: {:ok, term()} | {:error, term()}
+  def decode(text) when is_binary(text) do
+    case JSON.decode(text, nil, integer: &bounded_integer/1) do
+      {value, nil, ""} -> {:ok, value}
+      {_value, nil, _rest} -> {:error, :trailing_data}
+      {:error, reason} -> {:error, reason}
+    end
+  catch
+    :throw, {__MODULE__, :integer_too_long} -> {:error, :integer_too_long}
+  end
+
+  defp bounded_integer(digits) when byte_size(digits) <= @max_integer_digits,
+    do: String.to_integer(digits)
+
+  defp bounded_integer(_digits), do: throw({__MODULE__, :integer_too_long})
+
   @doc """
   Returns whether a term is a JSON value under the rule above.
   """
