@@ -48,11 +48,53 @@ defmodule Snodo.Transport.StreamableHTTP.ServerLimitsTest do
     assert elapsed < 3_000
   end
 
+  test "a client that trickles the request body is closed at body_timeout" do
+    runtime = TestFixtures.runtime()
+    port = start_http(runtime: runtime, body_timeout: 300, read_timeout: 5_000)
+    [head, body] = request_parts(TestFixtures.request("slow-body", "server/discover"))
+    {:ok, socket} = :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: true])
+    :ok = :gen_tcp.send(socket, head)
+    started = System.monotonic_time(:millisecond)
+
+    # Each byte arrives well inside :read_timeout, and the whole body takes
+    # seconds, so only the body deadline can end the request this early.
+    assert {:closed, _response} = trickle(socket, body, started + 5_000)
+
+    elapsed = System.monotonic_time(:millisecond) - started
+    assert elapsed >= 300
+    assert elapsed < 2_000
+  end
+
+  test "a body that arrives in parts before body_timeout is served" do
+    port = start_http(runtime: TestFixtures.runtime(), body_timeout: 2_000)
+    [head, body] = request_parts(TestFixtures.request("split-body", "server/discover"))
+    socket = connect(port)
+    :ok = :gen_tcp.send(socket, head)
+
+    size = div(byte_size(body), 3)
+    parts = [binary_part(body, 0, size), binary_part(body, size, size)]
+    last = binary_part(body, 2 * size, byte_size(body) - 2 * size)
+
+    # No response arrives while part of the body is still missing.
+    for part <- parts do
+      :ok = :gen_tcp.send(socket, part)
+      assert {:error, :timeout} = :gen_tcp.recv(socket, 0, 50)
+    end
+
+    :ok = :gen_tcp.send(socket, last)
+    assert read_all(socket) =~ "HTTP/1.1 200"
+  end
+
   @tag capture_log: true
   test "limits must be positive integers" do
     runtime = TestFixtures.runtime()
 
-    invalid = [max_connections: 0, head_timeout: -1, max_subscriptions: :infinity]
+    invalid = [
+      max_connections: 0,
+      head_timeout: -1,
+      body_timeout: 0,
+      max_subscriptions: :infinity
+    ]
 
     for {key, value} <- invalid do
       assert {:error, {{%ArgumentError{message: message}, _stack}, _child}} =
@@ -266,6 +308,8 @@ defmodule Snodo.Transport.StreamableHTTP.ServerLimitsTest do
     [_head, body] = :binary.split(response, "\r\n\r\n")
     JSON.decode!(body)
   end
+
+  defp trickle(_socket, "", _deadline), do: {:open, ""}
 
   defp trickle(socket, <<byte, rest::binary>>, deadline) do
     if System.monotonic_time(:millisecond) > deadline do

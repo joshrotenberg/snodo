@@ -121,6 +121,9 @@ executor, which returns it when the stream process exits for any reason.
 Subscription event buffering is the source's responsibility; the bundled hub
 provides bounded queues. Plug body-read limits are approximate at socket-read
 granularity, so this adapter also checks the returned byte count before decoding.
+`read_timeout` bounds each read. Bandit reads a `Content-Length` body in slices
+of up to 1,000,000 bytes and each slice must arrive within `read_timeout`, so the
+whole body is bounded; a chunked request body is bounded only per read.
 The Plug cannot enforce its request deadline while an adapter is blocked inside
 a socket write; keep the server's send timeout finite (the startup example uses
 five seconds) and configure equivalent write bounds for another HTTP adapter.
