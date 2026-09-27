@@ -73,7 +73,8 @@ defmodule Examples.TasksSubscriptions.Runner do
 
   def run(mode) do
     Process.register(self(), __MODULE__)
-    {:ok, store} = Memory.start_link()
+    # One client, so every task shares one scope.
+    {:ok, store} = Memory.start_link(scope: :shared)
     store_ref = {Memory, store}
     {:ok, runner} = TaskRunner.start_link(store: store_ref)
 

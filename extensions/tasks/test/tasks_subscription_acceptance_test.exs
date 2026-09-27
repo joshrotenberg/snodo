@@ -18,7 +18,7 @@ defmodule Snodo.TasksSubscriptionAcceptanceTest do
   @subscription_id_key "io.modelcontextprotocol/subscriptionId"
 
   setup do
-    store = start_supervised!(Memory)
+    store = start_supervised!({Memory, scope: :shared})
     runner = start_supervised!({Runner, store: {Memory, store}})
     hub = start_supervised!({TasksSubscriptionHub, owner: self()})
 

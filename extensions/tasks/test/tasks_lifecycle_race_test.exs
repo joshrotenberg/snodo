@@ -9,7 +9,7 @@ defmodule Snodo.TasksLifecycleRaceTest do
   alias SnodoTest.TasksTestSupport, as: TasksSupport
 
   setup do
-    store = start_supervised!(Memory)
+    store = start_supervised!({Memory, scope: :shared})
     runner = start_supervised!({Runner, store: {Memory, store}})
 
     %{runtime: TasksSupport.runtime(store, runner, self())}

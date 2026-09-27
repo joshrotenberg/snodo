@@ -49,7 +49,7 @@ defmodule Snodo.Extensions.Tasks.Stress do
   def run(opts \\ []) when is_list(opts) do
     config = validate_options!(opts)
     {:ok, collector} = Agent.start_link(fn -> [] end)
-    {:ok, store} = Memory.start_link()
+    {:ok, store} = Memory.start_link(scope: :shared)
     store_ref = {Memory, store}
 
     try do
