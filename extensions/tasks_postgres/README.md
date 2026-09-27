@@ -122,7 +122,9 @@ postgres =
     end,
     timeout: 15_000,
     lock_timeout_ms: 5_000,
-    reap_batch_size: 500
+    reap_batch_size: 500,
+    max_tasks: 10_000,
+    max_active_tasks_per_scope: 100
   )
 
 :ok = Postgres.check_schema(postgres)
@@ -141,6 +143,14 @@ store_ref = {Postgres, postgres}
 
 Pass `store_ref` and `runner` to the Tasks extension exactly as with Memory or
 DETS.
+
+The values shown for `:reap_batch_size`, `:max_tasks`, and
+`:max_active_tasks_per_scope` are the defaults. `create/4` refuses a Task with
+`{:error, {:capacity_exceeded, limit}}` when the table already holds
+`:max_tasks` Tasks, or the caller's scope already has
+`:max_active_tasks_per_scope` working or input-required Tasks; the Tasks
+extension reports that to the client as a retryable error. Either limit may be
+`:infinity`.
 
 The Repo module is configuration, not a connection checked out in advance.
 Ecto's pool supplies a transaction connection for each callback, so several
@@ -179,9 +189,18 @@ generic Tasks store contract.
 - Retry deadlines are projected from the versioned Snapshot into `retry_at`.
   Both exact and next-task claims exclude work whose retry deadline is still in
   the future.
+- Creation counts stored and active Tasks inside its transaction after taking
+  a transaction-scoped advisory lock keyed on the schema prefix. Concurrent
+  creations on any number of nodes therefore pass the limits one at a time,
+  and at most one of them can take the last slot. Setting both limits to
+  `:infinity` skips the lock and the counts.
 - TTL reaping is deliberately bounded by `:reap_batch_size`; `reap/1` returns
   the IDs deleted by that call. Foreign-key cascade removes their event rows in
-  the same transaction.
+  the same transaction. A runner reaping every `:reap_interval_ms` (default
+  60,000) therefore deletes at most `:reap_batch_size` Tasks per interval.
+- `get/3` and request transitions compare `expires_at` with
+  `statement_timestamp()`, the clock reaping uses, and report an expired Task
+  as not found before it is reaped.
 
 PostgreSQL store restart does not use the DETS boot-epoch rule. A global epoch
 would invalidate healthy claims on other nodes. Crashed workers become
@@ -230,7 +249,7 @@ mix tasks.postgres.contract
 ```
 
 That default lane has 9 database-independent tests and one adapter evidence
-group; it excludes the 14 live tests.
+group; it excludes the 16 live tests.
 
 The live transaction lane is deliberately separate from default unit quality.
 Point it at a dedicated PostgreSQL database:
@@ -258,7 +277,7 @@ the independent-session row locking that exact-claim races and `SKIP LOCKED`
 must prove. The seven live evidence groups cover migration lifecycle, scoped
 concealment, transaction concurrency, event idempotency, lease fencing,
 database-clock retry/TTL behavior, and two-Runner crash recovery.
-Those groups currently contain 14 live tests, including data-preserving
+Those groups currently contain 16 live tests, including data-preserving
 version-one upgrade, rollback, and re-upgrade evidence.
 
 The executable example follows the same ownership and cleanup rules while

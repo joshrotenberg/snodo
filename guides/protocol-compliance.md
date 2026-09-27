@@ -161,9 +161,11 @@ request under an issued key is rejected. The DETS implementation proves reopen
 and boot-epoch fencing on one node; it is deliberately not evidence for
 distributed production claims. Both adapters make the entire aggregate eligible
 for reaping at `createdAt + ttlMs` and preserve `ttlMs: nil` indefinitely.
-Removal depends on explicit or scheduled cleanup; reads and claims are not an
-exact-deadline expiry fence. That is this project's permitted expiration policy,
-not a claim that the protocol mandates eager physical deletion for every server.
+Removal depends on explicit or scheduled cleanup, which a runner schedules every
+minute by default. Reads and request mutations treat a Task as unknown from
+`createdAt + ttlMs`; claims are not an exact-deadline expiry fence. That is
+this project's permitted expiration policy, not a claim that the protocol
+mandates eager physical deletion for every server.
 
 This work reimplements the architecture in Elixir; no tower-mcp source was
 copied. tower-mcp is licensed MIT OR Apache-2.0.
