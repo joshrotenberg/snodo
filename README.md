@@ -162,6 +162,17 @@ Conformance and interop checks against the official TypeScript client live in
 release-please; see
 [RELEASING.md](https://github.com/joshrotenberg/snodo/blob/main/RELEASING.md).
 
+## Contributing
+
+Open issues are labeled by priority, size, and area, and `good first issue`
+marks small, well-scoped starting points.
+[CONTRIBUTING.md](https://github.com/joshrotenberg/snodo/blob/main/CONTRIBUTING.md)
+describes the workflow.
+[AGENTS.md](https://github.com/joshrotenberg/snodo/blob/main/AGENTS.md) lists
+the setup, the gate commands CI runs, and the project's constraints, for people
+and coding agents alike. Report security problems privately, as described in
+[SECURITY.md](https://github.com/joshrotenberg/snodo/blob/main/SECURITY.md).
+
 ## License
 
 MIT. See [LICENSE](https://github.com/joshrotenberg/snodo/blob/main/LICENSE).

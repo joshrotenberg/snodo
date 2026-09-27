@@ -1,0 +1,32 @@
+name: Feature request
+description: Propose a new capability or a change to an existing one.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: gap
+    attributes:
+      label: The gap
+      description: What you cannot do today, or what is harder than it should be. Name the modules, guides, or spec sections involved.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The shape of the change you have in mind. Keep in mind that the core has no Hex runtime dependencies, and that integrations with specific external systems belong behind a behaviour.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Workarounds you use today, or other shapes you considered.
+  - type: dropdown
+    id: contribute
+    attributes:
+      label: Would you like to work on it?
+      options:
+        - "Yes"
+        - "Maybe, with some guidance"
+        - "No"

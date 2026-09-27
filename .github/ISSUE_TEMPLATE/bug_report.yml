@@ -1,0 +1,56 @@
+name: Bug report
+description: Something in snodo behaves differently from its documentation or the MCP specification.
+title: "fix: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For a security problem, do not open an issue; follow SECURITY.md instead.
+  - type: input
+    id: packages
+    attributes:
+      label: Packages and versions
+      description: For example "snodo 0.3.0, snodo_plug 0.3.0".
+    validations:
+      required: true
+  - type: input
+    id: runtime
+    attributes:
+      label: Elixir and OTP versions
+      description: The output of `elixir --version`.
+    validations:
+      required: true
+  - type: dropdown
+    id: transport
+    attributes:
+      label: Transport
+      options:
+        - stdio
+        - native HTTP listener (Snodo.Transport.StreamableHTTP.Server)
+        - snodo_plug
+        - Snodo.Client
+        - direct / in-process
+        - other or not applicable
+    validations:
+      required: true
+  - type: input
+    id: protocol
+    attributes:
+      label: Protocol version
+      description: 2026-07-28, 2025-11-25, or 2025-06-18.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you expected, what happened instead, and any error or log output.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: The smallest server definition and request that shows the problem. A failing test is ideal.
+      render: elixir
+    validations:
+      required: true
