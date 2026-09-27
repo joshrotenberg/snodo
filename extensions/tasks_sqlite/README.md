@@ -13,10 +13,12 @@ transactions, WAL behavior, foreign-key enforcement, and a database clock.
 
 Add this package and `ecto_sqlite3` to the host application:
 
+<!-- x-release-please-start-version -->
 ```elixir
-{:snodo_tasks_sqlite, "~> 0.1.0"},
+{:snodo_tasks_sqlite, "~> 0.2.0"},
 {:ecto_sqlite3, "~> 0.24"}
 ```
+<!-- x-release-please-end -->
 
 Then configure and supervise the Repo normally:
 
@@ -27,29 +29,6 @@ defmodule MyApp.Repo do
     adapter: Ecto.Adapters.SQLite3
 end
 ```
-
-That facade creates the current version-two schema from an empty database. To
-upgrade an existing version-one file, wrap the data-preserving step in its own
-application migration:
-
-```elixir
-defmodule MyApp.Repo.Migrations.UpgradeMcpTasksToV2 do
-  use Ecto.Migration
-
-  def up do
-    Snodo.Extensions.Tasks.Store.SQLite.Migration.V2.up()
-  end
-
-  def down do
-    Snodo.Extensions.Tasks.Store.SQLite.Migration.V2.down()
-  end
-end
-```
-
-`Migration.V1` remains immutable for historical fixtures. `Migration.V2`
-preserves Tasks and events while adding the commit-time ledger index and
-updating schema metadata. The current facade's `down/0` remains destructive
-because it owns the complete fresh-install schema.
 
 ```elixir
 config :my_app, MyApp.Repo,
@@ -95,6 +74,29 @@ defmodule MyApp.Repo.Migrations.AddMcpTasks do
   end
 end
 ```
+
+That facade creates the current version-two schema from an empty database. To
+upgrade an existing version-one file, wrap the data-preserving step in its own
+application migration:
+
+```elixir
+defmodule MyApp.Repo.Migrations.UpgradeMcpTasksToV2 do
+  use Ecto.Migration
+
+  def up do
+    Snodo.Extensions.Tasks.Store.SQLite.Migration.V2.up()
+  end
+
+  def down do
+    Snodo.Extensions.Tasks.Store.SQLite.Migration.V2.down()
+  end
+end
+```
+
+`Migration.V1` remains immutable for historical fixtures. `Migration.V2`
+preserves Tasks and events while adding the commit-time ledger index and
+updating schema metadata. The current facade's `down/0` remains destructive
+because it owns the complete fresh-install schema.
 
 SQLite and `ecto_sqlite3` do not support table prefixes. The migration has no
 prefix option. It creates:

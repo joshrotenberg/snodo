@@ -33,10 +33,10 @@ transactional stores behind an application-owned Ecto Repo. Recovery is
 at-least-once, so work must use its stable idempotency key for external
 effects.
 
-- [Tasks package](https://github.com/joshrotenberg/snodo/blob/main/extensions/tasks/README.md), including the
+- [Tasks package](https://hexdocs.pm/snodo_tasks), including the
   [stress-testing harness](https://github.com/joshrotenberg/snodo/blob/main/extensions/tasks/stress-testing.md)
-- [PostgreSQL store](https://github.com/joshrotenberg/snodo/blob/main/extensions/tasks_postgres/README.md)
-- [SQLite store](https://github.com/joshrotenberg/snodo/blob/main/extensions/tasks_sqlite/README.md)
+- [PostgreSQL store](https://hexdocs.pm/snodo_tasks_postgres)
+- [SQLite store](https://hexdocs.pm/snodo_tasks_sqlite)
 
 Examples 07, 08, 09, and 17 run from `extensions/tasks`; example 10 from
 `extensions/tasks_postgres` with a live database; example 11 from

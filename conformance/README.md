@@ -78,7 +78,7 @@ not a moving `npx` dependency resolution, for comparable runs.
 [Protocol CI](../.github/workflows/protocol.yml) runs this lane and uploads raw
 checks, runner/fixture logs, and the summary even when the regression check fails.
 Each run also appends its Markdown summary to the job's step summary.
-The workflow being checked in does not mean its remote job has already passed.
+It runs on every pull request and every push to `main`.
 
 ## Canary and dependency updates
 

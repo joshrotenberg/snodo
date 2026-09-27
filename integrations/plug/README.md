@@ -5,19 +5,21 @@
 package, not to the core. Bandit is a development/test dependency here; an
 application chooses and directly depends on its HTTP server.
 
-This first integration supports the current stateless **2026-07-28** dialect.
-It does not add legacy sessions, authentication policy, OAuth, or a second
-protocol implementation. HTTP admission, JSON-RPC shaping, capability checks,
+It serves whichever dialects the runtime enables: **2026-07-28** by default,
+and the opt-in initialize-era dialects without HTTP sessions. It does not add
+sessions, authentication policy, OAuth, or a second protocol implementation. HTTP admission, JSON-RPC shaping, capability checks,
 mirrored headers, and extension dispatch remain in the core adapter.
 
 ## Application-owned startup
 
 Add `snodo_plug` and an HTTP server such as Bandit to your application:
 
+<!-- x-release-please-start-version -->
 ```elixir
-{:snodo_plug, "~> 0.1.0"},
+{:snodo_plug, "~> 0.2.0"},
 {:bandit, "~> 1.12"}
 ```
+<!-- x-release-please-end -->
 
 Then start both from your supervision tree:
 
@@ -94,7 +96,7 @@ Discovery refusals hide components from the list responses. An invocation
 refusal is the application's own JSON-RPC error inside a 200 response, because
 the request itself was authenticated and admitted; use HTTP 401/403 in the
 authentication Plug for the endpoint-level decision. See the core
-[application stack notes](https://github.com/joshrotenberg/snodo/blob/main/guides/application-stack.md) for the policy
+[application stack notes](https://hexdocs.pm/snodo/application-stack.html) for the policy
 contract.
 
 ## Bounds and lifecycle guarantees

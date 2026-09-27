@@ -2,7 +2,7 @@
 
 ## Claim boundary
 
-This project implements and tests a server-side slice of MCP `2026-07-28`.
+This project implements and tests a slice of MCP `2026-07-28`.
 It does not claim full revision conformance.
 
 The profile, internal contract, released-client interoperability check, and
@@ -261,7 +261,7 @@ not current scores.
 The runner's client leg measures `Snodo.Client` separately, through a harness
 that drives it against each scenario server. The 2026-09-26 run passes 6 of 32
 required client scenarios. 25 of the 32 cover OAuth, which the client does not
-implement, and one of the four passes (`auth/resource-mismatch`) only because
+implement, and one of the six passes (`auth/resource-mismatch`) only because
 the harness never starts authorization. See the
 [client leg notes](https://github.com/joshrotenberg/snodo/blob/main/conformance/README.md#client-leg)
 for the remaining gaps.
@@ -306,7 +306,7 @@ dependency graph, verifies the frozen manifest digest, starts an ephemeral
 loopback fixture, retains raw artifacts, and applies a reviewed per-check
 [regression baseline](https://github.com/joshrotenberg/snodo/blob/main/conformance/expected-failures.json). The official runner
 still exits non-zero; failures remain failures in the report. The baseline pins
-all 190 check occurrences across 50 required and unscored scenarios:
+all 194 check occurrences across 50 required and unscored scenarios:
 
 - an unexpected failure breaks CI;
 - a passing baselined check also breaks CI because the baseline is stale;

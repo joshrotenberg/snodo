@@ -2,7 +2,7 @@
 
 The current application target is MCP **2026-07-28**, using the official
 TypeScript client **2.0.0** as the first interoperability baseline. This is a
-tested server-side slice, not a full-conformance or all-host compatibility claim.
+tested slice of the protocol, not a full-conformance or all-host compatibility claim.
 
 ## Compose the pieces your application needs
 
@@ -18,8 +18,8 @@ The dependency direction is one-way toward the core. Installing an integration
 does not silently start a listener, migrate a database, enable a protocol version,
 or replace the application's validator.
 
-For an HTTP application, choose the [Plug/Bandit integration](https://github.com/joshrotenberg/snodo/blob/main/integrations/plug/README.md)
-and [JSV backend](https://github.com/joshrotenberg/snodo/blob/main/integrations/schema_jsv/README.md). The native HTTP listener
+For an HTTP application, choose the [Plug/Bandit integration](https://hexdocs.pm/snodo_plug)
+and [JSV backend](https://hexdocs.pm/snodo_jsv). The native HTTP listener
 remains useful for an embedded endpoint, examples, and independent acceptance.
 Stdio needs neither Plug nor Bandit. `Basic` is still available when its documented
 subset is sufficient; it is not the recommended full-vocabulary validator.
@@ -125,21 +125,16 @@ Keep the following in mind when writing a policy:
 
 ## Protocol-version support
 
-Only the configured latest dialect is implemented and enabled. A client that
-supports only an older MCP era cannot use this server merely by connecting or
-changing a header. The registry is an allowlist, not an automatic translator.
+2026-07-28 is the only dialect enabled by default. `Snodo.Protocol.V2025_11_25`
+and `Snodo.Protocol.V2025_06_18` are opt-in: list them in `protocols:` to serve
+clients that still negotiate with `initialize`. They implement the older
+initialization and result shapes without HTTP sessions, and leave out Tasks,
+subscriptions, and server requests. See
+[Initialize-era clients](initialize-era-clients.md).
 
-Older support would need a separately implemented/tested dialect **and** the
-older initialization, capability negotiation, method/result semantics, and
-transport lifecycle. A dual-era client may choose the modern path; an
-older-only client has no such fallback. Older HTTP sessions were optional, so
-legacy support does not automatically require persistent server-side storage.
-It does require correct older lifecycle semantics.
-
-Reference: the [2025-11-25 initialization lifecycle](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle)
-and [optional HTTP session management](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports).
-Adding an older dialect is a separate product decision, not part of this
-latest-only application milestone.
+The registry is an allowlist, not an automatic translator. A client whose
+version is not enabled cannot use the server by connecting or by changing a
+header.
 
 ## Verification boundaries
 

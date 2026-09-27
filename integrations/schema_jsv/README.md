@@ -10,9 +10,11 @@ silently change any server's validation policy.
 
 Add `snodo_jsv` next to `snodo`:
 
+<!-- x-release-please-start-version -->
 ```elixir
-{:snodo_jsv, "~> 0.1.0"}
+{:snodo_jsv, "~> 0.2.0"}
 ```
+<!-- x-release-please-end -->
 
 Then select the backend on the server:
 

@@ -57,7 +57,7 @@ Tokens are readable, not encrypted. Do not put secrets in them. They can be
 reused until expiry, so one-time operations need application-owned replay
 tracking and idempotency. Authorization must still be checked on every request.
 Do not perform a non-idempotent effect before returning input-required and assume
-that the client will retry exactly once—or at all.
+that the client will retry exactly once, or at all.
 
 ## Admission, errors, and composition
 
@@ -68,16 +68,16 @@ does not bypass these checks. Missing mode capability returns `-32021` with
 `requiredCapabilities`; malformed retry envelopes return `-32602` before the
 component runs. Unsupported result placement is a server error.
 
-The new optional dialect `validate_result/3` hook does not change custom dialects
+The optional dialect `validate_result/3` hook does not change custom dialects
 that omit it. Extension middleware runs anew on every retry and cannot enlarge
 the original client's capabilities by passing an altered handler context.
 Custom extension routes still own their semantics; embedded methods are not
 top-level RPCs or new extension route registrations.
 
-Typed callback failures (`{:error, %Snodo.Error{}}`) now retain their documented
-JSON-RPC error semantics for tools as well as resources/prompts. Previously the
-tool router incorrectly converted them into `isError` results. Explicit
-`Snodo.Result.error/2` and legacy untyped tool failures remain tool error results.
+Typed callback failures (`{:error, %Snodo.Error{}}`) keep their documented
+JSON-RPC error semantics for tools as well as resources and prompts. Explicit
+`Snodo.Result.error/2` and untyped tool failures are tool error results
+(`isError`).
 This distinction matters for invalid elicitation answers and failed state
 verification.
 
@@ -94,7 +94,7 @@ is a returned user choice, separate from cancelling an active protocol request.
 - Form schemas use the restricted flat primitive/enum subset, not arbitrary
   JSON Schema. Unsupported keywords are rejected. Formats have documented
   syntactic checks, not full RFC or service validation. The optional JSV backend
-  now provides general tool schema validation; it does not widen this
+  provides general tool schema validation; it does not widen this
   protocol-specific form subset. See the [application stack](application-stack.md).
 - Form mode must not collect credentials. URL helpers accept HTTP(S) navigation
   only. URL acceptance indicates consent, not completion of an external action;
@@ -108,36 +108,7 @@ is a returned user choice, separate from cancelling an active protocol request.
 - Official-client acceptance is not a fresh external conformance-runner score,
   full wire-schema validation, or evidence for every MCP host.
 
-## Initial MRTR checkpoint — 2026-09-14
-
-Verified on Elixir 1.20.4 / OTP 29.0.6 with `ERL_FLAGS='+S 4:4'`:
-
-- Core `mix test --warnings-as-errors`: **272 passing** (one doctest, 271 tests).
-- The `snodo.contract` Mix task: **107 passing tests**, **29 evidence groups**.
-- Core formatting, strict Credo, dev warnings-as-errors compilation, and dev
-  Dialyzer: passed; zero Dialyzer errors/skips and no new suppressions.
-- Tasks `mix test --warnings-as-errors`: **85 passing**, including five new
-  ordinary-MRTR/terminal-task boundary tests.
-- Tasks `mix tasks.contract`: **71 passing tests**, **10 evidence groups**;
-  test-environment formatting and strict Credo passed with no issues.
-- Existing Hex.pm application suite: **130 passing**. Its separate pinned
-  official-client acceptance also still passes over stdio and HTTP.
-- Example 20 standalone `--check`: passed. It is registered in the default
-  nineteen-example gate; the entire example set was not rerun in this slice.
-- Official TypeScript client **2.0.0** MRTR check: both stdio and native HTTP
-  passed, each with five automatic workflows, eight elicitation callbacks,
-  and fifteen operation requests. Fresh IDs, state replacement/discarding,
-  changed-argument rejection, and URL consent semantics are asserted.
-
-The initial implementation did not rerun the external conformance runner,
-unchanged storage-adapter suites, or Tasks/storage-adapter development Dialyzer.
-The subsequent external fixture close-out passed **31/37** required scenarios,
-including nine newly exercised ordinary MRTR scenarios. The later progress
-slice raises the current score to **32/37**; the current aggregate evidence is
-in [target application findings](https://github.com/joshrotenberg/snodo/blob/main/docs/history/target-application-findings.md#verification--2026-09-14).
-See [conformance results](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-09-14-alpha.11-summary.md).
-The official-client and frozen external regression checks are now wired into CI;
-the checked-in workflow is policy until its remote job actually runs.
+## Test coverage
 
 The literal acceptance suite covers all three feature families over direct,
 stdio, and HTTP adapter boundaries; the independent client also uses a real
