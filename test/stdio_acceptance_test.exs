@@ -195,6 +195,11 @@ defmodule Snodo.Transport.StdioAcceptanceTest do
     # request can be overtaken by the caller's exit, which comes from another
     # process. This call returns after init/1 and after the monitor is in place.
     _state = :sys.get_state(coordinator)
+    # init/1 also sends the coordinator's own monitor request to the serving
+    # caller, and the kill below, from this process, can overtake it: the
+    # coordinator then stops with {:serve_owner_down, :noproc}. The caller lists
+    # the coordinator in :monitored_by once it has recorded that monitor.
+    await_monitored_by(serving_caller, coordinator)
     Process.exit(serving_caller, :kill)
 
     assert_receive {:DOWN, ^coordinator_monitor, :process, ^coordinator,
@@ -406,6 +411,21 @@ defmodule Snodo.Transport.StdioAcceptanceTest do
 
   defp await_output_messages(_output, count, 0) do
     flunk("timed out waiting for #{count} stdio messages")
+  end
+
+  defp await_monitored_by(pid, monitor, attempts \\ 100)
+
+  defp await_monitored_by(pid, monitor, attempts) when attempts > 0 do
+    {:monitored_by, monitors} = Process.info(pid, :monitored_by)
+
+    unless monitor in monitors do
+      Process.sleep(5)
+      await_monitored_by(pid, monitor, attempts - 1)
+    end
+  end
+
+  defp await_monitored_by(pid, monitor, 0) do
+    flunk("#{inspect(monitor)} never appeared in #{inspect(pid)}'s monitored_by")
   end
 
   defp await_global_name(name, attempts \\ 100)
