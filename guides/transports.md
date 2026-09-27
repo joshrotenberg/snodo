@@ -91,6 +91,8 @@ The listener also bounds what clients can hold open:
   closed without being read.
 - `:head_timeout` (default 10,000 ms from accept). The request head must be
   complete by then; `:read_timeout` (5,000 ms) still bounds each read.
+- `:body_timeout` (default 10,000 ms from the end of the head). The request
+  body must be complete by then; `:read_timeout` still bounds each read.
 - `:max_subscriptions` (default 256). A `subscriptions/listen` stream over the
   limit is closed at its source and the request gets 503. A slot returns when
   the connection serving a stream exits, including a client disconnect.

@@ -21,6 +21,11 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
       complete, default 10,000. `:read_timeout` (default 5,000) still bounds
       each read; this deadline bounds the whole head, so a client that sends it
       a byte at a time is closed when the deadline passes.
+    * `:body_timeout` - milliseconds from the end of the head until the request
+      body must be complete, default 10,000. Each body read returns what has
+      arrived and waits at most `:read_timeout`; this deadline bounds the whole
+      body, so a client that sends it a little at a time is closed when the
+      deadline passes.
     * `:max_subscriptions` - the most `subscriptions/listen` streams open at
       once, default 256. The executor holds one count per listener and returns
       a slot when the connection serving that stream exits. A stream over the
@@ -52,6 +57,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   @default_request_timeout 30_000
   @default_max_connections 1_024
   @default_head_timeout 10_000
+  @default_body_timeout 10_000
   @default_max_subscriptions 256
 
   @impl true
@@ -90,6 +96,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
 
     max_connections = positive_option!(opts, :max_connections, @default_max_connections)
     head_timeout = positive_option!(opts, :head_timeout, @default_head_timeout)
+    body_timeout = positive_option!(opts, :body_timeout, @default_body_timeout)
     max_subscriptions = positive_option!(opts, :max_subscriptions, @default_max_subscriptions)
 
     listen_opts = [
@@ -119,6 +126,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
         deadline_timeout: deadline_timeout!(Keyword.get(opts, :request_timeout, :default)),
         read_timeout: Keyword.get(opts, :read_timeout, @default_read_timeout),
         head_timeout: head_timeout,
+        body_timeout: body_timeout,
         max_subscriptions: max_subscriptions,
         max_header_bytes: Keyword.get(opts, :max_header_bytes, @default_max_header_bytes),
         max_body_bytes: Keyword.get(opts, :max_body_bytes, @default_max_body_bytes),
@@ -482,9 +490,10 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
 
   defp read_request(socket, peer, connection_ref, opts) do
     with {:ok, head, rest} <- recv_head(socket, "", opts),
+         body_deadline = System.monotonic_time(:millisecond) + opts.body_timeout,
          {:ok, method, target, headers} <- parse_head(head),
          {:ok, content_length} <- content_length(method, headers, opts.max_body_bytes),
-         {:ok, body} <- recv_body(socket, rest, content_length, opts.read_timeout) do
+         {:ok, body} <- recv_body(socket, rest, content_length, body_deadline, opts) do
       {:ok,
        %Request{
          method: method,
@@ -601,15 +610,20 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     end
   end
 
-  defp recv_body(_socket, rest, length, _timeout) when byte_size(rest) >= length,
-    do: {:ok, binary_part(rest, 0, length)}
+  defp recv_body(_socket, acc, length, _deadline, _opts) when byte_size(acc) >= length,
+    do: {:ok, binary_part(acc, 0, length)}
 
-  defp recv_body(socket, rest, length, timeout) do
-    remaining = length - byte_size(rest)
+  # Each read returns whatever has arrived, so `:read_timeout` bounds each read
+  # and the body deadline bounds the whole body, as for the head.
+  defp recv_body(socket, acc, length, deadline, opts) do
+    remaining = deadline - System.monotonic_time(:millisecond)
 
-    case :gen_tcp.recv(socket, remaining, timeout) do
-      {:ok, chunk} -> recv_body(socket, rest <> chunk, length, timeout)
-      {:error, reason} -> {:error, reason}
+    if remaining > 0 do
+      with {:ok, chunk} <- :gen_tcp.recv(socket, 0, min(remaining, opts.read_timeout)) do
+        recv_body(socket, acc <> chunk, length, deadline, opts)
+      end
+    else
+      {:error, :timeout}
     end
   end
 
@@ -658,12 +672,15 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   defp maybe_send_response(_socket, _cancelled), do: :ok
 
   defp serve_subscription(socket, %StreamResponse{subscription: subscription} = response) do
+    # The worker closes the source if this process exits, so it starts before
+    # the first write, which can block for the socket's send timeout.
+    {worker, monitor} = Subscription.start_worker(subscription, self())
+
     case Subscription.acknowledgement(subscription) do
       {:ok, acknowledgement} ->
         with :ok <- send_stream_headers(socket, response),
              :ok <- send_sse_message(socket, acknowledgement),
              :ok <- arm_socket(socket) do
-          {worker, monitor} = Subscription.start_worker(subscription, self())
           :ok = Subscription.continue(worker)
 
           stream_subscription(
@@ -679,13 +696,11 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
           # acknowledgement can fail `setopts` with `:einval` before
           # `tcp_closed` arrives.
           {:error, reason} ->
-            :ok = Subscription.close(subscription, {:disconnected, reason})
-            :ok
+            stop_subscription(subscription, worker, monitor, {:disconnected, reason})
         end
 
       {:error, reason} ->
-        :ok = Subscription.close(subscription, {:error, reason})
-        :ok
+        stop_subscription(subscription, worker, monitor, {:error, reason})
     end
   end
 

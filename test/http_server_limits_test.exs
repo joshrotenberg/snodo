@@ -3,6 +3,7 @@ defmodule Snodo.Transport.StreamableHTTP.ServerLimitsTest do
 
   alias Snodo.Subscription.Hub
   alias Snodo.Transport.StreamableHTTP.Server, as: HTTPServer
+  alias SnodoTest.SubscriptionWorker
   alias SnodoTest.TestFixtures
   alias SnodoTest.TestSubscriptionHub
   alias SnodoTest.TestSubscriptionSource
@@ -47,11 +48,53 @@ defmodule Snodo.Transport.StreamableHTTP.ServerLimitsTest do
     assert elapsed < 3_000
   end
 
+  test "a client that trickles the request body is closed at body_timeout" do
+    runtime = TestFixtures.runtime()
+    port = start_http(runtime: runtime, body_timeout: 300, read_timeout: 5_000)
+    [head, body] = request_parts(TestFixtures.request("slow-body", "server/discover"))
+    {:ok, socket} = :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: true])
+    :ok = :gen_tcp.send(socket, head)
+    started = System.monotonic_time(:millisecond)
+
+    # Each byte arrives well inside :read_timeout, and the whole body takes
+    # seconds, so only the body deadline can end the request this early.
+    assert {:closed, _response} = trickle(socket, body, started + 5_000)
+
+    elapsed = System.monotonic_time(:millisecond) - started
+    assert elapsed >= 300
+    assert elapsed < 2_000
+  end
+
+  test "a body that arrives in parts before body_timeout is served" do
+    port = start_http(runtime: TestFixtures.runtime(), body_timeout: 2_000)
+    [head, body] = request_parts(TestFixtures.request("split-body", "server/discover"))
+    socket = connect(port)
+    :ok = :gen_tcp.send(socket, head)
+
+    size = div(byte_size(body), 3)
+    parts = [binary_part(body, 0, size), binary_part(body, size, size)]
+    last = binary_part(body, 2 * size, byte_size(body) - 2 * size)
+
+    # No response arrives while part of the body is still missing.
+    for part <- parts do
+      :ok = :gen_tcp.send(socket, part)
+      assert {:error, :timeout} = :gen_tcp.recv(socket, 0, 50)
+    end
+
+    :ok = :gen_tcp.send(socket, last)
+    assert read_all(socket) =~ "HTTP/1.1 200"
+  end
+
   @tag capture_log: true
   test "limits must be positive integers" do
     runtime = TestFixtures.runtime()
 
-    invalid = [max_connections: 0, head_timeout: -1, max_subscriptions: :infinity]
+    invalid = [
+      max_connections: 0,
+      head_timeout: -1,
+      body_timeout: 0,
+      max_subscriptions: :infinity
+    ]
 
     for {key, value} <- invalid do
       assert {:error, {{%ArgumentError{message: message}, _stack}, _child}} =
@@ -85,12 +128,10 @@ defmodule Snodo.Transport.StreamableHTTP.ServerLimitsTest do
 
     third = open_stream(port, "third")
     [holder] = slot_holders(executor)
-    {:monitors, [process: worker]} = Process.info(holder, :monitors)
     Process.exit(holder, :kill)
     assert eventually(fn -> :sys.get_state(executor).slot_counts == %{} end)
-    # The source worker is not linked to the connection process, so a killed
-    # connection leaves it running.
-    Process.exit(worker, :kill)
+    assert_receive {:subscription_closed, "third", {:disconnected, reason}}, 1_000
+    assert {:owner_down, _exit_reason} = reason
 
     fourth = open_stream(port, "fourth")
     assert {:ok, over} = try_request(port, subscription_request("fifth"))
@@ -98,6 +139,32 @@ defmodule Snodo.Transport.StreamableHTTP.ServerLimitsTest do
 
     :gen_tcp.close(third)
     :gen_tcp.close(fourth)
+  end
+
+  test "a killed connection stops its subscription worker and closes the source" do
+    hub = start_supervised!(Hub)
+    runtime = subscription_runtime(Hub.source(hub))
+    {:ok, server} = start_supervised({HTTPServer, runtime: runtime, port: 0})
+    {_ip, port, _path} = HTTPServer.address(server)
+    executor = :sys.get_state(server).executor
+
+    socket = open_stream(port, "killed")
+    [connection] = slot_holders(executor)
+    worker = subscription_worker(connection)
+    puller = SubscriptionWorker.puller(worker)
+    monitors = SubscriptionWorker.monitor_confirmed([worker, puller])
+    :ok = SubscriptionWorker.await_monitor(connection, worker)
+    assert Hub.stats(hub).subscriptions == 1
+
+    Process.exit(connection, :kill)
+
+    for {pid, monitor} <- monitors do
+      assert_receive {:DOWN, ^monitor, :process, ^pid, :shutdown}, 1_000
+    end
+
+    # The worker closes the source before it exits.
+    assert Hub.stats(hub).subscriptions == 0
+    :gen_tcp.close(socket)
   end
 
   test "an open stream does not retain a large unused request param" do
@@ -121,11 +188,10 @@ defmodule Snodo.Transport.StreamableHTTP.ServerLimitsTest do
     _acknowledgement = recv_until(socket, "notifications/subscriptions/acknowledged")
 
     [connection] = slot_holders(executor)
-    # The connection also monitors its socket port; the worker is the one process.
-    {:monitors, monitors} = Process.info(connection, :monitors)
-    [worker] = for {:process, pid} <- monitors, do: pid
+    worker = subscription_worker(connection)
+    puller = SubscriptionWorker.puller(worker)
 
-    for pid <- [connection, worker, hub] do
+    for pid <- [connection, worker, puller, hub] do
       assert large_binaries(pid) == []
     end
 
@@ -166,6 +232,13 @@ defmodule Snodo.Transport.StreamableHTTP.ServerLimitsTest do
   defp slot_holders(executor) do
     {:monitors, monitors} = Process.info(executor, :monitors)
     for {:process, pid} <- monitors, do: pid
+  end
+
+  # The connection also monitors its socket port; the worker is the one process.
+  defp subscription_worker(connection) do
+    {:monitors, monitors} = Process.info(connection, :monitors)
+    [worker] = for {:process, pid} <- monitors, do: pid
+    worker
   end
 
   defp large_binaries(pid) do
@@ -235,6 +308,8 @@ defmodule Snodo.Transport.StreamableHTTP.ServerLimitsTest do
     [_head, body] = :binary.split(response, "\r\n\r\n")
     JSON.decode!(body)
   end
+
+  defp trickle(_socket, "", _deadline), do: {:open, ""}
 
   defp trickle(socket, <<byte, rest::binary>>, deadline) do
     if System.monotonic_time(:millisecond) > deadline do
