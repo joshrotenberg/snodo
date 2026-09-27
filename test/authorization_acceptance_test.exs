@@ -59,6 +59,20 @@ defmodule Snodo.AuthorizationAcceptanceTest do
   defp names(response, field, key \\ "name"),
     do: Enum.map(response["result"][field], &Map.fetch!(&1, key))
 
+  test "a policy requires private tools, prompts, and resources caches" do
+    for cache <- [:tools_cache, :prompts_cache, :resources_cache] do
+      assert_raise ArgumentError, ~r/#{cache} cannot use scope "public"/, fn ->
+        runtime([], [{cache, [ttl_ms: 1_000, scope: "public"]}])
+      end
+    end
+
+    assert %{discovery_cache: %{scope: "public"}} =
+             runtime([], discovery_cache: [ttl_ms: 1_000, scope: "public"])
+
+    assert %{tools_cache: %{scope: "public"}} =
+             TestFixtures.runtime(tools_cache: [ttl_ms: 1_000, scope: "public"])
+  end
+
   test "one runtime serves a different effective catalog to each request context" do
     runtime =
       runtime(%{

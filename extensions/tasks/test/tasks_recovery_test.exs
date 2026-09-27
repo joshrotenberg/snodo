@@ -438,7 +438,7 @@ defmodule Snodo.TasksRecoveryTest do
 
     store =
       start_supervised!(
-        {Memory, clock: fn -> Agent.get(clock, & &1) end},
+        {Memory, scope: :shared, clock: fn -> Agent.get(clock, & &1) end},
         id: {Memory, make_ref()}
       )
 
@@ -452,6 +452,7 @@ defmodule Snodo.TasksRecoveryTest do
     store =
       start_supervised!(
         {Memory,
+         scope: :shared,
          clock: fn ->
            elapsed = System.monotonic_time(:millisecond) - origin
            clock |> Agent.get(& &1) |> add_milliseconds(elapsed)

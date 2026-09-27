@@ -78,7 +78,14 @@ legacy `capabilities.tasks` or `tools/list` task-support decoration.
 
 The runtime never starts task infrastructure implicitly. Start and supervise a
 store and runner in the application, then pass their references as extension
-options:
+options.
+
+Every store requires `:scope`. It is either a function that derives the
+caller's authorization scope from the request context, or `:shared`, which
+gives every principal one scope. A task in another scope is reported as unknown.
+With `:shared`, anyone who holds a task ID can read, update, cancel, and
+subscribe to that task, so use it only when every caller is the same principal.
+
 
 ```elixir
 alias Snodo.Extensions.Tasks
@@ -135,6 +142,11 @@ Policy values may also be `{mode, task_options}` or an arity-2 function of
 invocation without putting policy on the wire.
 
 ## Durable work and recovery
+
+Before a Task is created, the tool call passes the same lookup, authorization,
+and argument checks as a direct call. A refused call, or one with invalid
+arguments, gets the direct call's response and creates no Task, so an executor
+only receives work that was authorized and validated.
 
 Every Task is created with a `Snodo.Extensions.Tasks.Work` descriptor containing
 an application-defined `type`, JSON-safe `input`, and stable

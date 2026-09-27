@@ -89,7 +89,10 @@ defmodule Snodo.Server.Runtime do
       `{module, options}`. Defaults to `nil`.
     * `:discovery_cache`, `:tools_cache`, `:prompts_cache`,
       `:resources_cache` - `[ttl_ms: non_neg_integer, scope: "private" |
-      "public"]`. Each defaults to `ttl_ms: 0, scope: "private"`.
+      "public"]`. Each defaults to `ttl_ms: 0, scope: "private"`. With an
+      `:authorization` policy, the tools, prompts, and resources caches must
+      be `"private"`: their results can differ per principal, and a public
+      hint lets a shared cache serve one principal's result to another.
     * `:pagination` - `[page_size: pos_integer]`. Defaults to a page size
       of 100.
 
@@ -97,7 +100,8 @@ defmodule Snodo.Server.Runtime do
   `ArgumentError`, including a capability an enabled protocol profile does
   not support, `"completions"` without a completion-capable component, a
   `listChanged` or `subscribe` setting of `true` without a
-  `:subscription_source`, and an advertised extension that is not installed.
+  `:subscription_source`, an advertised extension that is not installed, and a
+  `"public"` tools, prompts, or resources cache with an `:authorization` policy.
   When an initialize-era dialect is enabled, a warning is logged naming any
   tool those clients cannot list.
   """
@@ -130,6 +134,14 @@ defmodule Snodo.Server.Runtime do
     validate_schema_validator!(schema_validator)
     warn_inexpressible_legacy_tools(router, protocols)
 
+    caches = %{
+      tools_cache: cache_policy(Keyword.get(opts, :tools_cache, [])),
+      prompts_cache: cache_policy(Keyword.get(opts, :prompts_cache, [])),
+      resources_cache: cache_policy(Keyword.get(opts, :resources_cache, []))
+    }
+
+    validate_private_caches!(caches, authorization)
+
     %__MODULE__{
       router: router,
       protocol_registry: protocol_registry,
@@ -142,11 +154,28 @@ defmodule Snodo.Server.Runtime do
       authorization: authorization,
       instructions: instructions,
       discovery_cache: cache_policy(Keyword.get(opts, :discovery_cache, [])),
-      tools_cache: cache_policy(Keyword.get(opts, :tools_cache, [])),
-      prompts_cache: cache_policy(Keyword.get(opts, :prompts_cache, [])),
-      resources_cache: cache_policy(Keyword.get(opts, :resources_cache, [])),
+      tools_cache: caches.tools_cache,
+      prompts_cache: caches.prompts_cache,
+      resources_cache: caches.resources_cache,
       pagination: Pagination.new(Keyword.get(opts, :pagination, []))
     }
+  end
+
+  # A policy filters lists and refuses reads per principal, so a public cache
+  # hint would let a shared cache hand one principal's result to another.
+  defp validate_private_caches!(_caches, nil), do: :ok
+
+  defp validate_private_caches!(caches, _authorization) do
+    case for {name, %{scope: "public"}} <- caches, do: name do
+      [] ->
+        :ok
+
+      public ->
+        raise ArgumentError,
+              "#{Enum.map_join(Enum.sort(public), ", ", &inspect/1)} cannot use scope " <>
+                "\"public\" with an :authorization policy, which filters and refuses " <>
+                "results per principal; use scope: \"private\""
+    end
   end
 
   defp warn_inexpressible_legacy_tools(router, protocols) do

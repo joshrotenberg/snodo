@@ -21,6 +21,15 @@ admission, a bounded queue, deadlines, cancellation tokens, and supervised
 worker tasks, with cleanup when the submitting process dies. The stdio adapter
 and the HTTP listener use it; an application can inject its own executor.
 
+## Limits on message content
+
+Every transport decodes JSON with the same limits. An integer literal longer
+than 64 digits is a parse error (-32700). A request id must be a string of at
+most 256 bytes or an integer in the int64 range (-32600 otherwise), and a
+`progressToken` must meet the same bounds (-32602 otherwise). These values are
+echoed in every response and notification for a request, so an error for a
+request whose id is out of bounds carries a null id instead.
+
 ## Stdio
 
 ```elixir

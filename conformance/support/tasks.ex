@@ -181,7 +181,7 @@ defmodule SnodoTest.Conformance.Tasks do
   def tools, do: @tools
 
   def extension do
-    {:ok, store} = Memory.start_link()
+    {:ok, store} = Memory.start_link(scope: :shared)
     store_ref = {Memory, store}
     {:ok, runner} = Runner.start_link(store: store_ref)
 

@@ -1,7 +1,7 @@
 # Recommended application stack
 
 The current application target is MCP **2026-07-28**, using the official
-TypeScript client **2.0.0** as the first interoperability baseline. This is a
+TypeScript client **2.1.0** as the interoperability baseline. This is a
 tested slice of the protocol, not a full-conformance or all-host compatibility claim.
 
 ## Compose the pieces your application needs

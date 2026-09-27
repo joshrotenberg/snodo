@@ -35,6 +35,9 @@ defmodule Snodo.Protocol.V2026_07_28 do
   @name_header "mcp-name"
   @cancel_method "notifications/cancelled"
   @logging_levels ~w(debug info notice warning error critical alert emergency)
+  # Bounds the URI list of one subscriptions/listen request; the Hub and each
+  # subscription worker keep a copy of it.
+  @max_resource_subscriptions 1_000
   @meta_key ~r/^(?:(?:[A-Za-z](?:[A-Za-z0-9-]*[A-Za-z0-9])?)(?:\.(?:[A-Za-z](?:[A-Za-z0-9-]*[A-Za-z0-9])?))*\/)?(?:[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)?$/
 
   @unsupported_server_notifications [
@@ -875,7 +878,7 @@ defmodule Snodo.Protocol.V2026_07_28 do
   @doc false
   def inspect_progress_params(params) when is_map(params) do
     cond do
-      not (is_binary(params["progressToken"]) or is_integer(params["progressToken"])) ->
+      not Envelope.bounded_id?(params["progressToken"]) ->
         {:error, "progress notification requires a string or integer progressToken"}
 
       not is_number(params["progress"]) ->
@@ -943,8 +946,13 @@ defmodule Snodo.Protocol.V2026_07_28 do
 
   defp inspect_cancelled_request_id(params) do
     case Map.fetch(params, "requestId") do
-      {:ok, request_id} when is_binary(request_id) or is_integer(request_id) -> :ok
-      _missing_or_invalid -> {:error, "notifications/cancelled requires a requestId"}
+      {:ok, request_id} ->
+        if Envelope.bounded_id?(request_id),
+          do: :ok,
+          else: {:error, "notifications/cancelled requires a requestId"}
+
+      :error ->
+        {:error, "notifications/cancelled requires a requestId"}
     end
   end
 
@@ -976,11 +984,19 @@ defmodule Snodo.Protocol.V2026_07_28 do
         :ok
 
       {:ok, subscriptions} when is_list(subscriptions) ->
-        if Enum.all?(subscriptions, &(is_binary(&1) and valid_uri?(&1))),
-          do: :ok,
-          else:
+        cond do
+          length(subscriptions) > @max_resource_subscriptions ->
+            {:error,
+             "subscriptions/listen resourceSubscriptions accepts at most " <>
+               "#{@max_resource_subscriptions} URIs"}
+
+          Enum.all?(subscriptions, &(is_binary(&1) and valid_uri?(&1))) ->
+            :ok
+
+          true ->
             {:error,
              "subscriptions/listen resourceSubscriptions must contain absolute URI strings"}
+        end
 
       {:ok, _invalid} ->
         {:error, "subscriptions/listen resourceSubscriptions must be a list"}
@@ -1157,11 +1173,14 @@ defmodule Snodo.Protocol.V2026_07_28 do
 
   defp validate_optional_progress_token(metadata) do
     case Map.fetch(metadata, "progressToken") do
-      {:ok, token} when is_binary(token) or is_integer(token) ->
-        :ok
-
-      {:ok, _invalid} ->
-        {:error, Error.invalid_params("progressToken must be a string or integer")}
+      {:ok, token} ->
+        if Envelope.bounded_id?(token),
+          do: :ok,
+          else:
+            {:error,
+             Error.invalid_params(
+               "progressToken must be a string of at most 256 bytes or an int64 integer"
+             )}
 
       :error ->
         :ok

@@ -489,8 +489,8 @@ defmodule Snodo.Transport.Stdio do
 
   defp request_id(message) when is_map(message) do
     case Map.fetch(message, "id") do
-      {:ok, id} when is_binary(id) or is_integer(id) -> id
-      _notification_or_invalid -> nil
+      {:ok, id} -> if Envelope.bounded_id?(id), do: id, else: nil
+      :error -> nil
     end
   end
 
