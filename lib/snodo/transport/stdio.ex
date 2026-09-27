@@ -15,11 +15,21 @@ defmodule Snodo.Transport.Stdio do
   further writes. A timed-out device may already have accepted some bytes, so
   the transport never retries. Supplied I/O devices are never stopped or killed.
 
-  `:max_line_bytes` limits one input message, defaulting to 2,000,000 bytes to
-  match the HTTP listener's `:max_body_bytes`. A longer line is answered with
-  -32600 and a null id without being decoded, and the next line is served
-  normally. The VM's I/O server buffers each line in full before returning it,
-  so this bounds decoding and dispatch, not that read buffer.
+  `:max_line_bytes` limits one input message, counting its newline, and defaults
+  to 2,000,000 bytes to match the HTTP listener's `:max_body_bytes`. A longer
+  line is answered with -32600 and a null id without being decoded, the rest of
+  it is discarded, and the next line is served normally.
+
+  How much of a long line is held in memory depends on the input. The default
+  `:stdio` input is read in chunks that hold at most `:max_line_bytes` of a line
+  when the VM was started with `-noinput`, and on OTP 28 and later when standard
+  input is a stream socket, which is what Node.js clients provide. Any other
+  input is read a line at a time, and the device holds each line in full before
+  returning it; the VM holds a line from standard input as a character list,
+  many times its size. That covers a pipe on standard input, which Python and
+  Erlang clients provide, unless the VM was started with `-noinput`, for example
+  in a release's `vm.args`. With `-noinput`, nothing else in the VM can read
+  standard input.
 
   An initialize-era client (2025-11-25 or 2025-06-18, when the runtime enables
   those dialects) negotiates its version once with `initialize`. The transport
@@ -42,6 +52,7 @@ defmodule Snodo.Transport.Stdio do
   alias Snodo.Subscription
   alias Snodo.Transport.Context, as: TransportContext
   alias Snodo.Transport.Stdio.Framing
+  alias Snodo.Transport.Stdio.Reader
 
   @type state :: %{
           runtime: Runtime.t(),
@@ -120,7 +131,7 @@ defmodule Snodo.Transport.Stdio do
     reader =
       if Keyword.get(opts, :defer_reader?, false),
         do: nil,
-        else: start_reader(input)
+        else: Reader.start_link(input, max_line_bytes)
 
     {:ok,
      %{
@@ -148,7 +159,8 @@ defmodule Snodo.Transport.Stdio do
 
   @impl true
   def handle_call(:start_reader, _from, %{reader: nil} = state) do
-    {:reply, :ok, %{state | reader: start_reader(state.input)}}
+    reader = Reader.start_link(state.input, state.max_line_bytes)
+    {:reply, :ok, %{state | reader: reader}}
   end
 
   def handle_call(:start_reader, _from, state), do: {:reply, :ok, state}
@@ -168,10 +180,10 @@ defmodule Snodo.Transport.Stdio do
 
   @impl true
   def handle_info({:stdio_line, line}, state) when byte_size(line) > state.max_line_bytes do
-    error = Error.invalid_request("Message exceeds the #{state.max_line_bytes}-byte line limit")
-    write_error(state.writer, error)
-    {:noreply, state}
+    refuse_long_line(state)
   end
+
+  def handle_info(:stdio_line_too_long, state), do: refuse_long_line(state)
 
   def handle_info({:stdio_line, line}, state) do
     case Framing.decode_line(line) do
@@ -314,6 +326,12 @@ defmodule Snodo.Transport.Stdio do
     end)
 
     %{state | executions_by_id: %{}, executions_by_ref: %{}}
+  end
+
+  defp refuse_long_line(%{max_line_bytes: limit} = state) do
+    error = Error.invalid_request("Message exceeds the #{limit}-byte line limit")
+    write_error(state.writer, error)
+    {:noreply, state}
   end
 
   # A response object is not work: it must not occupy the client's id or
@@ -757,28 +775,6 @@ defmodule Snodo.Transport.Stdio do
     kind, reason -> {:error, {kind, reason}}
   end
 
-  defp start_reader(input) do
-    owner = self()
-    spawn_link(fn -> read_lines(input, read_mode(input), owner) end)
-  end
-
-  # `:stdio` is a Latin-1 device when the VM's stdin is a pipe, and IO.read/2
-  # would then turn each byte of a UTF-8 character into a character of its
-  # own. IO.binread/2 returns the bytes unchanged. Unicode devices, and
-  # devices that do not report an encoding, keep IO.read/2.
-  defp read_mode(input) do
-    case :io.getopts(io_device(input)) do
-      options when is_list(options) ->
-        if Keyword.get(options, :encoding) == :latin1, do: :bytes, else: :characters
-
-      _unsupported ->
-        :characters
-    end
-  end
-
-  defp io_device(:stdio), do: :standard_io
-  defp io_device(device), do: device
-
   defp execution_key(connection_ref, nil), do: {:stdio, connection_ref, make_ref()}
   defp execution_key(connection_ref, id), do: {:stdio, connection_ref, id}
 
@@ -895,22 +891,4 @@ defmodule Snodo.Transport.Stdio do
         :ok
     end
   end
-
-  defp read_lines(input, mode, owner) do
-    case read_line(input, mode) do
-      data when is_binary(data) ->
-        send(owner, {:stdio_line, data})
-        read_lines(input, mode, owner)
-
-      :eof ->
-        send(owner, :stdio_eof)
-
-      {:error, reason} ->
-        send(owner, {:stdio_read_error, reason})
-        send(owner, :stdio_eof)
-    end
-  end
-
-  defp read_line(input, :bytes), do: IO.binread(input, :line)
-  defp read_line(input, :characters), do: IO.read(input, :line)
 end
