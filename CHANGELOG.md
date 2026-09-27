@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/joshrotenberg/snodo/compare/v0.2.0...v0.2.1) (2026-09-27)
+
+
+### Features
+
+* serve initialize-era clients over stdio ([#75](https://github.com/joshrotenberg/snodo/issues/75)) ([2a4d68c](https://github.com/joshrotenberg/snodo/commit/2a4d68c3cdfb35984748b5c73f623a00cdac4a4f))
+
 ## [0.2.0](https://github.com/joshrotenberg/snodo/compare/v0.1.0...v0.2.0) (2026-09-26)
 
 
