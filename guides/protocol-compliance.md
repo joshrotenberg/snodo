@@ -107,8 +107,10 @@ event at a time in a dedicated worker. Protocol shaping stamps the listen
 request ID on the acknowledgement, every event, and the graceful terminal
 response. Stdio owns multiplexing and response-free client cancellation; native
 HTTP owns SSE headers, acknowledgement ordering, keepalives, socket disconnect
-cleanup, and graceful source completion. Neither long-lived stream consumes a
-slot in the generic request executor after `open/3` returns.
+cleanup, and graceful source completion. Neither long-lived stream counts
+against the executor's concurrency or queue after `open/3` returns. Each
+transport bounds open streams with `:max_subscriptions`; the HTTP transports
+keep that count in the executor as a slot the stream's process holds.
 
 `Snodo.Subscription.Hub` is an optional application-supervised implementation of
 that same source contract. It accepts only events selected by each listener's

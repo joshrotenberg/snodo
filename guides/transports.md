@@ -85,6 +85,16 @@ A client disconnect cancels the request.
 Options include `:ip`, `:port`, `:path`, `:request_timeout`, `:read_timeout`,
 `:max_header_bytes`, and `:max_body_bytes` (2 MB).
 
+The listener also bounds what clients can hold open:
+
+- `:max_connections` (default 1,024). A connection accepted at the limit is
+  closed without being read.
+- `:head_timeout` (default 10,000 ms from accept). The request head must be
+  complete by then; `:read_timeout` (5,000 ms) still bounds each read.
+- `:max_subscriptions` (default 256). A `subscriptions/listen` stream over the
+  limit is closed at its source and the request gets 503. A slot returns when
+  the connection serving a stream exits, including a client disconnect.
+
 `Snodo.Transport.StreamableHTTP.Server.url/1` returns the endpoint URL, which is
 useful with `port: 0` in tests.
 
@@ -107,7 +117,9 @@ children = [
 It supports the same JSON, progress SSE, and subscription SSE lifecycles. Plug
 only reveals a disconnect when a write fails, so a request still running after
 `:disconnect_probe_ms` (default 5,000) switches to SSE and writes keepalive
-comments; a failed write cancels the work. See
+comments; a failed write cancels the work. `:max_subscriptions` (default 256)
+bounds open subscription streams; the count is held in the executor, so Plugs
+that share an executor share it. See
 the [`snodo_plug` documentation](https://hexdocs.pm/snodo_plug) and the
 [application stack](application-stack.md) for choosing between the native
 listener and Plug.
