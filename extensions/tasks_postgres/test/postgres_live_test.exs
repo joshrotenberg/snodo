@@ -67,7 +67,10 @@ defmodule Snodo.Extensions.Tasks.Postgres.LiveTest do
   @retry_delay_ms 2_000
   @session_timezone "Asia/Kathmandu"
   @timezone_retry_delay_ms 2_000
-  @timezone_ttl_ms 3_000
+  # How long after the retry becomes due the TTL task expires. The test checks
+  # that the task is still present across the claim at the due time, so this is
+  # the time those steps may take on a slow runner.
+  @timezone_ttl_margin_ms 5_000
 
   setup_all do
     database_url =
@@ -482,10 +485,29 @@ defmodule Snodo.Extensions.Tasks.Postgres.LiveTest do
 
     assert :ok = Store.release(store, queue_lease)
 
+    # The TTL is computed from the timestamps read here, so the task expires a
+    # fixed margin after the retry becomes due however long creation takes.
     ttl_task_id = unique_id("timezone-ttl")
-    _ttl_snapshot = create_task!(store, ttl_task_id, "tenant-a", ttl_ms: @timezone_ttl_ms)
+    retry_at = timestamp!(scheduled.retry_at)
+    ttl_created_at = database_now()
+    ttl_ms = max(DateTime.diff(retry_at, ttl_created_at, :millisecond), 0)
+    ttl_ms = ttl_ms + @timezone_ttl_margin_ms
+
+    _ttl_snapshot =
+      create_task!(store, ttl_task_id, "tenant-a",
+        created_at: DateTime.to_iso8601(ttl_created_at),
+        ttl_ms: ttl_ms
+      )
+
     ttl_row = row!(schema, ttl_task_id)
     ttl_expires_at = ttl_row.expires_at
+    assert DateTime.compare(ttl_row.created_at, ttl_created_at) == :eq
+    expected_expires_at = DateTime.add(ttl_created_at, ttl_ms, :millisecond)
+    assert DateTime.compare(ttl_expires_at, expected_expires_at) == :eq
+
+    # Whole milliseconds of TTL can land up to 1 ms short of the full margin.
+    ttl_after_retry_ms = DateTime.diff(ttl_expires_at, retry_at, :millisecond)
+    assert ttl_after_retry_ms >= @timezone_ttl_margin_ms - 1
 
     Enum.each(
       [ttl_row.created_at, ttl_row.expires_at, ttl_row.inserted_at, ttl_row.updated_at],
