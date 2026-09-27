@@ -35,7 +35,7 @@ defmodule Snodo.Extensions.Tasks.Postgres.AdapterTest do
   @committed_at "2026-08-25T10:00:01.000Z"
 
   test "configuration requires an application-owned PostgreSQL Repo" do
-    assert {:ok, %Config{} = config} = Postgres.new(repo: fake_repo())
+    assert {:ok, %Config{} = config} = Postgres.new(repo: fake_repo(), scope: :shared)
     assert config.repo == fake_repo()
     assert config.prefix == nil
     assert is_reference(config.identity)
@@ -48,18 +48,24 @@ defmodule Snodo.Extensions.Tasks.Postgres.AdapterTest do
     assert {:error, :invalid_prefix} = Postgres.new(repo: fake_repo(), prefix: "")
 
     assert {:error, {:invalid_positive_option, :reap_batch_size}} =
-             Postgres.new(repo: fake_repo(), reap_batch_size: 0)
+             Postgres.new(repo: fake_repo(), scope: :shared, reap_batch_size: 0)
 
     assert config.max_tasks == 10_000
     assert config.max_active_tasks_per_scope == 100
 
     assert {:error, {:invalid_limit_option, :max_tasks}} =
-             Postgres.new(repo: fake_repo(), max_tasks: 0)
+             Postgres.new(repo: fake_repo(), scope: :shared, max_tasks: 0)
 
     assert {:ok, %Config{max_active_tasks_per_scope: :infinity}} =
-             Postgres.new(repo: fake_repo(), max_active_tasks_per_scope: :infinity)
+             Postgres.new(
+               repo: fake_repo(),
+               scope: :shared,
+               max_active_tasks_per_scope: :infinity
+             )
 
     assert {:error, :invalid_options} = Postgres.new(repo: fake_repo(), unknown: true)
+    assert {:error, :missing_scope} = Postgres.new(repo: fake_repo())
+    assert {:error, :invalid_scope_function} = Postgres.new(repo: fake_repo(), scope: "tenant")
   end
 
   test "authorization normalizes and wraps scalar JSON scopes" do

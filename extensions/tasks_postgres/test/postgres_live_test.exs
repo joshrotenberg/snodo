@@ -127,7 +127,7 @@ defmodule Snodo.Extensions.Tasks.Postgres.LiveTest do
     create_schema!(schema)
 
     try do
-      config = Postgres.new!(repo: LiveRepo, prefix: schema)
+      config = Postgres.new!(repo: LiveRepo, prefix: schema, scope: :shared)
       assert LiveRepo.__adapter__() == Ecto.Adapters.Postgres
       assert {:error, {:database_error, _exception}} = Postgres.check_schema(config)
       assert :ok = migrate_up!(schema)
@@ -145,7 +145,7 @@ defmodule Snodo.Extensions.Tasks.Postgres.LiveTest do
     create_schema!(schema)
 
     try do
-      config = Postgres.new!(repo: LiveRepo, prefix: schema)
+      config = Postgres.new!(repo: LiveRepo, prefix: schema, scope: :shared)
       store = {Postgres, config}
       task_id = unique_id("upgrade")
 

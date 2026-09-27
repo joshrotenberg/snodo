@@ -80,7 +80,14 @@ legacy `capabilities.tasks` or `tools/list` task-support decoration.
 
 The runtime never starts task infrastructure implicitly. Start and supervise a
 store and runner in the application, then pass their references as extension
-options:
+options.
+
+Every store requires `:scope`. It is either a function that derives the
+caller's authorization scope from the request context, or `:shared`, which
+gives every principal one scope. A task in another scope is reported as unknown.
+With `:shared`, anyone who holds a task ID can read, update, cancel, and
+subscribe to that task, so use it only when every caller is the same principal.
+
 
 ```elixir
 alias Snodo.Extensions.Tasks
@@ -310,6 +317,8 @@ Each count lives where it holds:
   are options of each store and are checked inside `create/4`. They hold across
   runners, nodes, and restarts. Active means working or input-required;
   finished and expired Tasks count toward `:max_tasks` until they are reaped.
+  With `scope: :shared` every principal has the same scope, so
+  `:max_active_tasks_per_scope` bounds all active Tasks together.
   `Store.Memory` counts its map, `Store.Dets` keeps an index of active Tasks
   rebuilt from the table on every open, `Store.SQLite` counts inside its
   `IMMEDIATE` transaction, and `Store.Postgres` counts under a

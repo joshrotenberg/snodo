@@ -120,7 +120,7 @@ defmodule Snodo.Extensions.Tasks.SQLite.IntegrationTest do
         reap_batch_size: 100
       )
 
-    busy_config = SQLite.new!(repo: BusyRepo, timeout: 1_000)
+    busy_config = SQLite.new!(repo: BusyRepo, scope: :shared, timeout: 1_000)
 
     assert :ok = SQLite.check_schema(config)
     assert :ok = SQLite.check_schema(busy_config)
@@ -154,7 +154,7 @@ defmodule Snodo.Extensions.Tasks.SQLite.IntegrationTest do
     Process.unlink(repo)
 
     try do
-      config = SQLite.new!(repo: MigrationRepo)
+      config = SQLite.new!(repo: MigrationRepo, scope: :shared)
       assert MigrationRepo.__adapter__() == Ecto.Adapters.SQLite3
       assert {:error, _missing_schema} = SQLite.check_schema(config)
       assert :ok = migrate_up!(MigrationRepo)
@@ -187,7 +187,7 @@ defmodule Snodo.Extensions.Tasks.SQLite.IntegrationTest do
     Process.unlink(repo)
 
     try do
-      config = SQLite.new!(repo: MigrationRepo)
+      config = SQLite.new!(repo: MigrationRepo, scope: :shared)
       store = {SQLite, config}
       task_id = unique_id("upgrade")
 
@@ -790,7 +790,7 @@ defmodule Snodo.Extensions.Tasks.SQLite.IntegrationTest do
     assert [[3]] = query!(LiveRepo, "SELECT count(*) FROM mcp_tasks").rows
 
     assert {:error, {:invalid_limit_option, :max_tasks}} =
-             SQLite.new(repo: LiveRepo, max_tasks: 0)
+             SQLite.new(repo: LiveRepo, scope: :shared, max_tasks: 0)
   end
 
   @tag mcp_contract: ["tasks-sqlite-recovery"]

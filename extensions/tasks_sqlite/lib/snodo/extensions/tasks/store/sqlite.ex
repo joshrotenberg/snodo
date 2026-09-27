@@ -39,6 +39,7 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite do
   alias Snodo.Extensions.Tasks.Event
   alias Snodo.Extensions.Tasks.LedgerValidator
   alias Snodo.Extensions.Tasks.Snapshot
+  alias Snodo.Extensions.Tasks.Store
   alias Snodo.Extensions.Tasks.Store.SQLite.Access
   alias Snodo.Extensions.Tasks.Store.SQLite.Config
   alias Snodo.Extensions.Tasks.Store.SQLite.EventRow
@@ -79,7 +80,7 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite do
   def new(opts) when is_list(opts) do
     with :ok <- validate_options(opts),
          {:ok, repo} <- validate_repo(Keyword.get(opts, :repo)),
-         {:ok, scope} <- validate_scope_function(Keyword.get(opts, :scope, &default_scope/1)),
+         {:ok, scope} <- Store.scope_option(opts, "shared"),
          {:ok, timeout} <- positive_option(opts, :timeout, @default_timeout),
          {:ok, reap_batch_size} <-
            positive_option(opts, :reap_batch_size, @default_reap_batch_size),
@@ -268,9 +269,6 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite do
 
   defp validate_repo(_repo), do: {:error, :repo_must_use_ecto_sqlite3}
 
-  defp validate_scope_function(scope) when is_function(scope, 1), do: {:ok, scope}
-  defp validate_scope_function(_scope), do: {:error, :invalid_scope_function}
-
   defp positive_option(opts, key, default) do
     case Keyword.get(opts, key, default) do
       value when is_integer(value) and value > 0 -> {:ok, value}
@@ -285,8 +283,6 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite do
       _invalid -> {:error, {:invalid_limit_option, key}}
     end
   end
-
-  defp default_scope(_context), do: "shared"
 
   defp derive_scope(scope_function, context) do
     scope = scope_function.(context)

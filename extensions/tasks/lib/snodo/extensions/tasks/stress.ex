@@ -51,8 +51,13 @@ defmodule Snodo.Extensions.Tasks.Stress do
     {:ok, collector} = Agent.start_link(fn -> [] end)
     # Each round holds every task's worker open at once, so the limits are
     # sized to the workload rather than to the defaults.
-    store_limits = [max_tasks: :infinity, max_active_tasks_per_scope: :infinity]
-    {:ok, store} = Memory.start_link(store_limits)
+    {:ok, store} =
+      Memory.start_link(
+        scope: :shared,
+        max_tasks: :infinity,
+        max_active_tasks_per_scope: :infinity
+      )
+
     store_ref = {Memory, store}
 
     try do

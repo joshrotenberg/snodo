@@ -25,9 +25,10 @@ defmodule Snodo.Extensions.Tasks.Store.Memory do
   @moduledoc """
   In-memory revisioned Tasks store intended for examples and tests.
 
-  The optional `:scope` function derives an authorization scope from each
-  request context. Scope mismatches deliberately return `:not_found`, so task
-  existence is not disclosed across callers.
+  The required `:scope` option derives an authorization scope from each request
+  context (see `Snodo.Extensions.Tasks.Store.scope_option/2`). Scope mismatches
+  deliberately return `:not_found`, so task existence is not disclosed across
+  callers.
 
   This adapter implements the complete durable-store contract, including
   descriptors, fenced renewable claims, store-clock retry eligibility, recovery
@@ -48,6 +49,7 @@ defmodule Snodo.Extensions.Tasks.Store.Memory do
   alias Snodo.Context
   alias Snodo.Extensions.Tasks.Event
   alias Snodo.Extensions.Tasks.Snapshot
+  alias Snodo.Extensions.Tasks.Store
   alias Snodo.Extensions.Tasks.Store.Memory.Access
   alias Snodo.Extensions.Tasks.Store.Memory.Lease
   alias Snodo.Extensions.Tasks.Task, as: ProtocolTask
@@ -66,7 +68,8 @@ defmodule Snodo.Extensions.Tasks.Store.Memory do
         }
 
   @spec start_link(keyword()) :: GenServer.on_start()
-  def start_link(opts \\ []) when is_list(opts) do
+  def start_link(opts) when is_list(opts) do
+    _scope = Store.scope_option!(opts, :shared)
     GenServer.start_link(__MODULE__, opts, Keyword.take(opts, [:name]))
   end
 
@@ -130,10 +133,9 @@ defmodule Snodo.Extensions.Tasks.Store.Memory do
 
   @impl true
   def init(opts) do
-    scope = Keyword.get(opts, :scope, fn _context -> :shared end)
+    scope = Store.scope_option!(opts, :shared)
     clock = Keyword.get(opts, :clock, &ProtocolTask.timestamp/0)
 
-    unless is_function(scope, 1), do: raise(ArgumentError, ":scope must be an arity-1 function")
     unless is_function(clock, 0), do: raise(ArgumentError, ":clock must be an arity-0 function")
 
     {:ok,

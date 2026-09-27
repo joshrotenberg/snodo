@@ -65,7 +65,7 @@ defmodule Snodo.TasksLimitsTest do
     end
 
     test "start_task at the limit leaves the stored task unclaimed" do
-      store = start_supervised!(Memory)
+      store = start_supervised!({Memory, scope: :shared})
       store_ref = {Memory, store}
       runner = start_supervised!({Runner, store: store_ref, max_jobs: 1})
       first = create_stored!(store_ref, "start-1")
@@ -89,7 +89,7 @@ defmodule Snodo.TasksLimitsTest do
 
     test "a due retry waits for a free slot instead of exceeding the limit" do
       clock = start_clock(@created_at)
-      store = start_supervised!({Memory, clock: clock_fun(clock)})
+      store = start_supervised!({Memory, scope: :shared, clock: clock_fun(clock)})
       store_ref = {Memory, store}
 
       runner =
@@ -249,7 +249,7 @@ defmodule Snodo.TasksLimitsTest do
 
   test "a runner with default options reaps expired tasks every minute" do
     clock = start_clock(@created_at)
-    store = start_supervised!({Memory, clock: clock_fun(clock)})
+    store = start_supervised!({Memory, scope: :shared, clock: clock_fun(clock)})
     store_ref = {Memory, store}
     runner = start_supervised!({Runner, store: store_ref})
 
@@ -421,7 +421,7 @@ defmodule Snodo.TasksLimitsTest do
   end
 
   test "limit options are validated at startup" do
-    store = start_supervised!(Memory)
+    store = start_supervised!({Memory, scope: :shared})
 
     for {key, value} <- [max_jobs: 0, max_jobs: :infinity, max_runtime_ms: 0] do
       opts = [{key, value}, store: {Memory, store}]
@@ -429,7 +429,7 @@ defmodule Snodo.TasksLimitsTest do
     end
 
     for {key, value} <- [max_tasks: 0, max_active_tasks_per_scope: -1] do
-      assert_raise ArgumentError, fn -> Memory.init([{key, value}]) end
+      assert_raise ArgumentError, fn -> Memory.init([{key, value}, scope: :shared]) end
     end
   end
 

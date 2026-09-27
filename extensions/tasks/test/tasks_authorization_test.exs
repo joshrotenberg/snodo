@@ -111,7 +111,7 @@ defmodule Snodo.Extensions.TasksAuthorizationTest do
   end
 
   defp start_tasks(policy, executor) do
-    store = start_supervised!({Memory, []}, id: make_ref())
+    store = start_supervised!({Memory, scope: :shared}, id: make_ref())
     store_ref = {Memory, store}
 
     runner_options =

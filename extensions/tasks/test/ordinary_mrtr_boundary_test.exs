@@ -53,7 +53,7 @@ defmodule Snodo.TasksOrdinaryMRTRBoundaryTest do
   end
 
   setup do
-    store = start_supervised!(Memory)
+    store = start_supervised!({Memory, scope: :shared})
     runner = start_supervised!({Runner, store: {Memory, store}})
 
     runtime =

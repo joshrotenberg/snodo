@@ -17,7 +17,7 @@ defmodule Snodo.TasksInstrumentationTest do
   alias SnodoTest.TasksTestSupport, as: TasksSupport
 
   test "runner emits bounded job and store-transition lifecycle events" do
-    store = start_supervised!(Memory)
+    store = start_supervised!({Memory, scope: :shared})
 
     runner =
       start_supervised!(
@@ -74,7 +74,7 @@ defmodule Snodo.TasksInstrumentationTest do
   end
 
   test "request cancellation is observed without exposing access or payload values" do
-    store = start_supervised!(Memory)
+    store = start_supervised!({Memory, scope: :shared})
 
     runner =
       start_supervised!(
