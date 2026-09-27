@@ -43,8 +43,10 @@ defmodule Snodo.Subscription.Filter do
     |> Map.new()
   end
 
+  # A MapSet keeps this linear; filter lists can hold many resource URIs.
   defp value_subset?(candidate, supported) when is_list(candidate) and is_list(supported) do
-    Enum.all?(candidate, &Enum.member?(supported, &1))
+    supported = MapSet.new(supported)
+    Enum.all?(candidate, &MapSet.member?(supported, &1))
   end
 
   defp value_subset?(candidate, supported) when is_map(candidate) and is_map(supported) do
