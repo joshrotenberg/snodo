@@ -17,6 +17,18 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite do
   The supported deployment boundary is a file-backed WAL database on one
   host. Recovery remains at least once, so applications must deduplicate
   external effects with `Snodo.Extensions.Tasks.Work.idempotency_key`.
+
+  `create/4` refuses a task with `{:error, {:capacity_exceeded, limit}}` when
+  the table already holds `:max_tasks` tasks (default 10,000) or the caller's
+  scope already has `:max_active_tasks_per_scope` working or input-required
+  tasks (default 100). Either may be `:infinity`. The counts are taken inside
+  the creating `IMMEDIATE` transaction. The per-scope count decodes the scope
+  of every active task, because scopes are compared as decoded values. An
+  expired task counts until it is reaped.
+
+  `reap/1` deletes at most `:reap_batch_size` expired tasks per call (default
+  500). A runner calling it every `:reap_interval_ms` therefore removes at most
+  that many tasks per interval.
   """
 
   @behaviour Snodo.Extensions.Tasks.Store
@@ -43,9 +55,18 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite do
 
   @default_timeout 15_000
   @default_reap_batch_size 500
+  @default_max_tasks 10_000
+  @default_max_active_tasks_per_scope 100
   @worker_events [:input_requested, :retry_requested, :completed, :failed]
   @request_events %{update: :input_responses_accepted, cancel: :cancelled}
-  @known_options [:repo, :scope, :timeout, :reap_batch_size]
+  @known_options [
+    :repo,
+    :scope,
+    :timeout,
+    :reap_batch_size,
+    :max_tasks,
+    :max_active_tasks_per_scope
+  ]
 
   @type audit_report :: %{
           checked: non_neg_integer(),
@@ -61,13 +82,22 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite do
          {:ok, scope} <- validate_scope_function(Keyword.get(opts, :scope, &default_scope/1)),
          {:ok, timeout} <- positive_option(opts, :timeout, @default_timeout),
          {:ok, reap_batch_size} <-
-           positive_option(opts, :reap_batch_size, @default_reap_batch_size) do
+           positive_option(opts, :reap_batch_size, @default_reap_batch_size),
+         {:ok, max_tasks} <- limit_option(opts, :max_tasks, @default_max_tasks),
+         {:ok, max_active_tasks_per_scope} <-
+           limit_option(
+             opts,
+             :max_active_tasks_per_scope,
+             @default_max_active_tasks_per_scope
+           ) do
       {:ok,
        %Config{
          repo: repo,
          scope: scope,
          timeout: timeout,
          reap_batch_size: reap_batch_size,
+         max_tasks: max_tasks,
+         max_active_tasks_per_scope: max_active_tasks_per_scope,
          identity: make_ref()
        }}
     end
@@ -119,7 +149,7 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite do
          {:ok, projected} <- Persistence.project_snapshot(snapshot),
          {:ok, encoded_scope} <- Persistence.encode_json(access.encoded_scope) do
       transact_write(config, fn ->
-        insert_new_snapshot(config, task.id, encoded_scope, projected, snapshot)
+        insert_bounded(config, access.encoded_scope, encoded_scope, projected, snapshot)
       end)
     end
   rescue
@@ -131,6 +161,8 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite do
     with {:ok, encoded_scope} <- authorize_read(config, access, task_id),
          %TaskRow{} = row <- fetch_row(config, task_id),
          true <- scope_matches?(row, encoded_scope),
+         {:ok, now_us} <- database_call(fn -> database_now_us(config) end),
+         :ok <- unexpired(row, now_us),
          {:ok, snapshot} <- decode_task_row(row) do
       {:ok, snapshot}
     else
@@ -246,6 +278,14 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite do
     end
   end
 
+  defp limit_option(opts, key, default) do
+    case Keyword.get(opts, key, default) do
+      :infinity -> {:ok, :infinity}
+      value when is_integer(value) and value > 0 -> {:ok, value}
+      _invalid -> {:error, {:invalid_limit_option, key}}
+    end
+  end
+
   defp default_scope(_context), do: "shared"
 
   defp derive_scope(scope_function, context) do
@@ -319,6 +359,57 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite do
       {0, nil} -> {:error, :already_exists}
       other -> {:error, {:unexpected_database_result, other}}
     end
+  end
+
+  # The counts run inside the IMMEDIATE transaction, so no other writer can
+  # create a task between the count and the insert.
+  defp insert_bounded(config, scope_record, encoded_scope, projected, snapshot) do
+    with :ok <- check_capacity(config, scope_record) do
+      insert_new_snapshot(config, snapshot.task.id, encoded_scope, projected, snapshot)
+    end
+  end
+
+  defp check_capacity(config, encoded_scope) do
+    cond do
+      max_tasks_reached?(config) ->
+        {:error, {:capacity_exceeded, :max_tasks}}
+
+      max_active_reached?(config, encoded_scope) ->
+        {:error, {:capacity_exceeded, :max_active_tasks_per_scope}}
+
+      true ->
+        :ok
+    end
+  end
+
+  # Counts at most `max_tasks` rows, so the cost does not grow past the limit.
+  defp max_tasks_reached?(%{max_tasks: :infinity}), do: false
+
+  defp max_tasks_reached?(config) do
+    bounded = from task in TaskRow, limit: ^config.max_tasks
+    count = config.repo.aggregate(bounded, :count, :task_id, repo_opts(config))
+    count >= config.max_tasks
+  end
+
+  defp max_active_reached?(%{max_active_tasks_per_scope: :infinity}, _scope), do: false
+
+  defp max_active_reached?(config, encoded_scope) do
+    query =
+      from task in TaskRow,
+        where: task.status in ["working", "input_required"],
+        select: task.authorization_scope
+
+    count =
+      config.repo.all(query, repo_opts(config))
+      |> Enum.count(&Persistence.authorization_scope_matches?(&1, encoded_scope))
+
+    count >= config.max_active_tasks_per_scope
+  end
+
+  defp unexpired(%TaskRow{expires_at_us: nil}, _now_us), do: :ok
+
+  defp unexpired(%TaskRow{expires_at_us: expires_at_us}, now_us) do
+    if now_us < expires_at_us, do: :ok, else: :not_found
   end
 
   defp fetch_row(config, task_id) do
@@ -624,11 +715,11 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite do
   defp authorize_serialized_transition(
          _config,
          {:request, %Access{}},
-         _row,
+         row,
          _task_id,
-         _now_us
+         now_us
        ),
-       do: :ok
+       do: unexpired(row, now_us)
 
   defp authorize_serialized_transition(config, {:worker, lease}, row, task_id, now_us),
     do: authorize_worker(config, lease, row, task_id, now_us)

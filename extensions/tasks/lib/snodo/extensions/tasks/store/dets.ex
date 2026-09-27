@@ -51,6 +51,18 @@ defmodule Snodo.Extensions.Tasks.Store.Dets do
 
   DETS is a local reference adapter, not a distributed database. The GenServer
   serializes operations in one BEAM, and DETS itself has a 2 GB file limit.
+  Its costs grow with the table. Every claim, renewal, release, and applied
+  transition rewrites and syncs the task's whole record, including its event
+  history, so each heartbeat of a running task rewrites that record. Every
+  recovery claim (`claim_next/3`) and every reap decodes every record in the
+  table.
+
+  `create/4` refuses a task with `{:error, {:capacity_exceeded, limit}}` when
+  the table already holds `:max_tasks` tasks (default 10,000) or the caller's
+  scope already has `:max_active_tasks_per_scope` working or input-required
+  tasks (default 100). Either may be `:infinity`. The store keeps an in-memory
+  index of active tasks by scope, rebuilt from the table on every open, so the
+  counts hold after a restart. An expired task counts until it is reaped.
   """
 
   use GenServer
@@ -76,6 +88,7 @@ defmodule Snodo.Extensions.Tasks.Store.Dets do
   @uuid_pattern ~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
   @worker_events [:input_requested, :retry_requested, :completed, :failed]
   @request_events %{update: :input_responses_accepted, cancel: :cancelled}
+  @default_limits [max_tasks: 10_000, max_active_tasks_per_scope: 100]
 
   @type server :: GenServer.server()
   @type history_entry :: %{
@@ -173,8 +186,11 @@ defmodule Snodo.Extensions.Tasks.Store.Dets do
     unless is_function(scope, 1), do: raise(ArgumentError, ":scope must be an arity-1 function")
     unless is_function(clock, 0), do: raise(ArgumentError, ":clock must be an arity-0 function")
 
+    max_tasks = limit_option!(opts, :max_tasks)
+    max_active_tasks_per_scope = limit_option!(opts, :max_active_tasks_per_scope)
+
     case open_store(table, path) do
-      {:ok, metadata} ->
+      {:ok, metadata, active} ->
         {:ok,
          %{
            table: table,
@@ -182,7 +198,10 @@ defmodule Snodo.Extensions.Tasks.Store.Dets do
            store_id: metadata.store_id,
            boot_epoch: metadata.boot_epoch,
            scope: scope,
-           clock: clock
+           clock: clock,
+           max_tasks: max_tasks,
+           max_active_tasks_per_scope: max_active_tasks_per_scope,
+           active: active
          }}
 
       {:error, reason} ->
@@ -209,19 +228,27 @@ defmodule Snodo.Extensions.Tasks.Store.Dets do
   end
 
   def handle_call({:create, %ProtocolTask{} = task, %Work{} = work, access}, _from, state) do
-    reply = create_entry(state, task, work, access)
-    {:reply, reply, state}
+    case create_entry(state, task, work, access) do
+      {:ok, snapshot} = reply ->
+        {:reply, reply, index_task(state, snapshot, access.scope)}
+
+      reply ->
+        {:reply, reply, state}
+    end
   end
 
   def handle_call({:get, task_id, access}, _from, state) do
     reply =
       with {:ok, entry} <- fetch_entry(state.table, task_id),
-           :ok <- authorize_read(access, entry, state, task_id) do
+           :ok <- authorize_read(access, entry, state, task_id),
+           {:ok, now} <- read_clock(state.clock),
+           false <- expired_task?(entry.snapshot.task, now) do
         {:ok, entry.snapshot}
       else
         :not_found -> :not_found
         {:error, {:corrupt_store, _key, _reason}} = error -> error
-        _inaccessible -> :not_found
+        {:error, reason} -> {:error, reason}
+        _inaccessible_or_expired -> :not_found
       end
 
     {:reply, reply, state}
@@ -274,8 +301,10 @@ defmodule Snodo.Extensions.Tasks.Store.Dets do
   end
 
   def handle_call(:reap, _from, state) do
-    reply = reap_expired(state)
-    {:reply, reply, state}
+    case reap_expired(state) do
+      {:ok, reaped} = reply -> {:reply, reply, unindex_tasks(state, reaped)}
+      reply -> {:reply, reply, state}
+    end
   end
 
   def handle_call(
@@ -284,7 +313,16 @@ defmodule Snodo.Extensions.Tasks.Store.Dets do
         state
       ) do
     reply = transition_entry(state, task_id, expected_revision, event, authority)
-    {:reply, reply, state}
+
+    case reply do
+      {:ok, %Transition{outcome: :applied, snapshot: snapshot}} ->
+        if ProtocolTask.terminal?(snapshot.task),
+          do: {:reply, reply, unindex_tasks(state, [task_id])},
+          else: {:reply, reply, state}
+
+      _unchanged ->
+        {:reply, reply, state}
+    end
   end
 
   def handle_call({:history, task_id, access}, _from, state) do
@@ -340,10 +378,10 @@ defmodule Snodo.Extensions.Tasks.Store.Dets do
 
   defp initialize_open_table(table) do
     with {:ok, metadata} <- read_or_initialize_metadata(table),
-         :ok <- validate_all_records(table),
+         {:ok, active} <- validate_all_records(table),
          next = %{metadata | boot_epoch: metadata.boot_epoch + 1},
          :ok <- persist_metadata(table, next) do
-      {:ok, next}
+      {:ok, next, active}
     else
       {:error, reason} ->
         _closed = :dets.close(table)
@@ -401,15 +439,17 @@ defmodule Snodo.Extensions.Tasks.Store.Dets do
     persist_json_record(table, @metadata_key, encoded)
   end
 
+  # Validates every record and returns the active-task index: the scope of
+  # each working or input-required task, keyed by task ID.
   defp validate_all_records(table) do
-    case fold_records(table, :ok, fn
-           {@metadata_key, binary}, :ok ->
-             validate_metadata_record(binary)
+    case fold_records(table, {:ok, %{}}, fn
+           {@metadata_key, binary}, {:ok, active} ->
+             validate_metadata_record(binary, active)
 
-           {{:task, task_id}, binary}, :ok when is_binary(task_id) ->
-             validate_task_record(task_id, binary)
+           {{:task, task_id}, binary}, {:ok, active} when is_binary(task_id) ->
+             index_task_record(task_id, binary, active)
 
-           {key, _binary}, :ok ->
+           {key, _binary}, {:ok, _active} ->
              {:error, {:corrupt_store, key, :unknown_record}}
 
            _record, {:error, _reason} = error ->
@@ -420,17 +460,22 @@ defmodule Snodo.Extensions.Tasks.Store.Dets do
     end
   end
 
-  defp validate_metadata_record(binary) do
+  defp validate_metadata_record(binary, active) do
     case decode_metadata(binary) do
-      {:ok, _metadata} -> :ok
+      {:ok, _metadata} -> {:ok, active}
       {:error, reason} -> {:error, reason}
     end
   end
 
-  defp validate_task_record(task_id, binary) do
+  defp index_task_record(task_id, binary, active) do
     case decode_entry(binary, task_id) do
-      {:ok, _entry} -> :ok
-      {:error, reason} -> {:error, {:corrupt_store, {:task, task_id}, reason}}
+      {:ok, entry} ->
+        if ProtocolTask.terminal?(entry.snapshot.task),
+          do: {:ok, active},
+          else: {:ok, Map.put(active, task_id, entry.scope)}
+
+      {:error, reason} ->
+        {:error, {:corrupt_store, {:task, task_id}, reason}}
     end
   end
 
@@ -447,6 +492,43 @@ defmodule Snodo.Extensions.Tasks.Store.Dets do
     do: {:error, reason}
 
   defp do_create_entry(state, task, work, access, :not_found) do
+    case exceeded_limit(state, access.scope) do
+      nil -> persist_new_entry(state, task, work, access)
+      limit -> {:error, {:capacity_exceeded, limit}}
+    end
+  end
+
+  defp exceeded_limit(state, scope) do
+    cond do
+      max_tasks_reached?(state) -> :max_tasks
+      active_limit_reached?(state, scope) -> :max_active_tasks_per_scope
+      true -> nil
+    end
+  end
+
+  # The table holds the metadata record and one record per task.
+  defp max_tasks_reached?(%{max_tasks: :infinity}), do: false
+  defp max_tasks_reached?(state), do: table_size(state.table) - 1 >= state.max_tasks
+
+  defp active_limit_reached?(%{max_active_tasks_per_scope: :infinity}, _scope), do: false
+
+  defp active_limit_reached?(state, scope) do
+    active = Enum.count(state.active, fn {_id, task_scope} -> task_scope == scope end)
+    active >= state.max_active_tasks_per_scope
+  end
+
+  # `state.active` maps each working or input-required task to its scope.
+  defp index_task(state, snapshot, scope) do
+    if ProtocolTask.terminal?(snapshot.task),
+      do: state,
+      else: %{state | active: Map.put(state.active, snapshot.task.id, scope)}
+  end
+
+  defp unindex_tasks(state, task_ids) do
+    %{state | active: Map.drop(state.active, task_ids)}
+  end
+
+  defp persist_new_entry(state, task, work, access) do
     snapshot = Snapshot.new(task, work)
 
     entry = %{
@@ -629,10 +711,13 @@ defmodule Snodo.Extensions.Tasks.Store.Dets do
          state,
          task_id,
          event_kind,
-         _now
+         now
        ) do
     cond do
       not access_store_matches?(access, state) or access.scope != entry.scope ->
+        :not_found
+
+      expired_task?(entry.snapshot.task, now) ->
         :not_found
 
       access.action not in [{:update, task_id}, {:cancel, task_id}] ->
@@ -1466,6 +1551,19 @@ defmodule Snodo.Extensions.Tasks.Store.Dets do
     case :dets.info(table, :size) do
       size when is_integer(size) -> size
       _unknown -> -1
+    end
+  end
+
+  defp limit_option!(opts, key) do
+    case Keyword.get(opts, key, Keyword.fetch!(@default_limits, key)) do
+      :infinity ->
+        :infinity
+
+      value when is_integer(value) and value > 0 ->
+        value
+
+      _invalid ->
+        raise ArgumentError, "#{inspect(key)} must be a positive integer or :infinity"
     end
   end
 

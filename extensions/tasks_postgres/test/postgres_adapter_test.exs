@@ -50,6 +50,15 @@ defmodule Snodo.Extensions.Tasks.Postgres.AdapterTest do
     assert {:error, {:invalid_positive_option, :reap_batch_size}} =
              Postgres.new(repo: fake_repo(), reap_batch_size: 0)
 
+    assert config.max_tasks == 10_000
+    assert config.max_active_tasks_per_scope == 100
+
+    assert {:error, {:invalid_limit_option, :max_tasks}} =
+             Postgres.new(repo: fake_repo(), max_tasks: 0)
+
+    assert {:ok, %Config{max_active_tasks_per_scope: :infinity}} =
+             Postgres.new(repo: fake_repo(), max_active_tasks_per_scope: :infinity)
+
     assert {:error, :invalid_options} = Postgres.new(repo: fake_repo(), unknown: true)
   end
 

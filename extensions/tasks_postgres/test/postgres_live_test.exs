@@ -212,6 +212,32 @@ defmodule Snodo.Extensions.Tasks.Postgres.LiveTest do
   end
 
   @tag mcp_contract: ["tasks-postgres-live-concurrency"]
+  test "concurrent creations cannot pass the task limits together", %{config: config} do
+    store = {Postgres, %{config | max_tasks: 3, max_active_tasks_per_scope: 1}}
+
+    results =
+      race(
+        for _racer <- 1..4 do
+          task_id = unique_id("limit-race")
+          fn -> create_task(store, task_id, "tenant-a") end
+        end
+      )
+
+    assert Enum.count(results, &match?({:ok, %Snapshot{}}, &1)) == 1
+
+    assert Enum.count(
+             results,
+             &(&1 == {:error, {:capacity_exceeded, :max_active_tasks_per_scope}})
+           ) == 3
+
+    _tenant_b = create_task!(store, unique_id("limit-b"), "tenant-b")
+    _tenant_c = create_task!(store, unique_id("limit-c"), "tenant-c")
+
+    assert {:error, {:capacity_exceeded, :max_tasks}} =
+             create_task(store, unique_id("limit-d"), "tenant-d")
+  end
+
+  @tag mcp_contract: ["tasks-postgres-live-concurrency"]
   test "claim_next skips a locked first row and claims the second", %{
     schema: schema,
     store: store
@@ -491,6 +517,29 @@ defmodule Snodo.Extensions.Tasks.Postgres.LiveTest do
   end
 
   @tag mcp_contract: ["tasks-postgres-live-time"]
+  test "an expired task is not found by get or request transitions before reaping", %{
+    schema: schema,
+    store: store
+  } do
+    task_id = unique_id("expired")
+    created_at = database_now() |> DateTime.add(-2, :second) |> DateTime.to_iso8601()
+    opts = [created_at: created_at, ttl_ms: 1]
+    _snapshot = create_task!(store, task_id, "tenant-a", opts)
+
+    get_access = authorize!(store, context("tenant-a"), {:get, task_id})
+    assert :not_found = Store.get(store, task_id, get_access)
+
+    cancel_access = authorize!(store, context("tenant-a"), {:cancel, task_id})
+    cancelled = event!(Event.cancelled(id: unique_id("expired-cancel")))
+
+    assert :not_found =
+             Store.transition(store, task_id, 0, cancelled, {:request, cancel_access})
+
+    assert table_count(schema, "mcp_tasks", task_id) == 1
+    assert {:ok, [^task_id]} = Store.reap(store)
+  end
+
+  @tag mcp_contract: ["tasks-postgres-live-time"]
   test "retry claim waits on a row lock, crosses the database due time, and then succeeds",
        %{
          config: config,
@@ -663,6 +712,11 @@ defmodule Snodo.Extensions.Tasks.Postgres.LiveTest do
   end
 
   defp create_task!(store, task_id, tenant \\ "tenant-a", opts \\ []) do
+    assert {:ok, snapshot} = create_task(store, task_id, tenant, opts)
+    snapshot
+  end
+
+  defp create_task(store, task_id, tenant, opts \\ []) do
     created_at =
       Keyword.get_lazy(opts, :created_at, fn -> database_now() |> DateTime.to_iso8601() end)
 
@@ -679,8 +733,7 @@ defmodule Snodo.Extensions.Tasks.Postgres.LiveTest do
 
     work = Keyword.get_lazy(opts, :work, fn -> Work.new!(task_id, "postgres/test", %{}) end)
     access = authorize!(store, context(tenant), {:create, task_id})
-    assert {:ok, snapshot} = Store.create(store, task, work, access)
-    snapshot
+    Store.create(store, task, work, access)
   end
 
   defp scoped_snapshot!(store, task_id, tenant \\ "tenant-a") do

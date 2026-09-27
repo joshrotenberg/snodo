@@ -15,12 +15,26 @@ defmodule Snodo.Extensions.Tasks.Store.Postgres do
 
   Recovery remains at least once. Applications must deduplicate external side
   effects with `Snodo.Extensions.Tasks.Work.idempotency_key`.
+
+  `create/4` refuses a task with `{:error, {:capacity_exceeded, limit}}` when
+  the table already holds `:max_tasks` tasks (default 10,000) or the caller's
+  scope already has `:max_active_tasks_per_scope` working or input-required
+  tasks (default 100). Either may be `:infinity`. The counts are taken inside
+  the creating transaction under a transaction-scoped advisory lock, so
+  concurrent creations on several nodes cannot pass a limit together; setting
+  both limits to `:infinity` skips the lock and the counts. An expired task
+  counts until it is reaped.
+
+  `reap/1` deletes at most `:reap_batch_size` expired tasks per call (default
+  500). A runner calling it every `:reap_interval_ms` therefore removes at most
+  that many tasks per interval.
   """
 
   @behaviour Snodo.Extensions.Tasks.Store
 
   import Ecto.Query
 
+  alias Ecto.Adapters.SQL
   alias Snodo.Context
   alias Snodo.Extensions.Tasks.Event
   alias Snodo.Extensions.Tasks.LedgerValidator
@@ -41,9 +55,20 @@ defmodule Snodo.Extensions.Tasks.Store.Postgres do
   @default_timeout 15_000
   @default_lock_timeout_ms 5_000
   @default_reap_batch_size 500
+  @default_max_tasks 10_000
+  @default_max_active_tasks_per_scope 100
   @worker_events [:input_requested, :retry_requested, :completed, :failed]
   @request_events %{update: :input_responses_accepted, cancel: :cancelled}
-  @known_options [:repo, :prefix, :scope, :timeout, :lock_timeout_ms, :reap_batch_size]
+  @known_options [
+    :repo,
+    :prefix,
+    :scope,
+    :timeout,
+    :lock_timeout_ms,
+    :reap_batch_size,
+    :max_tasks,
+    :max_active_tasks_per_scope
+  ]
 
   @type audit_report :: %{
           checked: non_neg_integer(),
@@ -62,7 +87,14 @@ defmodule Snodo.Extensions.Tasks.Store.Postgres do
          {:ok, lock_timeout_ms} <-
            positive_option(opts, :lock_timeout_ms, @default_lock_timeout_ms),
          {:ok, reap_batch_size} <-
-           positive_option(opts, :reap_batch_size, @default_reap_batch_size) do
+           positive_option(opts, :reap_batch_size, @default_reap_batch_size),
+         {:ok, max_tasks} <- limit_option(opts, :max_tasks, @default_max_tasks),
+         {:ok, max_active_tasks_per_scope} <-
+           limit_option(
+             opts,
+             :max_active_tasks_per_scope,
+             @default_max_active_tasks_per_scope
+           ) do
       {:ok,
        %Config{
          repo: repo,
@@ -71,6 +103,8 @@ defmodule Snodo.Extensions.Tasks.Store.Postgres do
          timeout: timeout,
          lock_timeout_ms: lock_timeout_ms,
          reap_batch_size: reap_batch_size,
+         max_tasks: max_tasks,
+         max_active_tasks_per_scope: max_active_tasks_per_scope,
          identity: make_ref()
        }}
     end
@@ -132,23 +166,9 @@ defmodule Snodo.Extensions.Tasks.Store.Postgres do
       ) do
     with :ok <- authorize_create(config, access, task.id),
          snapshot = Snapshot.new(task, work),
-         {:ok, projected} <- Persistence.project_snapshot(snapshot),
-         {count, nil} <-
-           config.repo.insert_all(
-             TaskRow,
-             [create_attributes(task.id, access.encoded_scope, projected)],
-             Keyword.merge(repo_opts(config),
-               on_conflict: :nothing,
-               conflict_target: [:task_id]
-             )
-           ) do
-      case count do
-        1 -> {:ok, snapshot}
-        0 -> {:error, :already_exists}
-      end
-    else
-      {:error, reason} -> {:error, reason}
-      other -> {:error, {:unexpected_database_result, other}}
+         {:ok, projected} <- Persistence.project_snapshot(snapshot) do
+      attributes = create_attributes(task.id, access.encoded_scope, projected)
+      insert_within_limits(config, access.encoded_scope, attributes, snapshot)
     end
   rescue
     exception in ArgumentError -> {:error, {:invalid_task, exception}}
@@ -293,6 +313,14 @@ defmodule Snodo.Extensions.Tasks.Store.Postgres do
     end
   end
 
+  defp limit_option(opts, key, default) do
+    case Keyword.get(opts, key, default) do
+      :infinity -> {:ok, :infinity}
+      value when is_integer(value) and value > 0 -> {:ok, value}
+      _invalid -> {:error, {:invalid_limit_option, key}}
+    end
+  end
+
   defp default_scope(_context), do: "shared"
 
   defp derive_scope(scope_function, context) do
@@ -350,11 +378,87 @@ defmodule Snodo.Extensions.Tasks.Store.Postgres do
     })
   end
 
+  defp insert_task(config, attributes, snapshot) do
+    case config.repo.insert_all(
+           TaskRow,
+           [attributes],
+           Keyword.merge(repo_opts(config),
+             on_conflict: :nothing,
+             conflict_target: [:task_id]
+           )
+         ) do
+      {1, nil} -> {:ok, snapshot}
+      {0, nil} -> {:error, :already_exists}
+      other -> {:error, {:unexpected_database_result, other}}
+    end
+  end
+
+  defp insert_within_limits(config, encoded_scope, attributes, snapshot) do
+    insert = fn -> insert_task(config, attributes, snapshot) end
+
+    if unlimited?(config),
+      do: insert.(),
+      else: transact(config, fn -> insert_locked(config, encoded_scope, insert) end)
+  end
+
+  defp insert_locked(config, encoded_scope, insert) do
+    with :ok <- lock_creation(config),
+         :ok <- check_capacity(config, encoded_scope) do
+      insert.()
+    end
+  end
+
+  defp unlimited?(config),
+    do: config.max_tasks == :infinity and config.max_active_tasks_per_scope == :infinity
+
+  # Serializes creations for this schema until the transaction ends, so two
+  # creations cannot both pass a limit that only one of them fits under.
+  defp lock_creation(config) do
+    key = "snodo_tasks_create:" <> (config.prefix || "")
+
+    case SQL.query(
+           config.repo,
+           "SELECT pg_advisory_xact_lock(hashtext($1))",
+           [key],
+           timeout: config.timeout
+         ) do
+      {:ok, _result} -> :ok
+      {:error, reason} -> {:error, {:creation_lock_failed, reason}}
+    end
+  end
+
+  defp check_capacity(config, encoded_scope) do
+    active =
+      from task in TaskRow,
+        where: task.status in ["working", "input_required"],
+        where: task.authorization_scope == ^encoded_scope
+
+    cond do
+      limit_reached?(config, TaskRow, config.max_tasks) ->
+        {:error, {:capacity_exceeded, :max_tasks}}
+
+      limit_reached?(config, active, config.max_active_tasks_per_scope) ->
+        {:error, {:capacity_exceeded, :max_active_tasks_per_scope}}
+
+      true ->
+        :ok
+    end
+  end
+
+  # Counts at most `limit` rows, so the cost does not grow past the limit.
+  defp limit_reached?(_config, _query, :infinity), do: false
+
+  defp limit_reached?(config, query, limit) do
+    bounded = from task in query, limit: ^limit
+    config.repo.aggregate(bounded, :count, :task_id, repo_opts(config)) >= limit
+  end
+
   defp fetch_scoped_row(config, task_id, encoded_scope) do
     query =
       from task in TaskRow,
         where: task.task_id == ^task_id,
-        where: task.authorization_scope == ^encoded_scope
+        where: task.authorization_scope == ^encoded_scope,
+        where: is_nil(task.expires_at) or task.expires_at > fragment("statement_timestamp()")
 
     config.repo.one(query, repo_opts(config))
   end
@@ -640,8 +744,11 @@ defmodule Snodo.Extensions.Tasks.Store.Postgres do
     end
   end
 
-  defp authorize_locked_transition(_config, {:request, %Access{}}, _row, _task_id, _now),
-    do: :ok
+  defp authorize_locked_transition(_config, {:request, %Access{}}, row, _task_id, now) do
+    if is_nil(row.expires_at) or DateTime.compare(now, row.expires_at) == :lt,
+      do: :ok,
+      else: :not_found
+  end
 
   defp authorize_locked_transition(config, {:worker, lease}, row, task_id, now),
     do: authorize_worker(config, lease, row, task_id, now)
@@ -833,7 +940,7 @@ defmodule Snodo.Extensions.Tasks.Store.Postgres do
   end
 
   defp database_now(config) do
-    case Ecto.Adapters.SQL.query(
+    case SQL.query(
            config.repo,
            "SELECT clock_timestamp()",
            [],
@@ -889,7 +996,7 @@ defmodule Snodo.Extensions.Tasks.Store.Postgres do
   defp set_local_lock_timeout(config) do
     timeout = Integer.to_string(config.lock_timeout_ms) <> "ms"
 
-    case Ecto.Adapters.SQL.query(
+    case SQL.query(
            config.repo,
            "SELECT set_config('lock_timeout', $1, true)",
            [timeout],

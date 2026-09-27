@@ -12,6 +12,8 @@ defmodule Snodo.Extensions.Tasks.Store.Postgres.Config do
           timeout: pos_integer(),
           lock_timeout_ms: pos_integer(),
           reap_batch_size: pos_integer(),
+          max_tasks: pos_integer() | :infinity,
+          max_active_tasks_per_scope: pos_integer() | :infinity,
           identity: reference()
         }
 
@@ -21,6 +23,8 @@ defmodule Snodo.Extensions.Tasks.Store.Postgres.Config do
     :timeout,
     :lock_timeout_ms,
     :reap_batch_size,
+    :max_tasks,
+    :max_active_tasks_per_scope,
     :identity
   ]
   defstruct [
@@ -30,6 +34,8 @@ defmodule Snodo.Extensions.Tasks.Store.Postgres.Config do
     :timeout,
     :lock_timeout_ms,
     :reap_batch_size,
+    :max_tasks,
+    :max_active_tasks_per_scope,
     :identity
   ]
 end

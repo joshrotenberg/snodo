@@ -19,6 +19,17 @@ defmodule Snodo.Extensions.Tasks.Store do
   against store-authoritative time. Reaping removes the entire aggregate using
   the Task's creation-based TTL.
 
+  Once `createdAt + ttlMs` has passed on the store's clock, `get/3` and
+  request-authority `transition/5` return `:not_found`, as if the task had
+  already been reaped. `tasks/get`, `tasks/update`, `tasks/cancel`, and
+  `subscriptions/listen` all read through `get/3`, so an expired task is
+  unknown to each of them before `reap/1` deletes it.
+
+  `create/4` returns `{:error, {:capacity_exceeded, limit}}` to refuse a task
+  over a store limit. The included stores take `:max_tasks` and
+  `:max_active_tasks_per_scope` options and count stored tasks when they
+  create one; the extension reports the refusal to the client as retryable.
+
   Store references use `{module, state}` so implementations may be processes,
   database repositories, external job systems, or immutable test doubles.
   """

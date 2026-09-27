@@ -732,6 +732,67 @@ defmodule Snodo.Extensions.Tasks.SQLite.IntegrationTest do
     assert table_count("mcp_tasks", survivor_id) == 1
   end
 
+  @tag mcp_contract: ["tasks-sqlite-time"]
+  test "an expired task is not found by get or request transitions before reaping", %{
+    store: store
+  } do
+    task_id = unique_id("expired")
+    created_at = (database_now_us() - 2_000_000) |> Timestamp.format() |> ok!()
+    opts = [created_at: created_at, ttl_ms: 1]
+    _snapshot = create_task!(store, task_id, "tenant-a", opts)
+
+    get_access = authorize!(store, context("tenant-a"), {:get, task_id})
+    assert :not_found = Store.get(store, task_id, get_access)
+
+    cancel_access = authorize!(store, context("tenant-a"), {:cancel, task_id})
+    cancelled = event!(Event.cancelled(id: unique_id("expired-cancel")))
+
+    assert :not_found =
+             Store.transition(store, task_id, 0, cancelled, {:request, cancel_access})
+
+    assert table_count("mcp_tasks", task_id) == 1
+    assert {:ok, [^task_id]} = Store.reap(store)
+  end
+
+  @tag mcp_contract: ["tasks-sqlite-scope"]
+  test "creation refuses tasks over the stored and per-scope active limits", %{
+    config: config
+  } do
+    store =
+      {SQLite,
+       SQLite.new!(
+         repo: LiveRepo,
+         scope: fn context -> context.auth["tenant"] end,
+         timeout: config.timeout,
+         max_tasks: 3,
+         max_active_tasks_per_scope: 1
+       )}
+
+    first_id = unique_id("limit-a")
+    _first = create_task!(store, first_id, "tenant-a")
+
+    assert {:error, {:capacity_exceeded, :max_active_tasks_per_scope}} =
+             create_task(store, unique_id("limit-a"), "tenant-a")
+
+    _other_scope = create_task!(store, unique_id("limit-b"), "tenant-b")
+
+    assert {:ok, %Snapshot{}, lease} = Store.claim(store, first_id, "owner", @lease_ms)
+    completed = event!(Event.completed(%{"done" => true}, id: unique_id("limit-done")))
+
+    assert {:ok, %Transition{outcome: :applied}} =
+             Store.transition(store, first_id, 0, completed, {:worker, lease})
+
+    _second = create_task!(store, unique_id("limit-a"), "tenant-a")
+
+    assert {:error, {:capacity_exceeded, :max_tasks}} =
+             create_task(store, unique_id("limit-c"), "tenant-c")
+
+    assert [[3]] = query!(LiveRepo, "SELECT count(*) FROM mcp_tasks").rows
+
+    assert {:error, {:invalid_limit_option, :max_tasks}} =
+             SQLite.new(repo: LiveRepo, max_tasks: 0)
+  end
+
   @tag mcp_contract: ["tasks-sqlite-recovery"]
   @tag capture_log: true
   test "a replacement Runner recovers a hard-dead Runner with identical Work", %{store: store} do
@@ -835,6 +896,11 @@ defmodule Snodo.Extensions.Tasks.SQLite.IntegrationTest do
   end
 
   defp create_task!(store, task_id, tenant \\ "tenant-a", opts \\ []) do
+    assert {:ok, snapshot} = create_task(store, task_id, tenant, opts)
+    snapshot
+  end
+
+  defp create_task(store, task_id, tenant, opts \\ []) do
     created_at = Keyword.get_lazy(opts, :created_at, &database_now_iso8601/0)
 
     task =
@@ -848,8 +914,7 @@ defmodule Snodo.Extensions.Tasks.SQLite.IntegrationTest do
 
     work = Keyword.get_lazy(opts, :work, fn -> Work.new!(task_id, "sqlite/test", %{}) end)
     access = authorize!(store, context(tenant), {:create, task_id})
-    assert {:ok, snapshot} = Store.create(store, task, work, access)
-    snapshot
+    Store.create(store, task, work, access)
   end
 
   defp scoped_snapshot!(store, task_id, tenant \\ "tenant-a") do

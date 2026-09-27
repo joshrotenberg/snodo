@@ -49,7 +49,10 @@ defmodule Snodo.Extensions.Tasks.Stress do
   def run(opts \\ []) when is_list(opts) do
     config = validate_options!(opts)
     {:ok, collector} = Agent.start_link(fn -> [] end)
-    {:ok, store} = Memory.start_link()
+    # Each round holds every task's worker open at once, so the limits are
+    # sized to the workload rather than to the defaults.
+    store_limits = [max_tasks: :infinity, max_active_tasks_per_scope: :infinity]
+    {:ok, store} = Memory.start_link(store_limits)
     store_ref = {Memory, store}
 
     try do
@@ -57,6 +60,7 @@ defmodule Snodo.Extensions.Tasks.Stress do
         Runner.start_link(
           store: store_ref,
           owner_id: "stress-runner",
+          max_jobs: config.tasks,
           lease_ms: max(config.timeout_ms * 2, 60_000),
           heartbeat_ms: max(config.timeout_ms, 1),
           instrumentation: {Sink, collector}
