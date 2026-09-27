@@ -172,6 +172,11 @@ defmodule Snodo.Server.ExecutorAcceptanceTest do
         {:ok, _running_ref} =
           Executor.submit(executor, :owner_running, fn cancellation ->
             send(test_process, {:owner_job_started, self(), cancellation})
+
+            receive do
+              {:ping, from} -> send(from, :pong)
+            end
+
             Process.sleep(:infinity)
           end)
 
@@ -187,6 +192,11 @@ defmodule Snodo.Server.ExecutorAcceptanceTest do
     assert_receive {:owner_job_started, worker, cancellation}, 500
     assert_receive :owner_jobs_submitted, 500
     worker_monitor = Process.monitor(worker)
+    # A monitor request can be overtaken by the executor's kill, which comes from
+    # another process, and then reports :noproc. The worker handles this ping only
+    # after the earlier monitor request, so the monitor is in place.
+    send(worker, {:ping, self()})
+    assert_receive :pong, 500
     Process.exit(owner, :kill)
 
     assert_receive {:DOWN, ^worker_monitor, :process, ^worker, :killed}, 500

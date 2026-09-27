@@ -78,9 +78,14 @@ defmodule Snodo.Transport.StdioWriteTimeoutTest do
     TestInput.push(ctx.input, "{invalid}\n")
     assert_receive {:write, writer, _tag, _data}, 1_000
     writer_monitor = Process.monitor(writer)
+    assert Process.alive?(writer)
     Process.exit(transport, :kill)
     assert_receive {:DOWN, ^monitor, :process, ^transport, :killed}, 1_000
-    assert_receive {:DOWN, ^writer_monitor, :process, ^writer, :killed}, 1_000
+    # The writer is blocked in a device call and cannot confirm the monitor, which
+    # the transport's exit can overtake. It then reports :noproc; the writer was
+    # alive before the kill either way.
+    assert_receive {:DOWN, ^writer_monitor, :process, ^writer, reason}, 1_000
+    assert reason in [:killed, :noproc]
     assert Process.alive?(ctx.output)
   end
 
