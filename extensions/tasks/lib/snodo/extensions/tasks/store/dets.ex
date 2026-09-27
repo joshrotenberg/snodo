@@ -45,9 +45,10 @@ defmodule Snodo.Extensions.Tasks.Store.Dets do
 
   `:path` is required. `:table` must be a caller-supplied atom when more than
   one adapter is open in the same BEAM; it defaults to this module name, which
-  deliberately permits only one default-named table at a time. The optional
-  `:scope` callback must return a JSON-safe value because its result is part of
-  the durable authorization record.
+  deliberately permits only one default-named table at a time. The required
+  `:scope` option (see `Snodo.Extensions.Tasks.Store.scope_option/2`) must
+  return a JSON-safe value because its result is part of the durable
+  authorization record.
 
   DETS is a local reference adapter, not a distributed database. The GenServer
   serializes operations in one BEAM, and DETS itself has a 2 GB file limit.
@@ -63,6 +64,7 @@ defmodule Snodo.Extensions.Tasks.Store.Dets do
   alias Snodo.Extensions.Tasks.Event
   alias Snodo.Extensions.Tasks.RetryPolicy
   alias Snodo.Extensions.Tasks.Snapshot
+  alias Snodo.Extensions.Tasks.Store
   alias Snodo.Extensions.Tasks.Store.Dets.Access
   alias Snodo.Extensions.Tasks.Store.Dets.Lease
   alias Snodo.Extensions.Tasks.Task, as: ProtocolTask
@@ -86,6 +88,7 @@ defmodule Snodo.Extensions.Tasks.Store.Dets do
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) when is_list(opts) do
+    _scope = Store.scope_option!(opts, "shared")
     path = Keyword.fetch!(opts, :path)
     table = Keyword.get(opts, :table, __MODULE__)
 
@@ -165,12 +168,11 @@ defmodule Snodo.Extensions.Tasks.Store.Dets do
 
   @impl true
   def init(opts) do
-    scope = Keyword.get(opts, :scope, fn _context -> "shared" end)
+    scope = Store.scope_option!(opts, "shared")
     clock = Keyword.get(opts, :clock, &ProtocolTask.timestamp/0)
     table = Keyword.fetch!(opts, :table)
     path = opts |> Keyword.fetch!(:path) |> Path.expand()
 
-    unless is_function(scope, 1), do: raise(ArgumentError, ":scope must be an arity-1 function")
     unless is_function(clock, 0), do: raise(ArgumentError, ":clock must be an arity-0 function")
 
     case open_store(table, path) do

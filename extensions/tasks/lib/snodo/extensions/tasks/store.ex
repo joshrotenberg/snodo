@@ -80,6 +80,47 @@ defmodule Snodo.Extensions.Tasks.Store do
               authority()
             ) :: transition_result()
 
+  @doc """
+  Reads a store's required `:scope` option.
+
+  `:scope` is either an arity-1 function that derives the caller's authorization
+  scope from the request context, or `:shared`, which gives every principal the
+  same scope (`shared`). With `:shared`, anyone who holds a task ID can read,
+  update, cancel, and subscribe to that task, so the ID works as a bearer
+  credential.
+
+  Returns the scope function, `{:error, :missing_scope}` when the option is
+  absent, or `{:error, :invalid_scope_function}`.
+  """
+  @spec scope_option(keyword(), term()) ::
+          {:ok, (Context.t() -> term())} | {:error, :missing_scope | :invalid_scope_function}
+  def scope_option(opts, shared) when is_list(opts) do
+    case Keyword.fetch(opts, :scope) do
+      {:ok, :shared} -> {:ok, fn _context -> shared end}
+      {:ok, scope} when is_function(scope, 1) -> {:ok, scope}
+      {:ok, _invalid} -> {:error, :invalid_scope_function}
+      :error -> {:error, :missing_scope}
+    end
+  end
+
+  @doc false
+  # Raises from a store's start_link, so the caller sees the problem.
+  @spec scope_option!(keyword(), term()) :: (Context.t() -> term())
+  def scope_option!(opts, shared) do
+    case scope_option(opts, shared) do
+      {:ok, scope} ->
+        scope
+
+      {:error, :missing_scope} ->
+        raise ArgumentError,
+              ":scope is required: an arity-1 function that derives each caller's " <>
+                "scope, or :shared to give every principal one scope"
+
+      {:error, :invalid_scope_function} ->
+        raise ArgumentError, ":scope must be an arity-1 function or :shared"
+    end
+  end
+
   @doc "Acquires opaque, action-bound request access without retaining the context."
   @spec authorize(ref(), Context.t(), action()) :: {:ok, access()} | {:error, term()}
   def authorize({module, store}, %Context{} = context, {action, task_id} = requested)

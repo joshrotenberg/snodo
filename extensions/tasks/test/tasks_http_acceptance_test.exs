@@ -18,7 +18,7 @@ defmodule Snodo.TasksHTTPAcceptanceTest do
   @protocol "2026-07-28"
 
   setup do
-    store = start_supervised!(Memory)
+    store = start_supervised!({Memory, scope: :shared})
     runner = start_supervised!({Runner, store: {Memory, store}})
 
     %{runtime: TasksSupport.runtime(store, runner, self())}
@@ -75,7 +75,7 @@ defmodule Snodo.TasksHTTPAcceptanceTest do
   test "HTTP admits taskIds and returns the shared long-lived SSE descriptor", %{
     runtime: _runtime
   } do
-    store = start_supervised!(Memory, id: :tasks_http_subscription_store)
+    store = start_supervised!({Memory, scope: :shared}, id: :tasks_http_subscription_store)
 
     runner =
       start_supervised!({Runner, store: {Memory, store}}, id: :tasks_http_subscription_runner)
