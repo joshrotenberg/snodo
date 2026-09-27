@@ -328,6 +328,7 @@ defmodule Snodo.TasksRetryPolicyTest do
 
     {:ok, server} =
       Dets.start_link(
+        scope: :shared,
         path: path,
         table: :mcp_tasks_retry_policy,
         clock: fn -> Agent.get(clock, & &1) end
@@ -354,6 +355,7 @@ defmodule Snodo.TasksRetryPolicyTest do
 
     {:ok, reopened} =
       Dets.start_link(
+        scope: :shared,
         path: path,
         table: :mcp_tasks_retry_policy,
         clock: fn -> Agent.get(clock, & &1) end
@@ -836,6 +838,7 @@ defmodule Snodo.TasksRetryPolicyTest do
   defp persist_dets_transition!(path, table, clock, task_id, work, event) do
     {:ok, server} =
       Dets.start_link(
+        scope: :shared,
         path: path,
         table: table,
         clock: fn -> Agent.get(clock, & &1) end
@@ -877,6 +880,7 @@ defmodule Snodo.TasksRetryPolicyTest do
     {starter, monitor} =
       spawn_monitor(fn ->
         Dets.start_link(
+          scope: :shared,
           path: path,
           table: table,
           clock: fn -> Agent.get(clock, & &1) end
@@ -892,7 +896,7 @@ defmodule Snodo.TasksRetryPolicyTest do
 
     store =
       start_supervised!(
-        {Memory, clock: fn -> Agent.get(clock, & &1) end},
+        {Memory, scope: :shared, clock: fn -> Agent.get(clock, & &1) end},
         id: {Memory, make_ref()}
       )
 

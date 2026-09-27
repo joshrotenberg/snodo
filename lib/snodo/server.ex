@@ -643,6 +643,8 @@ defmodule Snodo.Server do
          %{"notifications" => requested_filter},
          context
        ) do
+    requested_filter = authorize_resource_subscriptions(runtime, requested_filter, context)
+
     with {:ok, %Subscription{} = subscription} <-
            Subscription.open(
              source,
@@ -699,6 +701,25 @@ defmodule Snodo.Server do
       authorization: runtime.authorization
     )
   end
+
+  # A resource the policy does not let this principal read is dropped from the
+  # subscription, the way discovery leaves refused components out of lists.
+  defp authorize_resource_subscriptions(%Runtime{authorization: nil}, filter, _context),
+    do: filter
+
+  defp authorize_resource_subscriptions(
+         %Runtime{} = runtime,
+         %{"resourceSubscriptions" => uris} = filter,
+         context
+       )
+       when is_list(uris) do
+    readable =
+      Router.filter_readable(runtime.router, uris, context, authorization: runtime.authorization)
+
+    Map.put(filter, "resourceSubscriptions", readable)
+  end
+
+  defp authorize_resource_subscriptions(_runtime, filter, _context), do: filter
 
   defp apply_cache_policy(%Result{kind: :input_required} = result, _cache, _label),
     do: {:ok, result}
@@ -787,11 +808,10 @@ defmodule Snodo.Server do
       else: Error.to_json_rpc(Error.internal())
   end
 
+  # An id outside the bounds is not echoed; the error answers with a null id.
   defp readable_id(raw) when is_map(raw) do
-    case Map.get(raw, "id") do
-      id when is_binary(id) or is_integer(id) -> id
-      _invalid -> nil
-    end
+    id = Map.get(raw, "id")
+    if Envelope.bounded_id?(id), do: id, else: nil
   end
 
   defp readable_id(_raw), do: nil

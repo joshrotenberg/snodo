@@ -22,6 +22,24 @@ defmodule Snodo.TasksStoreHardeningTest do
   @responded_at "2026-08-24T10:00:02.000Z"
   @completed_at "2026-08-24T10:00:03.000Z"
 
+  test "stores require an explicit scope" do
+    assert_raise ArgumentError, ~r/:scope is required/, fn -> Memory.start_link([]) end
+
+    assert_raise ArgumentError, ~r/:scope must be an arity-1 function or :shared/, fn ->
+      Memory.start_link(scope: "tenant")
+    end
+
+    path = Path.join(System.tmp_dir!(), "snodo-scope-#{System.unique_integer([:positive])}.dets")
+
+    assert_raise ArgumentError, ~r/:scope is required/, fn ->
+      Snodo.Extensions.Tasks.Store.Dets.start_link(path: path, table: :snodo_scope_required)
+    end
+
+    {:ok, store} = Memory.start_link(scope: :shared)
+    assert Process.alive?(store)
+    GenServer.stop(store)
+  end
+
   test "events reject non-JSON terms and round-trip through their JSON representation" do
     events = [
       event!(Event.input_requested("approval", input_request(), id: "event-input")),

@@ -232,9 +232,17 @@ defmodule Snodo.Protocol.Legacy do
 
   defp validate_progress(params) do
     case get_in(params, ["_meta", "progressToken"]) do
-      nil -> :ok
-      token when is_binary(token) or is_integer(token) -> :ok
-      _ -> {:error, Error.invalid_params("progressToken must be a string or integer")}
+      nil ->
+        :ok
+
+      token ->
+        if Envelope.bounded_id?(token),
+          do: :ok,
+          else:
+            {:error,
+             Error.invalid_params(
+               "progressToken must be a string of at most 256 bytes or an int64 integer"
+             )}
     end
   end
 

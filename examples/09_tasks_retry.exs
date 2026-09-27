@@ -80,6 +80,8 @@ defmodule Examples.TasksRetry.Runner do
 
     {:ok, store} =
       Memory.start_link(
+        # One client, so every task shares one scope.
+        scope: :shared,
         clock: fn ->
           now = Agent.get(clock, & &1)
           send(owner, {:retry_example_clock_read, now})
