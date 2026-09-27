@@ -5,6 +5,9 @@ list changes for tools, prompts, and resources, and updates to specific
 resources. Subscriptions are not router state. The application supplies the
 events through a source.
 
+One request may name at most 1,000 URIs in `resourceSubscriptions`; a longer
+list is refused with -32602.
+
 ## Sources
 
 A `Snodo.Subscription.Source` opens a handle for one listen request, agrees to a
