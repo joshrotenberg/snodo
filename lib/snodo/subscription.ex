@@ -4,6 +4,13 @@ defmodule Snodo.Subscription do
 
   Applications implement `Snodo.Subscription.Source`; this module owns filter
   narrowing, lifecycle safety, bounded pulling, and protocol wire shaping.
+
+  A subscription outlives its request, so it keeps only what it serves. The
+  source's `open/3` callback receives the full request context; the context
+  stored in the subscription has empty `request_params` and `input_responses`
+  and no `request_state`, and `accepted_filter` holds the notifications it
+  delivers. Filter strings are copied out of the request body, so an open
+  stream does not keep the body alive.
   """
 
   alias Snodo.Context
@@ -81,9 +88,13 @@ defmodule Snodo.Subscription do
              context
            ),
          {:ok, supported_filter} <- merge_supported_filters(core_filter, extension_filter),
+         supported_filter = detach(supported_filter),
          {:ok, accepted_filter, handle} <- source_open(source, supported_filter, context) do
       case validate_accepted_filter(accepted_filter, supported_filter) do
         :ok ->
+          accepted_filter = detach(accepted_filter)
+          context = retained_context(context)
+
           {:ok,
            %__MODULE__{
              id: context.request_id,
@@ -276,6 +287,36 @@ defmodule Snodo.Subscription do
       filter
     end
   end
+
+  # The worker and the transport each hold a copy of the subscription for as
+  # long as the stream is open. Params other than the filter are not needed
+  # after `open/4`.
+  defp retained_context(context) do
+    %{
+      context
+      | request_id: detach(context.request_id),
+        request_params: %{},
+        input_responses: %{},
+        request_state: nil
+    }
+  end
+
+  # A string decoded from a request body can be a sub-binary that keeps the
+  # whole body alive. Copy those so an open subscription retains only its own
+  # values.
+  defp detach(value) when is_binary(value) do
+    if :binary.referenced_byte_size(value) > byte_size(value),
+      do: :binary.copy(value),
+      else: value
+  end
+
+  defp detach(value) when is_list(value), do: Enum.map(value, &detach/1)
+
+  defp detach(value) when is_map(value) do
+    value |> Map.to_list() |> Map.new(fn {key, item} -> {detach(key), detach(item)} end)
+  end
+
+  defp detach(value), do: value
 
   defp validate_accepted_filter(accepted, supported) do
     if Filter.subset?(accepted, supported),
