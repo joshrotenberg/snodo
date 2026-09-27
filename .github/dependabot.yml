@@ -18,3 +18,19 @@ updates:
     directory: /
     schedule:
       interval: weekly
+  # One weekly pull request updates a dependency in every Mix project.
+  - package-ecosystem: mix
+    directories:
+      - /
+      - /extensions/tasks
+      - /extensions/tasks_postgres
+      - /extensions/tasks_sqlite
+      - /integrations/plug
+      - /integrations/schema_jsv
+      - /conformance/fixture
+    schedule:
+      interval: weekly
+    groups:
+      mix:
+        patterns:
+          - "*"
