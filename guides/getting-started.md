@@ -7,19 +7,23 @@ stdio and HTTP.
 
 Add `snodo` to your dependencies:
 
+<!-- x-release-please-start-version -->
 ```elixir
 def deps do
   [
-    {:snodo, "~> 0.1.0"}
+    {:snodo, "~> 0.2.0"}
   ]
 end
 ```
+<!-- x-release-please-end -->
 
 For a Plug or Bandit application, also add `snodo_plug`:
 
+<!-- x-release-please-start-version -->
 ```elixir
-{:snodo_plug, "~> 0.1.0"}
+{:snodo_plug, "~> 0.2.0"}
 ```
+<!-- x-release-please-end -->
 
 Elixir 1.18 or later is required. The core has no runtime dependencies.
 

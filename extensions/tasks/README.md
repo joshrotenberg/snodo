@@ -1,11 +1,13 @@
 # Tasks extension
 
+<!-- x-release-please-start-version -->
 This independent `:snodo_tasks` Mix package implements the released SEP-2663
 Tasks extension for MCP `2026-07-28` without adding task methods or capabilities
 to the core protocol catalog. Its only runtime dependency is the `snodo` core;
 the core does not compile or depend on Tasks. Add it with
-`{:snodo_tasks, "~> 0.1.0"}`, or with one of the durable stores, which bring it
+`{:snodo_tasks, "~> 0.2.0"}`, or with one of the durable stores, which bring it
 with them.
+<!-- x-release-please-end -->
 
 The package owns its source, tests, contract evidence, formatting, Credo, and
 Dialyzer gates. From this directory, run:
@@ -29,10 +31,12 @@ for artifact collection. See
 [`stress-testing.md`](https://github.com/joshrotenberg/snodo/blob/main/extensions/tasks/stress-testing.md).
 
 The frozen Tasks conformance fixture combines core and extension tools. Start
-it from this directory so both applications are available:
+it from the `conformance/fixture` Mix project at the repository root, which has
+the core, Tasks, and the Plug adapter on its code path:
 
 ```sh
-MCP_PORT=3001 mix run ../../conformance/fixture_server.exs
+cd conformance/fixture
+MCP_PORT=3001 mix run ../fixture_server.exs
 ```
 
 ## What is implemented
@@ -117,7 +121,7 @@ runtime =
 The optional instrumentation sink receives bounded job start/stop and timed
 store-transition events. It never receives work input, access values, results,
 errors, or input responses. The shared event catalog and a `:telemetry` bridge
-are documented in [the instrumentation guide](https://github.com/joshrotenberg/snodo/blob/main/guides/instrumentation.md).
+are documented in [the instrumentation guide](https://hexdocs.pm/snodo/instrumentation.html).
 The included stress harness consumes those same events to prove balanced job
 lifecycle and runner drain behavior without making latency thresholds part of
 correctness.
@@ -332,10 +336,10 @@ event-replay, authority, claim, and reaping contract.
 - `Store.Dets` is a local, single-node reference adapter, not a production
   distributed store. Its GenServer serializes operations in one BEAM, DETS has
   a 2 GB file limit, and it does not coordinate claims across nodes. The
-  separate [`:snodo_tasks_postgres`](https://github.com/joshrotenberg/snodo/blob/main/extensions/tasks_postgres/README.md) package
+  separate [`:snodo_tasks_postgres`](https://hexdocs.pm/snodo_tasks_postgres) package
   implements the same contract with an application-owned `Ecto.Repo`, row
   locks, database time, and fenced leases without adding Ecto to this package.
-  The separate [`:snodo_tasks_sqlite`](https://github.com/joshrotenberg/snodo/blob/main/extensions/tasks_sqlite/README.md) package keeps
+  The separate [`:snodo_tasks_sqlite`](https://hexdocs.pm/snodo_tasks_sqlite) package keeps
   the same Repo/migration ownership while providing file-backed, single-host
   durability through SQLite `IMMEDIATE` transactions and one serialized writer.
 - `Store.reap/1` and the runner's optional `:reap_interval_ms` implement this

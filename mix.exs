@@ -61,7 +61,8 @@ defmodule Snodo.MixProject do
       links: %{"GitHub" => @source_url, "Changelog" => "#{@source_url}/blob/main/CHANGELOG.md"},
       # lib/mix holds tasks that run this repository's examples and compliance
       # vectors; they are not useful without the checkout.
-      files: ~w(lib/snodo lib/snodo.ex mix.exs README.md CHANGELOG.md LICENSE .formatter.exs)
+      files:
+        ~w(lib/snodo lib/snodo.ex guides mix.exs README.md CHANGELOG.md LICENSE .formatter.exs)
     ]
   end
 

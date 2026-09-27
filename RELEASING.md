@@ -31,7 +31,10 @@ push to `main` ([release-please.yml](.github/workflows/release-please.yml)):
    entries, and breaking changes marked with `!`. Before 1.0, a breaking
    change bumps the minor version and a feature bumps the patch version. The
    first release is 0.1.0 (`initial-version`); without it, release-please
-   starts at 1.0.0.
+   starts at 1.0.0. The install snippets in the READMEs and
+   `guides/getting-started.md` are listed there too, between the same markers
+   written as HTML comments. The updater rewrites only full `x.y.z` versions,
+   so other requirements in those snippets, such as `~> 1.12`, stay as they are.
 2. release-please acts with the `RELEASE_PLEASE_TOKEN` secret, so its pull
    request runs the usual pull request workflows and gets the required checks.
    A pull request opened with the workflow token would start no workflows.
@@ -68,7 +71,7 @@ To publish an existing tag again, for example after `publish-hex` failed partway
 run the workflow by hand. Packages already on Hex are skipped:
 
 ```sh
-gh workflow run release-please.yml -f tag=v0.1.0
+gh workflow run release-please.yml -f tag=vX.Y.Z
 ```
 
 Without CI, publish from a clean checkout of the tag, in the same order, after

@@ -13,10 +13,12 @@ database clock functions, and `FOR UPDATE SKIP LOCKED`.
 
 Add this package and a PostgreSQL driver to the host application:
 
+<!-- x-release-please-start-version -->
 ```elixir
-{:snodo_tasks_postgres, "~> 0.1.0"},
+{:snodo_tasks_postgres, "~> 0.2.0"},
 {:postgrex, "~> 0.22"}
 ```
+<!-- x-release-please-end -->
 
 Then configure and supervise the Repo normally:
 
@@ -227,7 +229,7 @@ mix quality.types
 mix tasks.postgres.contract
 ```
 
-That default lane has 15 database-independent tests and one adapter evidence
+That default lane has 9 database-independent tests and one adapter evidence
 group; it excludes the 14 live tests.
 
 The live transaction lane is deliberately separate from default unit quality.

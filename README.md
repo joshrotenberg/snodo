@@ -36,14 +36,16 @@ initialize-era clients (`2025-11-25` and `2025-06-18`) over HTTP and stdio.
 
 Add the packages you need to `mix.exs`. Each sibling brings `snodo` with it:
 
+<!-- x-release-please-start-version -->
 ```elixir
 def deps do
   [
-    {:snodo, "~> 0.1.0"},
-    {:snodo_plug, "~> 0.1.0"}
+    {:snodo, "~> 0.2.0"},
+    {:snodo_plug, "~> 0.2.0"}
   ]
 end
 ```
+<!-- x-release-please-end -->
 
 Elixir 1.18 or later is required. The sibling packages live in this repository
 under `integrations/` and `extensions/`.
@@ -109,19 +111,19 @@ The same client connects to either:
 
 ## Guides
 
-- [Getting started](guides/getting-started.md)
-- [Tools, resources, and prompts](guides/components.md)
-- [The client](guides/client.md)
-- [Transports](guides/transports.md)
-- [Choosing packages for an application](guides/application-stack.md)
-- [Interactive operations (MRTR and elicitation)](guides/interactive-operations.md)
-- [Subscriptions](guides/subscriptions.md)
-- [Authorization](guides/authorization.md)
-- [Extensions and Tasks](guides/extensions.md)
-- [Instrumentation](guides/instrumentation.md)
-- [Initialize-era clients](guides/initialize-era-clients.md)
-- [Supported Elixir, OTP, and databases](guides/compatibility.md)
-- [Protocol compliance](guides/protocol-compliance.md)
+- [Getting started](https://hexdocs.pm/snodo/getting-started.html)
+- [Tools, resources, and prompts](https://hexdocs.pm/snodo/components.html)
+- [The client](https://hexdocs.pm/snodo/client.html)
+- [Transports](https://hexdocs.pm/snodo/transports.html)
+- [Choosing packages for an application](https://hexdocs.pm/snodo/application-stack.html)
+- [Interactive operations (MRTR and elicitation)](https://hexdocs.pm/snodo/interactive-operations.html)
+- [Subscriptions](https://hexdocs.pm/snodo/subscriptions.html)
+- [Authorization](https://hexdocs.pm/snodo/authorization.html)
+- [Extensions and Tasks](https://hexdocs.pm/snodo/extensions.html)
+- [Instrumentation](https://hexdocs.pm/snodo/instrumentation.html)
+- [Initialize-era clients](https://hexdocs.pm/snodo/initialize-era-clients.html)
+- [Supported Elixir, OTP, and databases](https://hexdocs.pm/snodo/compatibility.html)
+- [Protocol compliance](https://hexdocs.pm/snodo/protocol-compliance.html)
 
 The [examples](https://github.com/joshrotenberg/snodo/blob/main/examples/README.md) are runnable scripts, each checked in CI.
 
@@ -142,7 +144,7 @@ without sessions and over stdio. They add no session storage.
 
 Against the frozen official conformance suite, 32 of 37 `2026-07-28` server
 scenarios pass. On the client side, 6 of 32 pass: 25 of the client scenarios
-cover OAuth, which `Snodo.Client` does not implement. The [compliance guide](guides/protocol-compliance.md) lists
+cover OAuth, which `Snodo.Client` does not implement. The [compliance guide](https://hexdocs.pm/snodo/protocol-compliance.html) lists
 what is measured and what is not. Design records from the project's history are
 in [docs/history](https://github.com/joshrotenberg/snodo/blob/main/docs/history/README.md).
 

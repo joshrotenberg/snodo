@@ -12,7 +12,14 @@
         "extensions/tasks_postgres/mix.exs",
         "extensions/tasks_sqlite/mix.exs",
         "integrations/plug/mix.exs",
-        "integrations/schema_jsv/mix.exs"
+        "integrations/schema_jsv/mix.exs",
+        "README.md",
+        "guides/getting-started.md",
+        "extensions/tasks/README.md",
+        "extensions/tasks_postgres/README.md",
+        "extensions/tasks_sqlite/README.md",
+        "integrations/plug/README.md",
+        "integrations/schema_jsv/README.md"
       ]
     }
   }

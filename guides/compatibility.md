@@ -5,10 +5,8 @@ The executable compatibility policy lives in
 language/runtime compatibility, database behavior, and migration behavior so a
 pass in one lane cannot be presented as evidence for another.
 
-The workflow is checked-in executable policy, not a retroactive pass claim.
-This workspace has locally verified the current Elixir/OTP lane and SQLite
-migration sequence. Each other combination becomes measured evidence only when
-its CI job completes successfully.
+The workflow runs on every pull request and every push to `main`. A
+combination counts as evidence only from a successful run of its job.
 
 ## BEAM matrix
 

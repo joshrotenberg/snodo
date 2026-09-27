@@ -91,16 +91,18 @@ It supports the same JSON, progress SSE, and subscription SSE lifecycles. Plug
 only reveals a disconnect when a write fails, so a request still running after
 `:disconnect_probe_ms` (default 5,000) switches to SSE and writes keepalive
 comments; a failed write cancels the work. See
-the [package README](https://github.com/joshrotenberg/snodo/blob/main/integrations/plug/README.md) and the
+the [`snodo_plug` documentation](https://hexdocs.pm/snodo_plug) and the
 [application stack](application-stack.md) for choosing between the native
 listener and Plug.
 
 ## Other hosts
 
-`Snodo.Transport.StreamableHTTP.prepare/3` and `execute/3` are pure: they take
-a `Snodo.Transport.StreamableHTTP.Request` and return a `Response` or a
-`StreamResponse`. A different HTTP server can translate its requests into that
-shape. `handle/3` runs both steps synchronously.
+`Snodo.Transport.StreamableHTTP.prepare/3` admits and decodes a
+`Snodo.Transport.StreamableHTTP.Request` without running a handler. It returns
+`{:ok, prepared}`, or `{:response, response}` when admission fails. `execute/3`
+runs a prepared request and returns a `Response` or a `StreamResponse`. A
+different HTTP server can translate its requests into that shape. `handle/3`
+runs both steps synchronously.
 
 ## Examples
 
