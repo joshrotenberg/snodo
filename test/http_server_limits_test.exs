@@ -121,7 +121,9 @@ defmodule Snodo.Transport.StreamableHTTP.ServerLimitsTest do
     _acknowledgement = recv_until(socket, "notifications/subscriptions/acknowledged")
 
     [connection] = slot_holders(executor)
-    {:monitors, [process: worker]} = Process.info(connection, :monitors)
+    # The connection also monitors its socket port; the worker is the one process.
+    {:monitors, monitors} = Process.info(connection, :monitors)
+    [worker] = for {:process, pid} <- monitors, do: pid
 
     for pid <- [connection, worker, hub] do
       assert large_binaries(pid) == []
