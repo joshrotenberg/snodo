@@ -39,6 +39,11 @@ dispatch, stdio, the native HTTP listener, and Plug share one decision.
 Filtering happens before paging, so a cursor belongs to the catalog that
 context can see and expires if replayed against a different one.
 
+The Tasks extension runs the `:invocation` check, and argument validation,
+when it accepts a task-augmented `tools/call`, before it stores anything. Work
+that a durable executor later runs has already passed the check. Inside the
+task worker, `context.request_method` is still `"tools/call"`.
+
 ## What it does not do
 
 - It does not authenticate. `context.auth` is whatever the transport or

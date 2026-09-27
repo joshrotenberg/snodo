@@ -543,15 +543,24 @@ defmodule Snodo.Server do
       protocol.version(),
       operation,
       params,
-      context,
+      %{context | dispatch_check: dispatch_check(runtime)},
       fn %Snodo.Context{} = next_context ->
-        execute(runtime, protocol, operation, params, next_context)
+        execute(runtime, protocol, operation, params, %{next_context | dispatch_check: nil})
       end
     )
   end
 
   defp execute_route(runtime, _protocol, {:extension, route}, params, context) do
     ExtensionRegistry.dispatch(runtime.extension_registry, route, params, context)
+  end
+
+  defp dispatch_check(%Runtime{} = runtime) do
+    fn operation, params, %Snodo.Context{} = context ->
+      Router.check(runtime.router, operation, params, %{context | dispatch_check: nil},
+        schema_validator: runtime.schema_validator,
+        authorization: runtime.authorization
+      )
+    end
   end
 
   defp shape_route_result(_runtime, protocol, {:protocol, operation}, result, context) do

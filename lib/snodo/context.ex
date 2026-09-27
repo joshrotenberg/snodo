@@ -8,6 +8,9 @@ defmodule Snodo.Context do
   answer and `Snodo.MRTR.State` to protect state that affects business logic.
   `request_method` and `request_params` preserve the incoming operation for
   request-bound state verification; tool and prompt arguments remain unchanged.
+
+  `dispatch_check` is set by `Snodo.Server` while extension middleware runs; use
+  it through `Snodo.Extension.check_dispatch/3`.
   """
 
   alias Snodo.Transport.Context, as: TransportContext
@@ -31,6 +34,9 @@ defmodule Snodo.Context do
           progress: Snodo.Progress.t() | nil,
           extensions: map(),
           extension_options: %{optional(String.t()) => keyword() | map()},
+          dispatch_check:
+            (term(), map(), t() -> :ok | {:ok, Snodo.Result.t()} | {:error, Snodo.Error.t()})
+            | nil,
           metadata: map()
         }
 
@@ -48,6 +54,7 @@ defmodule Snodo.Context do
     :request_state,
     :cancellation,
     :progress,
+    :dispatch_check,
     client_capabilities: %{},
     request_params: %{},
     input_responses: %{},

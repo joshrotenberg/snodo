@@ -246,6 +246,27 @@ defmodule Snodo.SubscriptionHubTest do
     assert :ok = Subscription.close(subscription, :cancelled)
   end
 
+  test "a listen request may name up to 1,000 resource URIs" do
+    {:ok, hub} = start_supervised(Hub)
+    runtime = runtime(hub)
+    uris = for n <- 1..1_000, do: "test://resource/#{n}"
+
+    subscription = listen(runtime, "at-limit", %{"resourceSubscriptions" => uris})
+    assert :ok = Subscription.close(subscription, :cancelled)
+
+    assert {:ok, %{"error" => %{"code" => -32_602} = error}} =
+             MCPTest.dispatch(runtime,
+               id: "over-limit",
+               protocol: "2026-07-28",
+               method: "subscriptions/listen",
+               params: %{
+                 "notifications" => %{"resourceSubscriptions" => ["test://extra" | uris]}
+               }
+             )
+
+    assert inspect(error) =~ "at most 1000"
+  end
+
   defp listen(runtime, id, notifications) do
     assert {:stream, subscription} =
              MCPTest.dispatch(runtime,

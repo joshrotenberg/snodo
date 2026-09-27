@@ -11,26 +11,33 @@ on:
         description: "Release tag to publish, such as v0.1.0"
         required: true
 
-permissions:
-  contents: write
-  pull-requests: write
+# Jobs request only what they need.
+permissions: {}
+
+# A manual publish and an automatic one never overlap, so the "already on Hex"
+# check cannot race.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release-please:
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
       # A pull request opened or updated with the workflow token starts no
-      # other workflows, so the release pull request would never get its
-      # required checks. RELEASE_PLEASE_TOKEN (a fine-grained token with
-      # read-write Contents, Pull requests, and Issues on this repository)
-      # avoids that.
-      # Without it the workflow token is used, and the release pull request
-      # needs an admin merge.
-      - uses: googleapis/release-please-action@v5
+      # other workflows without approval. RELEASE_PLEASE_TOKEN (a fine-grained
+      # token with read-write Contents, Pull requests, and Issues on this
+      # repository) avoids that. An empty secret falls back to the workflow
+      # token; a set but invalid one fails the run. See RELEASING.md.
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
@@ -46,15 +53,41 @@ jobs:
       github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    # HEX_API_KEY can live in this environment, which can be limited to v*
+    # tags and require a reviewer (repository settings).
+    environment: hex
+    permissions:
+      contents: read
     env:
       MIX_ENV: dev
-      HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
       TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
     steps:
-      - uses: actions/checkout@v7
+      - name: Check the tag name
+        run: |
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'$TAG' is not a vX.Y.Z release tag"
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
-      - uses: erlef/setup-beam@v1
+          fetch-depth: 0
+          persist-credentials: false
+      # A manual run could otherwise publish any branch or commit.
+      - name: Check the tag is a release of main
+        run: |
+          git rev-parse --verify --quiet "refs/tags/$TAG" >/dev/null ||
+            { echo "::error::$TAG is not a tag"; exit 1; }
+          git merge-base --is-ancestor "$TAG" origin/main ||
+            { echo "::error::$TAG is not on main"; exit 1; }
+          version="${TAG#v}"
+          for file in mix.exs extensions/tasks/mix.exs extensions/tasks_postgres/mix.exs \
+                      extensions/tasks_sqlite/mix.exs integrations/plug/mix.exs \
+                      integrations/schema_jsv/mix.exs; do
+            grep -q "@version \"$version\"" "$file" ||
+              { echo "::error::$file does not declare version $version"; exit 1; }
+          done
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         with:
           elixir-version: "1.20"
           otp-version: "29"
@@ -66,6 +99,8 @@ jobs:
       # released snodo_tasks), so publish in dependency order. A package whose
       # version is already on Hex is skipped, so the job can be rerun.
       - name: Publish all six packages
+        env:
+          HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
         run: |
           version="${TAG#v}"
 

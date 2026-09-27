@@ -2,10 +2,11 @@ defmodule Snodo.Extensions.Tasks.ExecutionContext do
   @moduledoc """
   Constructs the deliberately detached context supplied to a Tasks worker.
 
-  Protocol identity, negotiated data, server configuration, and the
-  application-projected principal remain available to the tool. Request-only
-  transport authority, session state, progress, cancellation, tracing metadata,
-  and the original request identifier do not cross the asynchronous boundary.
+  Protocol identity, negotiated data, server configuration, the
+  application-projected principal, and the request method remain available to
+  the tool and the authorization policy. Request-only transport authority,
+  session state, progress, cancellation, tracing metadata, request params, and
+  the original request identifier do not cross the asynchronous boundary.
   """
 
   alias Snodo.Context
@@ -19,6 +20,7 @@ defmodule Snodo.Extensions.Tasks.ExecutionContext do
       client_info: request.client_info,
       server_info: request.server_info,
       auth: request.auth,
+      request_method: request.request_method,
       transport: %TransportContext{transport: :task},
       client_capabilities: request.client_capabilities,
       server_capabilities: request.server_capabilities,
