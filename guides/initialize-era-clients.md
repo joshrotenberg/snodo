@@ -1,9 +1,11 @@
-# Initialize-era HTTP compatibility
+# Initialize-era compatibility
 
 The runtime remains 2026-only by default. Applications can opt into
 `Snodo.Protocol.V2025_11_25` and `Snodo.Protocol.V2025_06_18` alongside
 `Snodo.Protocol.V2026_07_28`, in that preference order after the latest dialect.
 Merely loading a module does not enable it.
+
+## HTTP
 
 `initialize` selects the exact requested enabled legacy version, or the first
 configured initialize-capable dialect for an unsupported proposal. Malformed
@@ -21,6 +23,21 @@ owned and is evaluated for each request; session or client metadata never become
 an identity. Applications must supply the existing cancellation scope for peers
 that need separate request-id namespaces.
 
+## Stdio
+
+Over stdio the version is negotiated once per connection. `initialize` selects
+a version as it does over HTTP, and `Snodo.Transport.Stdio` records the version
+from the successful result. Every later message on the connection is handled
+as if it carried `MCP-Protocol-Version` with that version, so dialect
+selection, validation, and result shaping are the same as over HTTP.
+`notifications/initialized` gets no reply, and a repeated `initialize`
+negotiates again. A request sent before `initialize` carries no version and is
+not handled by a legacy dialect. A 2026-07-28 client never sends `initialize`,
+so its messages are unaffected. Progress and `notifications/cancelled` work as
+they do for 2026-07-28 clients on the same transport.
+
+## Shared behavior
+
 The shared router handles tools, prompts, resource lists/templates/reads,
 completion and pagination. Legacy wire shaping omits 2026 resultType, cache and
 server metadata fields. Legacy structured output and output schemas require an
@@ -31,7 +48,7 @@ dialect is enabled. The 2026-07-28 dialect still lists and calls them.
 Execution errors retain readable content with isError; protocol errors
 remain JSON-RPC errors. Request-bound progress can use SSE; cancellation retains
 the executor's authenticated isolation. Unsupported Tasks, continuation inputs,
-subscriptions, server requests and legacy stdio are not advertised. No Tasks or
+subscriptions and server requests are not advertised. No Tasks or
 session-manager behavior is added.
 
 Configured capabilities must be valid for every enabled profile. For a mixed
@@ -51,7 +68,7 @@ no session ID is issued. See the
 
 ## Native client evidence
 
-Loopback checks on 2026-09-21 against a real application server:
+HTTP loopback checks on 2026-09-21 against a real application server:
 
 - Claude Code 2.1.273 `mcp list` initializes with 2025-11-25, connects, and
   lists tools.
@@ -61,7 +78,14 @@ Loopback checks on 2026-09-21 against a real application server:
 - A restricted Claude print session uses 2026-07-28 `server/discover` and calls
   the same tool.
 
+Stdio checks on 2026-09-26 against a probe server with these dialects enabled:
+
+- Codex 0.157.1 initializes with 2025-06-18, sends `notifications/initialized`,
+  lists tools, and calls a tool.
+- Claude Code 2.1.283 sends a 2026-07-28 `server/discover` probe, lists tools,
+  and calls the same tool. It does not use these dialects.
+
 These checks show that the implemented workflows work with those clients. They
 are not general SDK conformance. The test suite covers literal legacy requests,
 shared routing, pagination, rejection cases, mixed-version routing, HTTP
-progress, and cross-principal cancellation.
+progress, cross-principal cancellation, and stdio negotiation.

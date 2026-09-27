@@ -9,7 +9,7 @@
 
 An Elixir library for building [Model Context Protocol](https://modelcontextprotocol.io)
 servers and clients. It speaks MCP `2026-07-28`, with opt-in support for
-initialize-era HTTP clients (`2025-11-25` and `2025-06-18`).
+initialize-era clients (`2025-11-25` and `2025-06-18`) over HTTP and stdio.
 
 `snodo` is at 0.x: the API may change between minor versions until 1.0.
 

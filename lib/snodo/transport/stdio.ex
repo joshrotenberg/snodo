@@ -20,6 +20,14 @@ defmodule Snodo.Transport.Stdio do
   -32600 and a null id without being decoded, and the next line is served
   normally. The VM's I/O server buffers each line in full before returning it,
   so this bounds decoding and dispatch, not that read buffer.
+
+  An initialize-era client (2025-11-25 or 2025-06-18, when the runtime enables
+  those dialects) negotiates its version once with `initialize`. The transport
+  records the version from a successful result and gives every later message
+  on the connection an `mcp-protocol-version` request header, the header HTTP
+  requests carry, so dialect selection and validation are shared with HTTP. A
+  2026-07-28 client does not send `initialize`, and its messages carry no such
+  header.
   """
 
   @behaviour Snodo.Transport
@@ -53,6 +61,7 @@ defmodule Snodo.Transport.Stdio do
           subscriptions_by_worker: map(),
           max_subscriptions: pos_integer(),
           max_line_bytes: pos_integer(),
+          negotiated_version: String.t() | nil,
           eof?: boolean()
         }
 
@@ -132,6 +141,7 @@ defmodule Snodo.Transport.Stdio do
        subscriptions_by_worker: %{},
        max_subscriptions: validate_max_subscriptions!(Keyword.get(opts, :max_subscriptions, 32)),
        max_line_bytes: max_line_bytes,
+       negotiated_version: nil,
        eof?: false
      }}
   end
@@ -317,7 +327,9 @@ defmodule Snodo.Transport.Stdio do
   defp handle_request_or_notification(message, state) do
     id = request_id(message)
 
-    case {id, Server.resolve_notification(state.runtime, message, transport_context(state))} do
+    transport = transport_context(state, message)
+
+    case {id, Server.resolve_notification(state.runtime, message, transport)} do
       {nil, {:ok, {:cancel, request_id, reason}}} ->
         {:noreply, cancel_request(state, request_id, reason)}
 
@@ -329,7 +341,7 @@ defmodule Snodo.Transport.Stdio do
           state.writer,
           state.runtime,
           message,
-          transport_context(state),
+          transport,
           Error.invalid_request("Duplicate in-flight request id")
         )
 
@@ -345,7 +357,7 @@ defmodule Snodo.Transport.Stdio do
     runtime = state.runtime
     output = state.output
     sink = Progress.sink(self())
-    transport = transport_context(state, %{progress_sink: sink})
+    transport = transport_context(state, message, %{progress_sink: sink})
 
     work = fn cancellation ->
       route_raw_io_to_stderr(output)
@@ -466,13 +478,20 @@ defmodule Snodo.Transport.Stdio do
 
   defp request_id(_message), do: nil
 
-  defp transport_context(state, metadata \\ %{}) do
+  defp transport_context(state, message, metadata \\ %{}) do
     %TransportContext{
       transport: :stdio,
       connection_ref: state.connection_ref,
+      request_headers: negotiated_headers(state.negotiated_version, message),
       metadata: metadata
     }
   end
+
+  # A repeated `initialize` negotiates afresh, so it never carries the old
+  # version.
+  defp negotiated_headers(nil, _message), do: %{}
+  defp negotiated_headers(_version, %{"method" => "initialize"}), do: %{}
+  defp negotiated_headers(version, _message), do: %{"mcp-protocol-version" => version}
 
   defp maybe_put_execution_id(state, nil, _reference), do: state
 
@@ -547,9 +566,20 @@ defmodule Snodo.Transport.Stdio do
   end
 
   defp handle_execution_outcome(state, entry, outcome) do
+    state = record_negotiated_version(state, entry.message, outcome)
     write_execution_outcome(state.writer, state.runtime, entry, outcome)
     maybe_stop(state)
   end
+
+  defp record_negotiated_version(
+         state,
+         %{"method" => "initialize"},
+         {:completed, {:ok, %{"result" => %{"protocolVersion" => version}}}}
+       )
+       when is_binary(version),
+       do: %{state | negotiated_version: version}
+
+  defp record_negotiated_version(state, _message, _outcome), do: state
 
   defp start_subscription(%{eof?: true} = state, _entry, subscription) do
     :ok = Subscription.close(subscription, :disconnected)
