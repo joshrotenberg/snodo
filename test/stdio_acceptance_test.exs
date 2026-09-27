@@ -3,7 +3,9 @@ defmodule Snodo.Transport.StdioAcceptanceTest do
 
   alias Snodo.Server.Executor
   alias Snodo.Subscription.Event
+  alias Snodo.Subscription.Hub
   alias Snodo.Transport.Stdio
+  alias SnodoTest.SubscriptionWorker
   alias SnodoTest.TestFixtures
   alias SnodoTest.TestInput
   alias SnodoTest.TestSubscriptionHub
@@ -379,6 +381,48 @@ defmodule Snodo.Transport.StdioAcceptanceTest do
 
     assert Enum.count(messages, &(&1["id"] == "stdio-sub")) == 1
     assert Enum.at(messages, 2)["result"]["tools"]
+  end
+
+  # The coordinator's executor and its task supervisor go down with it.
+  @tag capture_log: true
+  test "a killed coordinator stops its subscription worker and closes the source" do
+    hub = start_supervised!(Hub)
+
+    runtime =
+      TestFixtures.runtime(
+        capabilities: %{"tools" => %{"listChanged" => true}},
+        subscription_source: Hub.source(hub)
+      )
+
+    {:ok, input} = TestInput.start_link()
+    {:ok, output} = StringIO.open("")
+    options = [runtime: runtime, input: input, output: output]
+    {:ok, coordinator} = GenServer.start(Stdio, options)
+
+    listen =
+      TestFixtures.request("stdio-killed", "subscriptions/listen", %{
+        "notifications" => %{"toolsListChanged" => true}
+      })
+
+    TestInput.push(input, JSON.encode!(listen) <> "\n")
+
+    assert [%{"method" => "notifications/subscriptions/acknowledged"}] =
+             await_output_messages(output, 1)
+
+    [worker] = Map.keys(:sys.get_state(coordinator).subscriptions_by_worker)
+    puller = SubscriptionWorker.puller(worker)
+    monitors = SubscriptionWorker.monitor_confirmed([worker, puller])
+    :ok = SubscriptionWorker.await_monitor(coordinator, worker)
+    assert Hub.stats(hub).subscriptions == 1
+
+    Process.exit(coordinator, :kill)
+
+    for {pid, monitor} <- monitors do
+      assert_receive {:DOWN, ^monitor, :process, ^pid, :shutdown}, 1_000
+    end
+
+    # The worker closes the source before it exits.
+    assert Hub.stats(hub).subscriptions == 0
   end
 
   defp serve(runtime, input, opts \\ []) do

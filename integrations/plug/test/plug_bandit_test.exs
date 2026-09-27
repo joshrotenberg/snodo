@@ -398,18 +398,36 @@ defmodule Snodo.Transport.PlugBanditTest do
 
     third = open_stream(port, "third")
     [stream] = slot_holders(executor)
-    worker = :sys.get_state(stream).worker
     Process.exit(stream, :kill)
     assert eventually(fn -> :sys.get_state(executor).slot_counts == %{} end)
-    # The source worker is not linked to the stream process, so a killed
-    # stream leaves it running.
-    Process.exit(worker, :kill)
+    assert eventually(fn -> Hub.stats(hub).subscriptions == 0 end)
 
     fourth = open_stream(port, "fourth")
     assert {503, _result} = rpc(port, subscription("fifth"))
 
     :gen_tcp.close(third)
     :gen_tcp.close(fourth)
+  end
+
+  test "a killed stream process stops its subscription worker and closes the source" do
+    %{port: port, hub: hub, executor: executor} = server(subscription_keepalive_ms: 20)
+    socket = open_stream(port, "killed")
+    [stream] = slot_holders(executor)
+    worker = :sys.get_state(stream).worker
+    puller = puller(worker)
+    monitors = monitor_confirmed([worker, puller])
+    :ok = await_monitor(stream, worker)
+    assert Hub.stats(hub).subscriptions == 1
+
+    Process.exit(stream, :kill)
+
+    for {pid, monitor} <- monitors do
+      assert_receive {:DOWN, ^monitor, :process, ^pid, :shutdown}, 1_000
+    end
+
+    # The worker closes the source before it exits.
+    assert Hub.stats(hub).subscriptions == 0
+    :gen_tcp.close(socket)
   end
 
   test "an open stream does not retain a large unused request param" do
@@ -431,8 +449,9 @@ defmodule Snodo.Transport.PlugBanditTest do
     _ack = read_until(socket, "notifications/subscriptions/acknowledged")
     [stream] = slot_holders(executor)
     worker = :sys.get_state(stream).worker
+    puller = puller(worker)
 
-    for pid <- [owner, stream, worker, hub] do
+    for pid <- [owner, stream, worker, puller, hub] do
       assert large_binaries(pid) == []
     end
 
@@ -671,6 +690,40 @@ defmodule Snodo.Transport.PlugBanditTest do
   defp slot_holders(executor) do
     {:monitors, monitors} = Process.info(executor, :monitors)
     for {:process, pid} <- monitors, do: pid
+  end
+
+  # A subscription worker links the puller that calls the source as it starts.
+  defp puller(worker, deadline \\ System.monotonic_time(:millisecond) + 1_000) do
+    case Process.info(worker, :links) do
+      {:links, [puller]} ->
+        puller
+
+      {:links, []} ->
+        assert System.monotonic_time(:millisecond) < deadline
+        Process.sleep(5)
+        puller(worker, deadline)
+    end
+  end
+
+  # A monitor request can be overtaken by a kill sent from another process.
+  # Process.info/2 is a signal from this process too, so it returns only after
+  # the target has handled the monitor request sent before it.
+  defp monitor_confirmed(pids) do
+    for pid <- pids do
+      monitor = Process.monitor(pid)
+      assert self() in monitored_by(pid)
+      {pid, monitor}
+    end
+  end
+
+  defp await_monitor(pid, watcher) do
+    assert eventually(fn -> watcher in monitored_by(pid) end)
+    :ok
+  end
+
+  defp monitored_by(pid) do
+    {:monitored_by, watchers} = Process.info(pid, :monitored_by)
+    watchers
   end
 
   defp large_binaries(pid) do

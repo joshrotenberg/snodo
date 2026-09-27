@@ -658,12 +658,15 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   defp maybe_send_response(_socket, _cancelled), do: :ok
 
   defp serve_subscription(socket, %StreamResponse{subscription: subscription} = response) do
+    # The worker closes the source if this process exits, so it starts before
+    # the first write, which can block for the socket's send timeout.
+    {worker, monitor} = Subscription.start_worker(subscription, self())
+
     case Subscription.acknowledgement(subscription) do
       {:ok, acknowledgement} ->
         with :ok <- send_stream_headers(socket, response),
              :ok <- send_sse_message(socket, acknowledgement),
              :ok <- arm_socket(socket) do
-          {worker, monitor} = Subscription.start_worker(subscription, self())
           :ok = Subscription.continue(worker)
 
           stream_subscription(
@@ -679,13 +682,11 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
           # acknowledgement can fail `setopts` with `:einval` before
           # `tcp_closed` arrives.
           {:error, reason} ->
-            :ok = Subscription.close(subscription, {:disconnected, reason})
-            :ok
+            stop_subscription(subscription, worker, monitor, {:disconnected, reason})
         end
 
       {:error, reason} ->
-        :ok = Subscription.close(subscription, {:error, reason})
-        :ok
+        stop_subscription(subscription, worker, monitor, {:error, reason})
     end
   end
 

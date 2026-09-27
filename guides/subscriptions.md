@@ -16,8 +16,10 @@ closes the handle on cancellation, disconnect, completion, or failure.
 
 The framework:
 
-- writes the required acknowledgement before starting a pull worker;
+- writes the required acknowledgement before pulling the first event;
 - never pulls a second event until the previous one is written;
+- closes the source when the process serving the stream exits for any reason,
+  including when it is killed;
 - stamps the originating request ID on every message;
 - drops core events the client did not ask for;
 - sends a terminal response when the source completes.

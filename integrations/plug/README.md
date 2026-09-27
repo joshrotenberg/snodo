@@ -130,7 +130,8 @@ or Plug-process death tears it down and cancels abandoned work. This is necessar
 because a Bandit connection process may serve multiple requests. An opened
 subscription gets a lifecycle guard tied to that request owner: it closes the
 source and stops its blocked pull worker if the owner dies, including the race
-between execution completion and stream handoff.
+between execution completion and stream handoff. If the guard itself exits for
+any reason, its source worker closes the source and stops.
 
 SSE sends acknowledgement first, then one notification per completed source pull,
 and a terminal response on graceful completion. It only requests the next event

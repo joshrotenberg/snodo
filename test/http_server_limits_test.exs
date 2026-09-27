@@ -3,6 +3,7 @@ defmodule Snodo.Transport.StreamableHTTP.ServerLimitsTest do
 
   alias Snodo.Subscription.Hub
   alias Snodo.Transport.StreamableHTTP.Server, as: HTTPServer
+  alias SnodoTest.SubscriptionWorker
   alias SnodoTest.TestFixtures
   alias SnodoTest.TestSubscriptionHub
   alias SnodoTest.TestSubscriptionSource
@@ -85,12 +86,10 @@ defmodule Snodo.Transport.StreamableHTTP.ServerLimitsTest do
 
     third = open_stream(port, "third")
     [holder] = slot_holders(executor)
-    {:monitors, [process: worker]} = Process.info(holder, :monitors)
     Process.exit(holder, :kill)
     assert eventually(fn -> :sys.get_state(executor).slot_counts == %{} end)
-    # The source worker is not linked to the connection process, so a killed
-    # connection leaves it running.
-    Process.exit(worker, :kill)
+    assert_receive {:subscription_closed, "third", {:disconnected, reason}}, 1_000
+    assert {:owner_down, _exit_reason} = reason
 
     fourth = open_stream(port, "fourth")
     assert {:ok, over} = try_request(port, subscription_request("fifth"))
@@ -98,6 +97,32 @@ defmodule Snodo.Transport.StreamableHTTP.ServerLimitsTest do
 
     :gen_tcp.close(third)
     :gen_tcp.close(fourth)
+  end
+
+  test "a killed connection stops its subscription worker and closes the source" do
+    hub = start_supervised!(Hub)
+    runtime = subscription_runtime(Hub.source(hub))
+    {:ok, server} = start_supervised({HTTPServer, runtime: runtime, port: 0})
+    {_ip, port, _path} = HTTPServer.address(server)
+    executor = :sys.get_state(server).executor
+
+    socket = open_stream(port, "killed")
+    [connection] = slot_holders(executor)
+    worker = subscription_worker(connection)
+    puller = SubscriptionWorker.puller(worker)
+    monitors = SubscriptionWorker.monitor_confirmed([worker, puller])
+    :ok = SubscriptionWorker.await_monitor(connection, worker)
+    assert Hub.stats(hub).subscriptions == 1
+
+    Process.exit(connection, :kill)
+
+    for {pid, monitor} <- monitors do
+      assert_receive {:DOWN, ^monitor, :process, ^pid, :shutdown}, 1_000
+    end
+
+    # The worker closes the source before it exits.
+    assert Hub.stats(hub).subscriptions == 0
+    :gen_tcp.close(socket)
   end
 
   test "an open stream does not retain a large unused request param" do
@@ -121,11 +146,10 @@ defmodule Snodo.Transport.StreamableHTTP.ServerLimitsTest do
     _acknowledgement = recv_until(socket, "notifications/subscriptions/acknowledged")
 
     [connection] = slot_holders(executor)
-    # The connection also monitors its socket port; the worker is the one process.
-    {:monitors, monitors} = Process.info(connection, :monitors)
-    [worker] = for {:process, pid} <- monitors, do: pid
+    worker = subscription_worker(connection)
+    puller = SubscriptionWorker.puller(worker)
 
-    for pid <- [connection, worker, hub] do
+    for pid <- [connection, worker, puller, hub] do
       assert large_binaries(pid) == []
     end
 
@@ -166,6 +190,13 @@ defmodule Snodo.Transport.StreamableHTTP.ServerLimitsTest do
   defp slot_holders(executor) do
     {:monitors, monitors} = Process.info(executor, :monitors)
     for {:process, pid} <- monitors, do: pid
+  end
+
+  # The connection also monitors its socket port; the worker is the one process.
+  defp subscription_worker(connection) do
+    {:monitors, monitors} = Process.info(connection, :monitors)
+    [worker] = for {:process, pid} <- monitors, do: pid
+    worker
   end
 
   defp large_binaries(pid) do
