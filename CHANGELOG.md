@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.3.0](https://github.com/joshrotenberg/snodo/compare/v0.2.1...v0.3.0) (2026-09-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* snodo_plug answers 411 to a request that declares Transfer-Encoding, without reading its body. Send request bodies with Content-Length, as the native listener already requires.
+* a Tasks store started without :scope fails to start. Pass a scope function, or scope: :shared for the previous behavior.
+
+### Bug Fixes
+
+* apply the authorization policy to resource subscriptions and cache hints ([#117](https://github.com/joshrotenberg/snodo/issues/117)) ([27aaeeb](https://github.com/joshrotenberg/snodo/commit/27aaeeb0d84bfcc2ca5cd1e5ce5426198a84102d))
+* authorize and validate task work before storing it ([#115](https://github.com/joshrotenberg/snodo/issues/115)) ([aad5c04](https://github.com/joshrotenberg/snodo/commit/aad5c044308a81c154923e8e1269aa90612c9790))
+* bound HTTP connections and subscription streams ([#114](https://github.com/joshrotenberg/snodo/issues/114)) ([13b9352](https://github.com/joshrotenberg/snodo/commit/13b9352db01f87b855e8bae1af85d420acb7d4c8))
+* bound integer literals in Snodo.Client HTTP responses ([#130](https://github.com/joshrotenberg/snodo/issues/130)) ([dd0cb23](https://github.com/joshrotenberg/snodo/commit/dd0cb234e82ab6ff521e66435a0b2a24d08256d8))
+* bound integer literals, request ids, and progress tokens ([#118](https://github.com/joshrotenberg/snodo/issues/118)) ([a71e499](https://github.com/joshrotenberg/snodo/commit/a71e499bac14bf8a1f68a99d2fa9f95ecf7dd094))
+* bound memory for an unterminated stdio line ([#125](https://github.com/joshrotenberg/snodo/issues/125)) ([e22a878](https://github.com/joshrotenberg/snodo/commit/e22a878c0a02f85b20b1c99f143581527e241bfa))
+* bound Snodo.Client response sizes and page counts ([#119](https://github.com/joshrotenberg/snodo/issues/119)) ([6e1f785](https://github.com/joshrotenberg/snodo/commit/6e1f7857be988950be5b219ecf85ab9df14fe0fd)), closes [#88](https://github.com/joshrotenberg/snodo/issues/88)
+* bound Tasks workers, task counts, lifetimes, and inputs ([#123](https://github.com/joshrotenberg/snodo/issues/123)) ([098b478](https://github.com/joshrotenberg/snodo/commit/098b47830e15319e519f5af5e8162cdcb5902f8b))
+* bound the whole request body in snodo_plug ([#138](https://github.com/joshrotenberg/snodo/issues/138)) ([10789ba](https://github.com/joshrotenberg/snodo/commit/10789bae21e21e15ce06bd5cc19f9a8b9aa57df1))
+* count only digits in the JSON integer literal limit ([#134](https://github.com/joshrotenberg/snodo/issues/134)) ([b2f049d](https://github.com/joshrotenberg/snodo/commit/b2f049db3a394ea37c8c2d4161244963de6b590a))
+* make subscription filter checks linear and cap resource URIs ([#113](https://github.com/joshrotenberg/snodo/issues/113)) ([f125936](https://github.com/joshrotenberg/snodo/commit/f125936517f967b3a18a8ff17ff8ee942950f381))
+* require an explicit scope in every Tasks store ([#121](https://github.com/joshrotenberg/snodo/issues/121)) ([bbc258f](https://github.com/joshrotenberg/snodo/commit/bbc258fe0d9d26e7720aefdb75ff1756a60034df))
+* stop orphaned subscription workers and bound request bodies ([#135](https://github.com/joshrotenberg/snodo/issues/135)) ([0f1c8bf](https://github.com/joshrotenberg/snodo/commit/0f1c8bfbd77f38ae89e88a9e5bd0a3d65c7cf975)), closes [#127](https://github.com/joshrotenberg/snodo/issues/127)
+
 ## [0.2.1](https://github.com/joshrotenberg/snodo/compare/v0.2.0...v0.2.1) (2026-09-27)
 
 
