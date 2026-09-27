@@ -211,7 +211,7 @@ defmodule Snodo.Server.ExecutorAcceptanceTest do
                     {:completed, :available}}
   end
 
-  test "slots are counted per pool, independent of execution capacity, and freed on owner exit" do
+  test "slots are counted per pool and returned when the owner exits" do
     {:ok, executor} = start_supervised({Executor, max_concurrency: 1, max_queue: 0})
 
     first = spawn_holder()

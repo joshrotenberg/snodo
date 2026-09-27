@@ -108,12 +108,16 @@ contract.
 | `read_timeout` | 5,000 ms | Plug body-read timeout per underlying read. |
 | `subscription_keepalive_ms` | 15,000 ms | Idle SSE comment-write interval; must be finite and positive. |
 | `disconnect_probe_ms` | 5,000 ms | After this long without a result, switch to SSE and write keepalives at this interval so a disconnect cancels the work; `:infinity` keeps JSON. |
+| `max_subscriptions` | 256 | Open `subscriptions/listen` streams; the next one is closed at its source and gets 503. The executor holds the count, so Plugs that share an executor share it. |
 | `allowed_origin_hosts` | localhost / loopback | Existing core host-based Origin allowlist, not a full CORS policy. An entry with a port (`"localhost:3000"`) pins the port. |
 | `allowed_hosts` | unset (any Host) | When set, the `Host` header must name one of these hosts or the request gets 403. Leave unset behind a proxy that forwards a public `Host`. |
 
 Configure Bandit/reverse-proxy connection counts, header/read limits, timeouts,
 TLS, and shutdown policy separately. Executor capacity bounds pending application
-work, not the number of accepted HTTP connections or opened long-lived streams.
+work, not the number of accepted HTTP connections. Open subscription streams are
+bounded by `max_subscriptions` instead. `init/1` can run at compile time, so that
+count cannot live in the Plug's options; each stream process holds a slot in the
+executor, which returns it when the stream process exits for any reason.
 Subscription event buffering is the source's responsibility; the bundled hub
 provides bounded queues. Plug body-read limits are approximate at socket-read
 granularity, so this adapter also checks the returned byte count before decoding.
@@ -176,7 +180,8 @@ real Bandit listeners on ephemeral loopback ports and use literal HTTP requests,
 not only Plug test connections. They cover trusted auth, admission, raw-body
 limits, ignored legacy session headers, saturated/cross-principal cancellation,
 queue deadlines, ordinary owner-death cleanup, and SSE ordering, completion,
-keepalive disconnects, and abrupt owner-death cleanup. HTTP/2 and TLS have not yet
+keepalive disconnects, abrupt owner-death cleanup, the subscription limit, and
+what an open stream retains. HTTP/2 and TLS have not yet
 received equivalent live acceptance here.
 
 [Example 21](https://github.com/joshrotenberg/snodo/blob/main/examples/21_plug_bandit.exs) demonstrates an application-owned

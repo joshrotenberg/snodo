@@ -20,6 +20,12 @@ defmodule Snodo.Transport.Plug do
   every interval; a failed write cancels the work, and the result arrives as
   the stream's final event. `:infinity` keeps plain JSON responses. A finite
   total `:request_timeout` bounds pending work and queue wait.
+
+  At most `:max_subscriptions` (default 256) `subscriptions/listen` streams are
+  open at once. `init/1` can run at compile time, so the count is held in the
+  executor, which lives as long as the runtime; Plugs that share an executor
+  share the count. A stream over the limit is closed at its source and the
+  request gets 503.
   """
 
   @behaviour Plug
@@ -63,6 +69,7 @@ defmodule Snodo.Transport.Plug do
       max_body_bytes: positive_option!(opts, :max_body_bytes, 2_000_000),
       read_timeout: positive_option!(opts, :read_timeout, 5_000),
       subscription_keepalive_ms: positive_option!(opts, :subscription_keepalive_ms, 15_000),
+      max_subscriptions: positive_option!(opts, :max_subscriptions, 256),
       disconnect_probe_ms: probe_option!(opts),
       adapter_opts: Keyword.take(opts, [:allowed_origin_hosts, :allowed_hosts])
     }
@@ -120,7 +127,7 @@ defmodule Snodo.Transport.Plug do
     work = fn cancellation ->
       try do
         case StreamableHTTP.execute(opts.runtime, prepared, cancellation) do
-          %StreamResponse{} = response -> Stream.open(response, owner, lease)
+          %StreamResponse{} = response -> open_stream(response, owner, lease, prepared, opts)
           response -> response
         end
       after
@@ -153,6 +160,23 @@ defmodule Snodo.Transport.Plug do
     after
       Progress.close(sink)
       Lease.stop(lease)
+    end
+  end
+
+  # Runs in the executor task. The stream process holds the slot, so the
+  # executor returns it when the stream ends for any reason.
+  defp open_stream(response, owner, lease, prepared, opts) do
+    slot = {opts.executor, __MODULE__, opts.max_subscriptions}
+
+    case Stream.open(response, owner, lease, slot) do
+      {:stream, _response, _stream} = stream ->
+        stream
+
+      {:error, :exhausted} ->
+        reject(opts, prepared, 503, "Server subscription capacity exhausted")
+
+      {:error, :unavailable} ->
+        reject(opts, prepared, 503, "Request executor unavailable")
     end
   end
 

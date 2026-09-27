@@ -162,10 +162,12 @@ defmodule Snodo.SubscriptionProtocolAcceptanceTest do
     long_uri = "test://resource/" <> String.duplicate("a", 100)
 
     # Decoding makes strings longer than 64 bytes into sub-binaries of the body.
+    notifications = %{"toolsListChanged" => true, "resourceSubscriptions" => [long_uri]}
+
     params =
       JSON.decode!(
         JSON.encode!(%{
-          "notifications" => %{"toolsListChanged" => true, "resourceSubscriptions" => [long_uri]},
+          "notifications" => notifications,
           "inputResponses" => %{"unused" => %{"action" => "accept"}},
           "requestState" => "unused",
           "padding" => String.duplicate("x", 100_000)
@@ -183,10 +185,7 @@ defmodule Snodo.SubscriptionProtocolAcceptanceTest do
                params: params
              )
 
-    assert subscription.accepted_filter == %{
-             "toolsListChanged" => true,
-             "resourceSubscriptions" => [long_uri]
-           }
+    assert subscription.accepted_filter == notifications
 
     [uri] = subscription.accepted_filter["resourceSubscriptions"]
     assert :binary.referenced_byte_size(uri) == byte_size(uri)
@@ -195,7 +194,8 @@ defmodule Snodo.SubscriptionProtocolAcceptanceTest do
     assert subscription.context.request_state == nil
     assert subscription.context.request_method == "subscriptions/listen"
 
-    assert_receive {:subscription_opened, "sub-retained", %{"resourceSubscriptions" => [opened]}}
+    assert_receive {:subscription_opened, "sub-retained", opened_filter}
+    [opened] = opened_filter["resourceSubscriptions"]
     assert :binary.referenced_byte_size(opened) == byte_size(opened)
 
     assert :ok = Subscription.close(subscription, :complete)
