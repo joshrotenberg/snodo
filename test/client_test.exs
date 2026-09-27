@@ -157,6 +157,25 @@ defmodule Snodo.ClientTest do
     test "an invalid cursor is a protocol error" do
       assert {:error, %Error{code: -32_602}} = Client.list_page(client(), :tools, "mcp1.bogus")
     end
+
+    test "list functions request at most :max_pages pages" do
+      three_pages = [pagination: [page_size: 2]]
+      assert {:ok, tools} = Client.list_tools(client(three_pages, max_pages: 3))
+      assert length(tools) == 6
+
+      assert {:error, %Error{code: -32_000, kind: :transport, cause: cause}} =
+               Client.list_tools(client(three_pages, max_pages: 2))
+
+      assert cause == %{kind: :tools, max_pages: 2}
+    end
+
+    test ":max_pages must be a positive integer" do
+      assert %Client{max_pages: 1_000} = client()
+
+      assert_raise ArgumentError, ~r/:max_pages must be a positive integer/, fn ->
+        Client.direct(TestFixtures.runtime(), max_pages: 0)
+      end
+    end
   end
 
   describe "resources and prompts" do
