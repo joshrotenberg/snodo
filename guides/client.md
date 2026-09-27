@@ -48,7 +48,8 @@ Request IDs are fresh integers, so one client can be shared by many processes.
 
 `list_tools/1`, `list_resources/1`, `list_resource_templates/1`, and
 `list_prompts/1` follow `nextCursor` to the end and return every item. They stop
-with an error if a server repeats a cursor. `list_page/3` returns one
+with a -32000 error if a server repeats a cursor, or if the last of `:max_pages`
+pages (1,000 by default) still has a `nextCursor`. `list_page/3` returns one
 `Snodo.Client.Page` for manual paging:
 
 ```elixir
@@ -87,9 +88,11 @@ See [Interactive operations](interactive-operations.md) for the server side.
 | `:timeout` | all | default request timeout in milliseconds |
 | `:auth` | `direct/2` | the value handlers and policies read as `context.auth` |
 | `:protocol` | all | the protocol version; defaults to `2026-07-28` |
+| `:max_pages` | all | the most pages a list function requests (1,000) |
 | `:env`, `:cd` | stdio | environment and working directory for the command |
 | `:max_line_bytes` | stdio | the largest response line to accept (16 MiB); the rest of a longer line is discarded and its request times out |
 | `:headers`, `:ssl`, `:connect_timeout` | HTTP | extra headers, `:ssl` options (peers are verified against the OS trust store by default), connect timeout |
+| `:max_response_bytes` | HTTP | the largest response to accept (16 MiB), checked as it arrives; a larger response closes the connection and returns -32000 |
 
 `request/4` also accepts `:meta` for extra `_meta` entries such as a
 `progressToken`.
@@ -100,12 +103,19 @@ See [Interactive operations](interactive-operations.md) for the server side.
   sends `notifications/cancelled` for that request. When the server exits,
   pending and later requests fail with -32000. The connection closes when the
   process that opened it exits. `close/1` closes the server's stdin.
-- **HTTP.** One POST per request through OTP's `:httpc`. The headers the
+- **HTTP.** One HTTP/1.1 POST per request, on a `:gen_tcp` or `:ssl`
+  connection that closes when the request returns. The headers the
   protocol requires (`MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`, and
   `Mcp-Param-*` for `x-mcp-header` arguments) come from
   the dialect's transport policy, the same declaration the server checks. JSON
   and event-stream responses are both accepted; progress notifications in a
   stream are skipped.
+
+  `:max_response_bytes` is checked while the response arrives, for every
+  status: a `Content-Length` over the limit is refused before the body is
+  read, and a chunked or close-delimited body is refused at the read that
+  passes the limit. An event stream counts as one body, notifications
+  included. The error has `cause: {:max_response_bytes, limit}`.
 
   `Mcp-Param-*` headers need the tool's input schema, so pass the definition
   from `list_tools/1` to `call_tool/4` in place of the name. Called by name, a

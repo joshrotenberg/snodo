@@ -29,8 +29,9 @@ defmodule Snodo.Client do
       `kind` is derived from the code: -32700 and -32600 are `:json_rpc`,
       -32601 and -32602 are `:protocol`, -32603 is `:execution`, and any other
       code is `:protocol`. Transport failures have `kind: :transport`: -32000
-      when the connection is closed, unreachable, or returns something that is
-      not a JSON-RPC response, and -32001 when a request times out.
+      when the connection is closed, unreachable, returns something that is
+      not a JSON-RPC response, or returns a response over the transport's size
+      limit, and -32001 when a request times out.
 
   Each request takes a fresh integer ID, so one client can be used from many
   processes at once. The client speaks the stateless `2026-07-28` protocol;
@@ -62,7 +63,8 @@ defmodule Snodo.Client do
           dialect: module(),
           client_capabilities: map(),
           client_info: map(),
-          timeout: timeout()
+          timeout: timeout(),
+          max_pages: pos_integer()
         }
 
   @enforce_keys [:transport, :protocol, :dialect]
@@ -72,7 +74,8 @@ defmodule Snodo.Client do
     :dialect,
     client_capabilities: %{},
     client_info: %{},
-    timeout: 30_000
+    timeout: 30_000,
+    max_pages: 1_000
   ]
 
   @remote_dialects [Snodo.Protocol.V2026_07_28]
@@ -103,6 +106,8 @@ defmodule Snodo.Client do
       `%{"name" => "snodo", "version" => <this library's version>}`.
     * `:auth` - the value handlers and authorization policies read as
       `context.auth`, as a transport would supply it after authenticating.
+    * `:max_pages` - the most pages `list_tools/1` and the other list
+      functions request before returning an error. Defaults to 1,000.
   """
   @spec direct(Runtime.t(), keyword()) :: {:ok, t()} | {:error, Error.t()}
   def direct(%Runtime{} = runtime, opts \\ []) when is_list(opts) do
@@ -122,13 +127,15 @@ defmodule Snodo.Client do
       JSON-RPC over its stdin and stdout. See `Snodo.Client.Stdio` for `:env`
       and `:cd`. The connection closes when the calling process exits.
     * `{:http, url}` - posts each request to a Streamable HTTP endpoint. See
-      `Snodo.Client.HTTP` for `:headers`, `:ssl`, and `:connect_timeout`.
+      `Snodo.Client.HTTP` for `:headers`, `:ssl`, `:connect_timeout`, and
+      `:max_response_bytes`.
     * `{module, init_arg}` - any `Snodo.Client.Transport`.
 
   Options for every target:
 
     * `:protocol` - defaults to `"2026-07-28"`, the only supported version.
-    * `:client_capabilities` and `:client_info` - as for `direct/2`.
+    * `:client_capabilities`, `:client_info`, and `:max_pages` - as for
+      `direct/2`.
     * `:timeout` - the default request timeout in milliseconds, 30,000 unless
       set. Each request can override it with `timeout:`.
   """
@@ -162,6 +169,10 @@ defmodule Snodo.Client do
 
   @doc """
   Lists every tool, following `nextCursor` to the last page.
+
+  The list functions return a -32000 transport error when the server repeats a
+  cursor, or when the last of the client's `:max_pages` pages still has a
+  `nextCursor`.
 
   Over HTTP, a tool whose input schema has an invalid `x-mcp-header`
   annotation is left out and a warning is logged, as 2026-07-28 requires.
@@ -305,6 +316,7 @@ defmodule Snodo.Client do
   defp open(module, init_arg, dialect, opts) do
     capabilities = Keyword.get(opts, :client_capabilities, %{})
     timeout = Keyword.get(opts, :timeout, 30_000)
+    max_pages = Keyword.get(opts, :max_pages, 1_000)
 
     unless is_map(capabilities) do
       raise ArgumentError, ":client_capabilities must be a map, got: #{inspect(capabilities)}"
@@ -313,6 +325,10 @@ defmodule Snodo.Client do
     unless timeout == :infinity or (is_integer(timeout) and timeout > 0) do
       raise ArgumentError,
             ":timeout must be a positive integer or :infinity, got: #{inspect(timeout)}"
+    end
+
+    unless is_integer(max_pages) and max_pages > 0 do
+      raise ArgumentError, ":max_pages must be a positive integer, got: #{inspect(max_pages)}"
     end
 
     client_info = Keyword.get_lazy(opts, :client_info, &default_client_info/0)
@@ -326,7 +342,8 @@ defmodule Snodo.Client do
          dialect: dialect,
          client_capabilities: capabilities,
          client_info: client_info,
-         timeout: timeout
+         timeout: timeout,
+         max_pages: max_pages
        }}
     end
   end
@@ -481,8 +498,9 @@ defmodule Snodo.Client do
 
   defp list_all(client, kind), do: collect_pages(client, kind, nil, %{}, [])
 
-  # A remote server can hand back a cursor it already issued; following it
-  # would never terminate.
+  # A remote server can hand back a cursor it already issued, or a new cursor
+  # on every page; following either would never terminate. `seen` holds the
+  # cursor of every page after the first.
   defp collect_pages(client, kind, cursor, seen, pages) do
     with {:ok, %Page{items: items, next_cursor: next}} <- list_page(client, kind, cursor) do
       pages = [items | pages]
@@ -497,6 +515,13 @@ defmodule Snodo.Client do
              kind: kind,
              cursor: next
            })}
+
+        map_size(seen) + 1 >= client.max_pages ->
+          {:error,
+           Transport.connection_error(
+             "The server sent more than #{client.max_pages} pages",
+             %{kind: kind, max_pages: client.max_pages}
+           )}
 
         true ->
           collect_pages(client, kind, next, Map.put(seen, next, true), pages)

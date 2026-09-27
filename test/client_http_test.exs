@@ -27,6 +27,11 @@ defmodule Snodo.ClientHTTPTest do
     @moduledoc false
     # Answers each request with `respond.(headers, message)` and forwards what
     # it received to `owner`, so tests can assert on the exact wire request.
+    #
+    # `respond` returns `{status, headers, body}`, sent with a Content-Length;
+    # `{status, headers, {:stream, chunks}}`, sent without one until a send
+    # fails, after which the bytes sent go to `owner` as `{:fake_http_sent, n}`;
+    # or `{:raw, iodata}`, sent as it is.
 
     def start(owner, respond) do
       {:ok, listen} =
@@ -40,30 +45,45 @@ defmodule Snodo.ClientHTTPTest do
 
     defp accept(listen, owner, respond) do
       {:ok, socket} = :gen_tcp.accept(listen)
-      :ok = :inet.setopts(socket, packet: :http_bin)
+      # A client that stops reading without closing fails the send in 5 s.
+      :ok = :inet.setopts(socket, packet: :http_bin, send_timeout: 5_000)
       headers = read_headers(socket, %{})
       :ok = :inet.setopts(socket, packet: :raw)
       {:ok, body} = :gen_tcp.recv(socket, String.to_integer(headers["content-length"]))
       message = JSON.decode!(body)
       send(owner, {:fake_http, headers, message})
-      {status, response_headers, response_body} = respond.(headers, message)
-
-      header_lines =
-        Enum.map(
-          [{"content-length", Integer.to_string(byte_size(response_body))} | response_headers],
-          fn {name, value} -> [name, ": ", value, "\r\n"] end
-        )
-
-      :ok =
-        :gen_tcp.send(socket, [
-          "HTTP/1.1 #{status} Fake\r\n",
-          header_lines,
-          "connection: close\r\n\r\n",
-          response_body
-        ])
-
+      _result = reply(socket, owner, respond.(headers, message))
       :ok = :gen_tcp.close(socket)
       accept(listen, owner, respond)
+    end
+
+    defp reply(socket, _owner, {:raw, data}), do: :gen_tcp.send(socket, data)
+
+    defp reply(socket, owner, {status, headers, {:stream, chunks}}) do
+      _result = :gen_tcp.send(socket, head(status, headers))
+
+      sent =
+        Enum.reduce_while(chunks, 0, fn chunk, sent ->
+          case :gen_tcp.send(socket, chunk) do
+            :ok -> {:cont, sent + byte_size(chunk)}
+            {:error, _closed} -> {:halt, sent}
+          end
+        end)
+
+      send(owner, {:fake_http_sent, sent})
+    end
+
+    defp reply(socket, _owner, {status, headers, body}) do
+      length = {"content-length", Integer.to_string(byte_size(body))}
+      :gen_tcp.send(socket, [head(status, [length | headers]), body])
+    end
+
+    defp head(status, headers) do
+      [
+        "HTTP/1.1 #{status} Fake\r\n",
+        Enum.map(headers, fn {name, value} -> [name, ": ", value, "\r\n"] end),
+        "connection: close\r\n\r\n"
+      ]
     end
 
     defp read_headers(socket, headers) do
@@ -93,6 +113,14 @@ defmodule Snodo.ClientHTTPTest do
   defp json(message, result) do
     body = JSON.encode!(%{"jsonrpc" => "2.0", "id" => message["id"], "result" => result})
     {200, [{"content-type", "application/json"}], body}
+  end
+
+  @mib 1_048_576
+  @json_type {"content-type", "application/json"}
+
+  # 256 MiB in 64 KiB chunks, produced as they are sent.
+  defp large_body(chunk \\ :binary.copy("x", 65_536)) do
+    Stream.duplicate(chunk, div(256 * @mib, byte_size(chunk)))
   end
 
   describe "against the native listener" do
@@ -307,6 +335,148 @@ defmodule Snodo.ClientHTTPTest do
 
       assert {:error, %Error{code: -32_000, cause: %{kind: :tools, cursor: "again"}}} =
                Client.list_tools(connect(url))
+    end
+
+    test "list functions stop at :max_pages when a server never stops paging" do
+      url =
+        FakeHTTP.start(self(), fn _headers, message ->
+          cursor = "page-#{message["id"]}"
+          json(message, %{"tools" => [%{"name" => cursor}], "nextCursor" => cursor})
+        end)
+
+      assert {:error, %Error{code: -32_000, cause: %{kind: :tools, max_pages: 3}}} =
+               Client.list_tools(connect(url, max_pages: 3))
+
+      for _page <- 1..3 do
+        assert_receive {:fake_http, _headers, %{"method" => "tools/list"}}, 1_000
+      end
+
+      refute_received {:fake_http, _headers, _message}
+    end
+
+    test "decodes a chunked response that follows an interim 1xx response" do
+      url =
+        FakeHTTP.start(self(), fn _headers, message ->
+          {200, _json_headers, body} = json(message, %{})
+          {first, second} = String.split_at(body, 10)
+          size = &Integer.to_string(byte_size(&1), 16)
+
+          {:raw,
+           [
+             "HTTP/1.1 100 Continue\r\n\r\n",
+             "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n",
+             "transfer-encoding: chunked\r\n\r\n",
+             [size.(first), ";ext=1\r\n", first, "\r\n"],
+             [size.(second), "\r\n", second, "\r\n"],
+             "0\r\n\r\n"
+           ]}
+        end)
+
+      assert {:ok, %{}} = Client.discover(connect(url))
+    end
+
+    test "a header value with a line break is refused before anything is sent" do
+      url = FakeHTTP.start(self(), fn _headers, message -> json(message, %{}) end)
+
+      assert {:error, %Error{code: -32_000, kind: :transport}} =
+               Client.request(connect(url), "tools/list\r\nx-injected: 1")
+
+      refute_received {:fake_http, _headers, _message}
+
+      for header <- [{"x-extra", "a\r\nb"}, {"Content-Length", "5"}] do
+        assert_raise ArgumentError, ~r/:headers must be/, fn ->
+          Client.connect({:http, url}, headers: [header])
+        end
+      end
+    end
+  end
+
+  describe ":max_response_bytes" do
+    test "a close-delimited body is refused as it arrives, at any status" do
+      for status <- [200, 500] do
+        url =
+          FakeHTTP.start(self(), fn _headers, _message ->
+            {status, [@json_type], {:stream, large_body()}}
+          end)
+
+        assert {:error, %Error{code: -32_000, kind: :transport, cause: cause}} =
+                 Client.discover(connect(url, max_response_bytes: @mib))
+
+        assert cause == {:max_response_bytes, @mib}
+
+        # The client closed the connection long before the server could send
+        # the 256 MiB body.
+        assert_receive {:fake_http_sent, sent}, 5_000
+        assert sent < 32 * @mib
+      end
+    end
+
+    test "a Content-Length over the limit is refused before the body is read" do
+      url =
+        FakeHTTP.start(self(), fn _headers, _message ->
+          {500, [@json_type, {"content-length", "268435456"}], {:stream, large_body()}}
+        end)
+
+      assert {:error, %Error{cause: {:max_response_bytes, @mib}}} =
+               Client.discover(connect(url, max_response_bytes: @mib))
+
+      assert_receive {:fake_http_sent, sent}, 5_000
+      assert sent < 32 * @mib
+    end
+
+    test "a chunked body is refused at the first chunk that passes the limit" do
+      chunk = ["10000\r\n", :binary.copy("x", 65_536), "\r\n"] |> IO.iodata_to_binary()
+
+      url =
+        FakeHTTP.start(self(), fn _headers, _message ->
+          {200, [@json_type, {"transfer-encoding", "chunked"}], {:stream, large_body(chunk)}}
+        end)
+
+      assert {:error, %Error{cause: {:max_response_bytes, @mib}}} =
+               Client.discover(connect(url, max_response_bytes: @mib))
+
+      assert_receive {:fake_http_sent, sent}, 5_000
+      assert sent < 32 * @mib
+    end
+
+    test "an event stream counts as one body, notifications included" do
+      progress = %{
+        "jsonrpc" => "2.0",
+        "method" => "notifications/progress",
+        "params" => %{"progressToken" => "t", "progress" => 1}
+      }
+
+      event = "data: #{JSON.encode!(progress)}\n\n"
+
+      url =
+        FakeHTTP.start(self(), fn _headers, _message ->
+          chunk = :binary.copy(event, div(65_536, byte_size(event)))
+          {200, [{"content-type", "text/event-stream"}], {:stream, large_body(chunk)}}
+        end)
+
+      assert {:error, %Error{cause: {:max_response_bytes, @mib}}} =
+               Client.call_tool(connect(url, max_response_bytes: @mib), "echo")
+
+      assert_receive {:fake_http_sent, sent}, 5_000
+      assert sent < 32 * @mib
+    end
+
+    test "a body of exactly the limit is accepted" do
+      padding = String.duplicate("x", 1_000)
+      body = JSON.encode!(%{"jsonrpc" => "2.0", "id" => 1, "result" => %{"pad" => padding}})
+      url = FakeHTTP.start(self(), fn _headers, _message -> {200, [@json_type], body} end)
+
+      assert {:ok, %{"pad" => ^padding}} =
+               Client.discover(connect(url, max_response_bytes: byte_size(body)))
+
+      assert {:error, %Error{cause: {:max_response_bytes, _limit}}} =
+               Client.discover(connect(url, max_response_bytes: byte_size(body) - 1))
+    end
+
+    test "must be a positive integer" do
+      assert_raise ArgumentError, ~r/:max_response_bytes/, fn ->
+        Client.connect({:http, "http://127.0.0.1:1/mcp"}, max_response_bytes: 0)
+      end
     end
   end
 
