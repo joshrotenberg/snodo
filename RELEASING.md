@@ -44,16 +44,24 @@ push to `main` ([release-please.yml](.github/workflows/release-please.yml)):
    waiting for each tier to appear in the Hex index. It skips a package whose
    version is already on Hex, so a failed run can be rerun.
 
-The workflow needs two repository secrets:
+The workflow needs two secrets:
 
 - `RELEASE_PLEASE_TOKEN`: a fine-grained personal access token for this
   repository with read and write access to Contents, Pull requests, and Issues.
-  Without it, release-please falls back to the workflow token: the release pull
-  request then runs no checks and needs an admin merge.
-- `HEX_API_KEY`: a Hex API key that can publish the six packages.
+  When the secret is empty or absent, release-please falls back to the workflow
+  token: the release pull request's workflows then wait for approval
+  (`gh api -X POST repos/joshrotenberg/snodo/actions/runs/<id>/approve` for
+  each). A set but invalid token fails the run with "Bad credentials".
+- `HEX_API_KEY`: a Hex API key that can publish the six packages. The
+  `publish-hex` job runs in the `hex` environment and passes the key only to
+  its publish step. Keep the key as a secret of that environment, and limit the
+  environment's deployment branches and tags to `v*` tags.
 
 The repository setting "Allow GitHub Actions to create and approve pull
 requests" must stay on for the fallback to work.
+
+Every action in the workflows is pinned to a commit SHA, with its version in a
+comment. Dependabot updates both.
 
 ## Before merging a release pull request
 
@@ -68,7 +76,9 @@ each sibling.
 ## Publishing by hand
 
 To publish an existing tag again, for example after `publish-hex` failed partway,
-run the workflow by hand. Packages already on Hex are skipped:
+run the workflow by hand. Packages already on Hex are skipped. The job refuses a
+tag that is not `vX.Y.Z`, is not on `main`, or does not match the version in all
+six `mix.exs` files:
 
 ```sh
 gh workflow run release-please.yml -f tag=vX.Y.Z

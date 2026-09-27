@@ -516,6 +516,42 @@ defmodule Snodo.Transport.StreamableHTTP.AdapterAcceptanceTest do
     assert %{"id" => 10, "error" => %{"code" => -32_601}} = JSON.decode!(response.body)
   end
 
+  test "bounds integer literals, ids, and progress tokens" do
+    runtime = TestFixtures.runtime()
+    raw = TestFixtures.request(1, "tools/list")
+
+    huge =
+      ~s({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"n":) <>
+        String.duplicate("9", 2_000_000) <> "}}"
+
+    response = StreamableHTTP.handle(runtime, %{request(raw) | body: huge})
+    assert response.status == 400
+    assert %{"id" => nil, "error" => %{"code" => -32_700}} = JSON.decode!(response.body)
+
+    long_id = TestFixtures.request(String.duplicate("a", 300), "tools/list")
+    response = StreamableHTTP.handle(runtime, request(long_id))
+    assert response.status == 400
+    assert %{"id" => nil, "error" => %{"code" => -32_600}} = JSON.decode!(response.body)
+
+    max_id = TestFixtures.request(9_223_372_036_854_775_807, "tools/list")
+    assert StreamableHTTP.handle(runtime, request(max_id)).status == 200
+
+    call =
+      TestFixtures.request(4, "tools/call", %{
+        "name" => "echo",
+        "arguments" => %{"text" => "hi"},
+        "_meta" =>
+          Map.put(
+            TestFixtures.metadata(),
+            "progressToken",
+            String.duplicate("t", 300)
+          )
+      })
+
+    response = StreamableHTTP.handle(runtime, request(call))
+    assert %{"error" => %{"code" => -32_602}} = JSON.decode!(response.body)
+  end
+
   test "rejects malformed JSON, batches, and unsupported media negotiation" do
     runtime = TestFixtures.runtime()
 

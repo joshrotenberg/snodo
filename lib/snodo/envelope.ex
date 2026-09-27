@@ -17,6 +17,10 @@ defmodule Snodo.Envelope do
   @enforce_keys [:kind, :method, :raw, :transport]
   defstruct [:id, :kind, :method, :transport, params: %{}, raw: %{}]
 
+  @max_string_id_bytes 256
+  @int64_min -9_223_372_036_854_775_808
+  @int64_max 9_223_372_036_854_775_807
+
   @doc "Decodes the protocol-neutral JSON-RPC envelope without choosing a dialect."
   @spec decode(term(), TransportContext.t()) :: {:ok, t()} | {:error, Error.t()}
   def decode(raw, %TransportContext{} = transport) when is_map(raw) do
@@ -77,9 +81,26 @@ defmodule Snodo.Envelope do
 
   defp validate_id(raw) do
     case Map.fetch(raw, "id") do
-      :error -> {:ok, nil, :notification}
-      {:ok, id} when is_binary(id) or is_integer(id) -> {:ok, id, :request}
-      {:ok, _id} -> {:error, Error.invalid_request("Request id must be a string or integer")}
+      :error ->
+        {:ok, nil, :notification}
+
+      {:ok, id} ->
+        if bounded_id?(id),
+          do: {:ok, id, :request},
+          else:
+            {:error,
+             Error.invalid_request(
+               "Request id must be a string of at most #{@max_string_id_bytes} bytes " <>
+                 "or an integer in the int64 range"
+             )}
     end
   end
+
+  @doc false
+  # Request ids and progress tokens are echoed in every response and
+  # notification for the request, so their size is bounded.
+  @spec bounded_id?(term()) :: boolean()
+  def bounded_id?(id) when is_binary(id), do: byte_size(id) <= @max_string_id_bytes
+  def bounded_id?(id) when is_integer(id), do: id >= @int64_min and id <= @int64_max
+  def bounded_id?(_id), do: false
 end
