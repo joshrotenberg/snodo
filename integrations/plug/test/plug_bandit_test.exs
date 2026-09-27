@@ -96,22 +96,110 @@ defmodule Snodo.Transport.PlugBanditTest do
     refute String.downcase(raw) =~ "mcp-session-id"
   end
 
-  test "raw body limit rejects Content-Length and chunked bodies" do
+  test "raw body limit rejects an oversized body and closes the connection" do
     %{port: port} = server(max_body_bytes: 64)
-    assert {413, nil} = rpc(port, request("server/discover", %{}))
     socket = connect(port)
-    body = String.duplicate("x", 65)
+    # A keep-alive request: only the response can close the connection.
+    {head, body} = http_request(request("server/discover", %{}), keep_alive: true)
+    :ok = :gen_tcp.send(socket, [head, body])
+    raw = read_all(socket)
+    assert raw =~ "HTTP/1.1 413"
+    assert raw =~ "connection: close"
+  end
 
-    :ok =
-      :gen_tcp.send(socket, [
-        "POST /mcp HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nTransfer-Encoding: chunked\r\n\r\n",
-        Integer.to_string(byte_size(body), 16),
-        "\r\n",
-        body,
-        "\r\n0\r\n\r\n"
-      ])
+  test "a chunked request gets 411 without its body being read" do
+    %{port: port} = server()
+    socket = connect(port)
+    {head, _body} = http_request(request("server/discover", %{}), keep_alive: true)
+    head = String.replace(head, ~r/content-length: \d+/, "transfer-encoding: chunked")
 
-    assert read_all(socket) =~ "HTTP/1.1 413"
+    # The body never ends. Unless the response closes the connection, Bandit
+    # waits for the rest of it after the Plug returns.
+    :ok = :gen_tcp.send(socket, [head, "5\r\nhello\r\n"])
+
+    raw = read_all(socket)
+    assert raw =~ "HTTP/1.1 411"
+    assert raw =~ "connection: close"
+  end
+
+  @tag capture_log: true
+  test "a trickled Content-Length body gets 408 at body_timeout" do
+    %{port: port} = server(body_timeout: 300, read_timeout: 5_000)
+    socket = connect(port)
+    {head, body} = http_request(request("server/discover", %{}))
+    :ok = :gen_tcp.send(socket, head)
+    started = System.monotonic_time(:millisecond)
+
+    # Each byte arrives well inside read_timeout and the whole body takes
+    # seconds, so only the body deadline can answer this early.
+    raw = trickle(socket, body, 20)
+    elapsed = System.monotonic_time(:millisecond) - started
+
+    assert raw =~ "HTTP/1.1 408"
+    assert raw =~ "connection: close"
+    assert elapsed >= 300
+    assert elapsed < 2_000
+  end
+
+  test "a body that arrives in parts before body_timeout is served" do
+    %{port: port} = server(body_timeout: 2_000)
+    socket = connect(port)
+    # Several read slices, so the Plug reads the body in more than one call.
+    padding = String.duplicate("x", 200_000)
+    {head, body} = http_request(request("server/discover", %{"padding" => padding}))
+    :ok = :gen_tcp.send(socket, head)
+
+    size = div(byte_size(body), 3)
+    parts = [binary_part(body, 0, size), binary_part(body, size, size)]
+    last = binary_part(body, 2 * size, byte_size(body) - 2 * size)
+
+    # No response arrives while part of the body is still missing.
+    for part <- parts do
+      :ok = :gen_tcp.send(socket, part)
+      assert {:error, :timeout} = :gen_tcp.recv(socket, 0, 100)
+    end
+
+    :ok = :gen_tcp.send(socket, last)
+    assert read_all(socket) =~ "HTTP/1.1 200"
+  end
+
+  test "an HTTP/2 request is served" do
+    %{port: port} = server()
+    # Several read slices, in frames no larger than the default maximum.
+    padding = String.duplicate("x", 200_000)
+    encoded = JSON.encode!(request("server/discover", %{"padding" => padding}))
+    socket = h2_open(port, h2_headers("server/discover", byte_size(encoded)))
+    frames = for <<frame::binary-size(16_384) <- encoded>>, do: h2_frame(:data, [], frame)
+    last = binary_part(encoded, length(frames) * 16_384, rem(byte_size(encoded), 16_384))
+    :ok = :gen_tcp.send(socket, [frames, h2_frame(:data, [:end_stream], last)])
+
+    assert {"200", _headers, body} = h2_response(socket)
+    assert @protocol in JSON.decode!(body)["result"]["supportedVersions"]
+  end
+
+  test "an HTTP/2 body that stops arriving gets 408 at body_timeout" do
+    %{port: port} = server(body_timeout: 300, read_timeout: 5_000)
+    encoded = JSON.encode!(request("server/discover", %{}))
+    socket = h2_open(port, h2_headers("server/discover", byte_size(encoded)))
+    started = System.monotonic_time(:millisecond)
+    :ok = :gen_tcp.send(socket, h2_frame(:data, [], binary_part(encoded, 0, 10)))
+
+    assert {"408", headers, ""} = h2_response(socket)
+    elapsed = System.monotonic_time(:millisecond) - started
+    # HTTP/2 forbids connection-specific headers.
+    refute List.keymember?(headers, "connection", 0)
+    assert elapsed >= 300
+    assert elapsed < 2_000
+  end
+
+  test "body_timeout must be a positive integer" do
+    runtime = PlugFixtures.runtime(start_supervised!(Hub))
+
+    for value <- [0, -1, :infinity] do
+      assert_raise ArgumentError, ":body_timeout must be a positive integer", fn ->
+        Snodo.Transport.Plug.init(runtime: runtime, executor: self(), body_timeout: value)
+      end
+    end
   end
 
   test "overload is bounded and cancellation bypasses a saturated executor without crossing principals" do
@@ -757,6 +845,12 @@ defmodule Snodo.Transport.PlugBanditTest do
   end
 
   defp send_rpc(socket, body, opts \\ []) do
+    {head, encoded} = http_request(body, opts)
+    :ok = :gen_tcp.send(socket, [head, encoded])
+  end
+
+  # The request head, through the blank line, and the encoded body.
+  defp http_request(body, opts \\ []) do
     encoded = JSON.encode!(body)
 
     headers = [
@@ -768,6 +862,9 @@ defmodule Snodo.Transport.PlugBanditTest do
       {"mcp-method", body["method"]},
       {"content-length", to_string(byte_size(encoded))}
     ]
+
+    headers =
+      if opts[:keep_alive], do: List.keydelete(headers, "connection", 0), else: headers
 
     headers =
       if opts[:legacy],
@@ -793,7 +890,7 @@ defmodule Snodo.Transport.PlugBanditTest do
     lines = Enum.map(headers, fn {key, value} -> [key, ": ", value, "\r\n"] end)
     method = Keyword.get(opts, :method, "POST")
     path = Keyword.get(opts, :path, "/mcp")
-    :ok = :gen_tcp.send(socket, [method, " ", path, " HTTP/1.1\r\n", lines, "\r\n", encoded])
+    {IO.iodata_to_binary([method, " ", path, " HTTP/1.1\r\n", lines, "\r\n"]), encoded}
   end
 
   defp read_all(socket, acc \\ "") do
@@ -812,6 +909,97 @@ defmodule Snodo.Transport.PlugBanditTest do
       read_until(socket, expected, acc <> data)
     end
   end
+
+  # Sends one byte of `body` every `interval` ms until the server answers or
+  # closes the connection, and returns what it sent.
+  defp trickle(socket, body, interval) do
+    case {:gen_tcp.recv(socket, 0, interval), body} do
+      {{:ok, data}, _body} ->
+        read_all(socket, data)
+
+      {{:error, :closed}, _body} ->
+        ""
+
+      {{:error, :timeout}, ""} ->
+        read_all(socket)
+
+      {{:error, :timeout}, <<byte, rest::binary>>} ->
+        _result = :gen_tcp.send(socket, <<byte>>)
+        trickle(socket, rest, interval)
+    end
+  end
+
+  # A minimal HTTP/2 client with prior knowledge over cleartext, one request on
+  # stream 1 per connection. Header blocks use HPACK from hpax, which Bandit
+  # depends on.
+  defp h2_headers(method, content_length) do
+    [
+      {":method", "POST"},
+      {":scheme", "http"},
+      {":authority", "localhost"},
+      {":path", "/mcp"},
+      {"content-type", "application/json"},
+      {"accept", "application/json, text/event-stream"},
+      {"mcp-protocol-version", @protocol},
+      {"mcp-method", method},
+      {"content-length", Integer.to_string(content_length)}
+    ]
+  end
+
+  defp h2_open(port, headers) do
+    socket = connect(port)
+    {block, _table} = HPAX.encode(:no_store, headers, HPAX.new(4_096))
+
+    :ok =
+      :gen_tcp.send(socket, [
+        "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n",
+        h2_frame(:settings, [], ""),
+        h2_frame(:headers, [:end_headers], block)
+      ])
+
+    socket
+  end
+
+  defp h2_frame(type, flags, payload) do
+    payload = IO.iodata_to_binary(payload)
+    {code, stream} = Map.fetch!(%{data: {0, 1}, headers: {1, 1}, settings: {4, 0}}, type)
+    bits = Map.take(%{end_stream: 0x1, ack: 0x1, end_headers: 0x4}, flags)
+    flags = bits |> Map.values() |> Enum.reduce(0, &Bitwise.bor/2)
+    [<<byte_size(payload)::24, code, flags, 0::1, stream::31>>, payload]
+  end
+
+  # Reads frames until stream 1 ends and returns its status, headers, and body.
+  defp h2_response(socket, table \\ HPAX.new(4_096), headers \\ [], body \\ "") do
+    assert {:ok, <<size::24, type, flags, _reserved::1, stream::31>>} =
+             :gen_tcp.recv(socket, 9, 2_000)
+
+    {:ok, payload} = if size == 0, do: {:ok, ""}, else: :gen_tcp.recv(socket, size, 2_000)
+    end_stream = Bitwise.band(flags, 0x1) == 0x1
+
+    case {type, stream} do
+      {1, 1} ->
+        {:ok, decoded, table} = HPAX.decode(payload, table)
+        h2_continue(socket, table, headers ++ decoded, body, end_stream)
+
+      {0, 1} ->
+        h2_continue(socket, table, headers, body <> payload, end_stream)
+
+      {4, 0} when not end_stream ->
+        :ok = :gen_tcp.send(socket, h2_frame(:settings, [:ack], ""))
+        h2_response(socket, table, headers, body)
+
+      _other ->
+        h2_response(socket, table, headers, body)
+    end
+  end
+
+  defp h2_continue(_socket, _table, headers, body, true) do
+    {{":status", status}, headers} = List.keytake(headers, ":status", 0)
+    {status, headers, body}
+  end
+
+  defp h2_continue(socket, table, headers, body, false),
+    do: h2_response(socket, table, headers, body)
 
   defp eventually(check, tries \\ 100)
   defp eventually(_check, 0), do: false
