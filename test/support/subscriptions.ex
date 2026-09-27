@@ -111,3 +111,60 @@ defmodule SnodoTest.TestSubscriptionSource do
   @impl true
   def close({hub, token}, reason, _hub), do: GenServer.call(hub, {:close, token, reason})
 end
+
+defmodule SnodoTest.SubscriptionWorker do
+  @moduledoc false
+
+  @doc "Returns the puller a subscription worker links as it starts."
+  def puller(worker, deadline \\ deadline()) do
+    case Process.info(worker, :links) do
+      {:links, [puller]} ->
+        puller
+
+      {:links, []} ->
+        if System.monotonic_time(:millisecond) > deadline,
+          do: raise("subscription worker #{inspect(worker)} started no puller")
+
+        Process.sleep(5)
+        puller(worker, deadline)
+    end
+  end
+
+  @doc """
+  Monitors each pid and returns `{pid, monitor}` pairs once every target has
+  recorded its monitor.
+
+  A monitor request can be overtaken by a kill sent from another process.
+  `Process.info/2` is a signal from this process too, so it returns only after
+  the target has handled the monitor request sent before it.
+  """
+  def monitor_confirmed(pids) do
+    for pid <- pids do
+      monitor = Process.monitor(pid)
+      true = self() in monitored_by(pid)
+      {pid, monitor}
+    end
+  end
+
+  @doc "Waits until `watcher` monitors `pid`."
+  def await_monitor(pid, watcher, deadline \\ deadline()) do
+    cond do
+      watcher in monitored_by(pid) ->
+        :ok
+
+      System.monotonic_time(:millisecond) > deadline ->
+        raise "#{inspect(watcher)} did not monitor #{inspect(pid)}"
+
+      true ->
+        Process.sleep(5)
+        await_monitor(pid, watcher, deadline)
+    end
+  end
+
+  defp monitored_by(pid) do
+    {:monitored_by, watchers} = Process.info(pid, :monitored_by)
+    watchers
+  end
+
+  defp deadline, do: System.monotonic_time(:millisecond) + 1_000
+end

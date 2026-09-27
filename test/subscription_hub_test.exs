@@ -5,6 +5,7 @@ defmodule Snodo.SubscriptionHubTest do
   alias Snodo.Subscription.Event
   alias Snodo.Subscription.Hub
   alias Snodo.Test, as: MCPTest
+  alias SnodoTest.SubscriptionWorker
   alias SnodoTest.TestFixtures
   alias SnodoTest.TestInstrumentationSink
 
@@ -16,6 +17,25 @@ defmodule Snodo.SubscriptionHubTest do
       do: {:error, Snodo.Error.authorization(-32_003, "Not permitted")}
 
     def authorize(_phase, _component, _context, _options), do: :ok
+  end
+
+  # Reports every close to the observer. A pull blocks until the puller is
+  # stopped.
+  defmodule RecordingSource do
+    @behaviour Snodo.Subscription.Source
+
+    @impl true
+    def open(filter, _context, observer), do: {:ok, filter, observer}
+
+    @impl true
+    def next(_observer, _options) do
+      receive do
+        :recording_source_never_sent -> :closed
+      end
+    end
+
+    @impl true
+    def close(observer, reason, _options), do: send(observer, {:source_closed, reason})
   end
 
   test "broadcasts only to matching listeners and supplies pending pulls" do
@@ -125,6 +145,66 @@ defmodule Snodo.SubscriptionHubTest do
     assert_receive {:mcp_subscription, ^cancelled_worker, :closed}
     assert %{subscriptions: 0} = Hub.stats(hub)
     assert :ok = Subscription.stop_worker(cancelled_worker, cancelled_monitor)
+  end
+
+  test "a worker closes its source and exits when its owner exits" do
+    subscription = listen(recording_runtime(), "orphaned", %{"toolsListChanged" => true})
+    test = self()
+
+    owner =
+      spawn(fn ->
+        {worker, _monitor} = Subscription.start_worker(subscription, self())
+        :ok = Subscription.continue(worker)
+        send(test, {:worker, worker})
+        Process.sleep(:infinity)
+      end)
+
+    assert_receive {:worker, worker}, 1_000
+    puller = SubscriptionWorker.puller(worker)
+
+    [{^worker, worker_monitor}, {^puller, puller_monitor}] =
+      SubscriptionWorker.monitor_confirmed([worker, puller])
+
+    # With the worker's monitor in place, it sees the owner's exit reason.
+    :ok = SubscriptionWorker.await_monitor(owner, worker)
+    Process.exit(owner, :kill)
+
+    assert_receive {:source_closed, {:disconnected, {:owner_down, :killed}}}, 1_000
+    assert_receive {:DOWN, ^worker_monitor, :process, ^worker, :shutdown}, 1_000
+    assert_receive {:DOWN, ^puller_monitor, :process, ^puller, :shutdown}, 1_000
+    refute_received {:source_closed, _reason}
+  end
+
+  test "a stopped worker leaves closing the source to its owner" do
+    subscription = listen(recording_runtime(), "stopped", %{"toolsListChanged" => true})
+    test = self()
+
+    owner =
+      spawn(fn ->
+        {worker, monitor} = Subscription.start_worker(subscription, self())
+        :ok = Subscription.continue(worker)
+        send(test, {:worker, worker})
+
+        receive do
+          :stop ->
+            :ok = Subscription.close(subscription, :complete)
+            :ok = Subscription.stop_worker(worker, monitor)
+        end
+      end)
+
+    assert_receive {:worker, worker}, 1_000
+    puller = SubscriptionWorker.puller(worker)
+    monitors = SubscriptionWorker.monitor_confirmed([owner, worker, puller])
+    send(owner, :stop)
+
+    assert_receive {:source_closed, :complete}, 1_000
+
+    for {pid, monitor} <- monitors do
+      assert_receive {:DOWN, ^monitor, :process, ^pid, _reason}, 1_000
+    end
+
+    # A close by the worker would reach this process before the worker's DOWN.
+    refute_received {:source_closed, _reason}
   end
 
   test "validates publications and startup policy" do
@@ -277,6 +357,13 @@ defmodule Snodo.SubscriptionHubTest do
              )
 
     subscription
+  end
+
+  defp recording_runtime do
+    TestFixtures.runtime(
+      capabilities: %{"tools" => %{"listChanged" => true}},
+      subscription_source: {RecordingSource, self()}
+    )
   end
 
   defp publish_sequence(hub, sequence) do

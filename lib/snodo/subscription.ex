@@ -56,11 +56,10 @@ defmodule Snodo.Subscription do
   ]
 
   @doc """
-  Starts a monitored, demand-driven source worker owned by the caller.
+  Opens `source` for the notifications in `requested_filter` that the server
+  supports, and returns the opened subscription.
 
-  After each `continue/1`, the owner receives
-  `{:mcp_subscription, worker, outcome}` where the outcome is `{:ok, event}`,
-  `:closed`, or `{:error, reason}`.
+  Serve it with `start_worker/2`.
   """
   @spec open(Config.t(), map(), Context.t()) :: {:ok, t()} | {:error, Error.t()}
   def open(%Config{} = source, requested_filter, %Context{} = context)
@@ -171,10 +170,21 @@ defmodule Snodo.Subscription do
     }
   end
 
-  @doc "Allows a subscription worker to pull exactly one more source outcome."
+  @doc """
+  Starts a monitored, demand-driven source worker owned by `owner`.
+
+  After each `continue/1`, the owner receives
+  `{:mcp_subscription, worker, outcome}` where the outcome is `{:ok, event}`,
+  `:closed`, or `{:error, reason}`.
+
+  The worker monitors `owner`. If `owner` exits for any reason before it calls
+  `stop_worker/2`, the worker closes the source handle with
+  `{:disconnected, {:owner_down, reason}}` and exits, so a killed transport
+  process does not leave the source open.
+  """
   @spec start_worker(t(), pid()) :: {pid(), reference()}
   def start_worker(%__MODULE__{} = subscription, owner) when is_pid(owner) do
-    spawn_monitor(fn -> worker_loop(subscription, owner) end)
+    spawn_monitor(fn -> run_worker(subscription, owner) end)
   end
 
   @doc false
@@ -184,7 +194,12 @@ defmodule Snodo.Subscription do
     :ok
   end
 
-  @doc "Stops a worker and removes its process monitor."
+  @doc """
+  Stops a worker and removes its process monitor.
+
+  The worker exits without closing the source handle; the owner closes it with
+  `close/2`.
+  """
   @spec stop_worker(pid(), reference()) :: :ok
   def stop_worker(worker, monitor) when is_pid(worker) and is_reference(monitor) do
     Process.demonitor(monitor, [:flush])
@@ -198,11 +213,34 @@ defmodule Snodo.Subscription do
     safe_close(source, handle, reason)
   end
 
-  defp worker_loop(subscription, owner) do
+  # A source's `next/2` may block until an event arrives, so a linked puller
+  # calls it while the worker watches the owner. The owner's `stop_worker/2`
+  # exit signal reaches the worker before the owner's DOWN can, so a stopped
+  # worker never closes the handle a second time.
+  defp run_worker(subscription, owner) do
+    owner_monitor = Process.monitor(owner)
+    worker = self()
+    puller = spawn_link(fn -> pull_loop(subscription, owner, worker) end)
+    watch_owner(subscription.source, subscription.handle, owner_monitor, puller)
+  end
+
+  defp watch_owner(source, handle, owner_monitor, puller) do
     receive do
       :mcp_subscription_continue ->
-        send(owner, {:mcp_subscription, self(), source_next(subscription)})
-        worker_loop(subscription, owner)
+        send(puller, :mcp_subscription_continue)
+        watch_owner(source, handle, owner_monitor, puller)
+
+      {:DOWN, ^owner_monitor, :process, _owner, reason} ->
+        :ok = safe_close(source, handle, {:disconnected, {:owner_down, reason}})
+        exit(:shutdown)
+    end
+  end
+
+  defp pull_loop(subscription, owner, worker) do
+    receive do
+      :mcp_subscription_continue ->
+        send(owner, {:mcp_subscription, worker, source_next(subscription)})
+        pull_loop(subscription, owner, worker)
     end
   end
 

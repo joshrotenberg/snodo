@@ -121,6 +121,9 @@ executor, which returns it when the stream process exits for any reason.
 Subscription event buffering is the source's responsibility; the bundled hub
 provides bounded queues. Plug body-read limits are approximate at socket-read
 granularity, so this adapter also checks the returned byte count before decoding.
+`read_timeout` bounds each read. Bandit reads a `Content-Length` body in slices
+of up to 1,000,000 bytes and each slice must arrive within `read_timeout`, so the
+whole body is bounded; a chunked request body is bounded only per read.
 The Plug cannot enforce its request deadline while an adapter is blocked inside
 a socket write; keep the server's send timeout finite (the startup example uses
 five seconds) and configure equivalent write bounds for another HTTP adapter.
@@ -130,7 +133,8 @@ or Plug-process death tears it down and cancels abandoned work. This is necessar
 because a Bandit connection process may serve multiple requests. An opened
 subscription gets a lifecycle guard tied to that request owner: it closes the
 source and stops its blocked pull worker if the owner dies, including the race
-between execution completion and stream handoff.
+between execution completion and stream handoff. If the guard itself exits for
+any reason, its source worker closes the source and stops.
 
 SSE sends acknowledgement first, then one notification per completed source pull,
 and a terminal response on graceful completion. It only requests the next event

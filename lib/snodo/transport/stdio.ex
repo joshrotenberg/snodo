@@ -631,9 +631,12 @@ defmodule Snodo.Transport.Stdio do
   end
 
   defp start_acknowledged_subscription(state, subscription, acknowledgement) do
+    # The worker closes the source if the coordinator exits, so it starts
+    # before the acknowledgement write, which can wait up to `:write_timeout`.
+    {worker, monitor} = Subscription.start_worker(subscription, self())
+
     case write_progress(state.writer, acknowledgement) do
       :ok ->
-        {worker, monitor} = Subscription.start_worker(subscription, self())
         :ok = Subscription.continue(worker)
         id = subscription.id
         entry = %{subscription: subscription, worker: worker, monitor: monitor}
@@ -647,6 +650,7 @@ defmodule Snodo.Transport.Stdio do
 
       {:error, reason} ->
         :ok = Subscription.close(subscription, {:error, {:output_failed, reason}})
+        :ok = Subscription.stop_worker(worker, monitor)
         {:stop, {:output_failed, reason}, state}
     end
   end
