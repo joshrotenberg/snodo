@@ -476,7 +476,7 @@ defmodule Snodo.Client.HTTP do
   end
 
   defp decode_json(status, body) do
-    case JSON.decode(body) do
+    case Snodo.JSONValue.decode(body) do
       {:ok, %{"jsonrpc" => "2.0"} = response} -> {:ok, response}
       _other -> unexpected(status, body)
     end
@@ -502,7 +502,7 @@ defmodule Snodo.Client.HTTP do
       end)
       |> Enum.join("\n")
 
-    case JSON.decode(data) do
+    case Snodo.JSONValue.decode(data) do
       {:ok, %{"id" => ^id} = response} when not is_map_key(response, "method") -> response
       _notification_or_other -> nil
     end

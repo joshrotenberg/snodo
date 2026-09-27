@@ -327,6 +327,28 @@ defmodule Snodo.ClientHTTPTest do
       assert cause == {:http_status, 502, "Bad Gateway"}
     end
 
+    test "a huge integer in a response is a transport error, not a raise" do
+      # The standard decoder raises SystemLimitError at about 1.25 million digits.
+      huge =
+        ~s({"jsonrpc":"2.0","id":1,"result":{"n":) <> String.duplicate("9", 1_500_000) <> "}}"
+
+      url =
+        FakeHTTP.start(self(), fn _headers, _message ->
+          {200, [{"content-type", "application/json"}], huge}
+        end)
+
+      assert {:error, %Error{code: -32_000, kind: :transport}} = Client.discover(connect(url))
+
+      event = "event: message\ndata: " <> huge <> "\n\n"
+
+      url =
+        FakeHTTP.start(self(), fn _headers, _message ->
+          {200, [{"content-type", "text/event-stream"}], event}
+        end)
+
+      assert {:error, %Error{code: -32_000, kind: :transport}} = Client.discover(connect(url))
+    end
+
     test "list functions stop when a server repeats a cursor" do
       url =
         FakeHTTP.start(self(), fn _headers, message ->
