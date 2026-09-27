@@ -384,6 +384,62 @@ defmodule Snodo.Transport.PlugBanditTest do
     :gen_tcp.close(socket)
   end
 
+  test "a stream over max_subscriptions gets 503; a disconnect or crash frees a slot" do
+    %{port: port, hub: hub, executor: executor} =
+      server(max_subscriptions: 1, subscription_keepalive_ms: 20)
+
+    first = open_stream(port, "first")
+    assert {503, %{"id" => "second", "error" => error}} = rpc(port, subscription("second"))
+    assert error["message"] == "Server subscription capacity exhausted"
+    assert Hub.stats(hub).subscriptions == 1
+
+    :ok = :gen_tcp.close(first)
+    assert eventually(fn -> :sys.get_state(executor).slot_counts == %{} end)
+
+    third = open_stream(port, "third")
+    [stream] = slot_holders(executor)
+    worker = :sys.get_state(stream).worker
+    Process.exit(stream, :kill)
+    assert eventually(fn -> :sys.get_state(executor).slot_counts == %{} end)
+    # The source worker is not linked to the stream process, so a killed
+    # stream leaves it running.
+    Process.exit(worker, :kill)
+
+    fourth = open_stream(port, "fourth")
+    assert {503, _result} = rpc(port, subscription("fifth"))
+
+    :gen_tcp.close(third)
+    :gen_tcp.close(fourth)
+  end
+
+  test "an open stream does not retain a large unused request param" do
+    %{port: port, hub: hub, executor: executor} = server(subscription_keepalive_ms: 20)
+    socket = connect(port)
+
+    body =
+      request(
+        "subscriptions/listen",
+        %{
+          "notifications" => %{"toolsListChanged" => true},
+          "padding" => String.duplicate("x", 1_900_000)
+        },
+        "large"
+      )
+
+    send_rpc(socket, body)
+    assert_receive {:plug_owner, owner}, 1_000
+    _ack = read_until(socket, "notifications/subscriptions/acknowledged")
+    [stream] = slot_holders(executor)
+    worker = :sys.get_state(stream).worker
+
+    for pid <- [owner, stream, worker, hub] do
+      assert large_binaries(pid) == []
+    end
+
+    :ok = :gen_tcp.close(socket)
+    assert eventually(fn -> Hub.stats(hub).subscriptions == 0 end)
+  end
+
   for version <- ["2025-06-18", "2025-11-25"] do
     @legacy_version version
 
@@ -602,6 +658,26 @@ defmodule Snodo.Transport.PlugBanditTest do
 
   defp subscription(id),
     do: request("subscriptions/listen", %{"notifications" => %{"toolsListChanged" => true}}, id)
+
+  defp open_stream(port, id) do
+    socket = connect(port)
+    send_rpc(socket, subscription(id))
+    _ack = read_until(socket, "notifications/subscriptions/acknowledged")
+    socket
+  end
+
+  # With no request running, the executor monitors only the stream processes
+  # that hold subscription slots.
+  defp slot_holders(executor) do
+    {:monitors, monitors} = Process.info(executor, :monitors)
+    for {:process, pid} <- monitors, do: pid
+  end
+
+  defp large_binaries(pid) do
+    true = :erlang.garbage_collect(pid)
+    {:binary, binaries} = Process.info(pid, :binary)
+    for {_id, size, _references} <- binaries, size >= 1_000_000, do: size
+  end
 
   defp progressing_request(id, arguments) do
     request("tools/call", %{"name" => "inspect_context", "arguments" => arguments}, id)

@@ -260,6 +260,9 @@ defmodule SnodoTest.TasksTestSupport do
         :error -> extension_options
       end
 
+    extension_options =
+      Keyword.merge(extension_options, Keyword.get(opts, :extension_options, []))
+
     runtime_options =
       [
         router: router,

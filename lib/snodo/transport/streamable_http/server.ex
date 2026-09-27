@@ -13,6 +13,19 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   executor. Progress does not extend the deadline. Explicit `:infinity` disables
   this ceiling. Body reads and socket writes have their own transport bounds.
 
+  Connection and stream bounds, each a positive integer:
+
+    * `:max_connections` - the most connections open at once, default 1,024. A
+      connection accepted at the limit is closed without being read.
+    * `:head_timeout` - milliseconds from accept until the request head must be
+      complete, default 10,000. `:read_timeout` (default 5,000) still bounds
+      each read; this deadline bounds the whole head, so a client that sends it
+      a byte at a time is closed when the deadline passes.
+    * `:max_subscriptions` - the most `subscriptions/listen` streams open at
+      once, default 256. The executor holds one count per listener and returns
+      a slot when the connection serving that stream exits. A stream over the
+      limit is closed at its source and the request gets 503.
+
   Applications that already run Plug, Bandit, or Cowboy can translate their
   request into `Snodo.Transport.StreamableHTTP.Request` and use the pure adapter
   directly instead of starting this listener.
@@ -37,6 +50,9 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   @default_max_body_bytes 2_000_000
   @default_subscription_keepalive_ms 15_000
   @default_request_timeout 30_000
+  @default_max_connections 1_024
+  @default_head_timeout 10_000
+  @default_max_subscriptions 256
 
   @impl true
   def start_link(opts) when is_list(opts) do
@@ -72,6 +88,10 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     path = validate_path!(Keyword.get(opts, :path, @default_path))
     validate_port!(port)
 
+    max_connections = positive_option!(opts, :max_connections, @default_max_connections)
+    head_timeout = positive_option!(opts, :head_timeout, @default_head_timeout)
+    max_subscriptions = positive_option!(opts, :max_subscriptions, @default_max_subscriptions)
+
     listen_opts = [
       :binary,
       packet: :raw,
@@ -98,6 +118,8 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
         request_timeout: Keyword.get(opts, :request_timeout, :default),
         deadline_timeout: deadline_timeout!(Keyword.get(opts, :request_timeout, :default)),
         read_timeout: Keyword.get(opts, :read_timeout, @default_read_timeout),
+        head_timeout: head_timeout,
+        max_subscriptions: max_subscriptions,
         max_header_bytes: Keyword.get(opts, :max_header_bytes, @default_max_header_bytes),
         max_body_bytes: Keyword.get(opts, :max_body_bytes, @default_max_body_bytes),
         subscription_keepalive_ms:
@@ -111,10 +133,15 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
           ])
       }
 
-      acceptor =
-        spawn_link(fn ->
-          accept_loop(listen_socket, connection_supervisor, connection_opts)
-        end)
+      acceptor_state = %{
+        listen_socket: listen_socket,
+        supervisor: connection_supervisor,
+        max_connections: max_connections,
+        connections: 0,
+        opts: connection_opts
+      }
+
+      acceptor = spawn_link(fn -> accept_loop(acceptor_state) end)
 
       {:ok,
        %{
@@ -161,11 +188,12 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     :ok
   end
 
-  defp accept_loop(listen_socket, connection_supervisor, opts) do
-    case :gen_tcp.accept(listen_socket) do
+  defp accept_loop(state) do
+    case :gen_tcp.accept(state.listen_socket) do
       {:ok, socket} ->
-        start_connection(connection_supervisor, socket, opts)
-        accept_loop(listen_socket, connection_supervisor, opts)
+        accepted_at = System.monotonic_time(:millisecond)
+        state = reap_connections(state)
+        accept_loop(admit_connection(state, socket, accepted_at))
 
       {:error, :closed} ->
         :ok
@@ -175,7 +203,37 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     end
   end
 
-  defp start_connection(supervisor, socket, opts) do
+  # The acceptor monitors every connection process it starts, so the DOWN
+  # messages waiting in its mailbox are exactly the connections that ended.
+  defp reap_connections(state) do
+    receive do
+      {:DOWN, _monitor, :process, _pid, _reason} ->
+        reap_connections(%{state | connections: state.connections - 1})
+    after
+      0 -> state
+    end
+  end
+
+  defp admit_connection(%{connections: count, max_connections: max} = state, socket, _at)
+       when count >= max do
+    _closed = :gen_tcp.close(socket)
+    state
+  end
+
+  defp admit_connection(state, socket, accepted_at) do
+    case start_connection(state.supervisor, socket, accepted_at, state.opts) do
+      {:ok, worker} ->
+        _monitor = Process.monitor(worker)
+        %{state | connections: state.connections + 1}
+
+      :error ->
+        state
+    end
+  end
+
+  defp start_connection(supervisor, socket, accepted_at, opts) do
+    opts = Map.put(opts, :head_deadline, accepted_at + opts.head_timeout)
+
     result =
       Task.Supervisor.start_child(supervisor, fn ->
         receive do
@@ -186,12 +244,19 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     case result do
       {:ok, worker} ->
         case :gen_tcp.controlling_process(socket, worker) do
-          :ok -> send(worker, {:serve_socket, socket})
-          {:error, _reason} -> :gen_tcp.close(socket)
+          :ok ->
+            send(worker, {:serve_socket, socket})
+            {:ok, worker}
+
+          {:error, _reason} ->
+            _closed = :gen_tcp.close(socket)
+            Process.exit(worker, :kill)
+            :error
         end
 
       {:error, _reason} ->
-        :gen_tcp.close(socket)
+        _closed = :gen_tcp.close(socket)
+        :error
     end
   end
 
@@ -358,8 +423,31 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
 
   defp execution_response({:completed, %Response{} = response}, _prepared, _opts), do: response
 
-  defp execution_response({:completed, %StreamResponse{} = response}, _prepared, opts) do
-    %{response | keepalive_ms: opts.subscription_keepalive_ms}
+  defp execution_response({:completed, %StreamResponse{} = response}, prepared, opts) do
+    case acquire_subscription_slot(opts) do
+      :ok ->
+        %{response | keepalive_ms: opts.subscription_keepalive_ms}
+
+      {:error, :exhausted} ->
+        :ok = Subscription.close(response.subscription, {:error, :overloaded})
+
+        StreamableHTTP.reject(
+          opts.runtime,
+          prepared,
+          Error.internal("Server subscription capacity exhausted"),
+          503
+        )
+
+      {:error, {:executor_unavailable, reason}} ->
+        :ok = Subscription.close(response.subscription, {:error, :executor_unavailable})
+
+        StreamableHTTP.reject(
+          opts.runtime,
+          prepared,
+          Error.internal("Request executor unavailable", reason),
+          500
+        )
+    end
   end
 
   defp execution_response({:timed_out, _timeout}, prepared, opts) do
@@ -427,11 +515,20 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
         {:ok, head, rest}
 
       :nomatch ->
-        case :gen_tcp.recv(socket, 0, opts.read_timeout) do
-          {:ok, chunk} -> recv_head(socket, acc <> chunk, opts)
-          {:error, reason} -> {:error, reason}
+        with {:ok, chunk} <- recv_head_chunk(socket, opts) do
+          recv_head(socket, acc <> chunk, opts)
         end
     end
+  end
+
+  # The head deadline covers the whole head, so a client cannot extend it by
+  # sending one byte per `:read_timeout`.
+  defp recv_head_chunk(socket, opts) do
+    remaining = opts.head_deadline - System.monotonic_time(:millisecond)
+
+    if remaining > 0,
+      do: :gen_tcp.recv(socket, 0, min(remaining, opts.read_timeout)),
+      else: {:error, :timeout}
   end
 
   @doc false
@@ -792,6 +889,16 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     :exit, reason -> {:error, {:executor_unavailable, reason}}
   end
 
+  # The connection process holds the slot, so the executor returns it when the
+  # connection ends, whether the stream completed, the client left, or the
+  # process crashed.
+  defp acquire_subscription_slot(opts) do
+    pool = {__MODULE__, opts.server_ref}
+    Executor.acquire_slot(opts.executor, pool, opts.max_subscriptions)
+  catch
+    :exit, reason -> {:error, {:executor_unavailable, reason}}
+  end
+
   defp start_request_timer(_key, :infinity), do: nil
 
   defp start_request_timer(key, timeout),
@@ -876,6 +983,13 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
 
   defp bracket_ipv6(host) do
     if String.contains?(host, ":"), do: "[#{host}]", else: host
+  end
+
+  defp positive_option!(opts, key, default) do
+    case Keyword.get(opts, key, default) do
+      value when is_integer(value) and value > 0 -> value
+      _invalid -> raise ArgumentError, "#{inspect(key)} must be a positive integer"
+    end
   end
 
   defp validate_keepalive!(value) when is_integer(value) and value > 0, do: value

@@ -3,11 +3,14 @@ defmodule Snodo.Transport.Plug.Stream do
   use GenServer
 
   alias Plug.Conn
+  alias Snodo.Server.Executor
   alias Snodo.Subscription
 
-  def open(response, owner, lease) do
-    {:ok, stream} = GenServer.start(__MODULE__, {response.subscription, owner, lease})
-    {:stream, response, stream}
+  def open(response, owner, lease, slot) do
+    case GenServer.start(__MODULE__, {response.subscription, owner, lease, slot}) do
+      {:ok, stream} -> {:stream, response, stream}
+      {:error, {:shutdown, reason}} -> {:error, reason}
+    end
   end
 
   def serve(conn, response, stream, keepalive_ms) do
@@ -38,20 +41,31 @@ defmodule Snodo.Transport.Plug.Stream do
   end
 
   @impl true
-  def init({subscription, owner, lease}) do
-    lease_monitor = Process.monitor(lease)
-    {worker, worker_monitor} = Subscription.start_worker(subscription, self())
+  def init({subscription, owner, lease, {executor, pool, limit}}) do
+    case acquire_slot(executor, pool, limit) do
+      :ok ->
+        lease_monitor = Process.monitor(lease)
+        {worker, worker_monitor} = Subscription.start_worker(subscription, self())
 
-    {:ok,
-     %{
-       subscription: subscription,
-       owner: owner,
-       lease: lease,
-       lease_monitor: lease_monitor,
-       worker: worker,
-       worker_monitor: worker_monitor,
-       close_reason: :disconnected
-     }}
+        {:ok,
+         %{
+           subscription: subscription,
+           owner: owner,
+           lease: lease,
+           lease_monitor: lease_monitor,
+           worker: worker,
+           worker_monitor: worker_monitor,
+           close_reason: :disconnected
+         }}
+
+      {:error, :exhausted} ->
+        :ok = Subscription.close(subscription, {:error, :overloaded})
+        {:stop, {:shutdown, :exhausted}}
+
+      {:error, :unavailable} ->
+        :ok = Subscription.close(subscription, {:error, :executor_unavailable})
+        {:stop, {:shutdown, :unavailable}}
+    end
   end
 
   @impl true
@@ -154,6 +168,12 @@ defmodule Snodo.Transport.Plug.Stream do
 
   defp chunk(conn, message),
     do: Conn.chunk(conn, ["event: message\r\ndata: ", JSON.encode!(message), "\r\n\r\n"])
+
+  defp acquire_slot(executor, pool, limit) do
+    Executor.acquire_slot(executor, pool, limit)
+  catch
+    :exit, _reason -> {:error, :unavailable}
+  end
 
   defp stop(stream, reason) do
     GenServer.call(stream, {:stop, reason})

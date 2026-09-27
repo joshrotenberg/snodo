@@ -10,9 +10,27 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite.Config do
           scope: (Snodo.Context.t() -> term()),
           timeout: pos_integer(),
           reap_batch_size: pos_integer(),
+          max_tasks: pos_integer() | :infinity,
+          max_active_tasks_per_scope: pos_integer() | :infinity,
           identity: reference()
         }
 
-  @enforce_keys [:repo, :scope, :timeout, :reap_batch_size, :identity]
-  defstruct [:repo, :scope, :timeout, :reap_batch_size, :identity]
+  @enforce_keys [
+    :repo,
+    :scope,
+    :timeout,
+    :reap_batch_size,
+    :max_tasks,
+    :max_active_tasks_per_scope,
+    :identity
+  ]
+  defstruct [
+    :repo,
+    :scope,
+    :timeout,
+    :reap_batch_size,
+    :max_tasks,
+    :max_active_tasks_per_scope,
+    :identity
+  ]
 end

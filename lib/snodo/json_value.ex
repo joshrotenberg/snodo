@@ -37,10 +37,14 @@ defmodule Snodo.JSONValue do
     :throw, {__MODULE__, :integer_too_long} -> {:error, :integer_too_long}
   end
 
-  defp bounded_integer(digits) when byte_size(digits) <= @max_integer_digits,
-    do: String.to_integer(digits)
+  # The decoder passes the literal with its sign; the limit counts digits only.
+  defp bounded_integer("-" <> digits = literal) when byte_size(digits) <= @max_integer_digits,
+    do: String.to_integer(literal)
 
-  defp bounded_integer(_digits), do: throw({__MODULE__, :integer_too_long})
+  defp bounded_integer(literal) when byte_size(literal) <= @max_integer_digits,
+    do: String.to_integer(literal)
+
+  defp bounded_integer(_literal), do: throw({__MODULE__, :integer_too_long})
 
   @doc """
   Returns whether a term is a JSON value under the rule above.

@@ -9,6 +9,10 @@ defmodule Snodo.Server.Executor do
   outcomes back to the submitting process while both it and the executor remain
   alive. Work is cancelled without delivery when its reply owner terminates.
 
+  Work that outlives its execution, such as an open subscription stream, can
+  hold a counted slot with `acquire_slot/4`. The executor releases the slot when
+  its owner exits.
+
   Direct callers can continue to invoke `Snodo.Server.dispatch/3` without
   starting this or any other process.
   """
@@ -90,6 +94,27 @@ defmodule Snodo.Server.Executor do
     GenServer.call(server, {:cancel, key, reason})
   end
 
+  @doc """
+  Takes one of `limit` slots in `pool` for `owner`, which defaults to the caller.
+
+  A pool is any term; each pool is counted separately. Slots are independent of
+  `:max_concurrency` and `:max_queue`. The executor monitors `owner` and returns
+  the slot to the pool when `owner` exits, for any reason. Returns
+  `{:error, :exhausted}` when `pool` already has `limit` slots taken.
+  """
+  @spec acquire_slot(server(), term(), pos_integer(), pid()) :: :ok | {:error, :exhausted}
+  def acquire_slot(server, pool, limit, owner \\ self()) do
+    unless is_integer(limit) and limit > 0 do
+      raise ArgumentError, "slot limit must be a positive integer"
+    end
+
+    unless is_pid(owner) do
+      raise ArgumentError, "slot owner must be a pid"
+    end
+
+    GenServer.call(server, {:acquire_slot, pool, limit, owner})
+  end
+
   @doc "Returns the current bounded-execution counters and limits."
   @spec stats(server()) :: %{
           running: non_neg_integer(),
@@ -120,7 +145,9 @@ defmodule Snodo.Server.Executor do
        jobs: %{},
        jobs_by_key: %{},
        jobs_by_task_ref: %{},
-       jobs_by_owner_monitor: %{}
+       jobs_by_owner_monitor: %{},
+       slots: %{},
+       slot_counts: %{}
      }}
   end
 
@@ -173,6 +200,24 @@ defmodule Snodo.Server.Executor do
 
       :error ->
         {:reply, {:error, :not_found}, state}
+    end
+  end
+
+  def handle_call({:acquire_slot, pool, limit, owner}, _from, state) do
+    taken = Map.get(state.slot_counts, pool, 0)
+
+    if taken >= limit do
+      {:reply, {:error, :exhausted}, state}
+    else
+      monitor = Process.monitor(owner)
+
+      state = %{
+        state
+        | slots: Map.put(state.slots, monitor, pool),
+          slot_counts: Map.put(state.slot_counts, pool, taken + 1)
+      }
+
+      {:reply, :ok, state}
     end
   end
 
@@ -235,10 +280,15 @@ defmodule Snodo.Server.Executor do
         end
 
       :error ->
-        if Map.has_key?(state.jobs_by_owner_monitor, monitor) do
-          {:noreply, abandon_owner(state, owner, reason)}
-        else
-          {:noreply, state}
+        cond do
+          Map.has_key?(state.jobs_by_owner_monitor, monitor) ->
+            {:noreply, abandon_owner(state, owner, reason)}
+
+          Map.has_key?(state.slots, monitor) ->
+            {:noreply, release_slot(state, monitor)}
+
+          true ->
+            {:noreply, state}
         end
     end
   end
@@ -420,6 +470,18 @@ defmodule Snodo.Server.Executor do
       :error ->
         state
     end
+  end
+
+  defp release_slot(state, monitor) do
+    {pool, slots} = Map.pop!(state.slots, monitor)
+
+    slot_counts =
+      case Map.fetch!(state.slot_counts, pool) do
+        1 -> Map.delete(state.slot_counts, pool)
+        taken -> Map.put(state.slot_counts, pool, taken - 1)
+      end
+
+    %{state | slots: slots, slot_counts: slot_counts}
   end
 
   defp fill_capacity(%{running: running, max_concurrency: max} = state)

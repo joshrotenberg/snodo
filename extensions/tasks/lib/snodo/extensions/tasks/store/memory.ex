@@ -34,6 +34,12 @@ defmodule Snodo.Extensions.Tasks.Store.Memory do
   descriptors, fenced renewable claims, store-clock retry eligibility, recovery
   scans, and creation-based TTL reaping. Its records themselves remain
   volatile.
+
+  `create/4` refuses a task with `{:error, {:capacity_exceeded, limit}}` when
+  the store already holds `:max_tasks` tasks (default 10,000) or the caller's
+  scope already has `:max_active_tasks_per_scope` working or input-required
+  tasks (default 100). Either may be `:infinity`. Both counts come from the
+  stored tasks, and an expired task counts until it is reaped.
   """
 
   use GenServer
@@ -52,6 +58,7 @@ defmodule Snodo.Extensions.Tasks.Store.Memory do
 
   @worker_events [:input_requested, :retry_requested, :completed, :failed]
   @request_events %{update: :input_responses_accepted, cancel: :cancelled}
+  @default_limits [max_tasks: 10_000, max_active_tasks_per_scope: 100]
 
   @type server :: GenServer.server()
   @type history_entry :: %{
@@ -131,7 +138,15 @@ defmodule Snodo.Extensions.Tasks.Store.Memory do
 
     unless is_function(clock, 0), do: raise(ArgumentError, ":clock must be an arity-0 function")
 
-    {:ok, %{entries: %{}, scope: scope, clock: clock, store_id: make_ref()}}
+    {:ok,
+     %{
+       entries: %{},
+       scope: scope,
+       clock: clock,
+       store_id: make_ref(),
+       max_tasks: limit_option!(opts, :max_tasks),
+       max_active_tasks_per_scope: limit_option!(opts, :max_active_tasks_per_scope)
+     }}
   end
 
   @impl true
@@ -154,6 +169,9 @@ defmodule Snodo.Extensions.Tasks.Store.Memory do
       Map.has_key?(state.entries, task.id) ->
         {:reply, {:error, :already_exists}, state}
 
+      limit = exceeded_limit(state, access.scope) ->
+        {:reply, {:error, {:capacity_exceeded, limit}}, state}
+
       true ->
         snapshot = Snapshot.new(task, work)
 
@@ -175,10 +193,13 @@ defmodule Snodo.Extensions.Tasks.Store.Memory do
   def handle_call({:get, task_id, access}, _from, state) do
     reply =
       with {:ok, entry} <- fetch_entry(state.entries, task_id),
-           :ok <- authorize_read(access, entry, state.store_id, task_id) do
+           :ok <- authorize_read(access, entry, state.store_id, task_id),
+           {:ok, now} <- read_clock(state.clock),
+           false <- expired_task?(entry.snapshot.task, now) do
         {:ok, entry.snapshot}
       else
-        _unknown_or_inaccessible -> :not_found
+        {:error, reason} -> {:error, reason}
+        _unknown_inaccessible_or_expired -> :not_found
       end
 
     {:reply, reply, state}
@@ -355,10 +376,13 @@ defmodule Snodo.Extensions.Tasks.Store.Memory do
          store_id,
          task_id,
          event_kind,
-         _now
+         now
        ) do
     cond do
       access.store_id != store_id or access.scope != entry.scope ->
+        :not_found
+
+      expired_task?(entry.snapshot.task, now) ->
         :not_found
 
       access.action not in [{:update, task_id}, {:cancel, task_id}] ->
@@ -516,6 +540,41 @@ defmodule Snodo.Extensions.Tasks.Store.Memory do
     |> Enum.filter(fn {_task_id, entry} -> expired_task?(entry.snapshot.task, now) end)
     |> Enum.map(&elem(&1, 0))
     |> Enum.sort()
+  end
+
+  defp exceeded_limit(state, scope) do
+    cond do
+      max_tasks_reached?(state) -> :max_tasks
+      active_limit_reached?(state, scope) -> :max_active_tasks_per_scope
+      true -> nil
+    end
+  end
+
+  defp max_tasks_reached?(%{max_tasks: :infinity}), do: false
+  defp max_tasks_reached?(state), do: map_size(state.entries) >= state.max_tasks
+
+  defp active_limit_reached?(%{max_active_tasks_per_scope: :infinity}, _scope), do: false
+
+  defp active_limit_reached?(state, scope) do
+    active =
+      Enum.count(state.entries, fn {_task_id, entry} ->
+        entry.scope == scope and not ProtocolTask.terminal?(entry.snapshot.task)
+      end)
+
+    active >= state.max_active_tasks_per_scope
+  end
+
+  defp limit_option!(opts, key) do
+    case Keyword.get(opts, key, Keyword.fetch!(@default_limits, key)) do
+      :infinity ->
+        :infinity
+
+      value when is_integer(value) and value > 0 ->
+        value
+
+      _invalid ->
+        raise ArgumentError, "#{inspect(key)} must be a positive integer or :infinity"
+    end
   end
 
   defp expired_task?(%ProtocolTask{ttl_ms: nil}, _now), do: false

@@ -157,6 +157,50 @@ defmodule Snodo.SubscriptionProtocolAcceptanceTest do
     assert_receive {:overclaiming_source_closed, {:error, %Snodo.Error{}}}
   end
 
+  test "an open subscription keeps its accepted filter, not the request's other params" do
+    {:ok, hub} = start_supervised({TestSubscriptionHub, owner: self()})
+    long_uri = "test://resource/" <> String.duplicate("a", 100)
+
+    # Decoding makes strings longer than 64 bytes into sub-binaries of the body.
+    notifications = %{"toolsListChanged" => true, "resourceSubscriptions" => [long_uri]}
+
+    params =
+      JSON.decode!(
+        JSON.encode!(%{
+          "notifications" => notifications,
+          "inputResponses" => %{"unused" => %{"action" => "accept"}},
+          "requestState" => "unused",
+          "padding" => String.duplicate("x", 100_000)
+        })
+      )
+
+    [decoded_uri] = params["notifications"]["resourceSubscriptions"]
+    assert :binary.referenced_byte_size(decoded_uri) > byte_size(decoded_uri)
+
+    assert {:stream, subscription} =
+             MCPTest.dispatch(runtime(hub),
+               id: "sub-retained",
+               protocol: "2026-07-28",
+               method: "subscriptions/listen",
+               params: params
+             )
+
+    assert subscription.accepted_filter == notifications
+
+    [uri] = subscription.accepted_filter["resourceSubscriptions"]
+    assert :binary.referenced_byte_size(uri) == byte_size(uri)
+    assert subscription.context.request_params == %{}
+    assert subscription.context.input_responses == %{}
+    assert subscription.context.request_state == nil
+    assert subscription.context.request_method == "subscriptions/listen"
+
+    assert_receive {:subscription_opened, "sub-retained", opened_filter}
+    [opened] = opened_filter["resourceSubscriptions"]
+    assert :binary.referenced_byte_size(opened) == byte_size(opened)
+
+    assert :ok = Subscription.close(subscription, :complete)
+  end
+
   defp runtime(hub) do
     TestFixtures.runtime(
       capabilities: %{

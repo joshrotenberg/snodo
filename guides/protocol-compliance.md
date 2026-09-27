@@ -107,8 +107,10 @@ event at a time in a dedicated worker. Protocol shaping stamps the listen
 request ID on the acknowledgement, every event, and the graceful terminal
 response. Stdio owns multiplexing and response-free client cancellation; native
 HTTP owns SSE headers, acknowledgement ordering, keepalives, socket disconnect
-cleanup, and graceful source completion. Neither long-lived stream consumes a
-slot in the generic request executor after `open/3` returns.
+cleanup, and graceful source completion. Neither long-lived stream counts
+against the executor's concurrency or queue after `open/3` returns. Each
+transport bounds open streams with `:max_subscriptions`; the HTTP transports
+keep that count in the executor as a slot the stream's process holds.
 
 `Snodo.Subscription.Hub` is an optional application-supervised implementation of
 that same source contract. It accepts only events selected by each listener's
@@ -161,9 +163,11 @@ request under an issued key is rejected. The DETS implementation proves reopen
 and boot-epoch fencing on one node; it is deliberately not evidence for
 distributed production claims. Both adapters make the entire aggregate eligible
 for reaping at `createdAt + ttlMs` and preserve `ttlMs: nil` indefinitely.
-Removal depends on explicit or scheduled cleanup; reads and claims are not an
-exact-deadline expiry fence. That is this project's permitted expiration policy,
-not a claim that the protocol mandates eager physical deletion for every server.
+Removal depends on explicit or scheduled cleanup, which a runner schedules every
+minute by default. Reads and request mutations treat a Task as unknown from
+`createdAt + ttlMs`; claims are not an exact-deadline expiry fence. That is
+this project's permitted expiration policy, not a claim that the protocol
+mandates eager physical deletion for every server.
 
 This work reimplements the architecture in Elixir; no tower-mcp source was
 copied. tower-mcp is licensed MIT OR Apache-2.0.

@@ -26,6 +26,19 @@ defmodule Snodo.Extensions.Tasks do
   use `await_input/3` while a task is running. A worker cannot complete with an
   ordinary input-required result or another task handle; these are failed as
   protocol errors instead of storing a continuation as a terminal result.
+
+  ## Limits
+
+  A task's work input is at most `:max_work_input_bytes` of JSON, default
+  262,144 (256 KiB), or `:infinity`; a larger one is refused with -32602 before
+  anything is stored. A `taskId` is at most 256 bytes and `subscriptions/listen`
+  takes at most 100 `taskIds`; beyond that the request is refused with -32602.
+
+  When the runner is at its `:max_jobs`, or the store at its `:max_tasks` or
+  `:max_active_tasks_per_scope`, task creation is refused with a -32603 error
+  whose data is `%{"retryable" => true, "limit" => name}`. Nothing is stored,
+  and the same call can succeed once running tasks finish or expired tasks are
+  reaped.
   """
 
   @behaviour Snodo.Extension
@@ -52,6 +65,10 @@ defmodule Snodo.Extensions.Tasks do
   @version "2026-07-28"
   @task_methods ["tasks/get", "tasks/update", "tasks/cancel"]
   @subscription_id_key "io.modelcontextprotocol/subscriptionId"
+  @default_max_work_input_bytes 262_144
+  @max_task_id_bytes 256
+  @max_subscription_task_ids 100
+  @capacity_limits [:max_jobs, :max_tasks, :max_active_tasks_per_scope]
 
   @impl true
   def id, do: @id
@@ -339,37 +356,40 @@ defmodule Snodo.Extensions.Tasks do
 
   defp create_checked_task(operation, name, params, context, next, task_overrides) do
     options = task_options(context)
+    work_options = Map.merge(options, task_overrides)
 
     with {:ok, store} <- fetch_store(context),
          {:ok, runner} <- fetch_runner(context),
          {:ok, id} <- generate_task_id(options),
          {:ok, now} <- read_clock(Map.get(options, :clock, &ProtocolTask.timestamp/0)),
          {:ok, task} <- new_task(id, now, options, task_overrides),
-         {:ok, work} <-
-           build_work(id, name, params, context, Map.merge(options, task_overrides)),
+         {:ok, work} <- build_work(id, name, params, context, work_options),
+         :ok <- check_work_input_size(work, work_options),
          {:ok, access} <- authorize(store, context, {:create, id}),
-         {:ok, snapshot} <- normalize_store_create(Store.create(store, task, work, access)),
-         :ok <- start_task(runner, snapshot, operation, context, next) do
+         fallback = fallback_work(operation, context, next, runner, task, work),
+         {:ok, snapshot} <- create_and_start(runner, task, work, access, fallback) do
       {:ok, Result.wire(ProtocolTask.creation_result(snapshot.task))}
     end
   end
 
-  defp start_task(runner, snapshot, operation, context, next) do
+  defp fallback_work(operation, context, next, runner, task, work) do
     task_context =
       context
-      |> put_task_runtime(snapshot.task.id, snapshot.work.idempotency_key, runner)
+      |> put_task_runtime(task.id, work.idempotency_key, runner)
       |> ExecutionContext.detach()
 
-    work = fn %Cancellation{} = cancellation ->
+    fn %Cancellation{} = cancellation ->
       execute_task(operation, %{task_context | cancellation: cancellation}, next)
     end
+  end
 
-    case Runner.start_task(runner, snapshot, work) do
-      :ok ->
-        :ok
-
-      {:error, reason} ->
-        {:error, Error.internal("Task runner rejected work", reason)}
+  # The runner checks its worker limit, stores the task, and starts it in one
+  # call, so a refused task is never stored.
+  defp create_and_start(runner, task, work, access, fallback_work) do
+    case Runner.create_task(runner, task, work, access, fallback_work) do
+      {:ok, %Snapshot{} = snapshot} -> {:ok, snapshot}
+      {:error, {:capacity_exceeded, limit}} -> {:error, capacity_error(limit)}
+      {:error, reason} -> {:error, Error.internal("Task creation failed", reason)}
     end
   end
 
@@ -514,11 +534,6 @@ defmodule Snodo.Extensions.Tasks do
     end
   end
 
-  defp normalize_store_create({:ok, %Snapshot{} = snapshot}), do: {:ok, snapshot}
-
-  defp normalize_store_create({:error, reason}),
-    do: {:error, Error.internal("Task creation failed", reason)}
-
   defp normalize_runner_mutation(:ok), do: :ok
   defp normalize_runner_mutation(:not_found), do: {:error, unknown_task_error()}
 
@@ -534,8 +549,11 @@ defmodule Snodo.Extensions.Tasks do
     generator = Map.get(options, :id_generator, &generate_id/0)
 
     case generator.() do
-      id when is_binary(id) and id != "" -> {:ok, id}
-      invalid -> {:error, Error.internal("Task id generator returned an invalid id", invalid)}
+      id when is_binary(id) and id != "" and byte_size(id) <= @max_task_id_bytes ->
+        {:ok, id}
+
+      invalid ->
+        {:error, Error.internal("Task id generator returned an invalid id", invalid)}
     end
   rescue
     exception -> {:error, Error.internal("Task id generator raised", exception)}
@@ -561,6 +579,23 @@ defmodule Snodo.Extensions.Tasks do
   catch
     kind, reason ->
       {:error, Error.internal("Task work builder terminated", {kind, reason, __STACKTRACE__})}
+  end
+
+  defp check_work_input_size(%Work{input: input}, options) do
+    case Map.get(options, :max_work_input_bytes, @default_max_work_input_bytes) do
+      :infinity ->
+        :ok
+
+      limit when is_integer(limit) and limit > 0 ->
+        size = input |> JSON.encode_to_iodata!() |> IO.iodata_length()
+
+        if size <= limit,
+          do: :ok,
+          else: {:error, Error.invalid_params("Task input is larger than #{limit} bytes")}
+
+      invalid ->
+        {:error, Error.internal("Invalid :max_work_input_bytes", invalid)}
+    end
   end
 
   defp normalize_built_work({:ok, %Work{} = work}, task_id), do: validate_work(work, task_id)
@@ -622,9 +657,18 @@ defmodule Snodo.Extensions.Tasks do
 
   defp validate_task_id(params) do
     case Map.fetch(params, "taskId") do
-      {:ok, task_id} when is_binary(task_id) and task_id != "" -> :ok
-      _missing_or_invalid -> {:error, Error.invalid_params("A non-empty taskId is required")}
+      {:ok, task_id} when is_binary(task_id) and task_id != "" ->
+        check_task_id_size(task_id)
+
+      _missing_or_invalid ->
+        {:error, Error.invalid_params("A non-empty taskId is required")}
     end
+  end
+
+  defp check_task_id_size(task_id) when byte_size(task_id) <= @max_task_id_bytes, do: :ok
+
+  defp check_task_id_size(_task_id) do
+    {:error, Error.invalid_params("taskId is longer than #{@max_task_id_bytes} bytes")}
   end
 
   defp validate_input_responses(responses) do
@@ -634,10 +678,23 @@ defmodule Snodo.Extensions.Tasks do
     end
   end
 
+  defp validate_task_ids(task_ids) when length(task_ids) > @max_subscription_task_ids do
+    message = "taskIds must contain at most #{@max_subscription_task_ids} entries"
+    {:error, Error.invalid_params(message)}
+  end
+
   defp validate_task_ids(task_ids) do
-    if Enum.all?(task_ids, &(is_binary(&1) and &1 != "")),
-      do: :ok,
-      else: {:error, Error.invalid_params("taskIds must contain non-empty strings")}
+    cond do
+      not Enum.all?(task_ids, &(is_binary(&1) and &1 != "")) ->
+        {:error, Error.invalid_params("taskIds must contain non-empty strings")}
+
+      Enum.any?(task_ids, &(byte_size(&1) > @max_task_id_bytes)) ->
+        message = "taskIds entries must be at most #{@max_task_id_bytes} bytes"
+        {:error, Error.invalid_params(message)}
+
+      true ->
+        :ok
+    end
   end
 
   defp contribute_task_ids(task_ids, context) do
@@ -708,6 +765,20 @@ defmodule Snodo.Extensions.Tasks do
           "extensions" => %{@id => %{}}
         }
       }
+    }
+  end
+
+  defp capacity_error(limit) do
+    data =
+      if limit in @capacity_limits,
+        do: %{"retryable" => true, "limit" => Atom.to_string(limit)},
+        else: %{"retryable" => true}
+
+    %Error{
+      code: -32_603,
+      message: "Task capacity exhausted",
+      kind: :execution,
+      data: data
     }
   end
 
