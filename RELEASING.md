@@ -42,7 +42,10 @@ push to `main` ([release-please.yml](.github/workflows/release-please.yml)):
    release, and runs the `publish-hex` job. That job publishes the core, then
    `snodo_tasks`, `snodo_plug`, and `snodo_jsv`, then the two Tasks stores,
    waiting for each tier to appear in the Hex index. It skips a package whose
-   version is already on Hex, so a failed run can be rerun.
+   version is already on Hex, so a failed run can be rerun. It then builds six
+   tarballs, fetches the published archives from Hex, and requires byte-for-byte
+   matches before attesting the local builds and attaching them to the GitHub
+   release. A rerun checks existing release assets instead of replacing them.
 
 The workflow needs two secrets:
 
@@ -62,6 +65,26 @@ requests" must stay on for the fallback to work.
 
 Every action in the workflows is pinned to a commit SHA, with its version in a
 comment. Dependabot updates both.
+
+## Verifying release assets
+
+Download an archive from the GitHub release and verify its build provenance:
+
+```sh
+gh release download vX.Y.Z --pattern 'snodo-X.Y.Z.tar'
+gh attestation verify snodo-X.Y.Z.tar -R joshrotenberg/snodo \
+  --signer-workflow joshrotenberg/snodo/.github/workflows/release-please.yml
+```
+
+The attestation binds the tarball's digest to the release workflow run. The
+publish job compares each built tarball with the archive fetched from Hex, so
+the release asset and the published package have the same bytes. Verification
+checks the workflow identity and archive digest; it does not audit the source,
+dependencies, or the behavior of the package after installation. A manual
+`mix hex.publish` outside this workflow does not create these assets or
+attestations. The first release with these assets will exercise the attestation
+and upload steps in GitHub Actions. Pull request CI can check workflow syntax
+and local package builds, but cannot create a release attestation.
 
 ## Before merging a release pull request
 
