@@ -93,6 +93,9 @@ defmodule Snodo.Extensions.Tasks.SQLite.IntegrationTest do
   @race_await_ms @busy_timeout_ms + 5_000
   @retry_delay_ms 1_500
 
+  use Snodo.Extensions.Tasks.Store.ContractTest,
+    start_store: &__MODULE__.start_contract_store/2
+
   setup_all do
     database = unique_database("suite")
 
@@ -145,6 +148,16 @@ defmodule Snodo.Extensions.Tasks.SQLite.IntegrationTest do
   setup do
     query!(LiveRepo, "DELETE FROM mcp_tasks")
     :ok
+  end
+
+  @doc false
+  def start_contract_store(%{config: config}, opts) do
+    config =
+      Enum.reduce(opts, config, fn {key, value}, config ->
+        Map.put(config, key, value)
+      end)
+
+    {SQLite, config}
   end
 
   @tag mcp_contract: ["tasks-sqlite-migration"]

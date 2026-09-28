@@ -60,6 +60,9 @@ defmodule Snodo.Extensions.Tasks.Postgres.LiveTest do
   @moduletag :postgres_live
   @moduletag timeout: 20_000
 
+  use Snodo.Extensions.Tasks.Store.ContractTest,
+    start_store: &__MODULE__.start_contract_store/2
+
   @migration_version 2_026_082_502
   @migration_v1_version 2_026_082_501
   @migration_v2_version 2_026_082_502
@@ -119,6 +122,16 @@ defmodule Snodo.Extensions.Tasks.Postgres.LiveTest do
   setup %{schema: schema} do
     query!("TRUNCATE TABLE #{qualified(schema, "mcp_tasks")} CASCADE")
     :ok
+  end
+
+  @doc false
+  def start_contract_store(%{config: config}, opts) do
+    config =
+      Enum.reduce(opts, config, fn {key, value}, config ->
+        Map.put(config, key, value)
+      end)
+
+    {Postgres, config}
   end
 
   @tag mcp_contract: ["tasks-postgres-live-migration"]

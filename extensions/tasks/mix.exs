@@ -18,11 +18,11 @@ defmodule Snodo.Extensions.Tasks.MixProject do
       package: [
         licenses: ["MIT"],
         links: %{"GitHub" => @source_url, "Changelog" => @source_url <> "/blob/main/CHANGELOG.md"},
-        files: ~w(lib/snodo mix.exs README.md LICENSE .formatter.exs)
+        files: ~w(lib/snodo guides mix.exs README.md LICENSE .formatter.exs)
       ],
       docs: [
         main: "readme",
-        extras: ["README.md"],
+        extras: ["README.md", "guides/custom-stores.md"],
         source_ref: "v#{@version}",
         source_url_pattern: "#{@source_url}/blob/v#{@version}/extensions/tasks/%{path}#L%{line}"
       ],
