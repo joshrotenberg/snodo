@@ -18,7 +18,7 @@ defmodule Snodo.Extensions.Tasks.Postgres.MixProject do
       package: [
         licenses: ["MIT"],
         links: %{"GitHub" => @source_url, "Changelog" => @source_url <> "/blob/main/CHANGELOG.md"},
-        files: ~w(lib mix.exs README.md LICENSE .formatter.exs)
+        files: ~w(lib/snodo mix.exs README.md LICENSE .formatter.exs)
       ],
       docs: [
         main: "readme",
