@@ -697,11 +697,14 @@ defmodule Snodo.Extensions.Tasks.SQLite.IntegrationTest do
       assert database_now_us() < rearmed_retry_at_us
       assert_receive {:sqlite_claim_ready, claimant_process}, 2_000
       send(claimant_process, :run_sqlite_claim)
-      assert Task.yield(claimant, 75) == nil
-      wait_until_database_time!(rearmed_retry_at_us)
       release_writer(holder)
+      due_at_us = row!(task_id).retry_at_us
+      assert due_at_us == rearmed_retry_at_us
+      wait_until_database_time!(due_at_us)
 
-      assert {:ok, %Snapshot{retry_count: 1}, due_lease} = Task.await(claimant, 3_000)
+      assert {:ok, %Snapshot{retry_count: 1}, due_lease} =
+               claim_when_due!(store, task_id, claimant)
+
       assert {:ok, %{checked: 1, errors: []}} = SQLite.audit(config, limit: 10)
       assert :ok = Store.release(store, due_lease)
     after
@@ -1080,6 +1083,40 @@ defmodule Snodo.Extensions.Tasks.SQLite.IntegrationTest do
     end)
   end
 
+  defp claim_when_due!(store, task_id, claimant) do
+    deadline = System.monotonic_time(:millisecond) + 3_000
+    claim_when_due(store, task_id, Task.await(claimant, 3_000), deadline)
+  end
+
+  defp claim_when_due(_store, _task_id, {:ok, %Snapshot{}, _lease} = claimed, _deadline),
+    do: claimed
+
+  defp claim_when_due(store, task_id, :not_found, deadline),
+    do: retry_due_claim(store, task_id, :not_found, deadline)
+
+  defp claim_when_due(store, task_id, {:deferred, _} = result, deadline),
+    do: retry_due_claim(store, task_id, result, deadline)
+
+  defp claim_when_due(_store, _task_id, result, _deadline),
+    do: flunk("unexpected SQLite retry claim result: #{inspect(result)}")
+
+  defp retry_due_claim(store, task_id, result, deadline) do
+    if System.monotonic_time(:millisecond) >= deadline do
+      flunk("SQLite retry was not claimable after its due time: #{inspect(result)}")
+    end
+
+    receive do
+    after
+      10 ->
+        claim_when_due(
+          store,
+          task_id,
+          Store.claim(store, task_id, "due-owner", @lease_ms),
+          deadline
+        )
+    end
+  end
+
   defp eventually_snapshot!(store, task_id, predicate) do
     deadline = System.monotonic_time(:millisecond) + 3_000
     eventually_snapshot(store, task_id, predicate, deadline)
@@ -1177,16 +1214,22 @@ defmodule Snodo.Extensions.Tasks.SQLite.IntegrationTest do
   end
 
   defp wait_until_database_time(target_us, deadline) do
+    now_us = database_now_us()
+
     cond do
-      database_now_us() >= target_us ->
+      now_us >= target_us ->
         :ok
 
       System.monotonic_time(:millisecond) >= deadline ->
         flunk("SQLite clock did not reach target")
 
       true ->
-        Process.sleep(5)
-        wait_until_database_time(target_us, deadline)
+        remaining_ms = max(1, div(target_us - now_us + 999, 1_000))
+
+        receive do
+        after
+          min(remaining_ms, 25) -> wait_until_database_time(target_us, deadline)
+        end
     end
   end
 
