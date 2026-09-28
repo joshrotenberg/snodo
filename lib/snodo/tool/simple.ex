@@ -28,6 +28,9 @@ defmodule Snodo.Tool.Simple do
   keywords into a generated property, providing a local escape hatch without
   abandoning the concise form. The raw `Snodo.Tool` DSL remains available when
   the input root itself needs complete hand-authored control.
+
+  The `:title`, `:icons`, and `:metadata` options set the corresponding
+  `Snodo.Tool` definition fields. They are validated when the module compiles.
   """
 
   alias Snodo.JSONValue
@@ -71,11 +74,19 @@ defmodule Snodo.Tool.Simple do
 
   defmacro __using__(opts) do
     name = Keyword.fetch!(opts, :name)
+    title = Keyword.get(opts, :title)
     description = Keyword.get(opts, :description)
-    root_options = Keyword.drop(opts, [:name, :description])
+    icons = Keyword.get(opts, :icons, [])
+    metadata = Keyword.get(opts, :metadata, quote(do: %{}))
+    root_options = Keyword.drop(opts, [:name, :title, :description, :icons, :metadata])
 
     quote do
-      use Snodo.Tool, name: unquote(name), description: unquote(description)
+      use Snodo.Tool,
+        name: unquote(name),
+        title: unquote(title),
+        description: unquote(description),
+        icons: unquote(icons),
+        metadata: unquote(metadata)
 
       import Snodo.Tool.Simple, only: [argument: 2, argument: 3]
 

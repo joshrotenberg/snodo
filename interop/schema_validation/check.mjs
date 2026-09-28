@@ -142,7 +142,14 @@ async function exercise(mode) {
   try {
     await peer.initialize();
     await call("server/discover", {});
-    await call("tools/list", {});
+    const listed = await call("tools/list", {});
+    const tool = listed.final.result.tools.find((entry) => entry.name === "schema_preview");
+    assert.equal(tool.title, "Schema preview");
+    assert.deepEqual(tool.icons, [{ src: "https://example.test/schema-preview.png", mimeType: "image/png" }]);
+    assert.deepEqual(tool._meta, { "com.example/tool": { fixture: true } });
+    const invalidTool = structuredClone(listed.final);
+    invalidTool.result.tools.find((entry) => entry.name === "schema_preview").icons = [{ src: 7 }];
+    assert.throws(() => validateEmission("tools/list", invalidTool));
     const normal = await call("tools/call", { name: "schema_preview", arguments: {} });
     assert.equal(normal.final.result.content[0].text, "schema-preview-ok");
     const progress = await call("tools/call", {
