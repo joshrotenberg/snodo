@@ -102,6 +102,7 @@ children = [
 
 The endpoint is `http://127.0.0.1:4000/mcp`. For an existing Plug or Phoenix
 application, use `snodo_plug` instead. See [Transports](transports.md).
+For a Phoenix endpoint, follow the [router and Bandit setup](transports.md#phoenix-endpoint).
 
 The same client connects to either:
 

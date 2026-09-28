@@ -130,6 +130,89 @@ the [`snodo_plug` documentation](https://hexdocs.pm/snodo_plug) and the
 [application stack](application-stack.md) for choosing between the native
 listener and Plug.
 
+### Phoenix endpoint
+
+Add `snodo_plug` and Bandit to the Phoenix application's dependencies. Keep the
+existing endpoint; start the executor before it in the application supervisor:
+
+```elixir
+children = [
+  {Snodo.Server.Executor,
+   name: MyApp.SnodoExecutor, max_concurrency: 32, max_queue: 128},
+  MyAppWeb.Endpoint
+]
+```
+
+Mount the transport in a dedicated router pipeline. The authentication Plug
+must verify the caller, assign trusted identity with
+`Plug.Conn.assign(conn, :mcp_auth, %{principal: user.id})`, and send a 401 or 403
+response with `halt/1` when access is denied. Do not copy an unverified header
+into the assign. A verified client-instance identifier may also be assigned to
+`:mcp_cancellation_scope` for cross-request cancellation; distinguish client
+instances even when they share a user. The transport does not authenticate
+callers itself.
+
+```elixir
+pipeline :mcp do
+  plug MyAppWeb.Plugs.MCPAuth
+end
+
+scope "/" do
+  pipe_through :mcp
+
+  forward "/mcp", Snodo.Transport.Plug,
+    runtime: MyApp.MCPServer.runtime(),
+    executor: MyApp.SnodoExecutor,
+    path: "/mcp",
+    max_body_bytes: 2_000_000,
+    read_timeout: 5_000,
+    body_timeout: 10_000,
+    request_timeout: 30_000,
+    allowed_origin_hosts: ["app.example.com"],
+    allowed_hosts: ["app.example.com"]
+end
+```
+
+`path:` is the full request path and must match the forwarded route. Replace
+the example hosts with the public host names used by clients. An Origin header,
+when present, is checked against `allowed_origin_hosts`; a value such as
+`"localhost:3000"` also restricts the port. This is a host check, not a CORS
+policy. `allowed_hosts` checks the request Host header, so include the Host
+value your reverse proxy forwards. See the [`snodo_plug` options](https://hexdocs.pm/snodo_plug)
+for defaults and response behavior.
+
+The Plug needs the raw request body. Do not run `Plug.Parsers` in the endpoint or
+the `:mcp` pipeline before this route. If the generated endpoint parses all
+requests, make its parser conditional on `conn.request_path` so `/mcp` reaches
+the transport unconsumed; keep the parser for the other routes. The MCP request
+requires `Content-Length`, and a request declaring `Transfer-Encoding` gets 411.
+
+With [Bandit's Phoenix adapter](https://bandit.hexdocs.pm/Bandit.PhoenixAdapter.html),
+set endpoint HTTP bounds alongside the transport bounds above. For example,
+merge these options into the application's existing endpoint configuration:
+
+```elixir
+config :my_app, MyAppWeb.Endpoint,
+  adapter: Bandit.PhoenixAdapter,
+  http: [
+    port: 4000,
+    http_1_options: [max_header_length: 10_000, max_header_count: 50],
+    http_2_options: [enabled: false],
+    thousand_island_options: [
+      transport_options: [send_timeout: 5_000, send_timeout_close: true]
+    ]
+  ]
+```
+
+Set connection, header, read, write, and shutdown limits on the endpoint and
+reverse proxy as well. The transport's `body_timeout` is checked when an adapter
+read returns; under HTTP/2, a client sending small DATA frames can keep that
+read open. Disable HTTP/2 on an endpoint serving untrusted MCP clients, as
+above, or buffer request bodies at a proxy. Disabling it on the endpoint affects
+all routes there. The finite send timeout bounds writes that the transport
+cannot interrupt. The [`21_plug_bandit.exs` example](https://github.com/joshrotenberg/snodo/blob/main/examples/21_plug_bandit.exs)
+checks the transport without adding Phoenix to this repository's dependencies.
+
 ## Other hosts
 
 `Snodo.Transport.StreamableHTTP.prepare/3` admits and decodes a
