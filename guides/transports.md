@@ -173,18 +173,37 @@ scope "/" do
 end
 ```
 
-`path:` is the full request path and must match the forwarded route. Replace
-the example hosts with the public host names used by clients. An Origin header,
-when present, is checked against `allowed_origin_hosts`; a value such as
-`"localhost:3000"` also restricts the port. This is a host check, not a CORS
-policy. `allowed_hosts` checks the request Host header, so include the Host
+Phoenix's `forward` removes the `/mcp` prefix from `conn.path_info` and adds it
+to `conn.script_name`, but leaves `conn.request_path` as `/mcp`.
+`Snodo.Transport.Plug` compares `path:` with `conn.request_path`, so keep the
+full public path in that option. Replace the example hosts with the public host
+names used by clients. An Origin header, when present, is checked against
+`allowed_origin_hosts`; a value such as `"localhost:3000"` also restricts the
+port. This is a host check, not a CORS policy. `allowed_hosts` checks the
+request Host header, so include the Host
 value your reverse proxy forwards. See the [`snodo_plug` options](https://hexdocs.pm/snodo_plug)
 for defaults and response behavior.
 
-The Plug needs the raw request body. Do not run `Plug.Parsers` in the endpoint or
-the `:mcp` pipeline before this route. If the generated endpoint parses all
-requests, make its parser conditional on `conn.request_path` so `/mcp` reaches
-the transport unconsumed; keep the parser for the other routes. The MCP request
+The Plug needs the raw request body. Phoenix endpoint plugs run before the
+router pipelines, and a generated endpoint commonly runs `Plug.Parsers` there.
+Replace that parser plug with a conditional wrapper before `plug MyAppWeb.Router`;
+keep the application's existing parser options for all other paths:
+
+```elixir
+@parser_opts Plug.Parsers.init(
+  parsers: [:urlencoded, :multipart, :json],
+  pass: ["*/*"],
+  json_decoder: Jason
+)
+
+plug :parse_non_mcp
+plug MyAppWeb.Router
+
+defp parse_non_mcp(%Plug.Conn{request_path: "/mcp"} = conn, _opts), do: conn
+defp parse_non_mcp(conn, _opts), do: Plug.Parsers.call(conn, @parser_opts)
+```
+
+Do not add a body parser to the `:mcp` router pipeline. The MCP request
 requires `Content-Length`, and a request declaring `Transfer-Encoding` gets 411.
 
 With [Bandit's Phoenix adapter](https://bandit.hexdocs.pm/Bandit.PhoenixAdapter.html),
