@@ -697,10 +697,10 @@ defmodule Snodo.Extensions.Tasks.SQLite.IntegrationTest do
       assert database_now_us() < rearmed_retry_at_us
       assert_receive {:sqlite_claim_ready, claimant_process}, 2_000
       send(claimant_process, :run_sqlite_claim)
+      wait_until_database_time!(rearmed_retry_at_us)
       release_writer(holder)
       due_at_us = row!(task_id).retry_at_us
       assert due_at_us == rearmed_retry_at_us
-      wait_until_database_time!(due_at_us)
 
       assert {:ok, %Snapshot{retry_count: 1}, due_lease} =
                claim_when_due!(store, task_id, claimant)
