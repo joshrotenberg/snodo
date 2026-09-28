@@ -3,12 +3,24 @@ defmodule Snodo.Tool.Definition do
 
   @type t :: %__MODULE__{
           name: String.t(),
+          title: String.t() | nil,
           description: String.t() | nil,
           input_schema: map(),
           output_schema: map() | nil,
-          annotations: map()
+          annotations: map(),
+          icons: [map()],
+          metadata: map()
         }
 
   @enforce_keys [:name, :input_schema]
-  defstruct [:name, :description, :input_schema, :output_schema, annotations: %{}]
+  defstruct [
+    :name,
+    :title,
+    :description,
+    :input_schema,
+    :output_schema,
+    annotations: %{},
+    icons: [],
+    metadata: %{}
+  ]
 end

@@ -30,7 +30,10 @@ defmodule SchemaFixture.Tool do
   @moduledoc false
   use Snodo.Tool,
     name: "schema_preview",
-    description: "Produces ordinary, input-required, and error preview results"
+    title: "Schema preview",
+    description: "Produces ordinary, input-required, and error preview results",
+    icons: [%{"src" => "https://example.test/schema-preview.png", "mimeType" => "image/png"}],
+    metadata: %{"com.example/tool" => %{"fixture" => true}}
 
   input_schema(%{
     "type" => "object",
@@ -80,7 +83,10 @@ defmodule SchemaFixture.InputResource do
 
   @impl true
   def read(%{"uri" => uri}, context) do
-    SchemaFixture.Input.resolve(context, &Snodo.Result.resource_read(Snodo.Resource.text(uri, &1)))
+    SchemaFixture.Input.resolve(
+      context,
+      &Snodo.Result.resource_read(Snodo.Resource.text(uri, &1))
+    )
   end
 end
 
@@ -114,7 +120,8 @@ defmodule SchemaFixture.Prompt do
     {:ok, Snodo.Result.completion(values, total: length(values), has_more: false)}
   end
 
-  defp result(label), do: Snodo.Result.prompt_get(Snodo.Prompt.message(:user, Snodo.Prompt.text(label)))
+  defp result(label),
+    do: Snodo.Result.prompt_get(Snodo.Prompt.message(:user, Snodo.Prompt.text(label)))
 end
 
 defmodule SchemaFixture.Source do

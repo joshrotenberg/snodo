@@ -390,8 +390,12 @@ defmodule Snodo.Protocol.Legacy do
     operation |> shape(result, context) |> metadata(result)
   end
 
-  defp shape(:tools_list, %Result{value: tools} = result, _context) do
-    tools = tools |> Enum.filter(&expressible?/1) |> Enum.map(&tool_definition/1)
+  defp shape(:tools_list, %Result{value: tools} = result, context) do
+    tools =
+      tools
+      |> Enum.filter(&expressible?/1)
+      |> Enum.map(&tool_definition(&1, context.protocol_version))
+
     paginated(%{"tools" => tools}, result)
   end
 
@@ -474,16 +478,25 @@ defmodule Snodo.Protocol.Legacy do
   defp tool_result(%Result{kind: :raw, value: value}),
     do: value |> Map.put_new("content", []) |> Map.put_new("isError", false)
 
-  defp tool_definition(tool) do
+  defp tool_definition(tool, version) do
     %{
       "name" => tool.name,
+      "title" => tool.title,
       "description" => tool.description,
       "inputSchema" => tool.input_schema,
       "outputSchema" => tool.output_schema,
-      "annotations" => tool.annotations
+      "annotations" => tool.annotations,
+      "icons" => tool.icons,
+      "_meta" => tool.metadata
     }
-    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+    |> Enum.reject(fn
+      {_key, nil} -> true
+      {"icons", []} -> true
+      {"_meta", metadata} when metadata == %{} -> true
+      _entry -> false
+    end)
     |> Map.new()
+    |> implementation(version)
   end
 
   defp paginated(value, result), do: maybe_put(value, "nextCursor", result.metadata[:next_cursor])

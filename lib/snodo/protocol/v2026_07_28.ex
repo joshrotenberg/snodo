@@ -1427,14 +1427,19 @@ defmodule Snodo.Protocol.V2026_07_28 do
   defp shape_tool_definition(%Definition{} = definition) do
     %{
       "name" => definition.name,
+      "title" => definition.title,
       "description" => definition.description,
       "inputSchema" => definition.input_schema,
       "outputSchema" => definition.output_schema,
-      "annotations" => definition.annotations
+      "annotations" => definition.annotations,
+      "icons" => definition.icons,
+      "_meta" => definition.metadata
     }
     |> Enum.reduce(%{}, fn
       {_key, nil}, shaped -> shaped
       {"annotations", value}, shaped when value == %{} -> shaped
+      {"icons", []}, shaped -> shaped
+      {"_meta", value}, shaped when value == %{} -> shaped
       {key, value}, shaped -> Map.put(shaped, key, value)
     end)
   end

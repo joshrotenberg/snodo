@@ -60,6 +60,23 @@ Options include `:required`, `:description`, `:enum`, `:default`, `:pattern`,
 the length, item, and numeric bounds, and `:schema` to merge any other JSON
 Schema keywords.
 
+Tools can set `title:`, `icons:`, and `metadata:` on `use Snodo.Tool`,
+`use Snodo.Tool.Simple`, or an inline `tool` block. Raw tools can also set
+them with `title/1`, `icons/1`, and `metadata/1` in the module body. For example:
+
+```elixir
+use Snodo.Tool.Simple,
+  name: "search",
+  title: "Search packages",
+  icons: [%{"src" => "https://example.com/search.png", "mimeType" => "image/png"}],
+  metadata: %{"com.example/search" => %{"category" => "catalog"}}
+```
+
+Each icon needs an absolute URI `"src"`; `"mimeType"`, `"sizes"`, and
+`"theme"` are optional. Metadata keys follow the MCP `_meta` key format, and
+values must be JSON values. The 2025-06-18 dialect emits `title` and `_meta`;
+2025-11-25 and 2026-07-28 also emit `icons`. Absent values are omitted.
+
 `use Snodo.Tool` takes a hand-written schema instead, and can declare an output
 schema and annotations:
 
