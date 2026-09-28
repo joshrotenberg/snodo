@@ -39,6 +39,7 @@ effects.
 
 - [Tasks package](https://hexdocs.pm/snodo_tasks), including the
   [stress-testing harness](https://github.com/joshrotenberg/snodo/blob/main/extensions/tasks/stress-testing.md)
+- [Writing a Tasks store](https://hexdocs.pm/snodo_tasks/custom-stores.html)
 - [PostgreSQL store](https://hexdocs.pm/snodo_tasks_postgres)
 - [SQLite store](https://hexdocs.pm/snodo_tasks_sqlite)
 

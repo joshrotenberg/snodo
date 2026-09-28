@@ -30,6 +30,8 @@ produces exact invariant results plus descriptive timings, and accepts `--json`
 for artifact collection. See
 [`stress-testing.md`](https://github.com/joshrotenberg/snodo/blob/main/extensions/tasks/stress-testing.md).
 
+To implement another backend, see the [custom store guide](guides/custom-stores.md).
+
 The frozen Tasks conformance fixture combines core and extension tools. Start
 it from the `conformance/fixture` Mix project at the repository root, which has
 the core, Tasks, and the Plug adapter on its code path:
