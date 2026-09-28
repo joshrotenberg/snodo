@@ -165,9 +165,11 @@ defmodule Snodo.Subscription.Hub do
     {:ok,
      %{
        subscriptions: %{},
+       uri_index: %{},
        max_buffer: config.max_buffer,
        overflow: config.overflow,
        instrumentation: config.instrumentation,
+       queued: 0,
        dropped: 0
      }}
   end
@@ -177,7 +179,8 @@ defmodule Snodo.Subscription.Hub do
     token = make_ref()
     subscription = %{filter: filter, queue: :queue.new(), waiter: nil, closed?: false}
     subscriptions = Map.put(state.subscriptions, token, subscription)
-    next = %{state | subscriptions: subscriptions}
+    uri_index = index_uris(state.uri_index, filter, token)
+    next = %{state | subscriptions: subscriptions, uri_index: uri_index}
 
     Instrumentation.emit(
       state.instrumentation,
@@ -207,8 +210,9 @@ defmodule Snodo.Subscription.Hub do
       {nil, _subscriptions} ->
         {:reply, :ok, state}
 
-      {%{waiter: waiter}, subscriptions} ->
+      {%{waiter: waiter, filter: filter, queue: queue}, subscriptions} ->
         if waiter, do: GenServer.reply(waiter, :closed)
+        uri_index = unindex_uris(state.uri_index, filter, token)
 
         Instrumentation.emit(
           state.instrumentation,
@@ -217,20 +221,28 @@ defmodule Snodo.Subscription.Hub do
           %{reason: classify_close_reason(reason)}
         )
 
-        {:reply, :ok, %{state | subscriptions: subscriptions}}
+        next = %{
+          state
+          | subscriptions: subscriptions,
+            uri_index: uri_index,
+            queued: state.queued - :queue.len(queue)
+        }
+
+        {:reply, :ok, next}
     end
   end
 
   def handle_call({:publish, event}, _from, state) do
-    {subscriptions, report} = publish_to_subscriptions(state, event)
+    {subscriptions, report, queued_delta} = publish_to_subscriptions(state, event)
 
     next_state = %{
       state
       | subscriptions: subscriptions,
+        queued: state.queued + queued_delta,
         dropped: state.dropped + report.dropped
     }
 
-    measurements = Map.put(report, :queued, queued_count(subscriptions))
+    measurements = Map.put(report, :queued, next_state.queued)
     metadata = event_metadata(event)
 
     Instrumentation.emit(
@@ -262,23 +274,20 @@ defmodule Snodo.Subscription.Hub do
     Instrumentation.emit(
       state.instrumentation,
       [:snodo, :subscription, :complete],
-      %{subscriptions: map_size(subscriptions), queued: queued_count(subscriptions)},
+      %{subscriptions: map_size(subscriptions), queued: state.queued},
       %{}
     )
 
-    {:reply, :ok, %{state | subscriptions: subscriptions}}
+    {:reply, :ok, %{state | subscriptions: subscriptions, uri_index: %{}}}
   end
 
   def handle_call(:stats, _from, state) do
     closing = Enum.count(state.subscriptions, fn {_token, entry} -> entry.closed? end)
 
-    queued =
-      Enum.sum(Enum.map(state.subscriptions, fn {_token, entry} -> :queue.len(entry.queue) end))
-
     stats = %{
       subscriptions: map_size(state.subscriptions),
       closing: closing,
-      queued: queued,
+      queued: state.queued,
       dropped: state.dropped,
       max_buffer: state.max_buffer,
       overflow: state.overflow
@@ -291,7 +300,7 @@ defmodule Snodo.Subscription.Hub do
     case :queue.out(subscription.queue) do
       {{:value, event}, queue} ->
         subscriptions = put_in(state.subscriptions, [token, :queue], queue)
-        {:reply, {:ok, event}, %{state | subscriptions: subscriptions}}
+        {:reply, {:ok, event}, %{state | subscriptions: subscriptions, queued: state.queued - 1}}
 
       {:empty, _queue} when subscription.closed? ->
         {:reply, :closed, state}
@@ -302,14 +311,66 @@ defmodule Snodo.Subscription.Hub do
     end
   end
 
-  defp publish_to_subscriptions(state, event) do
-    initial_report = %{matched: 0, delivered: 0, buffered: 0, dropped: 0}
+  defp publish_to_subscriptions(state, %Event{kind: :resource_updated, uri: uri} = event) do
+    tokens = Map.get(state.uri_index, uri, MapSet.new())
 
-    Enum.reduce(state.subscriptions, {%{}, initial_report}, fn {token, subscription},
-                                                               {subscriptions, report} ->
-      {subscription, report} = deliver(subscription, event, state, report)
-      {Map.put(subscriptions, token, subscription), report}
+    Enum.reduce(tokens, {state.subscriptions, empty_report(), 0}, fn token,
+                                                                     {subscriptions, report,
+                                                                      delta} ->
+      case Map.fetch(subscriptions, token) do
+        {:ok, %{closed?: false} = subscription} ->
+          {updated, report} =
+            deliver_selected(subscription, event, state, increment(report, :matched))
+
+          delta = delta + :queue.len(updated.queue) - :queue.len(subscription.queue)
+          {Map.put(subscriptions, token, updated), report, delta}
+
+        _other ->
+          {subscriptions, report, delta}
+      end
     end)
+  end
+
+  defp publish_to_subscriptions(state, event) do
+    Enum.reduce(state.subscriptions, {%{}, empty_report(), 0}, fn {token, subscription},
+                                                                  {subscriptions, report, delta} ->
+      {updated, report} = deliver(subscription, event, state, report)
+      delta = delta + :queue.len(updated.queue) - :queue.len(subscription.queue)
+      {Map.put(subscriptions, token, updated), report, delta}
+    end)
+  end
+
+  defp empty_report, do: %{matched: 0, delivered: 0, buffered: 0, dropped: 0}
+
+  defp index_uris(index, filter, token) do
+    Enum.reduce(resource_uris(filter), index, fn uri, index ->
+      Map.update(index, uri, MapSet.new([token]), &MapSet.put(&1, token))
+    end)
+  end
+
+  defp unindex_uris(index, filter, token) do
+    Enum.reduce(resource_uris(filter), index, &remove_index_token(&2, &1, token))
+  end
+
+  defp remove_index_token(index, uri, token) do
+    case Map.get(index, uri) do
+      nil ->
+        index
+
+      tokens ->
+        remaining = MapSet.delete(tokens, token)
+
+        if MapSet.size(remaining) == 0,
+          do: Map.delete(index, uri),
+          else: Map.put(index, uri, remaining)
+    end
+  end
+
+  defp resource_uris(filter) do
+    case Map.get(filter, "resourceSubscriptions") do
+      uris when is_list(uris) -> uris
+      _other -> []
+    end
   end
 
   defp deliver(%{closed?: true} = subscription, _event, _state, report),
@@ -383,10 +444,6 @@ defmodule Snodo.Subscription.Hub do
       raise ArgumentError,
             "subscription hub overflow must be :drop_oldest or :drop_newest"
     end
-  end
-
-  defp queued_count(subscriptions) do
-    Enum.sum(Enum.map(subscriptions, fn {_token, entry} -> :queue.len(entry.queue) end))
   end
 
   defp event_metadata(%Event{kind: :extension} = event),

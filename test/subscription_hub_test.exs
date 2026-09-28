@@ -75,6 +75,51 @@ defmodule Snodo.SubscriptionHubTest do
     assert :ok = Subscription.stop_worker(resource_worker, resource_monitor)
   end
 
+  test "resource update index tracks matching listeners through close and completion" do
+    {:ok, hub} = start_supervised(Hub)
+
+    context = %Snodo.Context{
+      request_id: "uri-index",
+      protocol_version: "2026-07-28",
+      protocol: Snodo.Protocol.V2026_07_28,
+      transport: %Snodo.Transport.Context{transport: :direct}
+    }
+
+    unrelated =
+      for group <- 1..30 do
+        uris = for number <- 1..200, do: "test://other/#{group}/#{number}"
+        {:ok, _, handle} = Hub.open(%{"resourceSubscriptions" => uris}, context, hub)
+        handle
+      end
+
+    target = "test://resource/target"
+    filter = %{"resourceSubscriptions" => [target]}
+    {:ok, _, first} = Hub.open(filter, context, hub)
+    {:ok, _, second} = Hub.open(filter, context, hub)
+
+    assert Map.fetch!(:sys.get_state(hub).uri_index, target) ==
+             MapSet.new([elem(first, 1), elem(second, 1)])
+
+    assert {:ok, %{matched: 2, buffered: 2}} = Hub.notify_resource_updated(hub, target)
+    assert %{queued: 2} = Hub.stats(hub)
+    assert {:ok, %Event{uri: ^target}} = Hub.next(second, hub)
+    assert %{queued: 1} = Hub.stats(hub)
+    assert {:ok, %{matched: 0, buffered: 0}} = Hub.notify_resource_updated(hub, "test://absent")
+
+    assert :ok = Hub.close(first, :cancelled, hub)
+    assert %{queued: 0} = Hub.stats(hub)
+    assert Map.fetch!(:sys.get_state(hub).uri_index, target) == MapSet.new([elem(second, 1)])
+    assert {:ok, %{matched: 1, buffered: 1}} = Hub.notify_resource_updated(hub, target)
+    assert {:ok, %Event{uri: ^target}} = Hub.next(second, hub)
+
+    assert :ok = Hub.complete(hub)
+    assert :sys.get_state(hub).uri_index == %{}
+    assert {:ok, %{matched: 0, buffered: 0}} = Hub.notify_resource_updated(hub, target)
+
+    assert :ok = Hub.close(second, :complete, hub)
+    Enum.each(unrelated, &Hub.close(&1, :cancelled, hub))
+  end
+
   test "bounds each queue and defaults to retaining the newest events" do
     {:ok, hub} = start_supervised({Hub, max_buffer: 2})
     subscription = listen(runtime(hub), "bounded", %{"toolsListChanged" => true})
@@ -115,11 +160,13 @@ defmodule Snodo.SubscriptionHubTest do
 
     assert {:ok, %{buffered: 1, dropped: 0}} = publish_sequence(hub, 1)
     assert {:ok, %{buffered: 0, dropped: 1}} = publish_sequence(hub, 2)
+    assert %{queued: 1, dropped: 1} = Hub.stats(hub)
 
     {worker, monitor} = Subscription.start_worker(subscription, self())
     :ok = Subscription.continue(worker)
     assert_receive {:mcp_subscription, ^worker, {:ok, event}}
     assert event.metadata == %{"seq" => 1}
+    assert %{queued: 0} = Hub.stats(hub)
 
     assert :ok = Subscription.close(subscription, :cancelled)
     assert :ok = Subscription.stop_worker(worker, monitor)
