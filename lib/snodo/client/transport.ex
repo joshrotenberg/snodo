@@ -24,6 +24,23 @@ defmodule Snodo.Client.Transport do
   A transport that ignores the progress options delivers no progress and keeps
   a fixed timeout.
 
+  The optional `listen/3` opens a `subscriptions/listen` stream for
+  `Snodo.Client.listen/3`. It sends the request, waits `:timeout` milliseconds
+  for the server's `notifications/subscriptions/acknowledged`, and returns
+  `{:ok, accepted_filter, pid}`: the filter from the acknowledgement and the
+  process that receives the stream. That process keeps a
+  `Snodo.Client.Subscription.Buffer` built from the `:owner`, `:ref`,
+  `:max_buffer`, and `:overflow` options, pushes each later notification to it
+  as `{:notification, method, params}`, closes it with `:complete` or
+  `{:error, %Snodo.Error{}}` at the terminal response or a connection failure,
+  and exits once the buffer is done. It handles `{:mcp_client_demand, ref, n}`
+  messages by adding demand, and a `{:mcp_client_close, ref}` call by
+  cancelling the stream on the server and replying `:ok`. It monitors the owner
+  and cancels the stream when the owner exits. A JSON-RPC error response
+  before the acknowledgement is returned as `{:error, %Snodo.Error{}}`.
+  `Snodo.Client.listen/3` raises `ArgumentError` for a transport without
+  `listen/3`.
+
   Failures of the connection itself are `%Snodo.Error{kind: :transport}`. Use
   `connection_error/2` (-32000) and `timeout_error/1` (-32001), the codes the
   official TypeScript SDK uses for the same client-side conditions.
@@ -36,7 +53,11 @@ defmodule Snodo.Client.Transport do
   @callback connect(init_arg :: term(), opts :: keyword()) :: {:ok, state()} | {:error, Error.t()}
   @callback request(state(), message :: map(), opts :: keyword()) ::
               {:ok, map()} | {:error, Error.t()}
+  @callback listen(state(), message :: map(), opts :: keyword()) ::
+              {:ok, accepted_filter :: map(), pid()} | {:error, Error.t()}
   @callback close(state()) :: :ok
+
+  @optional_callbacks listen: 3
 
   @connection_closed -32_000
   @request_timeout -32_001

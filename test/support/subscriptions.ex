@@ -7,6 +7,15 @@ defmodule SnodoTest.TestSubscriptionHub do
 
   def emit(hub, request_id, event), do: GenServer.call(hub, {:emit, request_id, event})
   def complete(hub, request_id), do: GenServer.call(hub, {:complete, request_id})
+  def fail(hub, request_id, reason), do: GenServer.call(hub, {:fail, request_id, reason})
+
+  @doc "Delivers `value` to every open subscription; see `emit/3`, `complete/2`, and `fail/3`."
+  def emit_all(hub, event), do: GenServer.call(hub, {:all, {:ok, event}})
+  def complete_all(hub), do: GenServer.call(hub, {:all, :closed})
+  def fail_all(hub, reason), do: GenServer.call(hub, {:all, {:error, reason}})
+
+  @doc "The number of open subscriptions, closing ones included."
+  def count(hub), do: GenServer.call(hub, :count)
 
   @impl true
   def init(opts) do
@@ -48,6 +57,23 @@ defmodule SnodoTest.TestSubscriptionHub do
     {reply, state} = deliver_by_request_id(state, request_id, :closed)
     {:reply, reply, state}
   end
+
+  def handle_call({:fail, request_id, reason}, _from, state) do
+    {reply, state} = deliver_by_request_id(state, request_id, {:error, reason})
+    {:reply, reply, state}
+  end
+
+  def handle_call({:all, value}, _from, state) do
+    state =
+      Enum.reduce(state.subscriptions, state, fn {_token, subscription}, state ->
+        {_reply, state} = deliver_by_request_id(state, subscription.request_id, value)
+        state
+      end)
+
+    {:reply, :ok, state}
+  end
+
+  def handle_call(:count, _from, state), do: {:reply, map_size(state.subscriptions), state}
 
   def handle_call({:close, token, reason}, _from, state) do
     case Map.pop(state.subscriptions, token) do

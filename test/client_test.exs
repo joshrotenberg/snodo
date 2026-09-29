@@ -767,7 +767,7 @@ defmodule Snodo.ClientTest do
   end
 
   test "request/4 refuses subscriptions/listen before dispatch" do
-    assert_raise ArgumentError, ~r/cannot stream subscriptions\/listen/, fn ->
+    assert_raise ArgumentError, ~r/open it with Snodo.Client.listen\/3/, fn ->
       Client.request(client(), "subscriptions/listen", %{})
     end
   end
