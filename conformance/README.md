@@ -6,7 +6,7 @@ unsupported, unmeasured, and official evidence buckets stay separate.
 The official runner has two legs. The server leg runs its scenarios against
 the combined fixture. The [client leg](#client-leg) runs `Snodo.Client` against
 the runner's own scenario servers. `run.mjs` runs them as lanes, each with its
-own score and baseline: `server`, `client`, and the
+own score and baseline: `server`, `client`, `client-2025-11-25`, and the
 [additional server lanes](#additional-server-lanes) `server-plug`,
 `server-2025-11-25`, and `server-2025-06-18`.
 
@@ -51,6 +51,7 @@ npm ci --ignore-scripts
 npm test
 npm run check
 npm run check:client
+npm run check:client:2025-11-25
 npm run check:plug
 npm run check:2025-11-25
 npm run check:2025-06-18
@@ -228,6 +229,37 @@ pinned. The remaining gaps:
   `notifications/initialized` checks are skipped because a 2026-07-28 client
   sends neither method. Every method the client does send carries the correct
   `Mcp-Method` and `Mcp-Name` headers.
+
+### 2025-11-25 client lane
+
+`npm run check:client:2025-11-25` runs `client --requirements 2025-11-25`: the
+18 required client scenarios of the frozen 2025-11-25 set and 7 unscored ones.
+`run.mjs` passes the lane's revision to the harness in `SNODO_CLIENT_PROTOCOL`,
+which pins `Snodo.Client` to it, so the client opens every scenario with
+`initialize` and `notifications/initialized` and carries the session headers
+afterwards. The 2026-07-28 lane pins 2026-07-28 the same way and sends no
+probe, so its traffic is unchanged.
+
+The 2026-09-29 run passes **2/18** required scenarios: `initialize` and
+`tools_call`. Required checks: 3 success, 42 failure, 0 skipped, 0 warning,
+13 info. [expected-failures-client-2025-11-25.json](expected-failures-client-2025-11-25.json)
+pins every check of all 25 scenarios. The gaps:
+
+- The 14 required and 6 unscored `auth/*` scenarios: `Snodo.Client` has no
+  OAuth support, and the harness exits before sending a request.
+- `elicitation-sep1034-client-defaults`: the scenario server sends
+  `elicitation/create` without a related request ID, which the TypeScript SDK
+  server delivers only on the standalone `GET` event stream. `Snodo.Client`
+  does not open that stream, so the server discards the request and the tool
+  call times out. An elicitation that arrives on the event stream of the
+  request in flight, or over stdio, is answered; the repository's own tests
+  cover both.
+- `sse-retry`: the scenario server negotiates 2025-03-26, a version the client
+  does not speak, so the client closes the connection. The scenario also needs
+  reconnection on the standalone `GET` stream.
+
+- [2025-11-25 client report](results/2026-09-29-client-2025-11-25-alpha.11-summary.md)
+- [2025-11-25 client machine-readable report](results/2026-09-29-client-2025-11-25-alpha.11-summary.json)
 
 See [protocol-compliance.md](../guides/protocol-compliance.md) for architecture and
 [MRTR documentation](../guides/interactive-operations.md) for semantics and remaining limits.

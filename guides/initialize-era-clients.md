@@ -66,6 +66,19 @@ fixture with these dialects enabled: 21 of 30 required scenarios pass. The
 no session ID is issued. See the
 [conformance lanes](https://github.com/joshrotenberg/snodo/blob/main/conformance/README.md#additional-server-lanes).
 
+## Snodo.Client as an initialize-era client
+
+`Snodo.Client` speaks these two versions as well as 2026-07-28, so it can call
+a server built on an older SDK, or a snodo server configured with only these
+dialects. By default `connect/2` probes with `server/discover` and falls back
+to `initialize` with 2025-11-25, then 2025-06-18; `protocol:` pins a version.
+The negotiated session, the `Mcp-Session-Id` handling, `DELETE` on close, and
+the routing of the server's own `elicitation/create` requests to the client's
+input handlers are described in the [client guide](client.md#protocol-versions).
+Against a snodo server with these dialects, a direct, stdio, or HTTP client
+negotiates without any application code: the runtime's registry (direct) or
+the probe (stdio and HTTP) picks the version.
+
 ## Native client evidence
 
 HTTP loopback checks on 2026-09-21 against a real application server:

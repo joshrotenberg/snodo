@@ -1,0 +1,194 @@
+{
+  "schemaVersion": 2,
+  "leg": "client",
+  "lane": "client-2025-11-25",
+  "runDate": "2026-09-29",
+  "protocolVersion": "2025-11-25",
+  "runner": "@modelcontextprotocol/conformance@0.2.0-alpha.11",
+  "runnerExitCode": 1,
+  "requirements": {
+    "attemptedScenarios": 18,
+    "requiredScenarios": 18,
+    "requirementsAnchor": "@modelcontextprotocol/conformance@0.2.0-alpha.10 (reconstructed)",
+    "requirementsCommit": null,
+    "requirementsSha256": "f33a304dfa2cbd999c24026a3453a64f377bba0c8aa80addadaf05862d212371"
+  },
+  "score": {
+    "status": "partial",
+    "basis": "whole required scenarios with semantic success and no FAILURE, WARNING, or SKIPPED checks",
+    "passedScenarios": 2,
+    "requiredScenarios": 18,
+    "passedScenarioIds": [
+      "initialize",
+      "tools_call"
+    ]
+  },
+  "requiredCheckCounts": {
+    "success": 3,
+    "failure": 42,
+    "skipped": 0,
+    "warning": 0,
+    "info": 13
+  },
+  "rawRunnerNoFailure": {
+    "scenarios": 2,
+    "requiredScenarios": 18,
+    "scenarioIds": [
+      "initialize",
+      "tools_call"
+    ],
+    "excludedFromScore": []
+  },
+  "notScored": [
+    {
+      "scenario": "auth/client-credentials-jwt",
+      "leg": "client",
+      "reason": "extension",
+      "checks": {
+        "success": 0,
+        "failure": 1,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "auth/client-credentials-basic",
+      "leg": "client",
+      "reason": "extension",
+      "checks": {
+        "success": 0,
+        "failure": 1,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "auth/enterprise-managed-authorization",
+      "leg": "client",
+      "reason": "extension",
+      "checks": {
+        "success": 0,
+        "failure": 2,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "auth/dpop",
+      "leg": "client",
+      "reason": "extension",
+      "checks": {
+        "success": 0,
+        "failure": 3,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "auth/dpop-nonce",
+      "leg": "client",
+      "reason": "extension",
+      "checks": {
+        "success": 0,
+        "failure": 5,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "auth/wif-jwt-bearer",
+      "leg": "client",
+      "reason": "extension",
+      "checks": {
+        "success": 0,
+        "failure": 1,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    },
+    {
+      "scenario": "json-schema-2020-12-preservation",
+      "leg": "client",
+      "reason": "added-after-release",
+      "checks": {
+        "success": 9,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    }
+  ],
+  "failures": [
+    "elicitation-sep1034-client-defaults:client-elicitation-sep1034-general",
+    "elicitation-sep1034-client-defaults:client-elicitation-sep1034-string-default",
+    "elicitation-sep1034-client-defaults:client-elicitation-sep1034-integer-default",
+    "elicitation-sep1034-client-defaults:client-elicitation-sep1034-number-default",
+    "elicitation-sep1034-client-defaults:client-elicitation-sep1034-enum-default",
+    "elicitation-sep1034-client-defaults:client-elicitation-sep1034-boolean-default",
+    "sse-retry:client-sse-graceful-reconnect",
+    "auth/metadata-default:prm-pathbased-requested",
+    "auth/metadata-default:authorization-server-metadata",
+    "auth/metadata-default:client-registration",
+    "auth/metadata-default:authorization-request",
+    "auth/metadata-default:token-request",
+    "auth/metadata-var1:prm-pathbased-requested",
+    "auth/metadata-var1:authorization-server-metadata",
+    "auth/metadata-var1:client-registration",
+    "auth/metadata-var1:authorization-request",
+    "auth/metadata-var1:token-request",
+    "auth/metadata-var2:authorization-server-metadata",
+    "auth/metadata-var2:client-registration",
+    "auth/metadata-var2:authorization-request",
+    "auth/metadata-var2:token-request",
+    "auth/metadata-var3:authorization-server-metadata",
+    "auth/metadata-var3:client-registration",
+    "auth/metadata-var3:authorization-request",
+    "auth/metadata-var3:token-request",
+    "auth/basic-cimd:cimd-client-id-used",
+    "auth/scope-from-www-authenticate:scope-from-www-authenticate",
+    "auth/scope-from-scopes-supported:scope-from-scopes-supported",
+    "auth/scope-omitted-when-undefined:scope-omitted-when-undefined",
+    "auth/scope-step-up:scope-step-up-initial",
+    "auth/scope-step-up:scope-step-up-escalation",
+    "auth/scope-retry-limit:scope-retry-limit",
+    "auth/token-endpoint-auth-basic:token-endpoint-auth-method",
+    "auth/token-endpoint-auth-basic:resource-parameter-in-authorization",
+    "auth/token-endpoint-auth-basic:resource-parameter-in-token",
+    "auth/token-endpoint-auth-post:token-endpoint-auth-method",
+    "auth/token-endpoint-auth-post:resource-parameter-in-authorization",
+    "auth/token-endpoint-auth-post:resource-parameter-in-token",
+    "auth/token-endpoint-auth-none:token-endpoint-auth-method",
+    "auth/token-endpoint-auth-none:resource-parameter-in-authorization",
+    "auth/token-endpoint-auth-none:resource-parameter-in-token",
+    "auth/pre-registration:pre-registration-auth",
+    "auth/client-credentials-jwt:client-credentials-jwt-verified",
+    "auth/client-credentials-basic:client-credentials-basic-auth",
+    "auth/enterprise-managed-authorization:complete-flow-token-exchange",
+    "auth/enterprise-managed-authorization:complete-flow-jwt-bearer",
+    "auth/dpop:sep-1932-client-token-request-proof",
+    "auth/dpop:sep-1932-client-dpop-auth-scheme",
+    "auth/dpop:sep-1932-client-fresh-proof",
+    "auth/dpop-nonce:sep-1932-client-token-request-proof",
+    "auth/dpop-nonce:sep-1932-client-dpop-auth-scheme",
+    "auth/dpop-nonce:sep-1932-client-fresh-proof",
+    "auth/dpop-nonce:sep-1932-client-as-nonce",
+    "auth/dpop-nonce:sep-1932-client-rs-nonce",
+    "auth/wif-jwt-bearer:wif-assertion-verified"
+  ],
+  "regression": {
+    "passed": true,
+    "unexpectedFailures": [],
+    "staleFailures": [],
+    "unexpectedExclusions": [],
+    "staleExclusions": [],
+    "checkStatusDrift": [],
+    "note": "A passing regression gate does not convert expected failures into conformance passes."
+  }
+}
