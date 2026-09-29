@@ -458,6 +458,40 @@ defmodule SnodoTest.TestExtensions.IncompleteSubscriptions do
   def subscription_filter(_requested_filter, _context), do: {:ok, %{}}
 end
 
+defmodule SnodoTest.TestExtensions.Watch do
+  @moduledoc false
+  # Contributes a `watchIds` subscription filter and shapes its events as
+  # `notifications/com.example/watch`, the way the Tasks extension shapes
+  # `notifications/tasks`.
+  use SnodoTest.TestExtensions.Definition,
+    id: "com.example/watch",
+    name: "com.example/watch"
+
+  alias Snodo.Subscription.Event
+
+  @subscription_id_key "io.modelcontextprotocol/subscriptionId"
+
+  @impl true
+  def subscription_filter(requested_filter, _context) do
+    case Map.fetch(requested_filter, "watchIds") do
+      {:ok, ids} when is_list(ids) -> {:ok, %{"watchIds" => ids}}
+      _absent_or_invalid -> {:ok, %{}}
+    end
+  end
+
+  @impl true
+  def shape_subscription_event(%Event{kind: :extension} = event, subscription_id, _context) do
+    %{
+      "jsonrpc" => "2.0",
+      "method" => "notifications/com.example/watch",
+      "params" => %{
+        "watch" => event.payload,
+        "_meta" => Map.put(event.metadata, @subscription_id_key, subscription_id)
+      }
+    }
+  end
+end
+
 defmodule SnodoTest.ExtensionTestServer do
   @moduledoc false
 

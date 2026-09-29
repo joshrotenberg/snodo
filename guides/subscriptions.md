@@ -56,7 +56,15 @@ router; the application publishes when its catalog or resources change.
 Stdio multiplexes streams on one connection and ends one with
 `notifications/cancelled`. HTTP answers with `text/event-stream`, disables proxy
 buffering, sends keepalive comments, and treats a closed socket as
-cancellation. `Snodo.Client` does not open listen streams yet.
+cancellation.
+
+## The client
+
+`Snodo.Client.listen/3` opens a stream over the direct client, stdio, and
+HTTP. It returns a `Snodo.Client.Subscription` once the acknowledgement
+arrives, with the filter the server accepted, and delivers each event to the
+owning process as a `{:notification, method, params}` message on demand, with
+a bounded buffer in between. See [The client](client.md#subscriptions).
 
 ## Extensions
 
