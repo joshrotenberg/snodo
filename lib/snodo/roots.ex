@@ -80,11 +80,19 @@ defmodule Snodo.Roots do
 
   def response(_context, _id, _request), do: invalid_response()
 
-  defp valid_response?(%{"roots" => roots} = response) when is_list(roots) do
+  @doc """
+  Checks that `response` is a `ListRootsResult`.
+
+  That is a `"roots"` list, possibly empty, whose entries carry a `file://`
+  `"uri"` and an optional `"name"`. Additional JSON fields are allowed.
+  `Snodo.Client` applies it to what a roots handler returns.
+  """
+  @spec valid_response?(term()) :: boolean()
+  def valid_response?(%{"roots" => roots} = response) when is_list(roots) do
     JSONValue.valid?(response) and Enum.all?(roots, &root?/1)
   end
 
-  defp valid_response?(_response), do: false
+  def valid_response?(_response), do: false
 
   defp root?(%{"uri" => uri} = root) when is_binary(uri) do
     String.starts_with?(uri, "file://") and match?({:ok, %URI{}}, URI.new(uri)) and

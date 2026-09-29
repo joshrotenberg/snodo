@@ -27,7 +27,7 @@ defmodule Snodo.ClientStdioTest do
     assert {:ok, tools} = Client.list_tools(client)
 
     assert Enum.map(tools, & &1["name"]) |> Enum.sort() ==
-             ~w(choice consent echo halt large park parked ticks)
+             ~w(choice consent echo halt large mixed park parked roots sample ticks)
 
     assert {:ok, %{"content" => [%{"text" => "over stdio"}]}} =
              Client.call_tool(client, "echo", %{"text" => "over stdio"})
@@ -184,6 +184,58 @@ defmodule Snodo.ClientStdioTest do
 
     assert {:input_required, %{"inputRequests" => %{"choice" => _request}}} =
              Client.call_tool(client, "choice", %{}, answer_input: false)
+  end
+
+  test "input handlers answer sampling and roots requests over stdio" do
+    sampled = %{
+      "role" => "assistant",
+      "content" => %{"type" => "text", "text" => "stdio"},
+      "model" => "test-model"
+    }
+
+    roots = %{"roots" => [%{"uri" => "file:///stdio"}]}
+
+    handlers = %{
+      form: fn %{"mode" => "form"} ->
+        {:ok, %{"action" => "accept", "content" => %{"label" => "stdio"}}}
+      end,
+      sampling: fn %{"messages" => [_message], "maxTokens" => 64} -> {:ok, sampled} end,
+      roots: fn params when params == %{} -> {:ok, roots} end
+    }
+
+    client = connect(input_handlers: handlers)
+
+    assert {:ok, %{"structuredContent" => %{"summary" => "stdio", "model" => "test-model"}}} =
+             Client.call_tool(client, "sample")
+
+    assert {:ok, %{"structuredContent" => %{"uris" => ["file:///stdio"]}}} =
+             Client.call_tool(client, "roots")
+
+    # One round asks for all three kinds.
+    assert {:ok, %{"structuredContent" => answers}} = Client.call_tool(client, "mixed")
+
+    assert answers == %{
+             "choice" => %{"action" => "accept", "content" => %{"label" => "stdio"}},
+             "summary" => sampled,
+             "client_roots" => roots
+           }
+
+    # An invalid result is refused before anything is sent.
+    client =
+      connect(
+        input_handlers: %{
+          sampling: fn _params ->
+            {:ok, %{"role" => "assistant", "content" => [], "model" => "m"}}
+          end
+        }
+      )
+
+    assert {:error,
+            %Error{
+              code: -32_603,
+              kind: :execution,
+              cause: {:input_handler, "summary", {:invalid_response, _response}, _last}
+            }} = Client.call_tool(client, "sample")
   end
 
   test "a server exit fails the request in flight and every later request" do

@@ -82,11 +82,28 @@ See [Interactive operations](interactive-operations.md) for the server side.
 ### Input handlers
 
 Install `input_handlers:` to answer input requests inside the call. The map is
-keyed by request kind, `:form` and `:url` for the two elicitation modes. A
-handler is a function of one argument: it receives the request's `params`
-(`"mode"`, `"message"`, and `"requestedSchema"` or `"url"`) and returns
-`{:ok, response}`, where `response` is the elicitation result, or
-`{:error, reason}`.
+keyed by request kind. A handler is a function of one argument: it receives
+the request's `params` and returns `{:ok, response}`, where `response` is the
+result the kind expects, or `{:error, reason}`.
+
+| Kind | Embedded request | Handler receives | Handler returns | Declares |
+|---|---|---|---|---|
+| `:form` | `elicitation/create`, mode `form` | `"mode"`, `"message"`, `"requestedSchema"` | an elicitation result: `"action"` of `"accept"`, `"decline"`, or `"cancel"`, with `"content"` when accepted | `"elicitation" => %{"form" => %{}}` |
+| `:url` | `elicitation/create`, mode `url` | `"mode"`, `"message"`, `"url"` | an elicitation result | `"url"` next to `"form"` |
+| `:sampling` | `sampling/createMessage` | `"messages"`, `"maxTokens"`, and whichever other `CreateMessageRequestParams` fields the server sent | a `CreateMessageResult`: `"role"`, `"content"`, `"model"`, optional `"stopReason"` | `"sampling" => %{}` |
+| `:roots` | `roots/list` | `%{}`, or `"_meta"` when the server sent it | a `ListRootsResult`: `"roots"` with `file://` `"uri"` entries and optional names | `"roots" => %{"listChanged" => false}` |
+
+SEP-2577 deprecates the server-initiated sampling and roots requests in
+2026-07-28; the protocol still defines them, and servers built on this library
+can send them (see [Interactive operations](interactive-operations.md)). A
+`:sampling` handler that accepts `"tools"` and `"toolChoice"`, or an
+`"includeContext"` other than `"none"`, declares `"sampling" => %{"tools" =>
+%{}}` or `%{"context" => %{}}` in `:client_capabilities`; the client does not
+infer those settings from the handler, so a server that needs them is refused
+by the dialect with `-32021` until they are declared. What a sampling handler
+returns is model output the server will treat as input; what a roots handler
+returns is a claim about this client's file system, and the handler chooses
+which roots to reveal.
 
 ```elixir
 {:ok, client} =
@@ -98,6 +115,13 @@ handler is a function of one argument: it receives the request's `params`
       url: fn %{"url" => url} ->
         MyUI.open(url)
         {:ok, %{"action" => "accept"}}
+      end,
+      sampling: fn %{"messages" => messages, "maxTokens" => max_tokens} ->
+        {:ok, text, model} = MyModel.complete(messages, max_tokens: max_tokens)
+        {:ok, %{"role" => "assistant", "content" => %{"type" => "text", "text" => text}, "model" => model}}
+      end,
+      roots: fn _params ->
+        {:ok, %{"roots" => [%{"uri" => "file:///home/me/project", "name" => "project"}]}}
       end
     }
   )
@@ -105,13 +129,18 @@ handler is a function of one argument: it receives the request's `params`
 {:ok, result} = Snodo.Client.call_tool(client, "deploy", %{})
 ```
 
-The declared client capabilities follow the handlers: `:form` adds
-`"elicitation" => %{"form" => %{}}` and `:url` adds `"url"` next to it, merged
-with any `:client_capabilities` given. An explicit `"elicitation" => %{}` next
-to a `:url` handler is kept as form. A declared entry the handlers need to
-merge into must be a map; `"elicitation" => true` with a handler installed
-raises `ArgumentError`. A server therefore does not ask for a kind the client
-cannot answer.
+The declared client capabilities follow the handlers, merged with any
+`:client_capabilities` given: `:form` adds `"elicitation" => %{"form" =>
+%{}}`, `:url` adds `"url"` next to it, `:sampling` adds `"sampling" => %{}`,
+and `:roots` adds `"roots" => %{"listChanged" => false}`. A declared value
+wins where the two meet: `"sampling" => %{"tools" => %{}}` keeps its setting
+and a declared `"listChanged"` replaces the handler's `false`. An explicit
+`"elicitation" => %{}` next to a `:url` handler is kept as form. A declared
+entry the handlers need to merge into must be a map; `"elicitation" => true`
+with a form handler installed, or `"roots" => true` with a roots handler,
+raises `ArgumentError`. Without a handler, nothing declares `sampling` or
+`roots`. A server therefore does not ask for a kind the client cannot
+answer.
 
 When a result asks for input, the client first matches every request to a
 handler and checks that its `params` carry the keys of its kind; only then
@@ -129,20 +158,23 @@ client does, and counts as a round. Each round has its own `timeout:`, and
 |---|---|
 | no handlers installed, or `answer_input: false` on the call | `{:input_required, result}` |
 | a request of a kind with no handler, or with a method the client does not know (no handler has run) | -32602, `kind: :protocol`, `cause: {:no_input_handler, kind, result}` |
-| a handler returned `{:error, reason}`, or something other than `{:ok, response}` with a valid `"action"` | -32603, `kind: :execution`, `cause: {:input_handler, id, reason, result}` |
+| a handler returned `{:error, reason}`, something other than `{:ok, response}`, or a response that is not valid for its kind (`reason` is `{:invalid_response, response}`): an elicitation result without a valid `"action"`, a sampling result that is not a `CreateMessageResult`, or a roots result that is not a `ListRootsResult` | -32603, `kind: :execution`, `cause: {:input_handler, id, reason, result}` |
 | the server still required input after `:max_input_rounds` rounds | -32000, `kind: :transport`, `data: %{"maxInputRounds" => n}`, `cause: {:max_input_rounds, result}` |
-| a result with nothing to answer and no `requestState`, or an input request whose `params` is not a map or lacks `"message"` and `"requestedSchema"` (form) or `"message"` and `"url"` (URL); no handler has run | -32000, `kind: :transport`, `cause: result` |
+| a result with nothing to answer and no `requestState`, or an input request whose `params` is not a map or lacks `"message"` and `"requestedSchema"` (form), `"message"` and `"url"` (URL), or `"messages"` and `"maxTokens"` (sampling); a roots request may leave `params` out. No handler has run | -32000, `kind: :transport`, `cause: result` |
 
 A handler that raises stops the call with that exception. Each error carries
 the last `input_required` result at the end of its `cause`, so the caller can
 finish the flow by hand with `input_responses:` and `request_state:`.
-Responses are not checked against `requestedSchema` on the client; the server
-validates them and answers -32602 for an invalid one, as it does for a
-hand-written response.
+Elicitation responses are not checked against `requestedSchema` on the
+client; the server validates them and answers -32602 for an invalid one, as
+it does for a hand-written response. A sampling or roots response is checked
+for its result shape with `Snodo.Sampling.valid_response?/1` or
+`Snodo.Roots.valid_response?/1` before it is sent, so a handler bug is a
+-32603 error on the client rather than a -32602 from the server.
 
 | Option | Applies to | Default | Meaning |
 |---|---|---|---|
-| `:input_handlers` | `direct/2`, `connect/2` | `%{}` | a map from `:form` or `:url` to a function of one argument |
+| `:input_handlers` | `direct/2`, `connect/2` | `%{}` | a map from `:form`, `:url`, `:sampling`, or `:roots` to a function of one argument |
 | `:max_input_rounds` | `direct/2`, `connect/2`, each call | 10 | the most `input_required` results answered for one call |
 | `:answer_input` | each call | `true` | `false` returns `{:input_required, result}` for this call |
 

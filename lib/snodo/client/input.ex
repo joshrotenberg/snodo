@@ -5,26 +5,45 @@ defmodule Snodo.Client.Input do
   #
   # `@kinds` is the registry. Each kind names the embedded request method it
   # answers, the elicitation `mode` when the method has one, the `params`
-  # keys a request of that kind must carry, and the client capability path
-  # that advertises it. A new kind is one more entry here, one more
+  # keys a request of that kind must carry (`params: :optional` for a method
+  # whose schema lets the object out), and the client capabilities that
+  # advertise it. A new kind is one more entry here, one more
   # `valid_response?/2` clause, and one more member of
   # `Snodo.Client.input_kind/0`; the loop in `Snodo.Client` does not change.
 
   alias Snodo.Client.Transport
   alias Snodo.Error
+  alias Snodo.Roots
+  alias Snodo.Sampling
 
   @kinds %{
     form: %{
       method: "elicitation/create",
       mode: "form",
       required: ~w(message requestedSchema),
-      capability: ["elicitation", "form"]
+      capability: %{"elicitation" => %{"form" => %{}}}
     },
     url: %{
       method: "elicitation/create",
       mode: "url",
       required: ~w(message url),
-      capability: ["elicitation", "url"]
+      capability: %{"elicitation" => %{"url" => %{}}}
+    },
+    # SEP-2577 deprecates the two embedded requests below; the protocol still
+    # defines them. The declared roots capability says nothing changes, since
+    # the client sends no notifications.
+    sampling: %{
+      method: "sampling/createMessage",
+      mode: nil,
+      required: ~w(messages maxTokens),
+      capability: %{"sampling" => %{}}
+    },
+    roots: %{
+      method: "roots/list",
+      mode: nil,
+      required: [],
+      params: :optional,
+      capability: %{"roots" => %{"listChanged" => false}}
     }
   }
 
@@ -60,7 +79,7 @@ defmodule Snodo.Client.Input do
   @spec capabilities(Snodo.Client.input_handlers()) :: map()
   def capabilities(handlers) do
     Enum.reduce(handlers, %{}, fn {kind, _fun}, capabilities ->
-      put_path(capabilities, @kinds[kind].capability)
+      merge(capabilities, @kinds[kind].capability)
     end)
   end
 
@@ -71,10 +90,15 @@ defmodule Snodo.Client.Input do
     merge(derived, declared)
   end
 
+  # The declared value wins at a leaf such as roots.listChanged; an entry a
+  # handler needs to merge into must stay a map.
   defp merge(derived, declared) do
     Map.merge(derived, declared, fn
       _key, from_handlers, given when is_map(from_handlers) and is_map(given) ->
         merge(from_handlers, given)
+
+      _key, from_handlers, given when not is_map(from_handlers) ->
+        given
 
       key, _from_handlers, given ->
         raise ArgumentError,
@@ -190,7 +214,7 @@ defmodule Snodo.Client.Input do
   # The handler is promised a map with the keys its kind documents; a request
   # that lacks them is the server's fault, not the handler's.
   defp checked_params(id, kind, request, result) do
-    params = Map.get(request, "params")
+    params = Map.get(request, "params", absent_params(@kinds[kind]))
 
     cond do
       not is_map(params) ->
@@ -212,6 +236,10 @@ defmodule Snodo.Client.Input do
         {:ok, params}
     end
   end
+
+  # A roots/list request may leave params out; its handler still gets a map.
+  defp absent_params(%{params: :optional}), do: %{}
+  defp absent_params(_spec), do: nil
 
   defp fetch_handler(handlers, id, kind, result) do
     case Map.fetch(handlers, kind) do
@@ -240,6 +268,8 @@ defmodule Snodo.Client.Input do
     not is_struct(response) and Enum.all?(Map.keys(response), &is_binary/1)
   end
 
+  defp valid_response?(:sampling, response), do: Sampling.valid_response?(response)
+  defp valid_response?(:roots, response), do: Roots.valid_response?(response)
   defp valid_response?(_kind, _response), do: false
 
   defp no_handler(id, nil, result) do
@@ -261,6 +291,8 @@ defmodule Snodo.Client.Input do
 
   defp describe(:form), do: "form elicitation"
   defp describe(:url), do: "URL elicitation"
+  defp describe(:sampling), do: "sampling request"
+  defp describe(:roots), do: "roots request"
   defp describe(method) when is_binary(method), do: "#{method} requests"
 
   defp handler_failed(id, reason, result) do
@@ -273,12 +305,6 @@ defmodule Snodo.Client.Input do
   end
 
   defp malformed(message, result), do: Transport.connection_error(message, result)
-
-  defp put_path(map, [key]), do: Map.put_new(map, key, %{})
-
-  defp put_path(map, [key | rest]) do
-    Map.put(map, key, put_path(Map.get(map, key, %{}), rest))
-  end
 
   # An empty elicitation capability means form mode alone. Spelling that out
   # keeps form when a URL handler adds its own entry next to it. Only a
