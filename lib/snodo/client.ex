@@ -44,11 +44,20 @@ defmodule Snodo.Client do
       Snodo.Client.call_tool(client, "index", %{}, progress: fn params ->
         IO.puts("\#{params["progress"]} of \#{params["total"]}")
       end)
+
+  Install `input_handlers:` to answer a server's form and URL elicitation
+  requests inside the call instead of receiving `{:input_required, result}`:
+
+      {:ok, client} =
+        Snodo.Client.connect({:http, url},
+          input_handlers: %{form: &MyUI.form/1, url: &MyUI.url/1}
+        )
   """
 
   alias Snodo.Client.Deadline
   alias Snodo.Client.Direct
   alias Snodo.Client.HTTP
+  alias Snodo.Client.Input
   alias Snodo.Client.Page
   alias Snodo.Client.Stdio
   alias Snodo.Client.Transport
@@ -61,6 +70,18 @@ defmodule Snodo.Client do
 
   @type response :: {:ok, map()} | {:input_required, map()} | {:error, Error.t()}
   @type list_kind :: :tools | :resources | :resource_templates | :prompts
+
+  @typedoc "A kind of input request a handler answers: one of the elicitation modes."
+  @type input_kind :: :form | :url
+
+  @typedoc """
+  Answers one input request. Receives the request's `params` map and returns
+  the response the server expects, or the reason the request was not answered.
+  """
+  @type input_handler :: (map() -> {:ok, map()} | {:error, term()})
+
+  @typedoc "The `:input_handlers` option: at most one handler per kind."
+  @type input_handlers :: %{optional(input_kind()) => input_handler()}
   @type target ::
           {:stdio, String.t(), [String.t()]}
           | {:http, String.t()}
@@ -72,8 +93,12 @@ defmodule Snodo.Client do
           client_capabilities: map(),
           client_info: map(),
           timeout: timeout(),
-          max_pages: pos_integer()
+          max_pages: pos_integer(),
+          input_handlers: input_handlers(),
+          max_input_rounds: pos_integer()
         }
+
+  @default_max_input_rounds 10
 
   @enforce_keys [:transport, :protocol, :dialect]
   defstruct [
@@ -83,11 +108,18 @@ defmodule Snodo.Client do
     client_capabilities: %{},
     client_info: %{},
     timeout: 30_000,
-    max_pages: 1_000
+    max_pages: 1_000,
+    input_handlers: %{},
+    max_input_rounds: @default_max_input_rounds
   ]
 
   @remote_dialects [Snodo.Protocol.V2026_07_28]
   @version Mix.Project.config()[:version]
+
+  # The pause before retrying a result that carries only a requestState, which
+  # nothing else slows down. The official TypeScript client paces such a round
+  # the same way.
+  @state_only_pacing_ms 250
 
   @list_operations %{
     tools: {"tools/list", "tools"},
@@ -106,7 +138,20 @@ defmodule Snodo.Client do
       stateless-era version the runtime enables. Initialize-era versions need
       a session, which a direct client does not hold, so they are refused.
     * `:client_capabilities` - the capabilities sent with every request, for
-      example `%{"elicitation" => %{"form" => %{}}}`. Defaults to `%{}`.
+      example `%{"elicitation" => %{"form" => %{}}}`. Defaults to `%{}`. The
+      capabilities the installed `:input_handlers` imply are added to it.
+    * `:input_handlers` - functions that answer the input requests a server
+      embeds in an `input_required` result, as a map from request kind to a
+      function of one argument. The kinds are `:form` and `:url`, the two
+      elicitation modes; each adds its capability under `"elicitation"`. A
+      handler receives the request's `params` map (`"mode"`, `"message"`,
+      and `"requestedSchema"` or `"url"`) and returns `{:ok, response}`,
+      where `response` is the elicitation result (`"action"` of `"accept"`,
+      `"decline"`, or `"cancel"`, with `"content"` for an accepted form), or
+      `{:error, reason}`. Defaults to `%{}`, which leaves `input_required`
+      results to the caller. See `request/4` for the retry loop.
+    * `:max_input_rounds` - the most `input_required` results the client
+      answers for one call before failing it. Defaults to 10.
     * `:client_info` - the `Implementation` sent as
       `io.modelcontextprotocol/clientInfo` with every request: a map with
       string `"name"` and `"version"` and, optionally, `"title"`,
@@ -142,8 +187,8 @@ defmodule Snodo.Client do
   Options for every target:
 
     * `:protocol` - defaults to `"2026-07-28"`, the only supported version.
-    * `:client_capabilities`, `:client_info`, and `:max_pages` - as for
-      `direct/2`.
+    * `:client_capabilities`, `:client_info`, `:max_pages`,
+      `:input_handlers`, and `:max_input_rounds` - as for `direct/2`.
     * `:timeout` - the default request timeout in milliseconds, 30,000 unless
       set. Each request can override it with `timeout:`.
   """
@@ -308,6 +353,42 @@ defmodule Snodo.Client do
       message "Maximum total timeout exceeded" and
       `data: %{"maxTotalTimeoutMs" => limit}`.
     * `:timeout` - overrides the client's request timeout.
+    * `:answer_input` - when `false`, an `input_required` result is returned
+      as `{:input_required, result}` even though the client has
+      `:input_handlers`. Defaults to `true`.
+    * `:max_input_rounds` - overrides the client's round limit for this
+      request.
+
+  With `:input_handlers` installed, an `input_required` result is answered
+  in the calling process. Every entry of `"inputRequests"` is first matched
+  to the handler for its kind and checked for the `params` that kind
+  documents; only when all of them pass do the handlers run, one request at
+  a time in the sort order of the request IDs (strings, so `"10"` sorts
+  before `"2"`). The request is then sent again, on a fresh ID, with the
+  responses as `inputResponses` and the result's `"requestState"`
+  unchanged. That repeats until the server returns a complete result or
+  `:max_input_rounds` results have been answered. A result that carries only
+  a `"requestState"` is sent again with it after 250 milliseconds and counts
+  as a round. Each round has its own `:timeout`, and `:progress` is delivered
+  for every round. The loop stops with an error whose `cause` ends with the
+  last `input_required` result, so the caller can finish the flow by hand:
+
+    * -32602 (`kind: :protocol`, `cause: {:no_input_handler, kind, result}`)
+      for a request of a kind with no handler; `kind` is the method string
+      for a method the client does not know, and `nil` for an entry without
+      one. No handler has run.
+    * -32603 (`kind: :execution`, `cause: {:input_handler, id, reason, result}`)
+      when a handler returned `{:error, reason}`, a value other than
+      `{:ok, response}` (`reason` is `{:invalid_return, value}`), or a
+      response without a valid `"action"` (`{:invalid_response, response}`).
+      An exception raised by a handler propagates to the caller.
+    * -32000 (`kind: :transport`, `data: %{"maxInputRounds" => limit}`,
+      `cause: {:max_input_rounds, result}`) at the round limit.
+    * -32000 (`kind: :transport`, `cause: result`) for a malformed result: one
+      with nothing to answer and no `"requestState"`, or an input request
+      whose `params` is not an object or lacks the keys of its kind
+      (`"message"` and `"requestedSchema"` for a form, `"message"` and
+      `"url"` for a URL). No handler has run.
 
   `subscriptions/listen` raises `ArgumentError`: it needs a stream to deliver
   events on, and dispatching it would open the application's source.
@@ -319,6 +400,10 @@ defmodule Snodo.Client do
       raise ArgumentError, "Snodo.Client cannot stream subscriptions/listen"
     end
 
+    send_request(client, method, params, opts, input_plan(client, opts), 0)
+  end
+
+  defp send_request(client, method, params, opts, plan, round) do
     id = System.unique_integer([:positive, :monotonic])
     progress = progress_callback(Keyword.get(opts, :progress))
 
@@ -336,15 +421,71 @@ defmodule Snodo.Client do
         Keyword.take(opts, [:tool]) ++ progress_options(progress, opts)
 
     case module.request(state, raw, transport_opts) do
-      {:ok, response} -> decode_response(response)
-      {:error, %Error{}} = error -> error
+      {:ok, response} ->
+        response
+        |> decode_response()
+        |> answer_input(client, method, params, opts, plan, round)
+
+      {:error, %Error{}} = error ->
+        error
     end
   end
+
+  # `plan` is nil when the client has no handlers or the call opted out; the
+  # result then reaches the caller as it is.
+  defp answer_input({:input_required, result}, client, method, params, opts, %{} = plan, round) do
+    with :ok <- check_rounds(plan, round, result),
+         {:ok, responses} <- Input.answer(plan.handlers, result) do
+      if map_size(responses) == 0, do: Process.sleep(@state_only_pacing_ms)
+
+      opts =
+        opts
+        |> Keyword.drop([:input_responses, :request_state])
+        |> put_present_option(:input_responses, responses)
+        |> put_present_option(:request_state, Map.get(result, "requestState"))
+
+      send_request(client, method, params, opts, plan, round + 1)
+    end
+  end
+
+  defp answer_input(response, _client, _method, _params, _opts, _plan, _round), do: response
+
+  defp check_rounds(%{max_rounds: limit}, round, _result) when round < limit, do: :ok
+
+  defp check_rounds(%{max_rounds: limit}, _round, result),
+    do: {:error, Input.rounds_exceeded(limit, result)}
+
+  defp input_plan(%__MODULE__{} = client, opts) do
+    answer? = Keyword.get(opts, :answer_input, true)
+    max_rounds = max_input_rounds!(Keyword.get(opts, :max_input_rounds, client.max_input_rounds))
+
+    unless is_boolean(answer?) do
+      raise ArgumentError, ":answer_input must be a boolean, got: #{inspect(answer?)}"
+    end
+
+    if answer? and map_size(client.input_handlers) > 0,
+      do: %{handlers: client.input_handlers, max_rounds: max_rounds},
+      else: nil
+  end
+
+  defp max_input_rounds!(rounds) when is_integer(rounds) and rounds > 0, do: rounds
+
+  defp max_input_rounds!(rounds) do
+    raise ArgumentError, ":max_input_rounds must be a positive integer, got: #{inspect(rounds)}"
+  end
+
+  defp put_present_option(opts, _key, nil), do: opts
+  defp put_present_option(opts, _key, empty) when empty == %{}, do: opts
+  defp put_present_option(opts, key, value), do: Keyword.put(opts, key, value)
 
   defp open(module, init_arg, dialect, opts) do
     capabilities = Keyword.get(opts, :client_capabilities, %{})
     timeout = Keyword.get(opts, :timeout, 30_000)
     max_pages = Keyword.get(opts, :max_pages, 1_000)
+    handlers = opts |> Keyword.get(:input_handlers, %{}) |> Input.validate_handlers!()
+
+    max_input_rounds =
+      max_input_rounds!(Keyword.get(opts, :max_input_rounds, @default_max_input_rounds))
 
     unless is_map(capabilities) do
       raise ArgumentError, ":client_capabilities must be a map, got: #{inspect(capabilities)}"
@@ -368,10 +509,13 @@ defmodule Snodo.Client do
          transport: {module, state},
          protocol: dialect.version(),
          dialect: dialect,
-         client_capabilities: capabilities,
+         client_capabilities:
+           Input.merge_capabilities(Input.capabilities(handlers), capabilities),
          client_info: client_info,
          timeout: timeout,
-         max_pages: max_pages
+         max_pages: max_pages,
+         input_handlers: handlers,
+         max_input_rounds: max_input_rounds
        }}
     end
   end
