@@ -55,6 +55,27 @@ const notifications = {
   "notifications/resources/updated": "ResourceUpdatedNotification",
   "notifications/cancelled": "CancelledNotification",
 };
+// The InputRequest union admits any of the three embedded request kinds; the
+// concrete branch is validated too, so a request that matches a sibling's
+// looser shape cannot pass as the kind its method names.
+const inputRequests = {
+  "elicitation/create": "ElicitRequest",
+  "sampling/createMessage": "CreateMessageRequest",
+  "roots/list": "ListRootsRequest",
+};
+// Named error definitions. The MCP-specific ones are whole responses, whose
+// `data` shape matters (requiredCapabilities is a ClientCapabilities object);
+// the JSON-RPC ones describe only the error member.
+const errors = {
+  [-32020]: { definition: "HeaderMismatchError", envelope: true },
+  [-32021]: { definition: "MissingRequiredClientCapabilityError", envelope: true },
+  [-32022]: { definition: "UnsupportedProtocolVersionError", envelope: true },
+  [-32600]: { definition: "InvalidRequestError", envelope: false },
+  [-32601]: { definition: "MethodNotFoundError", envelope: false },
+  [-32602]: { definition: "InvalidParamsError", envelope: false },
+  [-32603]: { definition: "InternalError", envelope: false },
+  [-32700]: { definition: "ParseError", envelope: false },
+};
 
 export function validateEmission(method, message) {
   if (Object.hasOwn(message, "method")) {
@@ -64,7 +85,10 @@ export function validateEmission(method, message) {
   }
   if (Object.hasOwn(message, "error")) {
     validate("JSONRPCErrorResponse", message);
-    return ["JSONRPCErrorResponse"];
+    const concrete = errors[message.error?.code];
+    if (!concrete) return ["JSONRPCErrorResponse"];
+    validate(concrete.definition, concrete.envelope ? message : message.error);
+    return ["JSONRPCErrorResponse", concrete.definition];
   }
   assert.ok(results[method], `unmapped response method ${method}`);
   const [response, complete] = results[method];
@@ -75,5 +99,14 @@ export function validateEmission(method, message) {
   const payload = message.result.resultType === "input_required" ? "InputRequiredResult" : complete;
   assert.ok(["input_required", "complete"].includes(message.result.resultType), "unexpected resultType");
   validate(payload, message.result);
-  return [response, payload];
+  const names = [response, payload];
+  if (payload === "InputRequiredResult") {
+    for (const request of Object.values(message.result.inputRequests ?? {})) {
+      const definition = inputRequests[request?.method];
+      assert.ok(definition, `unmapped input request ${request?.method}`);
+      validate(definition, request);
+      if (!names.includes(definition)) names.push(definition);
+    }
+  }
+  return names;
 }
