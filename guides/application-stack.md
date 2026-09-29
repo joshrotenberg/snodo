@@ -143,4 +143,5 @@ and [application readiness plan](https://github.com/joshrotenberg/snodo/blob/mai
 independent schema checks, real-client acceptance, and external conformance separate.
 Local runs do not establish that remote CI has executed. Database deployment,
 operational load/soak, authentication policy, HTTP/2/TLS acceptance, deprecated
-roots/sampling, and additional MCP hosts require their own evidence.
+roots/sampling against real hosts (only the frozen runner and literal vectors
+exercise them), and additional MCP hosts require their own evidence.
