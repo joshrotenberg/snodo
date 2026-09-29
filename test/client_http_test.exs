@@ -5,12 +5,16 @@ defmodule Snodo.ClientHTTPTest do
 
   alias Snodo.Client
   alias Snodo.Client.HTTP
+  alias Snodo.Client.Subscription
   alias Snodo.Error
+  alias Snodo.Subscription.Event
   alias Snodo.Transport.StreamableHTTP.Server, as: HTTPServer
   alias SnodoTest.MRTR.Server, as: ChoiceServer
   alias SnodoTest.TestFixtures
   alias SnodoTest.TestPrompts.PackageAnalysis
   alias SnodoTest.TestResources.StaticText
+  alias SnodoTest.TestSubscriptionHub
+  alias SnodoTest.TestSubscriptionSource
   alias SnodoTest.TestTools.Routed
   alias SnodoTest.TestTools.Ticks
 
@@ -685,6 +689,284 @@ defmodule Snodo.ClientHTTPTest do
       assert {:error, %Error{code: -32_602, data: %{"supported" => ["2026-07-28"]}}} =
                Client.connect({:http, "http://127.0.0.1:1/mcp"}, protocol: "2025-11-25")
     end
+  end
+
+  describe "subscriptions against the native listener" do
+    @tools_filter %{"toolsListChanged" => true}
+
+    setup do
+      {:ok, hub} = start_supervised({TestSubscriptionHub, owner: self()})
+
+      runtime =
+        TestFixtures.runtime(
+          capabilities: %{
+            "tools" => %{"listChanged" => true},
+            "resources" => %{"subscribe" => true}
+          },
+          subscription_source: {TestSubscriptionSource, hub}
+        )
+
+      %{hub: hub, client: connect(serve(runtime))}
+    end
+
+    test "listen/3 returns the accepted filter and delivers events on demand",
+         %{hub: hub, client: client} do
+      requested = %{
+        "toolsListChanged" => true,
+        "promptsListChanged" => true,
+        "resourceSubscriptions" => ["test://resource/one"]
+      }
+
+      assert {:ok, %Subscription{accepted: accepted, id: id, ref: ref} = subscription} =
+               Client.listen(client, requested)
+
+      assert accepted == Map.delete(requested, "promptsListChanged")
+      assert_receive {:subscription_opened, ^id, ^accepted}, 1_000
+
+      :ok = Subscription.demand(subscription, 2)
+      :ok = TestSubscriptionHub.emit(hub, id, Event.resource_updated("test://resource/one"))
+      :ok = TestSubscriptionHub.emit(hub, id, tools_changed(1))
+      :ok = TestSubscriptionHub.emit(hub, id, tools_changed(2))
+
+      assert_receive {:snodo_subscription, ^ref,
+                      {:notification, "notifications/resources/updated", updated}},
+                     1_000
+
+      assert updated["uri"] == "test://resource/one"
+      assert updated["_meta"]["io.modelcontextprotocol/subscriptionId"] == id
+
+      assert_receive {:snodo_subscription, ^ref,
+                      {:notification, "notifications/tools/list_changed", first}},
+                     1_000
+
+      assert first["_meta"]["seq"] == 1
+      refute_receive {:snodo_subscription, ^ref, _payload}, 100
+
+      assert {:notification, "notifications/tools/list_changed", %{"_meta" => %{"seq" => 2}}} =
+               Subscription.next(subscription, 1_000)
+    end
+
+    test "a full buffer drops the oldest event and reports the count",
+         %{hub: hub, client: client} do
+      {:ok, subscription} = Client.listen(client, @tools_filter, max_buffer: 2)
+      %{id: id, ref: ref, pid: pid} = subscription
+
+      for sequence <- 1..3, do: :ok = TestSubscriptionHub.emit(hub, id, tools_changed(sequence))
+
+      assert eventually(fn ->
+               %{buffer: buffer} = :sys.get_state(pid)
+               buffer.size == 2 and buffer.dropped == 1
+             end)
+
+      :ok = Subscription.demand(subscription, 10)
+      assert_receive {:snodo_subscription, ^ref, {:dropped, 1}}, 1_000
+      assert_receive {:snodo_subscription, ^ref, {:notification, _method, second}}, 1_000
+      assert second["_meta"]["seq"] == 2
+      assert_receive {:snodo_subscription, ^ref, {:notification, _method, third}}, 1_000
+      assert third["_meta"]["seq"] == 3
+      refute_received {:snodo_subscription, ^ref, _other}
+    end
+
+    test "close/1 closes the connection, which the server takes as a disconnect",
+         %{client: client} do
+      {:ok, subscription} = Client.listen(client, @tools_filter)
+      %{id: id, pid: pid} = subscription
+      monitor = Process.monitor(pid)
+
+      assert :ok = Subscription.close(subscription)
+      assert_receive {:DOWN, ^monitor, :process, ^pid, :normal}, 1_000
+      assert_receive {:subscription_closed, ^id, reason}, 1_000
+      assert disconnected?(reason)
+      assert :ok = Subscription.close(subscription)
+    end
+
+    test "the owner's exit closes the connection", %{client: client} do
+      test = self()
+
+      owner =
+        spawn(fn ->
+          {:ok, subscription} = Client.listen(client, @tools_filter)
+          send(test, {:listening, subscription})
+          Process.sleep(:infinity)
+        end)
+
+      assert_receive {:listening, %Subscription{id: id, pid: pid}}, 1_000
+      monitor = Process.monitor(pid)
+      Process.exit(owner, :kill)
+
+      assert_receive {:DOWN, ^monitor, :process, ^pid, :normal}, 1_000
+      assert_receive {:subscription_closed, ^id, reason}, 1_000
+      assert disconnected?(reason)
+    end
+
+    test "the server's terminal result follows the queued events", %{hub: hub, client: client} do
+      {:ok, subscription} = Client.listen(client, @tools_filter)
+      %{id: id, ref: ref, pid: pid} = subscription
+      monitor = Process.monitor(pid)
+
+      :ok = TestSubscriptionHub.emit(hub, id, tools_changed(1))
+      :ok = TestSubscriptionHub.emit(hub, id, tools_changed(2))
+      :ok = TestSubscriptionHub.complete(hub, id)
+      assert_receive {:subscription_closed, ^id, :complete}, 1_000
+
+      assert {:notification, _method, %{"_meta" => %{"seq" => 1}}} =
+               Subscription.next(subscription, 1_000)
+
+      refute_receive {:snodo_subscription, ^ref, _payload}, 50
+
+      assert {:notification, _method, %{"_meta" => %{"seq" => 2}}} =
+               Subscription.next(subscription, 1_000)
+
+      assert_receive {:snodo_subscription, ^ref, {:closed, :complete}}, 1_000
+      assert_receive {:DOWN, ^monitor, :process, ^pid, :normal}, 1_000
+    end
+
+    test "a source failure ends the stream with the server's error", %{hub: hub, client: client} do
+      {:ok, subscription} = Client.listen(client, @tools_filter)
+      id = subscription.id
+
+      :ok = TestSubscriptionHub.fail(hub, id, :boom)
+
+      assert {:closed, {:error, %Error{code: -32_603, kind: :execution}}} =
+               Subscription.next(subscription, 1_000)
+
+      assert_receive {:subscription_closed, ^id, {:error, :boom}}, 1_000
+    end
+
+    test "an error response is returned instead of a handle", %{client: client} do
+      assert {:error, %Error{code: -32_602, kind: :protocol}} =
+               Client.listen(client, %{"toolsListChanged" => "yes"})
+
+      unconfigured =
+        start_supervised!(
+          Supervisor.child_spec({HTTPServer, runtime: TestFixtures.runtime(), port: 0},
+            id: :unconfigured
+          )
+        )
+
+      assert {:error, %Error{code: -32_601, kind: :protocol}} =
+               Client.listen(connect(HTTPServer.url(unconfigured)), @tools_filter)
+
+      refute_received {:subscription_opened, _id, _filter}
+    end
+  end
+
+  describe "subscriptions against a fake server" do
+    @acknowledgement %{
+      "jsonrpc" => "2.0",
+      "method" => "notifications/subscriptions/acknowledged",
+      "params" => %{"notifications" => %{"toolsListChanged" => true}}
+    }
+
+    test "the request timeout bounds the wait for the acknowledgement, not the stream" do
+      url =
+        FakeHTTP.start(self(), fn _headers, _message ->
+          silence = Stream.repeatedly(fn -> Process.sleep(50) && ": keepalive\n\n" end)
+          {200, [{"content-type", "text/event-stream"}], {:stream, silence}}
+        end)
+
+      assert {:error, %Error{code: -32_001, data: %{"timeoutMs" => 200}}} =
+               Client.listen(connect(url), %{"toolsListChanged" => true}, timeout: 200)
+
+      url =
+        FakeHTTP.start(self(), fn _headers, _message ->
+          slow = Stream.map(events([@acknowledgement, event(1)]), &(Process.sleep(150) && &1))
+          {200, [{"content-type", "text/event-stream"}], {:stream, slow}}
+        end)
+
+      {:ok, subscription} =
+        Client.listen(connect(url), %{"toolsListChanged" => true}, timeout: 250)
+
+      assert {:notification, _method, %{"seq" => 1}} = Subscription.next(subscription, 1_000)
+    end
+
+    test "a stream that ends before the acknowledgement, and a JSON error body, are errors" do
+      empty =
+        FakeHTTP.start(self(), fn _headers, _message ->
+          {200, [{"content-type", "text/event-stream"}], ": nothing\n\n"}
+        end)
+
+      assert {:error, %Error{code: -32_000, kind: :transport, message: message}} =
+               Client.listen(connect(empty), %{"toolsListChanged" => true})
+
+      assert message =~ "before acknowledging"
+
+      refused =
+        FakeHTTP.start(self(), fn _headers, message ->
+          error = %{"code" => -32_601, "message" => "no source"}
+          body = JSON.encode!(%{"jsonrpc" => "2.0", "id" => message["id"], "error" => error})
+          {404, [{"content-type", "application/json"}], body}
+        end)
+
+      assert {:error, %Error{code: -32_601, message: "no source"}} =
+               Client.listen(connect(refused), %{"toolsListChanged" => true})
+    end
+
+    test "a connection that closes after the acknowledgement ends the stream with -32000" do
+      url =
+        FakeHTTP.start(self(), fn _headers, _message ->
+          body = IO.iodata_to_binary(events([@acknowledgement, event(1)]))
+          {200, [{"content-type", "text/event-stream"}], body}
+        end)
+
+      {:ok, subscription} = Client.listen(connect(url), %{"toolsListChanged" => true})
+      assert {:notification, _method, %{"seq" => 1}} = Subscription.next(subscription, 1_000)
+
+      assert {:closed, {:error, %Error{code: -32_000, kind: :transport, cause: :closed}}} =
+               Subscription.next(subscription, 1_000)
+    end
+
+    test ":max_response_bytes applies to each event, not to the whole stream" do
+      big = fn n -> event(n, String.duplicate("x", 400_000)) end
+
+      url =
+        FakeHTTP.start(self(), fn _headers, _message ->
+          stream =
+            events([
+              @acknowledgement,
+              big.(1),
+              big.(2),
+              big.(3),
+              event(4, String.duplicate("x", 2 * @mib))
+            ])
+
+          {200, [{"content-type", "text/event-stream"}], {:stream, stream}}
+        end)
+
+      {:ok, subscription} =
+        Client.listen(connect(url, max_response_bytes: @mib), %{"toolsListChanged" => true})
+
+      for n <- 1..3 do
+        assert {:notification, _method, %{"seq" => ^n}} = Subscription.next(subscription, 5_000)
+      end
+
+      assert {:closed, {:error, %Error{code: -32_000, cause: {:max_response_bytes, @mib}}}} =
+               Subscription.next(subscription, 5_000)
+    end
+
+    defp event(sequence, padding \\ "") do
+      %{
+        "jsonrpc" => "2.0",
+        "method" => "notifications/tools/list_changed",
+        "params" => %{"seq" => sequence, "padding" => padding}
+      }
+    end
+
+    defp events(messages) do
+      Enum.map(messages, fn message -> "data: " <> JSON.encode!(message) <> "\n\n" end)
+    end
+  end
+
+  defp tools_changed(sequence), do: Event.tools_list_changed(metadata: %{"seq" => sequence})
+
+  defp disconnected?(:disconnected), do: true
+  defp disconnected?({:disconnected, _socket_error}), do: true
+  defp disconnected?(_reason), do: false
+
+  defp eventually(check, attempts \\ 50) do
+    Enum.any?(1..attempts, fn _attempt ->
+      check.() || (Process.sleep(20) && false)
+    end)
   end
 
   test "encode_sentinel/1 leaves printable ASCII alone and encodes everything else" do
