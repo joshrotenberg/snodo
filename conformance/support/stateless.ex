@@ -12,11 +12,28 @@ defmodule SnodoTest.Conformance.Stateless do
   def tools do
     [
       SnodoTest.Conformance.Stateless.Logging,
+      SnodoTest.Conformance.Stateless.MissingCapability,
       SnodoTest.Conformance.Stateless.StreamingElicitation,
       SnodoTest.Conformance.Stateless.TriggerToolChange,
       SnodoTest.Conformance.Stateless.TriggerPromptChange
     ]
   end
+end
+
+defmodule SnodoTest.Conformance.Stateless.MissingCapability do
+  @moduledoc false
+
+  # The scenario calls this with empty client capabilities and expects
+  # -32021 naming sampling. The tool always asks for sampling; the dialect
+  # refuses the result before it is sent when the client did not declare it.
+  use Snodo.Tool,
+    name: "test_missing_capability",
+    description: "Requests sampling, which the dialect refuses unless the client declares it"
+
+  alias SnodoTest.Conformance.MRTR.Workflow
+
+  @impl true
+  def call(_arguments, context), do: Workflow.capital(context)
 end
 
 defmodule SnodoTest.Conformance.Stateless.Logging do
