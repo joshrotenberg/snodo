@@ -8,6 +8,7 @@ defmodule Snodo.ClientTest do
   alias Snodo.Protocol.V2026_07_28
   alias SnodoTest.MRTR.Choice
   alias SnodoTest.MRTR.Server, as: ChoiceServer
+  alias SnodoTest.MRTR.UrlTool
   alias SnodoTest.TestAuthorization.Policy
   alias SnodoTest.TestFixtures
   alias SnodoTest.TestPrompts.PackageAnalysis
@@ -311,6 +312,359 @@ defmodule Snodo.ClientTest do
     end
   end
 
+  describe "input handlers" do
+    test "form and URL handlers answer tool, resource, and prompt calls" do
+      test = self()
+
+      handlers = %{
+        form: fn params ->
+          send(test, {:form, params})
+          {:ok, accepted("auto")}
+        end,
+        url: fn params ->
+          send(test, {:url, params})
+          {:ok, %{"action" => "accept"}}
+        end
+      }
+
+      {:ok, client} = Client.direct(ChoiceServer.runtime(), input_handlers: handlers)
+
+      assert {:ok, %{"structuredContent" => %{"label" => "auto"}}} =
+               Client.call_tool(client, "choice")
+
+      assert_receive {:form, %{"mode" => "form", "message" => "Choose a label"} = params}, 1_000
+      assert params["requestedSchema"] == Choice.request()["params"]["requestedSchema"]
+
+      assert {:ok, %{"contents" => [%{"text" => "auto"}]}} =
+               Client.read_resource(client, "choice://value")
+
+      assert {:ok, %{"messages" => [%{"content" => %{"text" => "auto"}}]}} =
+               Client.get_prompt(client, "choice")
+
+      assert {:ok, %{"structuredContent" => %{"action" => "accept"}}} =
+               Client.call_tool(client, "consent")
+
+      assert_receive {:url, %{"mode" => "url", "message" => "Review the terms", "url" => url}},
+                     1_000
+
+      assert url == "https://example.test/consent"
+    end
+
+    test "each round sends the responses and the request state unchanged" do
+      test = self()
+
+      form = fn _params ->
+        send(test, :asked)
+        {:ok, accepted("x")}
+      end
+
+      {:ok, client} = Client.direct(ChoiceServer.runtime(), input_handlers: %{form: form})
+
+      # One request per round; the second round only completes if the first
+      # answer came back in the sealed state.
+      assert {:ok, %{"structuredContent" => %{"first" => "x", "second" => "x"}}} =
+               Client.call_tool(client, "sequential_choices")
+
+      assert count(:asked) == 2
+
+      # Both requests in one round.
+      assert {:ok, %{"structuredContent" => %{"first" => "x", "second" => "x"}}} =
+               Client.call_tool(client, "multiple_choices")
+
+      assert count(:asked) == 2
+    end
+
+    test "the round limit stops the loop and hands back the last result" do
+      test = self()
+
+      form = fn _params ->
+        send(test, :asked)
+        {:ok, accepted("x")}
+      end
+
+      {:ok, client} =
+        Client.direct(ChoiceServer.runtime(), input_handlers: %{form: form}, max_input_rounds: 1)
+
+      assert {:error,
+              %Error{
+                code: -32_000,
+                kind: :transport,
+                data: %{"maxInputRounds" => 1},
+                cause: {:max_input_rounds, last}
+              }} = Client.call_tool(client, "sequential_choices")
+
+      assert %{"inputRequests" => %{"second" => _request}, "requestState" => state} = last
+      assert count(:asked) == 1
+
+      # The caller can finish the flow by hand from the last result.
+      assert {:ok, %{"structuredContent" => %{"first" => "x", "second" => "y"}}} =
+               Client.call_tool(client, "sequential_choices", %{},
+                 input_responses: %{"second" => accepted("y")},
+                 request_state: state
+               )
+
+      assert count(:asked) == 0
+
+      # A per-call limit overrides the client's, and a server that asks again
+      # on every call is stopped at the limit.
+      url = fn _params ->
+        send(test, :asked)
+        {:ok, %{"action" => "accept"}}
+      end
+
+      {:ok, client} = Client.direct(ChoiceServer.runtime(), input_handlers: %{url: url})
+
+      assert {:error, %Error{data: %{"maxInputRounds" => 2}}} =
+               Client.call_tool(client, "invalid_input", %{"variant" => "url"},
+                 max_input_rounds: 2
+               )
+
+      assert count(:asked) == 2
+    end
+
+    test "the declared capabilities follow the handlers" do
+      form = fn _params -> {:ok, accepted("x")} end
+      url = fn _params -> {:ok, %{"action" => "accept"}} end
+
+      assert declared(input_handlers: %{form: form}) == %{"elicitation" => %{"form" => %{}}}
+
+      assert declared(input_handlers: %{form: form, url: url}) ==
+               %{"elicitation" => %{"form" => %{}, "url" => %{}}}
+
+      # An explicit map is kept; an empty elicitation entry still means form.
+      assert declared(
+               input_handlers: %{url: url},
+               client_capabilities: %{"elicitation" => %{}, "experimental" => %{"x" => %{}}}
+             ) ==
+               %{"elicitation" => %{"form" => %{}, "url" => %{}}, "experimental" => %{"x" => %{}}}
+
+      assert declared(input_handlers: %{form: form}, client_capabilities: %{"elicitation" => %{}}) ==
+               %{"elicitation" => %{"form" => %{}}}
+
+      # Without handlers the declared capabilities go out as given.
+      assert declared([]) == %{}
+      assert declared(client_capabilities: %{"elicitation" => %{}}) == %{"elicitation" => %{}}
+
+      assert {:ok, %Client{client_capabilities: %{"elicitation" => true}}} =
+               Client.direct(TestFixtures.runtime(),
+                 client_capabilities: %{"elicitation" => true}
+               )
+
+      # A handler cannot merge its entry into a value that is not a map.
+      assert_raise ArgumentError, ~r/declares "elicitation" as true/, fn ->
+        Client.direct(TestFixtures.runtime(),
+          input_handlers: %{form: form},
+          client_capabilities: %{"elicitation" => true}
+        )
+      end
+    end
+
+    test "answer_input: false hands the input_required result to the caller" do
+      form = fn _params -> flunk("the handler was called") end
+      {:ok, client} = Client.direct(ChoiceServer.runtime(), input_handlers: %{form: form})
+
+      assert {:input_required, %{"inputRequests" => %{"choice" => _request}}} =
+               Client.call_tool(client, "choice", %{}, answer_input: false)
+    end
+
+    test "a request kind with no handler is a -32602 error" do
+      form = fn _params -> {:ok, accepted("x")} end
+
+      # Declaring the URL capability by hand lets the server ask for it.
+      {:ok, client} =
+        Client.direct(ChoiceServer.runtime(),
+          input_handlers: %{form: form},
+          client_capabilities: %{"elicitation" => %{"url" => %{}}}
+        )
+
+      assert {:error,
+              %Error{
+                code: -32_602,
+                kind: :protocol,
+                data: %{"inputRequest" => "consent"},
+                cause: {:no_input_handler, :url, %{"inputRequests" => %{"consent" => _}}}
+              }} = Client.call_tool(client, "consent")
+
+      {:ok, client} = Client.connect({CannedTransport, self()}, input_handlers: %{form: form})
+
+      canned(%{"inputRequests" => %{"r" => %{"method" => "roots/list"}}})
+
+      assert {:error, %Error{code: -32_602, cause: {:no_input_handler, "roots/list", _}}} =
+               Client.discover(client)
+
+      canned(%{"inputRequests" => %{"r" => %{"params" => %{}}}})
+
+      assert {:error, %Error{code: -32_602, cause: {:no_input_handler, nil, _}}} =
+               Client.discover(client)
+    end
+
+    test "no handler runs unless every request in the round has one" do
+      form = fn _params -> flunk("the form handler was called") end
+      {:ok, client} = Client.connect({CannedTransport, self()}, input_handlers: %{form: form})
+
+      requests = %{
+        "1" => Choice.request(),
+        "2" => UrlTool.request()
+      }
+
+      canned(%{"inputRequests" => requests, "requestState" => "s1"})
+
+      assert {:error,
+              %Error{
+                code: -32_602,
+                data: %{"inputRequest" => "2"},
+                cause: {:no_input_handler, :url, %{"inputRequests" => ^requests}}
+              }} = Client.discover(client)
+
+      # The one request was sent and nothing was retried.
+      assert_receive {:canned_request, _message, _opts}
+      refute_receive {:canned_request, _message, _opts}, 100
+    end
+
+    test "handlers run in the sort order of the request IDs" do
+      test = self()
+
+      form = fn %{"message" => message} ->
+        send(test, {:asked, message})
+        {:ok, accepted("x")}
+      end
+
+      {:ok, client} = Client.connect({CannedTransport, self()}, input_handlers: %{form: form})
+
+      requests =
+        Map.new(~w(2 10 1), fn id ->
+          {id, put_in(Choice.request(), ["params", "message"], "request #{id}")}
+        end)
+
+      canned(%{"inputRequests" => requests})
+      assert {:ok, %{"canned" => true}} = Client.discover(client)
+
+      assert_receive {:asked, "request 1"}
+      assert_receive {:asked, "request 10"}
+      assert_receive {:asked, "request 2"}
+    end
+
+    test "a malformed input request is a -32000 error and no handler runs" do
+      form = fn _params -> flunk("the form handler was called") end
+      url = fn _params -> flunk("the URL handler was called") end
+
+      {:ok, client} =
+        Client.connect({CannedTransport, self()}, input_handlers: %{form: form, url: url})
+
+      form_params = Choice.request()["params"]
+      url_params = UrlTool.request()["params"]
+
+      malformed = [
+        "junk",
+        %{"method" => "elicitation/create", "params" => "junk"},
+        %{"method" => "elicitation/create", "params" => nil},
+        %{"method" => "elicitation/create", "params" => 7},
+        %{"method" => "elicitation/create"},
+        %{"method" => "elicitation/create", "params" => Map.delete(form_params, "message")},
+        %{
+          "method" => "elicitation/create",
+          "params" => Map.delete(form_params, "requestedSchema")
+        },
+        %{"method" => "elicitation/create", "params" => Map.delete(url_params, "url")},
+        %{"method" => "elicitation/create", "params" => Map.delete(url_params, "message")}
+      ]
+
+      for request <- malformed do
+        requests = %{"r" => request}
+        canned(%{"inputRequests" => requests})
+
+        assert {:error,
+                %Error{code: -32_000, kind: :transport, cause: %{"inputRequests" => ^requests}}} =
+                 Client.discover(client)
+      end
+    end
+
+    test "a handler failure is a -32603 error and an exception propagates" do
+      runtime = ChoiceServer.runtime()
+
+      for {handler, reason} <- [
+            {fn _params -> {:error, :closed} end, :closed},
+            {fn _params -> :garbage end, {:invalid_return, :garbage}},
+            {fn _params -> {:ok, %{"action" => "later"}} end,
+             {:invalid_response, %{"action" => "later"}}}
+          ] do
+        {:ok, client} = Client.direct(runtime, input_handlers: %{form: handler})
+
+        assert {:error,
+                %Error{
+                  code: -32_603,
+                  kind: :execution,
+                  cause:
+                    {:input_handler, "choice", ^reason, %{"inputRequests" => %{"choice" => _}}}
+                }} =
+                 Client.call_tool(client, "choice")
+      end
+
+      {:ok, client} =
+        Client.direct(runtime, input_handlers: %{form: fn _params -> raise "boom" end})
+
+      assert_raise RuntimeError, "boom", fn -> Client.call_tool(client, "choice") end
+    end
+
+    test "a state-only result is sent again with its state; nothing to answer is an error" do
+      form = fn _params -> {:ok, accepted("x")} end
+      {:ok, client} = Client.connect({CannedTransport, self()}, input_handlers: %{form: form})
+
+      canned(%{"requestState" => "s1"})
+
+      assert {:ok, %{"canned" => true}} =
+               Client.request(client, "server/discover", %{}, progress: self())
+
+      assert_receive {:canned_request, %{"params" => first}, first_opts}, 1_000
+      refute Map.has_key?(first, "requestState")
+      assert_receive {:canned_request, %{"params" => second}, second_opts}, 1_000
+      assert second["requestState"] == "s1"
+      refute Map.has_key?(second, "inputResponses")
+
+      assert is_function(first_opts[:on_progress], 1) and
+               is_function(second_opts[:on_progress], 1)
+
+      canned(%{"inputRequests" => %{}})
+      assert {:error, %Error{code: -32_000, kind: :transport}} = Client.discover(client)
+
+      {:ok, client} =
+        Client.direct(ChoiceServer.runtime(), input_handlers: %{form: form}, max_input_rounds: 1)
+
+      assert {:error,
+              %Error{cause: {:max_input_rounds, %{"requestState" => "unused-opaque-marker"}}}} =
+               Client.call_tool(client, "invalid_input", %{"variant" => "state_only"})
+
+      assert {:error, %Error{code: -32_000, kind: :transport}} =
+               Client.call_tool(client, "invalid_input", %{"variant" => "empty_requests"})
+    end
+
+    test "options are validated" do
+      runtime = TestFixtures.runtime()
+
+      for {opts, message} <- [
+            {[input_handlers: [form: fn _params -> :ok end]], ~r/:input_handlers must be a map/},
+            {[input_handlers: %{sampling: fn _params -> :ok end}],
+             ~r/unknown input handler kind :sampling/},
+            {[input_handlers: %{form: fn -> :ok end}],
+             ~r/:input_handlers :form must be a function of one argument/},
+            {[max_input_rounds: 0], ~r/:max_input_rounds must be a positive integer/}
+          ] do
+        assert_raise ArgumentError, message, fn -> Client.direct(runtime, opts) end
+      end
+
+      client = client()
+      assert %Client{max_input_rounds: 10, input_handlers: %{}} = client
+
+      assert_raise ArgumentError, ~r/:answer_input must be a boolean/, fn ->
+        Client.call_tool(client, "echo", %{"text" => "x"}, answer_input: :no)
+      end
+
+      assert_raise ArgumentError, ~r/:max_input_rounds must be a positive integer/, fn ->
+        Client.call_tool(client, "echo", %{"text" => "x"}, max_input_rounds: -1)
+      end
+    end
+  end
+
   test "auth reaches authorization policies as context.auth" do
     policy = {Policy, %{owner: self(), allowed: %{"ada" => MapSet.new([{:tool, "echo"}])}}}
     runtime = TestFixtures.runtime(tools: [Echo], authorization: policy)
@@ -430,6 +784,29 @@ defmodule Snodo.ClientTest do
   end
 
   defp accepted(label), do: %{"action" => "accept", "content" => %{"label" => label}}
+
+  defp declared(opts) do
+    {:ok, client} = Client.direct(TestFixtures.runtime(), opts)
+
+    {:ok, %{"structuredContent" => %{"clientCapabilities" => capabilities}}} =
+      Client.call_tool(client, "context_echo")
+
+    capabilities
+  end
+
+  # An input_required result for CannedTransport to answer the next request with.
+  defp canned(result) do
+    result = Map.put(result, "resultType", "input_required")
+    send(self(), {:canned_response, %{"jsonrpc" => "2.0", "id" => 0, "result" => result}})
+  end
+
+  defp count(tag) do
+    receive do
+      ^tag -> 1 + count(tag)
+    after
+      0 -> 0
+    end
+  end
 
   defp drain(tag) do
     receive do

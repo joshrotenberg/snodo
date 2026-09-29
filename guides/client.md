@@ -60,8 +60,8 @@ pages (1,000 by default) still has a `nextCursor`. `list_page/3` returns one
 ## Multi round-trip requests
 
 A server that needs input returns `input_required` with `inputRequests` and,
-sometimes, a `requestState`. The client does not answer automatically; call
-again with the answers:
+sometimes, a `requestState`. A client without input handlers does not answer;
+call again with the answers:
 
 ```elixir
 {:ok, client} = Snodo.Client.direct(runtime, client_capabilities: %{"elicitation" => %{"form" => %{}}})
@@ -78,6 +78,73 @@ Snodo.Client.call_tool(client, "deploy", %{},
 ```
 
 See [Interactive operations](interactive-operations.md) for the server side.
+
+### Input handlers
+
+Install `input_handlers:` to answer input requests inside the call. The map is
+keyed by request kind, `:form` and `:url` for the two elicitation modes. A
+handler is a function of one argument: it receives the request's `params`
+(`"mode"`, `"message"`, and `"requestedSchema"` or `"url"`) and returns
+`{:ok, response}`, where `response` is the elicitation result, or
+`{:error, reason}`.
+
+```elixir
+{:ok, client} =
+  Snodo.Client.connect({:http, url},
+    input_handlers: %{
+      form: fn %{"message" => message, "requestedSchema" => schema} ->
+        {:ok, %{"action" => "accept", "content" => MyUI.ask(message, schema)}}
+      end,
+      url: fn %{"url" => url} ->
+        MyUI.open(url)
+        {:ok, %{"action" => "accept"}}
+      end
+    }
+  )
+
+{:ok, result} = Snodo.Client.call_tool(client, "deploy", %{})
+```
+
+The declared client capabilities follow the handlers: `:form` adds
+`"elicitation" => %{"form" => %{}}` and `:url` adds `"url"` next to it, merged
+with any `:client_capabilities` given. An explicit `"elicitation" => %{}` next
+to a `:url` handler is kept as form. A declared entry the handlers need to
+merge into must be a map; `"elicitation" => true` with a handler installed
+raises `ArgumentError`. A server therefore does not ask for a kind the client
+cannot answer.
+
+When a result asks for input, the client first matches every request to a
+handler and checks that its `params` carry the keys of its kind; only then
+does it call the handlers, one at a time in the calling process, in the sort
+order of the request IDs. It sends the request again, on a fresh request ID,
+with the responses as `inputResponses` and the result's `requestState`
+unchanged.
+That repeats until the server returns a complete result or `:max_input_rounds`
+results (10 by default) have been answered. A result that carries only a
+`requestState` is sent again with it after 250 ms, as the official TypeScript
+client does, and counts as a round. Each round has its own `timeout:`, and
+`progress:` is delivered for every round.
+
+| Condition | Return |
+|---|---|
+| no handlers installed, or `answer_input: false` on the call | `{:input_required, result}` |
+| a request of a kind with no handler, or with a method the client does not know (no handler has run) | -32602, `kind: :protocol`, `cause: {:no_input_handler, kind, result}` |
+| a handler returned `{:error, reason}`, or something other than `{:ok, response}` with a valid `"action"` | -32603, `kind: :execution`, `cause: {:input_handler, id, reason, result}` |
+| the server still required input after `:max_input_rounds` rounds | -32000, `kind: :transport`, `data: %{"maxInputRounds" => n}`, `cause: {:max_input_rounds, result}` |
+| a result with nothing to answer and no `requestState`, or an input request whose `params` is not a map or lacks `"message"` and `"requestedSchema"` (form) or `"message"` and `"url"` (URL); no handler has run | -32000, `kind: :transport`, `cause: result` |
+
+A handler that raises stops the call with that exception. Each error carries
+the last `input_required` result at the end of its `cause`, so the caller can
+finish the flow by hand with `input_responses:` and `request_state:`.
+Responses are not checked against `requestedSchema` on the client; the server
+validates them and answers -32602 for an invalid one, as it does for a
+hand-written response.
+
+| Option | Applies to | Default | Meaning |
+|---|---|---|---|
+| `:input_handlers` | `direct/2`, `connect/2` | `%{}` | a map from `:form` or `:url` to a function of one argument |
+| `:max_input_rounds` | `direct/2`, `connect/2`, each call | 10 | the most `input_required` results answered for one call |
+| `:answer_input` | each call | `true` | `false` returns `{:input_required, result}` for this call |
 
 ## Progress
 
@@ -119,7 +186,8 @@ calling process receives the progress reports.
 
 | Option | Applies to | Meaning |
 |---|---|---|
-| `:client_capabilities` | all | capabilities sent with every request |
+| `:client_capabilities` | all | capabilities sent with every request, plus those the input handlers imply |
+| `:input_handlers`, `:max_input_rounds` | all | functions that answer input requests, and the round limit (see above) |
 | `:client_info` | all | the `Implementation` sent as `io.modelcontextprotocol/clientInfo`; defaults to `%{"name" => "snodo", "version" => ...}` with this library's version |
 | `:timeout` | all | default request timeout in milliseconds |
 | `:auth` | `direct/2` | the value handlers and policies read as `context.auth` |
