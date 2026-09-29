@@ -27,7 +27,7 @@ The same public-API fixture runs in three fresh subprocesses: direct dispatch
 through a JSON-lines adapter, real stdio transport, and the native Streamable HTTP
 listener. No private test helpers or captured success responses are imported.
 
-Each transport executes 20 operations and validates 26 emitted JSON messages:
+Each transport executes 27 operations and validates 33 emitted JSON messages:
 
 - Discovery, tool listing, normal tool results, tool-domain errors, and typed
   JSON-RPC errors.
@@ -37,16 +37,21 @@ Each transport executes 20 operations and validates 26 emitted JSON messages:
 - Prompt listing/rendering and argument completion.
 - Ordinary MRTR elicitation plus a fresh-ID retry for tools, resources, and
   prompts.
+- The deprecated (SEP-2577) sampling and roots input requests, each with a
+  retry; one result carrying all three kinds with its retry; and the `-32021`
+  refusal a tool gets when the client did not declare `sampling`.
 - A finite subscription: acknowledgement, tool-list event, resource-update event,
   and correlated terminal result. HTTP is parsed from its real SSE response body.
 
-Across the three transports this is **60 operations / 78 emissions**, covering
-26 explicitly selected response, result, and notification definitions plus their
-referenced schemas. Every emission is also cloned and deliberately damaged to
-prove rejection: 78 negative envelope controls. Seven separate unit tests exercise
-deep content/schema failures, absent required cache/completion/subscription
-structure, progress field types, definition lookup, and non-mutation. `npm test` runs only those unit
-controls and does not start Elixir.
+Across the three transports this is **81 operations / 99 emissions**, covering
+31 explicitly selected response, result, input-request, error, and notification
+definitions plus their referenced schemas. Every emission is also cloned and
+deliberately damaged to prove rejection: 99 negative envelope controls. Nine
+separate unit tests exercise deep content/schema failures, concrete embedded
+request and named error branches, absent required
+cache/completion/subscription structure, progress field types, definition
+lookup, and non-mutation. `npm test` runs only those unit controls and does
+not start Elixir.
 
 The final stdout line is a machine-readable JSON summary containing the schema
 commit/digest and each transport's counts and named definitions. Assertions also
@@ -67,12 +72,21 @@ concrete result branch** (`CallToolResult`, `ReadResourceResult`, `GetPromptResu
 or `InputRequiredResult`). A unit control demonstrates the upstream union accepts
 the damaged complete result and our concrete-branch validation rejects it.
 
+The same policy applies inside an `InputRequiredResult` and to errors. Each
+embedded input request is also validated as the definition its method names
+(`ElicitRequest`, `CreateMessageRequest`, or `ListRootsRequest`), not only as
+the `InputRequest` union. An error response is validated as
+`JSONRPCErrorResponse` and, when its code has a named definition, as that
+definition too: the generic envelope accepts any `data`, while
+`MissingRequiredClientCapabilityError` requires `requiredCapabilities` to be a
+`ClientCapabilities` object. Unit controls demonstrate both.
+
 The upstream artifact remains byte-for-byte unchanged. This lane does not claim
 the schema encodes all protocol semantics or that all 155 definitions are covered.
-Tasks, deprecated sampling/roots, URL-mode MRTR, cancellation failures, hostile
-transport framing, every content variant, and every application schema are outside
-this selected corpus. Other acceptance and protocol-contract tests cover separate
-parts of that surface.
+Tasks, URL-mode MRTR, sampling requests with tools or model preferences,
+cancellation failures, hostile transport framing, every content variant, and
+every application schema are outside this selected corpus. Other acceptance and
+protocol-contract tests cover separate parts of that surface.
 
 ## Validation policy
 

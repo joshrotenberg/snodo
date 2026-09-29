@@ -1,9 +1,10 @@
 # Ordinary MRTR and elicitation
 
 The first general MRTR slice supports ordinary tools, resources, and prompts
-with form/URL elicitation and state-only continuations. It uses public APIs,
-preserves the synchronous core, and needs no server-owned waiting process.
-The implementation follows the pinned [2026-07-28 MRTR contract](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/mrtr)
+with form/URL elicitation, the deprecated sampling and roots input requests,
+and state-only continuations. It uses public APIs, preserves the synchronous
+core, and needs no server-owned waiting process. The implementation follows
+the pinned [2026-07-28 MRTR contract](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/mrtr)
 and [elicitation contract](https://modelcontextprotocol.io/specification/2026-07-28/client/elicitation).
 
 ## Authoring an interactive operation
@@ -38,6 +39,40 @@ build; `SNODO_EBIN` selects a different compiled core. Its five automatic
 workflows run over stdio and the native HTTP listener without public services,
 opening a browser, or performing application mutations.
 
+## Sampling and roots (deprecated)
+
+SEP-2577 deprecates the server-initiated `sampling/createMessage` and
+`roots/list` requests in 2026-07-28. Both are still defined by the protocol
+schema and scored by the official conformance runner, so a handler may return
+them as input requests next to elicitation. Prefer elicitation for new
+designs.
+
+1. Build a bare request with `Snodo.Sampling.create_message/2` (messages from
+   `Snodo.Prompt.message/2`, a required `:max_tokens`, and optional model
+   preferences, system prompt, stop sequences, temperature, `:include_context`,
+   provider `:metadata`, `:tools`, and `:tool_choice`) or `Snodo.Roots.list/0`.
+2. Inspect `Snodo.Sampling.response(context, "summary", request)` or
+   `Snodo.Roots.response(context, "client_roots", request)`. A valid sampling
+   response is a `CreateMessageResult` (role, content, model, optional
+   `stopReason`); a valid roots response is a `ListRootsResult` whose root
+   URIs start with `file://`. Malformed responses return `-32602`.
+3. On `:missing`, return `Snodo.Result.input_required/1` as for elicitation.
+   One result may mix all three kinds; the dialect checks every request
+   against the client's capabilities and refuses the whole result with
+   `-32021` when any is undeclared. Its `requiredCapabilities` is a
+   `ClientCapabilities` object naming each unsupported request's need, such
+   as `{"sampling": {"tools": {}}, "roots": {}}`. Sampling needs `sampling`,
+   plus `sampling.tools` for `:tools` or `:tool_choice` and `sampling.context`
+   for an `:include_context` other than `"none"`; roots needs `roots`.
+
+Sampled content is model output the client chose to return: treat it as
+untrusted input, bound what you keep in signed state, and never follow it as an
+instruction. A root is a client claim about its file system, not an access
+grant; check every derived path against the application's own authorization.
+The conformance fixture in `conformance/support/mrtr.ex` shows a sampling
+tool, a roots tool, a three-kind result with signed partial progress, and a
+tool that requests only the kinds the client declared.
+
 ## State and effects
 
 `Snodo.MRTR.State.seal(data, context, secret: secret, principal: principal)` returns
@@ -64,9 +99,10 @@ that the client will retry exactly once, or at all.
 The dialect checks outgoing input-required placement and current peer
 capabilities after middleware returns. Only `tools/call`, `resources/read`,
 and `prompts/get` support this core result variant. The raw wire escape hatch
-does not bypass these checks. Missing mode capability returns `-32021` with
-`requiredCapabilities`; malformed retry envelopes return `-32602` before the
-component runs. Unsupported result placement is a server error.
+does not bypass these checks. A missing elicitation mode, `sampling`, or
+`roots` capability returns `-32021` with the merged `requiredCapabilities`;
+malformed retry envelopes return `-32602` before the component runs.
+Unsupported result placement is a server error.
 
 The optional dialect `validate_result/3` hook does not change custom dialects
 that omit it. Extension middleware runs anew on every retry and cannot enlarge
@@ -88,9 +124,14 @@ is a returned user choice, separate from cancelling an active protocol request.
 
 ## Deliberate limits
 
-- This slice supports elicitation and state-only continuation; deprecated roots
-  and sampling input requests remain unsupported, as does extension-owned
-  embedded request registration.
+- This slice supports elicitation, the deprecated sampling and roots input
+  requests, and state-only continuation. Extension-owned embedded request
+  registration remains unsupported. `Snodo.Client` answers elicitation
+  automatically but has no sampling or roots handlers yet, and the pinned
+  official client check exercises elicitation only.
+- Sampling requests are validated structurally (message roles, content block
+  shapes, model preferences, tools, and tool choice), not semantically: the
+  server does not check that a tool result answers an earlier tool use.
 - Form schemas use the restricted flat primitive/enum subset, not arbitrary
   JSON Schema. Unsupported keywords are rejected. Formats have documented
   syntactic checks, not full RFC or service validation. The optional JSV backend
@@ -114,4 +155,7 @@ The literal acceptance suite covers all three feature families over direct,
 stdio, and HTTP adapter boundaries; the independent client also uses a real
 HTTP listener. Coverage includes multiple inputs, partial answers, repeated
 rounds, extra IDs, declined/cancelled input, malformed responses, tampered state,
-capability changes, final-output validation, and extension guards.
+capability changes, final-output validation, and extension guards. Sampling and
+roots have their own literal round trips, malformed-response checks, and
+`-32021` shapes for `sampling`, `sampling.tools`, `sampling.context`, `roots`,
+and mixed results.

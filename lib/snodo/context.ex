@@ -4,7 +4,8 @@ defmodule Snodo.Context do
 
   MRTR retries are new requests, not suspended handlers. `input_responses`
   contains the client's bare input results and `request_state` is untrusted
-  opaque client input. Use `Snodo.Elicitation.response/3` to consume a named
+  opaque client input. Use `Snodo.Elicitation.response/3` (or the deprecated
+  `Snodo.Sampling.response/3` and `Snodo.Roots.response/3`) to consume a named
   answer and `Snodo.MRTR.State` to protect state that affects business logic.
   `request_method` and `request_params` preserve the incoming operation for
   request-bound state verification; tool and prompt arguments remain unchanged.

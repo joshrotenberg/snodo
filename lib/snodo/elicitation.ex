@@ -66,6 +66,12 @@ defmodule Snodo.Elicitation do
 
   def supported?(_request, _capabilities), do: false
 
+  @doc false
+  @spec required_capability(request()) :: {String.t(), map()}
+  def required_capability(%{"params" => params}) do
+    {"elicitation", %{Map.get(params, "mode", "form") => %{}}}
+  end
+
   @doc """
   Reads and validates the named response, ignoring unrelated response IDs.
 

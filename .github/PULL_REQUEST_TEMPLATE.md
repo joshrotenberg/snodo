@@ -19,7 +19,7 @@ Closes #
 - [ ] `MIX_ENV=dev mix docs --warnings-as-errors`
 - [ ] `mix compile && (cd interop/official_client && npm run check)`
 - [ ] Transport or wire changes: conformance lanes and `interop/schema_validation` (see `conformance/AGENTS.md`, `interop/AGENTS.md`)
-- [ ] `mix snodo.contract` still reports 31 evidence groups, or the change says why not
+- [ ] `mix snodo.contract` still reports 32 evidence groups, or the change says why not
 
 ## Not addressed
 

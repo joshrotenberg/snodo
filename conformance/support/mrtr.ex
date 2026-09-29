@@ -4,7 +4,14 @@ defmodule SnodoTest.Conformance.MRTR.Workflow do
   alias Snodo.Elicitation
   alias Snodo.Error
   alias Snodo.MRTR.State
+  alias Snodo.Prompt
   alias Snodo.Result
+  alias Snodo.Roots
+  alias Snodo.Sampling
+
+  # Sampled text kept in signed state or echoed back is bounded: it is model
+  # output the client chose, and the state token has a 16 KiB limit.
+  @max_sampled_codepoints 200
 
   # The fixture is anonymous, read-only, and loopback-only. This process-lifetime
   # random secret is not a deployable authentication or durable workflow policy.
@@ -19,6 +26,167 @@ defmodule SnodoTest.Conformance.MRTR.Workflow do
       "required" => [name]
     })
   end
+
+  def question(text, max_tokens) do
+    Sampling.create_message([Prompt.message(:user, Prompt.text(text))], max_tokens: max_tokens)
+  end
+
+  # alpha.11's basic-sampling fixture. Sampling is deprecated by SEP-2577 but
+  # still scored; the sampled text is untrusted model output, never a fact.
+  def capital(context) do
+    request = question("What is the capital of France?", 100)
+
+    case Sampling.response(context, "capital_question", request) do
+      :missing ->
+        {:ok, Result.input_required(input_requests: %{"capital_question" => request})}
+
+      {:ok, response} ->
+        {:ok, Result.text("Sampled by #{response["model"]}: #{sampled_text(response)}")}
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
+  # alpha.11's basic-list-roots fixture. A root is a client claim about its
+  # file system, not an access grant; the fixture only echoes the URIs.
+  def client_roots(context) do
+    request = Roots.list()
+
+    case Roots.response(context, "client_roots", request) do
+      :missing ->
+        {:ok, Result.input_required(input_requests: %{"client_roots" => request})}
+
+      {:ok, %{"roots" => roots}} ->
+        {:ok, Result.text("Client roots: " <> Enum.map_join(roots, ", ", &root_label/1))}
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
+  # alpha.11's multiple-inputs fixture: an elicitation, a sampling request, and
+  # a roots request in one result, with signed state carrying partial answers.
+  def multiple_inputs(context) do
+    with {:ok, state} <- state(context) do
+      case state do
+        nil ->
+          suspend(context, multiple_requests(), %{"phase" => "multiple", "answers" => %{}})
+
+        %{"phase" => "multiple", "answers" => answers} when is_map(answers) ->
+          collect_multiple(context, answers)
+
+        _other ->
+          invalid_state()
+      end
+    end
+  end
+
+  # alpha.11's capability-check fixture: only the kinds this request's client
+  # capabilities support are requested. A client that declares none of them
+  # gets a complete result with nothing answered.
+  def capabilities(context) do
+    capability_requests()
+    |> Enum.filter(fn {_id, request, kind} ->
+      kind.supported?(request, context.client_capabilities)
+    end)
+    |> Enum.reduce_while({:ok, %{}, %{}}, fn {id, request, kind}, {:ok, answered, missing} ->
+      case kind.response(context, id, request) do
+        :missing -> {:cont, {:ok, answered, Map.put(missing, id, request)}}
+        {:ok, _response} -> {:cont, {:ok, Map.put(answered, id, request["method"]), missing}}
+        {:error, error} -> {:halt, {:error, error}}
+      end
+    end)
+    |> case do
+      {:ok, answered, missing} when map_size(missing) == 0 ->
+        declared = context.client_capabilities |> Map.keys() |> Enum.sort()
+        {:ok, Result.text(JSON.encode!(%{"declared" => declared, "answered" => answered}))}
+
+      {:ok, _answered, missing} ->
+        {:ok, Result.input_required(input_requests: missing)}
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
+  defp capability_requests do
+    [
+      {"user_name", field("name"), Elicitation},
+      {"greeting", question("Generate a greeting", 50), Sampling},
+      {"client_roots", Roots.list(), Roots}
+    ]
+  end
+
+  defp multiple_requests do
+    %{
+      "user_name" => field("name"),
+      "greeting" => question("Generate a greeting", 50),
+      "client_roots" => Roots.list()
+    }
+  end
+
+  defp collect_multiple(context, answers) do
+    multiple_requests()
+    |> Map.drop(Map.keys(answers))
+    |> Enum.reduce_while({:ok, answers}, fn {id, request}, {:ok, collected} ->
+      case read_multiple(context, id, request) do
+        :missing -> {:cont, {:ok, collected}}
+        {:ok, value} -> {:cont, {:ok, Map.put(collected, id, value)}}
+        {:cancelled, response} -> {:halt, {:cancelled, response}}
+        {:error, error} -> {:halt, {:error, error}}
+      end
+    end)
+    |> finish_multiple(context)
+  end
+
+  defp read_multiple(context, "user_name" = id, request) do
+    case Elicitation.response(context, id, request) do
+      {:ok, %{"action" => "accept", "content" => %{"name" => name}}} -> {:ok, name}
+      {:ok, response} -> {:cancelled, response}
+      other -> other
+    end
+  end
+
+  defp read_multiple(context, "greeting" = id, request) do
+    case Sampling.response(context, id, request) do
+      {:ok, response} -> {:ok, sampled_text(response)}
+      other -> other
+    end
+  end
+
+  defp read_multiple(context, "client_roots" = id, request) do
+    case Roots.response(context, id, request) do
+      {:ok, %{"roots" => roots}} -> {:ok, Enum.map(roots, & &1["uri"])}
+      other -> other
+    end
+  end
+
+  defp finish_multiple({:ok, answers}, context) do
+    pending = Map.drop(multiple_requests(), Map.keys(answers))
+
+    if map_size(pending) == 0 do
+      {:ok, Result.text(JSON.encode!(answers))}
+    else
+      suspend(context, pending, %{"phase" => "multiple", "answers" => answers})
+    end
+  end
+
+  defp finish_multiple({:cancelled, response}, _context), do: cancelled(response)
+  defp finish_multiple({:error, error}, _context), do: {:error, error}
+
+  defp sampled_text(%{"content" => content}) do
+    content
+    |> List.wrap()
+    |> Enum.map_join(" ", fn
+      %{"type" => "text", "text" => text} -> text
+      %{"type" => type} -> "[#{type}]"
+    end)
+    |> String.slice(0, @max_sampled_codepoints)
+  end
+
+  defp root_label(%{"uri" => uri, "name" => name}), do: "#{name} (#{uri})"
+  defp root_label(%{"uri" => uri}), do: uri
 
   def single(context, id, request, complete) do
     case Elicitation.response(context, id, request) do
@@ -88,8 +256,8 @@ defmodule SnodoTest.Conformance.MRTR.Workflow do
 
   defp round(_other, _context), do: invalid_state()
 
-  # This elicitation-only fixture is intentionally NOT named as alpha.11's
-  # multiple-inputs fixture, which also requires unsupported sampling and roots.
+  # An elicitation-only sibling of multiple_inputs/1, kept for clients that
+  # declare no sampling or roots capability.
   def parallel_forms(context) do
     with {:ok, state} <- state(context) do
       case state do
@@ -255,6 +423,50 @@ defmodule SnodoTest.Conformance.MRTR.URL do
   def call(_arguments, context), do: Workflow.url_consent(context)
 end
 
+defmodule SnodoTest.Conformance.MRTR.Sampling do
+  @moduledoc false
+  use Snodo.Tool,
+    name: "test_input_required_result_sampling",
+    description: "Asks the client to sample an answer, then reports the sampled text"
+
+  alias SnodoTest.Conformance.MRTR.Workflow
+  @impl true
+  def call(_arguments, context), do: Workflow.capital(context)
+end
+
+defmodule SnodoTest.Conformance.MRTR.ListRoots do
+  @moduledoc false
+  use Snodo.Tool,
+    name: "test_input_required_result_list_roots",
+    description: "Asks the client for its roots, then reports their URIs"
+
+  alias SnodoTest.Conformance.MRTR.Workflow
+  @impl true
+  def call(_arguments, context), do: Workflow.client_roots(context)
+end
+
+defmodule SnodoTest.Conformance.MRTR.MultipleInputs do
+  @moduledoc false
+  use Snodo.Tool,
+    name: "test_input_required_result_multiple_inputs",
+    description: "Collects an elicitation, a sampling, and a roots answer with signed state"
+
+  alias SnodoTest.Conformance.MRTR.Workflow
+  @impl true
+  def call(_arguments, context), do: Workflow.multiple_inputs(context)
+end
+
+defmodule SnodoTest.Conformance.MRTR.Capabilities do
+  @moduledoc false
+  use Snodo.Tool,
+    name: "test_input_required_result_capabilities",
+    description: "Requests only the input kinds the client's declared capabilities support"
+
+  alias SnodoTest.Conformance.MRTR.Workflow
+  @impl true
+  def call(_arguments, context), do: Workflow.capabilities(context)
+end
+
 defmodule SnodoTest.Conformance.MRTR.Prompt do
   @moduledoc false
   use Snodo.Prompt,
@@ -308,7 +520,11 @@ defmodule SnodoTest.Conformance.MRTR do
       SnodoTest.Conformance.MRTR.TamperedState,
       SnodoTest.Conformance.MRTR.MultiRound,
       SnodoTest.Conformance.MRTR.ParallelForms,
-      SnodoTest.Conformance.MRTR.URL
+      SnodoTest.Conformance.MRTR.URL,
+      SnodoTest.Conformance.MRTR.Sampling,
+      SnodoTest.Conformance.MRTR.ListRoots,
+      SnodoTest.Conformance.MRTR.MultipleInputs,
+      SnodoTest.Conformance.MRTR.Capabilities
     ]
   end
 

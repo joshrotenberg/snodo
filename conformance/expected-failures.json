@@ -1,30 +1,6 @@
 {
   "failures": [
     {
-      "key": "server-stateless:sep-2575-server-rejects-undeclared-capability",
-      "reason": "The frozen diagnostic requires deprecated sampling/roots, which remain unsupported; elicitation capability evidence is measured separately."
-    },
-    {
-      "key": "server-stateless:sep-2575-missing-capability-http-400",
-      "reason": "The frozen diagnostic requires deprecated sampling/roots, which remain unsupported; elicitation capability evidence is measured separately."
-    },
-    {
-      "key": "input-required-result-basic-sampling:sep-2322-sampling-incomplete",
-      "reason": "The frozen diagnostic requires deprecated sampling/roots, which remain unsupported; elicitation capability evidence is measured separately."
-    },
-    {
-      "key": "input-required-result-basic-list-roots:sep-2322-list-roots-incomplete",
-      "reason": "The frozen diagnostic requires deprecated sampling/roots, which remain unsupported; elicitation capability evidence is measured separately."
-    },
-    {
-      "key": "input-required-result-multiple-input-requests:sep-2322-multiple-inputs-incomplete",
-      "reason": "The frozen diagnostic requires deprecated sampling/roots, which remain unsupported; elicitation capability evidence is measured separately."
-    },
-    {
-      "key": "input-required-result-capability-check:sep-2322-respect-client-capabilities",
-      "reason": "The frozen diagnostic requires deprecated sampling/roots, which remain unsupported; elicitation capability evidence is measured separately."
-    },
-    {
       "key": "tasks-lifecycle:wire-schema-valid",
       "reason": "alpha.11 validates the extension-defined flat task result against core CallToolResult; Tasks-specific assertions pass. Preserve the runner failure until extension unions are supported."
     },
@@ -97,15 +73,17 @@
       "wire-schema-valid": ["SUCCESS"]
     },
     "input-required-result-basic-list-roots": {
-      "sep-2322-list-roots-incomplete": ["FAILURE"],
+      "sep-2322-list-roots-incomplete": ["SUCCESS"],
+      "sep-2322-list-roots-complete": ["SUCCESS"],
       "wire-schema-valid": ["SUCCESS"]
     },
     "input-required-result-basic-sampling": {
-      "sep-2322-sampling-incomplete": ["FAILURE"],
+      "sep-2322-sampling-incomplete": ["SUCCESS"],
+      "sep-2322-sampling-complete": ["SUCCESS"],
       "wire-schema-valid": ["SUCCESS"]
     },
     "input-required-result-capability-check": {
-      "sep-2322-respect-client-capabilities": ["FAILURE"],
+      "sep-2322-respect-client-capabilities": ["SUCCESS"],
       "wire-schema-valid": ["SUCCESS"]
     },
     "input-required-result-ignore-extra-params": {
@@ -123,7 +101,8 @@
       "wire-schema-valid": ["SUCCESS"]
     },
     "input-required-result-multiple-input-requests": {
-      "sep-2322-multiple-inputs-incomplete": ["FAILURE"],
+      "sep-2322-multiple-inputs-incomplete": ["SUCCESS"],
+      "sep-2322-multiple-inputs-complete": ["SUCCESS"],
       "wire-schema-valid": ["SUCCESS"]
     },
     "input-required-result-non-tool-request": {
@@ -222,8 +201,8 @@
       "sep-2575-server-unsupported-version-error": ["SUCCESS"],
       "sep-2575-http-server-unsupported-version-400": ["SUCCESS"],
       "sep-2575-http-server-header-mismatch-400": ["SUCCESS"],
-      "sep-2575-server-rejects-undeclared-capability": ["FAILURE"],
-      "sep-2575-missing-capability-http-400": ["FAILURE"],
+      "sep-2575-server-rejects-undeclared-capability": ["SUCCESS"],
+      "sep-2575-missing-capability-http-400": ["SUCCESS"],
       "sep-2575-http-server-method-not-found-404-initialize": ["SUCCESS"],
       "sep-2575-http-server-method-not-found-404-ping": ["SUCCESS"],
       "sep-2575-http-server-method-not-found-404-logging-setlevel": ["SUCCESS"],

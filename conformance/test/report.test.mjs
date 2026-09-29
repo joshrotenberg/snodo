@@ -138,7 +138,7 @@ test("the client leg scores only its own required and unscored scenarios", () =>
   assert.throws(() => summarize(legs, results, baseline, "authorization"));
 });
 
-async function frozenEvidence(results = "2026-09-26-alpha.11-checks.json", baseline = "expected-failures.json",
+async function frozenEvidence(results = "2026-09-29-alpha.11-checks.json", baseline = "expected-failures.json",
   revision = "2026-07-28") {
   const json = async (file) => JSON.parse(await readFile(new URL(file, import.meta.url), "utf8"));
   return {
@@ -148,14 +148,16 @@ async function frozenEvidence(results = "2026-09-26-alpha.11-checks.json", basel
   };
 }
 
-test("the complete frozen check inventory passes without waiving its partial conformance score", async () => {
+test("the complete frozen check inventory passes and its score is the runner's, not a waiver", async () => {
   const evidence = await frozenEvidence();
   assert.equal(Object.keys(evidence.baseline.checkInventory).length, 50);
   const report = summarize(evidence.manifest, evidence.results, evidence.baseline);
   assert.equal(report.regression.passed, true);
   assert.deepEqual(report.regression.checkStatusDrift, []);
-  assert.equal(report.score.passedScenarios, 32);
-  assert.equal(report.score.status, "partial");
+  assert.equal(report.score.passedScenarios, 37);
+  assert.equal(report.score.status, "complete");
+  assert.equal(report.regression.unexpectedFailures.length, 0);
+  assert.equal(evidence.baseline.failures.length, 8);
 });
 
 test("the Tasks lifecycle success-to-skipped regression is caught despite its expected wire failure", async () => {
@@ -167,7 +169,23 @@ test("the Tasks lifecycle success-to-skipped regression is caught despite its ex
   assert.equal(report.regression.passed, false);
   assert.deepEqual(report.regression.unexpectedFailures, []);
   assert.equal(report.regression.checkStatusDrift.length, 8);
+  assert.equal(report.score.passedScenarios, 37);
+});
+
+test("a sampling or roots check that fails again is a new failure, not a stale baseline entry", async () => {
+  const evidence = await frozenEvidence();
+  const regressed = ["input-required-result-basic-sampling", "input-required-result-basic-list-roots",
+    "input-required-result-multiple-input-requests", "input-required-result-capability-check"];
+  for (const scenario of regressed) evidence.results[scenario][0].status = "FAILURE";
+  for (const check of evidence.results["server-stateless"]) {
+    if (check.id === "sep-2575-server-rejects-undeclared-capability") check.status = "FAILURE";
+  }
+  const report = summarize(evidence.manifest, evidence.results, evidence.baseline);
+  assert.equal(report.regression.passed, false);
+  assert.equal(report.regression.unexpectedFailures.length, 5);
+  assert.deepEqual(report.regression.staleFailures, []);
   assert.equal(report.score.passedScenarios, 32);
+  assert.equal(report.score.status, "partial");
 });
 
 test("the frozen client check inventory passes without waiving its partial score", async () => {
