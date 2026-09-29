@@ -89,7 +89,7 @@ result the kind expects, or `{:error, reason}`.
 | Kind | Embedded request | Handler receives | Handler returns | Declares |
 |---|---|---|---|---|
 | `:form` | `elicitation/create`, mode `form` | `"mode"`, `"message"`, `"requestedSchema"` | an elicitation result: `"action"` of `"accept"`, `"decline"`, or `"cancel"`, with `"content"` when accepted | `"elicitation" => %{"form" => %{}}` |
-| `:url` | `elicitation/create`, mode `url` | `"mode"`, `"message"`, `"url"` | an elicitation result | `"url"` next to `"form"` |
+| `:url` | `elicitation/create`, mode `url` | `"mode"`, `"message"`, `"url"` | an elicitation result | `"elicitation" => %{"url" => %{}}` |
 | `:sampling` | `sampling/createMessage` | `"messages"`, `"maxTokens"`, and whichever other `CreateMessageRequestParams` fields the server sent | a `CreateMessageResult`: `"role"`, `"content"`, `"model"`, optional `"stopReason"` | `"sampling" => %{}` |
 | `:roots` | `roots/list` | `%{}`, or `"_meta"` when the server sent it | a `ListRootsResult`: `"roots"` with `file://` `"uri"` entries and optional names | `"roots" => %{"listChanged" => false}` |
 
@@ -214,6 +214,85 @@ message "Maximum total timeout exceeded" and `data` holding
 A direct client has no timeout; its handler runs in a linked task while the
 calling process receives the progress reports.
 
+## Subscriptions
+
+`listen/3` opens a `subscriptions/listen` stream. It sends the filter as given
+(the core keys, and any key a negotiated extension defines, such as the Tasks
+extension's `taskIds`) and returns once the server's
+`notifications/subscriptions/acknowledged` arrives. The handle carries the
+filter the server accepted, which may be a subset of the request:
+
+```elixir
+{:ok, subscription} =
+  Snodo.Client.listen(client, %{
+    "toolsListChanged" => true,
+    "resourceSubscriptions" => ["file:///notes.md"]
+  })
+
+subscription.accepted
+#=> %{"toolsListChanged" => true, "resourceSubscriptions" => ["file:///notes.md"]}
+```
+
+The calling process owns the subscription. Events reach it as
+`{:snodo_subscription, ref, payload}` messages, where `ref` is
+`subscription.ref` and the payload is one of:
+
+| Payload | Meaning |
+|---|---|
+| `{:notification, method, params}` | one event, as sent: `method` is `"notifications/resources/updated"`, one of the three list-changed methods, or an extension's such as `"notifications/tasks"`; `params` keeps `"_meta"` |
+| `{:dropped, n}` | `n` events were discarded because the buffer was full; precedes the next delivered event |
+| `{:closed, :complete}` | the server ended the stream with its terminal result |
+| `{:closed, {:error, %Snodo.Error{}}}` | the server ended the stream with an error, or the connection failed; nothing follows |
+
+Events are sent only while the owner has asked for them.
+`Snodo.Client.Subscription.demand/2` asks for `n` more; `next/2` asks for one
+and waits for it; `stream/1` wraps `next/2` as an `Enumerable` that ends with
+the `{:closed, reason}` element:
+
+```elixir
+subscription
+|> Snodo.Client.Subscription.stream()
+|> Enum.each(fn
+  {:notification, "notifications/resources/updated", %{"uri" => uri}} -> reload(uri)
+  {:notification, "notifications/tools/list_changed", _params} -> refresh_tools()
+  {:dropped, n} -> Logger.warning("missed #{n} events")
+  {:closed, reason} -> Logger.info("stream ended: #{inspect(reason)}")
+end)
+```
+
+A GenServer asks for a batch and asks again as it consumes:
+
+```elixir
+def handle_info({:snodo_subscription, ref, {:notification, method, params}}, %{sub: %{ref: ref}} = state) do
+  :ok = Snodo.Client.Subscription.demand(state.sub, 1)
+  {:noreply, apply_change(state, method, params)}
+end
+```
+
+Events that arrive without demand wait in the transport process, at most
+`:max_buffer` of them (100 by default). When the buffer is full, `:overflow`
+decides: `:drop_oldest` (the default) discards the oldest queued event,
+`:drop_newest` discards the arriving one. The count reaches the owner as
+`{:dropped, n}`. The terminal `{:closed, reason}` is delivered after the
+queued events, so the owner sees every event it asks for before the end.
+
+`Snodo.Client.Subscription.close/1` ends the stream, and so does the owner's
+exit: stdio sends `notifications/cancelled`, HTTP closes the connection, and
+the direct client closes the source. No message follows `close/1`; events
+already delivered stay in the mailbox.
+
+`listen/3` returns `{:error, %Snodo.Error{}}` for a JSON-RPC error response
+(-32601 from a server without a subscription source, -32602 for an invalid
+filter), for a stream the server ends before acknowledging it, and for a
+transport failure; -32001 when the acknowledgement does not arrive within
+`timeout:`. `request/4` raises for `subscriptions/listen`.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `:max_buffer` | 100 | the most events held for the owner before the overflow policy applies |
+| `:overflow` | `:drop_oldest` | `:drop_oldest` or `:drop_newest` |
+| `:timeout` | the client's | how long to wait for the acknowledgement |
+
 ## Options
 
 | Option | Applies to | Meaning |
@@ -229,8 +308,9 @@ calling process receives the progress reports.
 | `:max_line_bytes` | stdio | the largest response line to accept (16 MiB); the rest of a longer line is discarded and its request times out |
 | `:headers`, `:ssl`, `:connect_timeout` | HTTP | extra headers, `:ssl` options (peers are verified against the OS trust store by default), connect timeout |
 | `:max_response_bytes` | HTTP | the largest response to accept (16 MiB), checked as it arrives; a larger response closes the connection and returns -32000 |
+| `:max_buffer`, `:overflow` | `listen/3` | the subscription's buffer bound (100) and overflow policy (`:drop_oldest`) |
 
-`request/4` also accepts `:meta` for extra `_meta` entries.
+`request/4` and `listen/3` also accept `:meta` for extra `_meta` entries.
 
 ## Transport behavior
 
@@ -239,6 +319,12 @@ calling process receives the progress reports.
   raises, sends `notifications/cancelled` for that request. When the server exits,
   pending and later requests fail with -32000. The connection closes when the
   process that opened it exits. `close/1` closes the server's stdin.
+
+  Subscriptions share the connection. The connection process correlates the
+  acknowledgement, the events, and the terminal response by the subscription
+  ID in each notification's `_meta`, and monitors each subscription's owner.
+  When the server exits, or `close/1` stops the connection, open subscriptions
+  end with `{:closed, {:error, ...}}` (-32000).
 - **HTTP.** One HTTP/1.1 POST per request, on a `:gen_tcp` or `:ssl`
   connection that closes when the request returns. The headers the
   protocol requires (`MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`, and
@@ -248,11 +334,21 @@ calling process receives the progress reports.
   arrives: progress notifications for the request are delivered as they come,
   and the request returns at the event that carries its response.
 
+  A subscription keeps its event-stream response open in a process of its own
+  (`subscription.pid`), which exits when the stream ends. Closing the
+  subscription closes that connection, which the server treats as
+  cancellation. `close/1` on the client does not affect open subscriptions.
+
   `:max_response_bytes` is checked while the response arrives, for every
   status: a `Content-Length` over the limit is refused before the body is
   read, and a chunked or close-delimited body is refused at the read that
-  passes the limit. An event stream counts as one body, notifications
-  included. The error has `cause: {:max_response_bytes, limit}`.
+  passes the limit. An event stream that answers a request counts as one
+  body, notifications included; a subscription stream is checked one event at
+  a time. The error has `cause: {:max_response_bytes, limit}`.
+- **Direct.** A subscription is dispatched in a process of its own, which
+  serves the server-side subscription as a server transport would and closes
+  the source when the stream ends. `close/1` on the client does not affect
+  open subscriptions.
 
   `Mcp-Param-*` headers need the tool's input schema, so pass the definition
   from `list_tools/1` to `call_tool/4` in place of the name. Called by name, a
@@ -266,14 +362,13 @@ calling process receives the progress reports.
   {:ok, result} = Snodo.Client.call_tool(client, search, %{"region" => "eu", "query" => "json"})
   ```
 
-`subscriptions/listen` streams are not delivered to the caller yet, and
-`request/4` raises for `subscriptions/listen`.
-
 ## Custom transports
 
 Any module implementing `Snodo.Client.Transport` (`connect/2`, `request/3`,
 `close/1`) can be passed as `{module, init_arg}` to `connect/2`. A transport
-that ignores the `:on_progress` option delivers no progress.
+that ignores the `:on_progress` option delivers no progress. `listen/3` is
+optional; `Snodo.Client.listen/3` raises `ArgumentError` for a transport
+without it.
 
 ## Examples
 

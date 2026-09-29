@@ -195,6 +195,8 @@ defmodule Snodo.Client.Input do
      malformed("The server sent input request #{inspect(id)} that is not an object", result)}
   end
 
+  # Only the elicitation kinds carry a mode; the other specs leave it nil and
+  # match on the method alone, so a stray "mode" in their params is ignored.
   defp classify(id, %{"method" => method} = request, result) when is_binary(method) do
     mode = request |> Map.get("params") |> mode()
 
