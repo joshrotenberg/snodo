@@ -108,7 +108,15 @@ defmodule Snodo.SamplingTest do
           %{"role" => "user", "content" => "plain"},
           %{"role" => "user", "content" => %{"type" => "text"}},
           %{"role" => "user", "content" => %{"type" => "text", "text" => 1}},
+          %{"role" => "user", "content" => Map.merge(image, %{"type" => "text"})},
+          %{"role" => "user", "content" => Map.merge(text, %{"type" => "image"})},
           %{"role" => "user", "content" => %{"type" => "image", "data" => "AA=="}},
+          %{"role" => "user", "content" => %{"type" => "audio", "mimeType" => "audio/wav"}},
+          %{"role" => "user", "content" => Map.put(image, "text", "hi")},
+          %{
+            "role" => "user",
+            "content" => Map.put(result, "content", [Map.merge(image, %{"type" => "text"})])
+          },
           %{
             "role" => "user",
             "content" => %{"type" => "resource_link", "uri" => "a", "name" => "a"}
@@ -231,6 +239,12 @@ defmodule Snodo.SamplingTest do
           Map.put(sampled("x"), "stopReason", 1),
           Map.put(sampled("x"), "content", []),
           Map.put(sampled("x"), "content", %{"type" => "text", "text" => 1}),
+          Map.put(sampled("x"), "content", %{
+            "type" => "text",
+            "data" => "AA==",
+            "mimeType" => "image/png"
+          }),
+          Map.put(sampled("x"), "content", %{"type" => "image", "text" => "Paris"}),
           Map.put(sampled("x"), "content", %{
             "type" => "resource_link",
             "uri" => "a",

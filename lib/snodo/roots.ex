@@ -31,14 +31,14 @@ defmodule Snodo.Roots do
   @doc """
   Validates one bare roots input request.
 
-  The schema makes `params` optional; when present it must be an empty object.
+  The schema makes `params` optional; when present it may carry only `_meta`,
+  itself an object.
   """
   @spec validate_request(term()) :: :ok | {:error, String.t()}
   def validate_request(%{"method" => @method} = request) do
-    if only_keys?(request, ~w(method params)) and
-         optional?(request, "params", &(plain_map?(&1) and map_size(&1) == 0)),
-       do: :ok,
-       else: {:error, "Expected a bare roots/list request with no params"}
+    if only_keys?(request, ~w(method params)) and optional?(request, "params", &params?/1),
+      do: :ok,
+      else: {:error, "Expected a bare roots/list request with at most _meta in params"}
   end
 
   def validate_request(_request), do: {:error, "Expected a bare roots/list request"}
@@ -92,6 +92,9 @@ defmodule Snodo.Roots do
   end
 
   defp root?(_root), do: false
+
+  defp params?(params),
+    do: only_keys?(params, ["_meta"]) and optional?(params, "_meta", &plain_map?/1)
 
   defp optional?(map, key, predicate) do
     case Map.fetch(map, key) do

@@ -9,12 +9,16 @@ defmodule Snodo.RootsTest do
     assert Roots.validate_request(Roots.list()) == :ok
   end
 
-  test "params are optional but must be empty when present, and the request stays bare" do
+  test "params are optional and carry at most _meta, and the request stays bare" do
     assert Roots.validate_request(%{"method" => "roots/list"}) == :ok
+
+    assert Roots.validate_request(%{"method" => "roots/list", "params" => %{"_meta" => %{}}}) ==
+             :ok
 
     for request <- [
           %{"method" => "roots/list", "params" => %{"cursor" => "x"}},
-          %{"method" => "roots/list", "params" => %{"_meta" => %{}}},
+          %{"method" => "roots/list", "params" => %{"_meta" => []}},
+          %{"method" => "roots/list", "params" => %{"_meta" => %{}, "cursor" => "x"}},
           %{"method" => "roots/list", "params" => []},
           %{"method" => "roots/list", "params" => %{}, "id" => 1},
           %{"method" => "roots/list", "params" => %{}, "jsonrpc" => "2.0"},

@@ -279,7 +279,8 @@ defmodule Snodo.Sampling do
     is_binary(text) and only_keys?(block, ["text" | @common_block]) and annotations?(block)
   end
 
-  defp media_block?(%{"type" => _type, "data" => data, "mimeType" => mime_type} = block) do
+  defp media_block?(%{"type" => type, "data" => data, "mimeType" => mime_type} = block)
+       when type in ["image", "audio"] do
     is_binary(data) and is_binary(mime_type) and
       only_keys?(block, ~w(data mimeType) ++ @common_block) and annotations?(block)
   end

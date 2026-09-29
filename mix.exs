@@ -105,6 +105,7 @@ defmodule Snodo.MixProject do
           ~r/^Snodo\.(Tool|Resource|Prompt|Completion|Result|Error|Context)/
         ],
         Client: [~r/^Snodo\.Client/],
+        Interactive: [~r/^Snodo\.(Elicitation|Sampling|Roots|MRTR)$/],
         Transports: [~r/^Snodo\.Transport/],
         Protocol: [~r/^Snodo\.(Protocol|Envelope|Compliance)/]
       ]
