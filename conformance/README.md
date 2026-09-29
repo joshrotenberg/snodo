@@ -194,33 +194,45 @@ Results: [Plug](results/2026-09-29-plug-alpha.11-summary.md),
 
 `npm run check:client` runs `client --requirements 2026-07-28`: 32 required
 scenarios and 7 unscored ones. For each scenario the runner starts a scenario
-server and runs [client.exs](client.exs) with `mix run` from the repository
-root, so the root project must be compiled in the dev environment. The harness
-drives `Snodo.Client` the way an application would and adds no protocol
-behavior: discover, list tools, call the tools the scenario context names (or
-every listed tool with arguments sampled from its schema), answer
-`input_required` results, and list and read resources and prompts when the
-server advertises them. The runner scores the traffic its scenario server
-records.
+server and runs [client.exs](client.exs) with `mix run` from
+`conformance/fixture`, whose build puts `snodo_oauth` on the code path, so the
+fixture project must be compiled in the dev environment. The harness drives
+`Snodo.Client` the way an application would and adds no protocol behavior:
+discover, list tools, call the tools the scenario context names (or every
+listed tool with arguments sampled from its schema), answer `input_required`
+results, and list and read resources and prompts when the server advertises
+them. For an `auth/*` scenario it installs a `Snodo.OAuth.Client` as the token
+provider, stands in for the browser by following the authorization redirect to
+the client's loopback listener, and takes pre-registered or client-credentials
+settings from the scenario context. The runner scores the traffic its scenario
+server records.
 
-The 2026-09-26 run passes **6/32** whole required scenarios: `tools_call`,
-`sep-2322-client-request-state`, `http-custom-headers`,
-`http-invalid-tool-headers`, `json-schema-ref-no-deref`, and
-`auth/resource-mismatch`. The last passes only because the harness never starts
-authorization; it is not evidence of OAuth support. The unscored
-`json-schema-2020-12-preservation` scenario passes. The first run that day,
-before `Snodo.Client` sent `Mcp-Param-*` headers, passed 4/32.
+The 2026-09-29 run passes **30/32** whole required scenarios, up from 6/32 on
+2026-09-26: every required `auth/*` scenario (metadata discovery at each
+location, client ID metadata documents, dynamic client registration and
+pre-registration, each token endpoint authentication method, scope selection
+and step-up, the retry limit, resource indicators and the resource mismatch
+check, `offline_access`, authorization server migration, and the `iss` checks)
+and the non-auth scenarios. Required checks: 403 success, 0 failure, 4
+skipped, 0 warning. The unscored `auth/client-credentials-basic`,
+`auth/client-credentials-jwt`, and `json-schema-2020-12-preservation`
+scenarios pass as well.
 
-- [Client report](results/2026-09-26-client-alpha.11-summary.md)
-- [Client machine-readable report](results/2026-09-26-client-alpha.11-summary.json)
-- [Client per-check outcomes](results/2026-09-26-client-alpha.11-checks.json)
+- [Client report](results/2026-09-29-client-alpha.11-summary.md)
+- [Client machine-readable report](results/2026-09-29-client-alpha.11-summary.json)
+- [Client per-check outcomes](results/2026-09-29-client-alpha.11-checks.json)
+- [Historical September 26 client report](results/2026-09-26-client-alpha.11-summary.md)
 
 [expected-failures-client.json](expected-failures-client.json) follows the
 same policy as the server baseline, with every check of all 39 scenarios
 pinned. The remaining gaps:
 
-- The 25 required and 6 unscored `auth/*` scenarios: `Snodo.Client` has no
-  OAuth support, and the harness exits before sending a request.
+- The unscored `auth/dpop`, `auth/dpop-nonce`,
+  `auth/enterprise-managed-authorization`, and `auth/wif-jwt-bearer`
+  scenarios: `Snodo.OAuth.Client` sends bearer tokens only and runs the
+  authorization code or client credentials grant; DPoP (RFC 9449),
+  enterprise-managed authorization (SEP-990), and workload identity
+  federation are not implemented.
 - `request-metadata` is excluded from the score: the deprecated roots and
   sampling capability checks are skipped because the client does not declare
   them. Its other checks pass, including `io.modelcontextprotocol/clientInfo`.

@@ -16,15 +16,34 @@
 #      and get every prompt.
 #
 # json-schema-2020-12-preservation instead echoes one tool's input schema, as
-# that scenario requires. Scenarios without a flow, including every auth/*
-# scenario (Snodo.Client has no OAuth support), exit 1 without a request.
+# that scenario requires. An auth/* scenario runs the same flow with a
+# Snodo.OAuth.Client as the token provider: the runner's servers act as the
+# authorization server, the harness stands in for the browser by following
+# the authorization redirect to the loopback listener, and the context
+# supplies pre-registered or client-credentials settings when the scenario
+# has them. The runner starts this script from conformance/fixture, whose
+# build puts snodo_oauth on the code path. Scenarios without a flow exit 1
+# without a request.
 
 defmodule Snodo.Conformance.ClientHarness do
   @moduledoc false
 
   alias Snodo.Client
+  alias Snodo.OAuth.Client, as: OAuth
 
   @max_rounds 4
+  @client_metadata_url "https://conformance-test.local/client-metadata.json"
+  @client_credentials ["auth/client-credentials-jwt", "auth/client-credentials-basic"]
+  @scenarios [
+    "tools_call",
+    "request-metadata",
+    "sep-2322-client-request-state",
+    "http-standard-headers",
+    "http-custom-headers",
+    "http-invalid-tool-headers",
+    "json-schema-ref-no-deref",
+    "json-schema-2020-12-preservation"
+  ]
 
   def main(argv) do
     url = List.last(argv) || fail("expected the server URL as the last argument")
@@ -35,30 +54,20 @@ defmodule Snodo.Conformance.ClientHarness do
     run(scenario, url)
   end
 
-  defp run("auth/" <> _rest = scenario, _url),
-    do: fail("#{scenario}: Snodo.Client does not implement OAuth")
+  defp run("auth/" <> _rest = scenario, url),
+    do: flow(scenario, url, oauth_options(scenario, url, context()))
 
-  defp run(scenario, url)
-       when scenario in [
-              "tools_call",
-              "request-metadata",
-              "sep-2322-client-request-state",
-              "http-standard-headers",
-              "http-custom-headers",
-              "http-invalid-tool-headers",
-              "json-schema-ref-no-deref",
-              "json-schema-2020-12-preservation"
-            ] do
-    context =
-      case System.get_env("MCP_CONFORMANCE_CONTEXT") do
-        nil -> %{}
-        json -> JSON.decode!(json)
-      end
+  defp run(scenario, url) when scenario in @scenarios, do: flow(scenario, url, [])
+  defp run(scenario, _url), do: fail("#{scenario}: no harness flow for this scenario")
+
+  defp flow(scenario, url, transport_opts) do
+    context = context()
 
     {:ok, client} =
-      Client.connect({:http, url},
-        client_capabilities: %{"elicitation" => %{"form" => %{}}},
-        timeout: 10_000
+      Client.connect(
+        {:http, url},
+        [client_capabilities: %{"elicitation" => %{"form" => %{}}}, timeout: 10_000] ++
+          transport_opts
       )
 
     capabilities =
@@ -79,7 +88,49 @@ defmodule Snodo.Conformance.ClientHarness do
     Client.close(client)
   end
 
-  defp run(scenario, _url), do: fail("#{scenario}: no harness flow for this scenario")
+  defp context do
+    case System.get_env("MCP_CONFORMANCE_CONTEXT") do
+      nil -> %{}
+      json -> JSON.decode!(json)
+    end
+  end
+
+  # One Snodo.OAuth.Client per run. The scenario names the grant; the
+  # context names a pre-registered client or the client-credentials key.
+  defp oauth_options(scenario, url, context) do
+    {:ok, _started} = Application.ensure_all_started(:inets)
+
+    settings =
+      [
+        resource: url,
+        authorize: &follow/1,
+        authorization_timeout: 20_000,
+        client_metadata_url: @client_metadata_url,
+        client_name: "snodo-conformance",
+        client_id: context["client_id"],
+        client_secret: context["client_secret"],
+        private_key: context["private_key_pem"],
+        signing_algorithm: context["signing_algorithm"]
+      ] ++ if(scenario in @client_credentials, do: [grant: :client_credentials], else: [])
+
+    {:ok, oauth} =
+      settings |> Enum.reject(fn {_key, value} -> is_nil(value) end) |> OAuth.start_link()
+
+    [token_provider: {OAuth, oauth}]
+  end
+
+  # The browser stand-in: fetches the authorization URL and follows the
+  # redirect, which lands on the client's loopback listener.
+  defp follow(url) do
+    request = {String.to_charlist(url), []}
+
+    case :httpc.request(:get, request, [autoredirect: true, timeout: 10_000],
+           body_format: :binary
+         ) do
+      {:ok, {{_version, 200, _reason}, _headers, _body}} -> :ok
+      other -> {:error, other}
+    end
+  end
 
   defp read_resources(client) do
     with {:ok, resources} <- log("resources/list", Client.list_resources(client)) do
@@ -173,6 +224,8 @@ defmodule Snodo.Conformance.ClientHarness do
 
   defp sample(_schema), do: nil
 
+  # Tokens never reach the log: results carry none, and errors keep only
+  # the error fields of a token response.
   defp log(label, result) do
     IO.puts(:stderr, "#{label}: #{inspect(result, limit: 20)}")
     result

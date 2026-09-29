@@ -268,12 +268,16 @@ The September 26, September 14, and August 25 summaries are retained as
 historical evidence, not current scores.
 
 The runner's client leg measures `Snodo.Client` separately, through a harness
-that drives it against each scenario server. The 2026-09-26 run passes 6 of 32
-required client scenarios. 25 of the 32 cover OAuth, which the client does not
-implement, and one of the six passes (`auth/resource-mismatch`) only because
-the harness never starts authorization. See the
-[client leg notes](https://github.com/joshrotenberg/snodo/blob/main/conformance/README.md#client-leg)
-for the remaining gaps.
+that drives it against each scenario server, with `Snodo.OAuth.Client` from
+`snodo_oauth` as the token provider. The 2026-09-29 run passes 30 of 32
+required client scenarios, including all 25 that cover OAuth: metadata
+discovery, client identity, PKCE, scope selection and step-up, resource
+indicators, and the `iss` checks. The two others are excluded from the score
+because a 2026-07-28 client sends no `initialize` and declares neither roots
+nor sampling. DPoP, enterprise-managed authorization, and workload identity
+federation are not implemented; their unscored scenarios stay in the
+baseline. See the
+[client leg notes](https://github.com/joshrotenberg/snodo/blob/main/conformance/README.md#client-leg).
 
 Three more server lanes run in CI. The same fixture served through
 `Snodo.Transport.Plug` on Bandit matches the native listener check for check.
