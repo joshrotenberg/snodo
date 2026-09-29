@@ -87,6 +87,7 @@ defmodule Snodo.Compliance do
     "extension-registration",
     "extension-negotiation-dispatch",
     "mrtr-elicitation-wire",
+    "mrtr-sampling-roots-wire",
     "mrtr-capability-admission",
     "mrtr-extension-composition",
     "mrtr-state-integrity",

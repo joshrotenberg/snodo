@@ -45,7 +45,10 @@ defmodule Snodo.Protocol.V2026_07_28 do
     {"notifications/message", "logging", :required, :deprecated}
   ]
 
-  @unsupported_embedded_requests [
+  # SEP-2577 deprecates the embedded sampling and roots requests. They stay
+  # defined and scored, so they are implemented in that placement only.
+  @embedded_requests [
+    {"elicitation/create", :required, :active},
     {"roots/list", :optional, :deprecated},
     {"sampling/createMessage", :required, :deprecated}
   ]
@@ -63,18 +66,19 @@ defmodule Snodo.Protocol.V2026_07_28 do
                              lifecycle: lifecycle
                            )
                          end
-                       ) ++
-                         Enum.map(@unsupported_embedded_requests, fn {name, params, lifecycle} ->
-                           Method.new!(
-                             name: name,
-                             kind: :request,
-                             directions: [:server_to_client],
-                             params: params,
-                             status: :unsupported,
-                             placement: :mrtr_embedded,
-                             lifecycle: lifecycle
-                           )
-                         end)
+                       )
+
+  @embedded_methods Enum.map(@embedded_requests, fn {name, params, lifecycle} ->
+                      Method.new!(
+                        name: name,
+                        kind: :request,
+                        directions: [:server_to_client],
+                        params: params,
+                        status: :implemented,
+                        placement: :mrtr_embedded,
+                        lifecycle: lifecycle
+                      )
+                    end)
 
   @profile Profile.new!(
              version: @version,
@@ -84,166 +88,159 @@ defmodule Snodo.Protocol.V2026_07_28 do
              batching: :forbidden,
              request_metadata: %{request: :required, notification: :optional},
              methods:
-               [
-                 Method.new!(
-                   name: "elicitation/create",
-                   kind: :request,
-                   directions: [:server_to_client],
-                   params: :required,
-                   status: :implemented,
-                   placement: :mrtr_embedded
-                 ),
-                 Method.new!(
-                   name: "server/discover",
-                   kind: :request,
-                   directions: [:client_to_server],
-                   params: :required,
-                   status: :implemented,
-                   validator: {__MODULE__, :inspect_discover_params}
-                 ),
-                 Method.new!(
-                   name: "completion/complete",
-                   kind: :request,
-                   directions: [:client_to_server],
-                   params: :required,
-                   capability: "completions",
-                   status: :implemented,
-                   validator: {__MODULE__, :inspect_completion_params}
-                 ),
-                 Method.new!(
-                   name: "tools/list",
-                   kind: :request,
-                   directions: [:client_to_server],
-                   params: :required,
-                   capability: "tools",
-                   status: :implemented,
-                   validator: {__MODULE__, :inspect_tools_list_params}
-                 ),
-                 Method.new!(
-                   name: "tools/call",
-                   kind: :request,
-                   directions: [:client_to_server],
-                   params: :required,
-                   capability: "tools",
-                   status: :implemented,
-                   validator: {__MODULE__, :inspect_tools_call_params}
-                 ),
-                 Method.new!(
-                   name: "prompts/list",
-                   kind: :request,
-                   directions: [:client_to_server],
-                   params: :required,
-                   capability: "prompts",
-                   status: :implemented,
-                   validator: {__MODULE__, :inspect_prompts_list_params}
-                 ),
-                 Method.new!(
-                   name: "prompts/get",
-                   kind: :request,
-                   directions: [:client_to_server],
-                   params: :required,
-                   capability: "prompts",
-                   status: :implemented,
-                   validator: {__MODULE__, :inspect_prompt_get_params}
-                 ),
-                 Method.new!(
-                   name: "resources/list",
-                   kind: :request,
-                   directions: [:client_to_server],
-                   params: :required,
-                   capability: "resources",
-                   status: :implemented,
-                   validator: {__MODULE__, :inspect_resources_list_params}
-                 ),
-                 Method.new!(
-                   name: "resources/templates/list",
-                   kind: :request,
-                   directions: [:client_to_server],
-                   params: :required,
-                   capability: "resources",
-                   status: :implemented,
-                   validator: {__MODULE__, :inspect_resource_templates_list_params}
-                 ),
-                 Method.new!(
-                   name: "resources/read",
-                   kind: :request,
-                   directions: [:client_to_server],
-                   params: :required,
-                   capability: "resources",
-                   status: :implemented,
-                   validator: {__MODULE__, :inspect_resource_read_params}
-                 ),
-                 Method.new!(
-                   name: "subscriptions/listen",
-                   kind: :request,
-                   directions: [:client_to_server],
-                   params: :required,
-                   status: :implemented,
-                   validator: {__MODULE__, :inspect_subscriptions_listen_params}
-                 ),
-                 Method.new!(
-                   name: @cancel_method,
-                   kind: :notification,
-                   directions: [:client_to_server],
-                   params: :required,
-                   status: :implemented,
-                   validator: {__MODULE__, :inspect_cancelled_params}
-                 ),
-                 Method.new!(
-                   name: "notifications/progress",
-                   kind: :notification,
-                   directions: [:server_to_client],
-                   params: :required,
-                   status: :implemented,
-                   validator: {__MODULE__, :inspect_progress_params}
-                 ),
-                 Method.new!(
-                   name: "notifications/subscriptions/acknowledged",
-                   kind: :notification,
-                   directions: [:server_to_client],
-                   params: :required,
-                   status: :implemented
-                 ),
-                 Method.new!(
-                   name: "notifications/tools/list_changed",
-                   kind: :notification,
-                   directions: [:server_to_client],
-                   params: :optional,
-                   capability: "tools",
-                   status: :implemented
-                 ),
-                 Method.new!(
-                   name: "notifications/prompts/list_changed",
-                   kind: :notification,
-                   directions: [:server_to_client],
-                   params: :optional,
-                   capability: "prompts",
-                   status: :implemented
-                 ),
-                 Method.new!(
-                   name: "notifications/resources/list_changed",
-                   kind: :notification,
-                   directions: [:server_to_client],
-                   params: :optional,
-                   capability: "resources",
-                   status: :implemented
-                 ),
-                 Method.new!(
-                   name: "notifications/resources/updated",
-                   kind: :notification,
-                   directions: [:server_to_client],
-                   params: :required,
-                   capability: "resources",
-                   status: :implemented
-                 )
-               ] ++ @unsupported_methods,
+               @embedded_methods ++
+                 [
+                   Method.new!(
+                     name: "server/discover",
+                     kind: :request,
+                     directions: [:client_to_server],
+                     params: :required,
+                     status: :implemented,
+                     validator: {__MODULE__, :inspect_discover_params}
+                   ),
+                   Method.new!(
+                     name: "completion/complete",
+                     kind: :request,
+                     directions: [:client_to_server],
+                     params: :required,
+                     capability: "completions",
+                     status: :implemented,
+                     validator: {__MODULE__, :inspect_completion_params}
+                   ),
+                   Method.new!(
+                     name: "tools/list",
+                     kind: :request,
+                     directions: [:client_to_server],
+                     params: :required,
+                     capability: "tools",
+                     status: :implemented,
+                     validator: {__MODULE__, :inspect_tools_list_params}
+                   ),
+                   Method.new!(
+                     name: "tools/call",
+                     kind: :request,
+                     directions: [:client_to_server],
+                     params: :required,
+                     capability: "tools",
+                     status: :implemented,
+                     validator: {__MODULE__, :inspect_tools_call_params}
+                   ),
+                   Method.new!(
+                     name: "prompts/list",
+                     kind: :request,
+                     directions: [:client_to_server],
+                     params: :required,
+                     capability: "prompts",
+                     status: :implemented,
+                     validator: {__MODULE__, :inspect_prompts_list_params}
+                   ),
+                   Method.new!(
+                     name: "prompts/get",
+                     kind: :request,
+                     directions: [:client_to_server],
+                     params: :required,
+                     capability: "prompts",
+                     status: :implemented,
+                     validator: {__MODULE__, :inspect_prompt_get_params}
+                   ),
+                   Method.new!(
+                     name: "resources/list",
+                     kind: :request,
+                     directions: [:client_to_server],
+                     params: :required,
+                     capability: "resources",
+                     status: :implemented,
+                     validator: {__MODULE__, :inspect_resources_list_params}
+                   ),
+                   Method.new!(
+                     name: "resources/templates/list",
+                     kind: :request,
+                     directions: [:client_to_server],
+                     params: :required,
+                     capability: "resources",
+                     status: :implemented,
+                     validator: {__MODULE__, :inspect_resource_templates_list_params}
+                   ),
+                   Method.new!(
+                     name: "resources/read",
+                     kind: :request,
+                     directions: [:client_to_server],
+                     params: :required,
+                     capability: "resources",
+                     status: :implemented,
+                     validator: {__MODULE__, :inspect_resource_read_params}
+                   ),
+                   Method.new!(
+                     name: "subscriptions/listen",
+                     kind: :request,
+                     directions: [:client_to_server],
+                     params: :required,
+                     status: :implemented,
+                     validator: {__MODULE__, :inspect_subscriptions_listen_params}
+                   ),
+                   Method.new!(
+                     name: @cancel_method,
+                     kind: :notification,
+                     directions: [:client_to_server],
+                     params: :required,
+                     status: :implemented,
+                     validator: {__MODULE__, :inspect_cancelled_params}
+                   ),
+                   Method.new!(
+                     name: "notifications/progress",
+                     kind: :notification,
+                     directions: [:server_to_client],
+                     params: :required,
+                     status: :implemented,
+                     validator: {__MODULE__, :inspect_progress_params}
+                   ),
+                   Method.new!(
+                     name: "notifications/subscriptions/acknowledged",
+                     kind: :notification,
+                     directions: [:server_to_client],
+                     params: :required,
+                     status: :implemented
+                   ),
+                   Method.new!(
+                     name: "notifications/tools/list_changed",
+                     kind: :notification,
+                     directions: [:server_to_client],
+                     params: :optional,
+                     capability: "tools",
+                     status: :implemented
+                   ),
+                   Method.new!(
+                     name: "notifications/prompts/list_changed",
+                     kind: :notification,
+                     directions: [:server_to_client],
+                     params: :optional,
+                     capability: "prompts",
+                     status: :implemented
+                   ),
+                   Method.new!(
+                     name: "notifications/resources/list_changed",
+                     kind: :notification,
+                     directions: [:server_to_client],
+                     params: :optional,
+                     capability: "resources",
+                     status: :implemented
+                   ),
+                   Method.new!(
+                     name: "notifications/resources/updated",
+                     kind: :notification,
+                     directions: [:server_to_client],
+                     params: :required,
+                     capability: "resources",
+                     status: :implemented
+                   )
+                 ] ++ @unsupported_methods,
              capabilities: ["completions", "tools", "prompts", "resources"],
              transports: %{direct: :tested, stdio: :tested, streamable_http: :tested},
              limitations: %{
-               official_server_conformance: :partial,
+               official_server_conformance: :complete,
                schema_validation: :pluggable,
                subscriptions: :tested,
-               multi_round_trip_requests: :elicitation_and_state,
+               multi_round_trip_requests: :elicitation_sampling_roots_and_state,
                list_pagination: :tested,
                transport_policy_enforcement: :tested,
                method_catalog: :complete,

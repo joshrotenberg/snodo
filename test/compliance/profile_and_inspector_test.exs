@@ -61,9 +61,9 @@ defmodule Snodo.Compliance.ProfileAndInspectorTest do
      :implemented, :top_level, :active},
     {"elicitation/create", :request, :server_to_client, :required, nil, :implemented,
      :mrtr_embedded, :active},
-    {"roots/list", :request, :server_to_client, :optional, nil, :unsupported, :mrtr_embedded,
+    {"roots/list", :request, :server_to_client, :optional, nil, :implemented, :mrtr_embedded,
      :deprecated},
-    {"sampling/createMessage", :request, :server_to_client, :required, nil, :unsupported,
+    {"sampling/createMessage", :request, :server_to_client, :required, nil, :implemented,
      :mrtr_embedded, :deprecated}
   ]
 
@@ -141,11 +141,18 @@ defmodule Snodo.Compliance.ProfileAndInspectorTest do
     assert {:ok, %{status: :unsupported}} =
              Profile.fetch_method(profile, "notifications/cancelled", :server_to_client)
 
-    assert {:ok, %{placement: :mrtr_embedded, lifecycle: :deprecated}} =
+    # SEP-2577 deprecates both embedded requests; they stay defined and scored,
+    # so they are implemented in that placement only.
+    assert {:ok, %{status: :implemented, placement: :mrtr_embedded, lifecycle: :deprecated}} =
              Profile.fetch_method(profile, "sampling/createMessage", :server_to_client)
 
-    assert {:ok, %{placement: :mrtr_embedded, params: :optional, lifecycle: :deprecated}} =
-             Profile.fetch_method(profile, "roots/list", :server_to_client)
+    assert {:ok,
+            %{
+              status: :implemented,
+              placement: :mrtr_embedded,
+              params: :optional,
+              lifecycle: :deprecated
+            }} = Profile.fetch_method(profile, "roots/list", :server_to_client)
 
     assert %{
              "protocolVersion" => "2026-07-28",
@@ -156,7 +163,7 @@ defmodule Snodo.Compliance.ProfileAndInspectorTest do
                "streamable_http" => "tested"
              },
              "limitations" => %{
-               "official_server_conformance" => "partial"
+               "official_server_conformance" => "complete"
              }
            } = Profile.to_map(profile)
 
@@ -427,14 +434,16 @@ defmodule Snodo.Compliance.ProfileAndInspectorTest do
         official_summary: summary
       )
 
-    assert length(report["evidence"]["internalPass"]) == 31
+    assert length(report["evidence"]["internalPass"]) == 32
     assert report["evidence"]["officialPass"] == summary["score"]["passedScenarioIds"]
     official = report["officialServerConformance"]
 
+    # The frozen alpha.11 runner's 37 required scenarios all pass. That is the
+    # runner's own score, not a claim of full protocol conformance.
     assert %{
-             "status" => "partial",
+             "status" => "complete",
              "measuredScenarios" => 37,
-             "passedScenarios" => 32,
+             "passedScenarios" => 37,
              "requiredScenarios" => 37
            } = official
 
