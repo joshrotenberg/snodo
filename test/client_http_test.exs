@@ -12,6 +12,7 @@ defmodule Snodo.ClientHTTPTest do
   alias SnodoTest.TestPrompts.PackageAnalysis
   alias SnodoTest.TestResources.StaticText
   alias SnodoTest.TestTools.Routed
+  alias SnodoTest.TestTools.Ticks
 
   defmodule Staged do
     use Snodo.Tool, name: "staged"
@@ -168,6 +169,47 @@ defmodule Snodo.ClientHTTPTest do
                Client.call_tool(client, "staged", %{}, meta: %{"progressToken" => "stages"})
     end
 
+    test "delivers progress from the event stream in order before the result" do
+      client = connect(serve(TestFixtures.runtime(tools: [Ticks])))
+
+      assert {:ok, %{"content" => [%{"text" => "ticked 3"}]}} =
+               Client.call_tool(client, "ticks", %{"count" => 3}, progress: self())
+
+      assert [
+               %{"progress" => 1, "total" => 3, "message" => "tick 1"},
+               %{"progress" => 2},
+               %{"progress" => 3}
+             ] = drain_progress()
+    end
+
+    test "reset_timeout_on_progress keeps a request alive up to max_total_timeout" do
+      client = connect(serve(TestFixtures.runtime(tools: [Ticks])))
+      arguments = %{"count" => 10, "intervalMs" => 100}
+
+      assert {:error, %Error{code: -32_001, data: %{"timeoutMs" => 500}}} =
+               Client.call_tool(client, "ticks", arguments, progress: self(), timeout: 500)
+
+      assert {:ok, %{"content" => [%{"text" => "ticked 10"}]}} =
+               Client.call_tool(client, "ticks", arguments,
+                 progress: self(),
+                 timeout: 500,
+                 reset_timeout_on_progress: true
+               )
+
+      assert {:error,
+              %Error{
+                code: -32_001,
+                message: "Maximum total timeout exceeded",
+                data: %{"maxTotalTimeoutMs" => 700}
+              }} =
+               Client.call_tool(client, "ticks", arguments,
+                 progress: self(),
+                 timeout: 500,
+                 reset_timeout_on_progress: true,
+                 max_total_timeout: 700
+               )
+    end
+
     test "input_required results retry over HTTP" do
       client =
         connect(serve(ChoiceServer.runtime()),
@@ -316,6 +358,52 @@ defmodule Snodo.ClientHTTPTest do
         end)
 
       assert {:ok, %{"isError" => false}} = Client.call_tool(connect(url), "echo")
+    end
+
+    test "parses events split across reads and returns without waiting for the stream to end" do
+      url =
+        FakeHTTP.start(self(), fn _headers, message ->
+          token = get_in(message, ["params", "_meta", "progressToken"])
+
+          event = fn payload -> "data: " <> JSON.encode!(payload) end
+
+          progress = fn token, value ->
+            event.(%{
+              "jsonrpc" => "2.0",
+              "method" => "notifications/progress",
+              "params" => %{"progressToken" => token, "progress" => value}
+            })
+          end
+
+          response = event.(%{"jsonrpc" => "2.0", "id" => message["id"], "result" => %{}})
+
+          text =
+            "event: message\r\n" <>
+              progress.(token, 1) <>
+              "\r\n\r\n" <>
+              progress.("another-request", 9) <>
+              "\n\n" <> progress.(token, 2) <> "\n\n" <> response <> "\n\n"
+
+          pieces =
+            Stream.unfold(text, fn
+              "" -> nil
+              rest -> String.split_at(rest, 7)
+            end)
+
+          # The stream stays open after the response, as a server's may.
+          keepalive = Stream.repeatedly(fn -> ": keepalive\n\n" end)
+
+          paced =
+            Stream.map(Stream.concat(pieces, keepalive), fn piece ->
+              Process.sleep(1)
+              piece
+            end)
+
+          {200, [{"content-type", "text/event-stream"}], {:stream, paced}}
+        end)
+
+      assert {:ok, %{}} = Client.request(connect(url), "tools/list", %{}, progress: self())
+      assert [%{"progress" => 1}, %{"progress" => 2}] = drain_progress()
     end
 
     test "a response that is not JSON-RPC is a transport error carrying the status" do
@@ -533,6 +621,14 @@ defmodule Snodo.ClientHTTPTest do
 
     for value <- ["café", " padded", "line\nbreak", "=?base64?Zm9v?="] do
       assert HTTP.encode_sentinel(value) == "=?base64?" <> Base.encode64(value) <> "?="
+    end
+  end
+
+  defp drain_progress do
+    receive do
+      {:snodo_progress, params} -> [params | drain_progress()]
+    after
+      0 -> []
     end
   end
 end

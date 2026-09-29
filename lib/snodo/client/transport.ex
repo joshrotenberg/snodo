@@ -11,6 +11,18 @@ defmodule Snodo.Client.Transport do
     * `:timeout` - milliseconds to wait for the response.
     * `:dialect` - the protocol dialect module that built the request. HTTP
       uses its `transport_policy/1` to derive headers.
+    * `:on_progress` - present when the caller asked for progress. A function
+      of one argument to call, in the process that called `request/3`, with
+      the `params` of each `notifications/progress` whose `progressToken` is
+      the request's `params["_meta"]["progressToken"]`, before returning the
+      response.
+    * `:reset_timeout_on_progress` - when `true`, each delivered progress
+      notification restarts `:timeout`, up to `:max_total_timeout`
+      milliseconds after the request started. Past that the request fails
+      with `max_total_timeout_error/1`.
+
+  A transport that ignores the progress options delivers no progress and keeps
+  a fixed timeout.
 
   Failures of the connection itself are `%Snodo.Error{kind: :transport}`. Use
   `connection_error/2` (-32000) and `timeout_error/1` (-32001), the codes the
@@ -33,6 +45,21 @@ defmodule Snodo.Client.Transport do
   @spec connection_error(String.t(), term()) :: Error.t()
   def connection_error(message, cause) when is_binary(message) do
     %Error{code: @connection_closed, message: message, kind: :transport, cause: cause}
+  end
+
+  @doc """
+  Progress kept moving the deadline of a request, and the response had not
+  arrived `max_total_timeout` milliseconds after the request started.
+  """
+  @spec max_total_timeout_error(pos_integer()) :: Error.t()
+  def max_total_timeout_error(max_total_timeout) do
+    %Error{
+      code: @request_timeout,
+      message: "Maximum total timeout exceeded",
+      kind: :transport,
+      data: %{"maxTotalTimeoutMs" => max_total_timeout},
+      cause: :max_total_timeout
+    }
   end
 
   @doc "No response arrived within `timeout` milliseconds."
