@@ -14,6 +14,7 @@ defmodule Snodo.ClientTest do
   alias SnodoTest.TestResources.PackageTemplate
   alias SnodoTest.TestResources.StaticText
   alias SnodoTest.TestTools.Echo
+  alias SnodoTest.TestTools.Ticks
 
   @form_caps %{"elicitation" => %{"form" => %{}}}
 
@@ -136,6 +137,63 @@ defmodule Snodo.ClientTest do
       assert context["protocolVersion"] == "2026-07-28"
       assert context["clientCapabilities"] == @form_caps
       assert context["metadata"]["progressToken"] == "p-1"
+    end
+  end
+
+  describe "progress" do
+    test "a progress function receives each notification, in order, before the result" do
+      client = client(tools: [Ticks])
+      test = self()
+
+      assert {:ok, %{"content" => [%{"text" => "ticked 3"}]}} =
+               Client.call_tool(client, "ticks", %{"count" => 3},
+                 progress: &send(test, {:tick, &1})
+               )
+
+      assert [
+               %{"progress" => 1, "total" => 3, "message" => "tick 1", "progressToken" => token},
+               %{"progress" => 2, "progressToken" => token},
+               %{"progress" => 3, "progressToken" => token}
+             ] = drain(:tick)
+
+      assert is_integer(token)
+    end
+
+    test "a pid receives {:snodo_progress, params}" do
+      assert {:ok, _result} =
+               Client.call_tool(client(tools: [Ticks]), "ticks", %{"count" => 2},
+                 progress: self()
+               )
+
+      assert [%{"progress" => 1}, %{"progress" => 2}] = drain(:snodo_progress)
+    end
+
+    test "without :progress no token is sent and nothing is delivered" do
+      assert {:ok, %{"structuredContent" => context}} =
+               Client.call_tool(client(), "context_echo")
+
+      refute Map.has_key?(context["metadata"], "progressToken")
+      assert {:ok, _result} = Client.call_tool(client(tools: [Ticks]), "ticks", %{"count" => 2})
+      refute_received {:snodo_progress, _params}
+    end
+
+    test ":progress refuses a second progressToken and values it cannot deliver to" do
+      client = client(tools: [Ticks])
+
+      assert_raise ArgumentError, ~r/progressToken/, fn ->
+        Client.call_tool(client, "ticks", %{"count" => 1},
+          progress: self(),
+          meta: %{"progressToken" => "mine"}
+        )
+      end
+
+      assert_raise ArgumentError, ~r/:progress must be/, fn ->
+        Client.call_tool(client, "ticks", %{"count" => 1}, progress: :nobody)
+      end
+
+      assert_raise ArgumentError, ~r/:max_total_timeout must be/, fn ->
+        Client.call_tool(client, "ticks", %{"count" => 1}, progress: self(), max_total_timeout: 0)
+      end
     end
   end
 
@@ -372,4 +430,12 @@ defmodule Snodo.ClientTest do
   end
 
   defp accepted(label), do: %{"action" => "accept", "content" => %{"label" => label}}
+
+  defp drain(tag) do
+    receive do
+      {^tag, params} -> [params | drain(tag)]
+    after
+      0 -> []
+    end
+  end
 end

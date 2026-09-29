@@ -36,9 +36,17 @@ defmodule Snodo.Client do
   Each request takes a fresh integer ID, so one client can be used from many
   processes at once. The client speaks the stateless `2026-07-28` protocol;
   initialize-era servers, which need a session handshake, are not supported.
-  `subscriptions/listen` streams and progress notifications are not delivered.
+  `subscriptions/listen` streams are not delivered.
+
+  Pass `progress:` to a request to receive the server's progress
+  notifications for it while it runs:
+
+      Snodo.Client.call_tool(client, "index", %{}, progress: fn params ->
+        IO.puts("\#{params["progress"]} of \#{params["total"]}")
+      end)
   """
 
+  alias Snodo.Client.Deadline
   alias Snodo.Client.Direct
   alias Snodo.Client.HTTP
   alias Snodo.Client.Page
@@ -281,8 +289,25 @@ defmodule Snodo.Client do
       keyed by the IDs in its `"inputRequests"`. Sent as `inputResponses`.
     * `:request_state` - the `"requestState"` of a previous
       `{:input_required, result}`. Sent as `requestState`.
-    * `:meta` - extra `_meta` entries, such as a `"progressToken"`. These win
-      over the dialect's metadata and over `params["_meta"]`.
+    * `:meta` - extra `_meta` entries. These win over the dialect's metadata
+      and over `params["_meta"]`.
+    * `:progress` - a function of one argument, or a pid, to receive the
+      server's progress notifications for this request. The client sends the
+      request ID as `_meta.progressToken`; a `"progressToken"` in `:meta` or
+      `params["_meta"]` alongside `:progress` raises `ArgumentError`. A
+      function is called in the calling process with each notification's
+      `params` map (`"progressToken"`, `"progress"`, and, when the server sent
+      them, `"total"` and `"message"`) before the request returns. A pid is
+      sent `{:snodo_progress, params}`.
+    * `:reset_timeout_on_progress` - when `true`, each progress notification
+      restarts `:timeout`. Defaults to `false`. Has no effect without
+      `:progress`, or on a direct client, which has no timeout.
+    * `:max_total_timeout` - with `:reset_timeout_on_progress`, the most
+      milliseconds a request may run, counted from when it was sent. Defaults
+      to 600,000. A request stopped by this limit returns -32001 with the
+      message "Maximum total timeout exceeded" and
+      `data: %{"maxTotalTimeoutMs" => limit}`.
+    * `:timeout` - overrides the client's request timeout.
 
   `subscriptions/listen` raises `ArgumentError`: it needs a stream to deliver
   events on, and dispatching it would open the application's source.
@@ -294,18 +319,21 @@ defmodule Snodo.Client do
       raise ArgumentError, "Snodo.Client cannot stream subscriptions/listen"
     end
 
+    id = System.unique_integer([:positive, :monotonic])
+    progress = progress_callback(Keyword.get(opts, :progress))
+
     raw = %{
       "jsonrpc" => "2.0",
-      "id" => System.unique_integer([:positive, :monotonic]),
+      "id" => id,
       "method" => method,
-      "params" => build_params(client, params, opts)
+      "params" => client |> build_params(params, opts) |> put_progress_token(progress, id)
     }
 
     {module, state} = client.transport
 
     transport_opts =
       [dialect: client.dialect, timeout: Keyword.get(opts, :timeout, client.timeout)] ++
-        Keyword.take(opts, [:tool])
+        Keyword.take(opts, [:tool]) ++ progress_options(progress, opts)
 
     case module.request(state, raw, transport_opts) do
       {:ok, response} -> decode_response(response)
@@ -432,6 +460,44 @@ defmodule Snodo.Client do
     if function_exported?(dialect, :client_info_key, 0),
       do: Map.put(metadata, dialect.client_info_key(), info),
       else: metadata
+  end
+
+  defp progress_callback(nil), do: nil
+  defp progress_callback(pid) when is_pid(pid), do: &send(pid, {:snodo_progress, &1})
+  defp progress_callback(fun) when is_function(fun, 1), do: fun
+
+  defp progress_callback(other) do
+    raise ArgumentError,
+          ":progress must be a function of one argument or a pid, got: #{inspect(other)}"
+  end
+
+  defp put_progress_token(params, nil, _id), do: params
+
+  defp put_progress_token(%{"_meta" => metadata} = params, _progress, id) do
+    if Map.has_key?(metadata, "progressToken") do
+      raise ArgumentError,
+            ":progress sets the progressToken; do not also pass one in :meta or params"
+    end
+
+    put_in(params, ["_meta", "progressToken"], id)
+  end
+
+  defp progress_options(nil, _opts), do: []
+
+  defp progress_options(progress, opts) do
+    reset? = Keyword.get(opts, :reset_timeout_on_progress, false)
+    max_total = Keyword.get(opts, :max_total_timeout, Deadline.default_max_total_timeout())
+
+    unless is_boolean(reset?) do
+      raise ArgumentError, ":reset_timeout_on_progress must be a boolean, got: #{inspect(reset?)}"
+    end
+
+    unless is_integer(max_total) and max_total > 0 do
+      raise ArgumentError,
+            ":max_total_timeout must be a positive integer, got: #{inspect(max_total)}"
+    end
+
+    [on_progress: progress, reset_timeout_on_progress: reset?, max_total_timeout: max_total]
   end
 
   defp put_present(params, _key, nil), do: params

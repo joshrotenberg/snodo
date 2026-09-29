@@ -227,6 +227,31 @@ defmodule SnodoTest.TestTools.Barrier do
   end
 end
 
+defmodule SnodoTest.TestTools.Ticks do
+  @moduledoc false
+  use Snodo.Tool, name: "ticks", description: "Reports progress count times, intervalMs apart"
+
+  input_schema(%{
+    "type" => "object",
+    "properties" => %{
+      "count" => %{"type" => "integer", "minimum" => 1},
+      "intervalMs" => %{"type" => "integer", "minimum" => 0}
+    },
+    "required" => ["count"]
+  })
+
+  @impl true
+  def call(%{"count" => count} = arguments, context) do
+    for tick <- 1..count do
+      Process.sleep(Map.get(arguments, "intervalMs", 0))
+      # The client may have stopped waiting; the tool keeps its pace regardless.
+      _result = Snodo.Progress.report(context, tick, total: count, message: "tick #{tick}")
+    end
+
+    {:ok, Snodo.Result.text("ticked #{count}")}
+  end
+end
+
 defmodule SnodoTest.TestTools.EchoCollision do
   use Snodo.Tool, name: "echo"
 

@@ -12,9 +12,13 @@ defmodule Snodo.Client.HTTP do
   sent in the `=?base64?...?=` form when the policy allows it. A header value
   that contains CR, LF, or NUL is refused with a -32000 transport error.
 
-  The response may be `application/json` or `text/event-stream`. From an event
-  stream the transport returns the response whose ID matches the request and
-  drops notifications such as progress. A JSON-RPC error body is returned
+  The response may be `application/json` or `text/event-stream`. An event
+  stream is read as it arrives, and the transport returns the response whose
+  ID matches the request as soon as that event is complete. A
+  `notifications/progress` event for a request made with `progress:` is passed
+  to the progress function when it arrives, and with
+  `reset_timeout_on_progress: true` it moves the deadline for the rest of the
+  response. Other notifications are dropped. A JSON-RPC error body is returned
   whatever the HTTP status, so `Snodo.Client` decodes it as `{:error,
   %Snodo.Error{}}`. Anything else is a -32000 transport error with the status and
   body in `cause`. A timeout closes the connection, which the server treats as
@@ -47,6 +51,7 @@ defmodule Snodo.Client.HTTP do
 
   @behaviour Snodo.Client.Transport
 
+  alias Snodo.Client.Deadline
   alias Snodo.Client.Transport
   alias Snodo.Envelope
   alias Snodo.Transport.Context, as: TransportContext
@@ -131,8 +136,8 @@ defmodule Snodo.Client.HTTP do
     case Enum.reject(headers, &valid_header?/1) do
       [] ->
         state
-        |> exchange(headers ++ state.headers, JSON.encode!(message), timeout)
-        |> response(Map.get(message, "id"), timeout, state.max_response_bytes)
+        |> exchange(headers ++ state.headers, message, opts)
+        |> response(timeout, state.max_response_bytes)
 
       [{name, _value} | _others] ->
         {:error, Transport.connection_error("Invalid HTTP request header", name)}
@@ -219,15 +224,32 @@ defmodule Snodo.Client.HTTP do
   defp valid_extra_header?(_header), do: false
 
   # The socket is closed when the exchange ends, whatever the outcome.
-  defp exchange(state, headers, body, timeout) do
+  defp exchange(state, headers, message, opts) do
+    timeout = Keyword.fetch!(opts, :timeout)
+    on_progress = Keyword.get(opts, :on_progress)
+
     with {:ok, socket} <- open(state, state.connect_timeout || timeout, timeout) do
-      conn = %{socket: socket, deadline: deadline(timeout), limit: state.max_response_bytes}
+      conn = %{
+        socket: socket,
+        deadline: Deadline.new(opts),
+        limit: state.max_response_bytes,
+        id: Map.get(message, "id"),
+        on_progress: on_progress,
+        token: if(on_progress, do: get_in(message, ["params", "_meta", "progressToken"])),
+        read: 0,
+        body: nil
+      }
 
       try do
-        with :ok <- send_request(socket, state, headers, body),
-             {:ok, status, response_headers, rest} <- read_head(conn, "", 0),
-             {:ok, response_body} <- read_body(conn, status, response_headers, rest) do
-          {:ok, status, response_headers, response_body}
+        with :ok <- send_request(socket, state, headers, JSON.encode!(message)),
+             {:ok, status, response_headers, rest} <- read_head(conn, "", 0) do
+          conn = %{conn | body: body_state(response_headers)}
+
+          case read_body(conn, status, response_headers, rest) do
+            {:ok, conn} -> {:ok, status, finish(conn)}
+            {:done, response} -> {:ok, status, {:response, response}}
+            {:error, reason} -> {:error, reason}
+          end
         end
       after
         close_socket(socket)
@@ -235,13 +257,19 @@ defmodule Snodo.Client.HTTP do
     end
   end
 
-  defp response({:ok, status, headers, body}, id, _timeout, _limit),
-    do: decode(status, headers, body, id)
+  defp response({:ok, _status, {:response, response}}, _timeout, _limit), do: {:ok, response}
+  defp response({:ok, status, {:body, body}}, _timeout, _limit), do: decode_json(status, body)
 
-  defp response({:error, :timeout}, _id, timeout, _limit),
+  defp response({:ok, status, {:unmatched, sample}}, _timeout, _limit),
+    do: unexpected(status, sample)
+
+  defp response({:error, {:timeout, deadline}}, _timeout, _limit),
+    do: {:error, Deadline.error(deadline)}
+
+  defp response({:error, :timeout}, timeout, _limit),
     do: {:error, Transport.timeout_error(timeout)}
 
-  defp response({:error, :too_large}, _id, _timeout, limit) do
+  defp response({:error, :too_large}, _timeout, limit) do
     {:error,
      Transport.connection_error(
        "The HTTP response exceeds the #{limit}-byte limit",
@@ -249,10 +277,10 @@ defmodule Snodo.Client.HTTP do
      )}
   end
 
-  defp response({:error, :malformed}, _id, _timeout, _limit),
+  defp response({:error, :malformed}, _timeout, _limit),
     do: {:error, Transport.connection_error("The HTTP response is malformed", :malformed)}
 
-  defp response({:error, reason}, _id, _timeout, _limit),
+  defp response({:error, reason}, _timeout, _limit),
     do: {:error, Transport.connection_error("The HTTP request failed", reason)}
 
   defp open(%{scheme: "http"} = state, connect_timeout, timeout) do
@@ -349,12 +377,15 @@ defmodule Snodo.Client.HTTP do
     end
   end
 
+  # The body readers pass each piece of the body to `feed/2` as it arrives,
+  # and end with `{:ok, conn}` at the end of the body, `{:done, response}` when
+  # an event stream has delivered the response, or `{:error, reason}`.
   defp read_body(conn, status, headers, rest) do
     case framing(status, headers) do
-      :chunked -> read_chunks(conn, rest, "")
+      :chunked -> read_chunks(conn, rest)
       {:length, length} when length > conn.limit -> {:error, :too_large}
       {:length, length} -> read_length(conn, rest, length)
-      :close -> read_to_close(conn, "", {:ok, rest})
+      :close -> read_to_close(conn, {:ok, rest})
       :malformed -> {:error, :malformed}
     end
   end
@@ -389,35 +420,32 @@ defmodule Snodo.Client.HTTP do
 
   defp content_length(_values), do: :malformed
 
-  defp read_length(_conn, buffer, length) when byte_size(buffer) >= length,
-    do: {:ok, binary_part(buffer, 0, length)}
+  defp read_length(conn, data, length) when byte_size(data) >= length,
+    do: feed(conn, binary_part(data, 0, length))
 
-  defp read_length(conn, buffer, length) do
-    with {:ok, data} <- recv(conn), do: read_length(conn, buffer <> data, length)
-  end
-
-  # The body grows by appending, which keeps its memory close to its size
-  # however small the reads are.
-  defp read_to_close(conn, body, {:ok, data}) do
-    if byte_size(body) + byte_size(data) > conn.limit do
-      {:error, :too_large}
-    else
-      read_to_close(conn, body <> data, recv(conn))
+  defp read_length(conn, data, length) do
+    with {:ok, conn} <- feed(conn, data),
+         {:ok, more} <- recv(conn) do
+      read_length(conn, more, length - byte_size(data))
     end
   end
 
-  defp read_to_close(_conn, body, {:error, :closed}), do: {:ok, body}
-  defp read_to_close(_conn, _body, {:error, reason}), do: {:error, reason}
+  defp read_to_close(conn, {:ok, data}) do
+    with {:ok, conn} <- feed(conn, data), do: read_to_close(conn, recv(conn))
+  end
+
+  defp read_to_close(conn, {:error, :closed}), do: {:ok, conn}
+  defp read_to_close(_conn, {:error, reason}), do: {:error, reason}
 
   # Each chunk's size is checked against the running total before its data is
   # read. Trailers after the last chunk are not read; the connection closes.
-  defp read_chunks(conn, buffer, body) do
+  defp read_chunks(conn, buffer) do
     case :binary.split(buffer, "\r\n") do
       [line, rest] ->
         case chunk_size(line) do
-          {:ok, 0} -> {:ok, body}
-          {:ok, size} when byte_size(body) + size > conn.limit -> {:error, :too_large}
-          {:ok, size} -> read_chunk(conn, rest, size, body)
+          {:ok, 0} -> {:ok, conn}
+          {:ok, size} when conn.read + size > conn.limit -> {:error, :too_large}
+          {:ok, size} -> read_chunk(conn, rest, size)
           :malformed -> {:error, :malformed}
         end
 
@@ -425,20 +453,24 @@ defmodule Snodo.Client.HTTP do
         {:error, :malformed}
 
       [_partial] ->
-        with {:ok, data} <- recv(conn), do: read_chunks(conn, buffer <> data, body)
+        with {:ok, data} <- recv(conn), do: read_chunks(conn, buffer <> data)
     end
   end
 
   # The chunk's data is followed by CRLF.
-  defp read_chunk(conn, buffer, size, body) when byte_size(buffer) >= size + 2 do
+  defp read_chunk(conn, buffer, size) when byte_size(buffer) >= size + 2 do
     case binary_part(buffer, size, byte_size(buffer) - size) do
-      "\r\n" <> rest -> read_chunks(conn, rest, body <> binary_part(buffer, 0, size))
-      _missing_delimiter -> {:error, :malformed}
+      "\r\n" <> rest ->
+        with {:ok, conn} <- feed(conn, binary_part(buffer, 0, size)),
+             do: read_chunks(conn, rest)
+
+      _missing_delimiter ->
+        {:error, :malformed}
     end
   end
 
-  defp read_chunk(conn, buffer, size, body) do
-    with {:ok, data} <- recv(conn), do: read_chunk(conn, buffer <> data, size, body)
+  defp read_chunk(conn, buffer, size) do
+    with {:ok, data} <- recv(conn), do: read_chunk(conn, buffer <> data, size)
   end
 
   defp chunk_size(line) do
@@ -453,46 +485,77 @@ defmodule Snodo.Client.HTTP do
     end
   end
 
-  defp recv(%{socket: {module, socket}, deadline: deadline}),
-    do: module.recv(socket, 0, remaining(deadline))
+  # The recv timeout is the time left until the deadline, which progress can
+  # move, so a timeout reports the deadline it ran into.
+  defp recv(%{socket: {module, socket}, deadline: deadline}) do
+    case module.recv(socket, 0, Deadline.remaining(deadline)) do
+      {:error, :timeout} -> {:error, {:timeout, deadline}}
+      result -> result
+    end
+  end
 
   defp close_socket({module, socket}) do
     _closed = module.close(socket)
     :ok
   end
 
-  defp deadline(:infinity), do: :infinity
-  defp deadline(timeout), do: System.monotonic_time(:millisecond) + timeout
+  # A JSON body is held until it ends. An event stream is split into events
+  # as it arrives; `scanned` is how much of the partial event has already been
+  # searched for a boundary, so each byte is searched about once, and `sample`
+  # keeps the start of the stream for the error when no response arrives.
+  defp body_state(headers) do
+    if event_stream?(headers),
+      do: {:events, "", 0, ""},
+      else: {:buffer, ""}
+  end
 
-  defp remaining(:infinity), do: :infinity
-  defp remaining(deadline), do: max(deadline - System.monotonic_time(:millisecond), 0)
+  # The limit counts every body byte, notifications included.
+  defp feed(conn, data) do
+    read = conn.read + byte_size(data)
 
-  defp decode(status, headers, body, id) do
-    if event_stream?(headers) do
-      decode_event_stream(status, body, id)
-    else
-      decode_json(status, body)
+    if read > conn.limit,
+      do: {:error, :too_large},
+      else: consume(%{conn | read: read}, data)
+  end
+
+  defp consume(%{body: {:buffer, body}} = conn, data),
+    do: {:ok, %{conn | body: {:buffer, body <> data}}}
+
+  defp consume(%{body: {:events, buffer, scanned, sample}} = conn, data) do
+    sample = sample <> binary_part(data, 0, min(byte_size(data), 512 - byte_size(sample)))
+    next_event(%{conn | body: {:events, buffer <> data, scanned, sample}})
+  end
+
+  defp next_event(%{body: {:events, buffer, scanned, sample}} = conn) do
+    # A boundary of up to 4 bytes can straddle the previous search's end.
+    from = max(scanned - 3, 0)
+
+    case :binary.match(buffer, ["\r\n\r\n", "\n\n"], scope: {from, byte_size(buffer) - from}) do
+      :nomatch ->
+        {:ok, %{conn | body: {:events, buffer, byte_size(buffer), sample}}}
+
+      {start, length} ->
+        rest = binary_part(buffer, start + length, byte_size(buffer) - start - length)
+        conn = %{conn | body: {:events, rest, 0, sample}}
+
+        case event(conn, binary_part(buffer, 0, start)) do
+          {:response, response} -> {:done, response}
+          {:ok, conn} -> next_event(conn)
+        end
     end
   end
 
-  defp decode_json(status, body) do
-    case Snodo.JSONValue.decode(body) do
-      {:ok, %{"jsonrpc" => "2.0"} = response} -> {:ok, response}
-      _other -> unexpected(status, body)
+  # A stream may end without a blank line after its last event.
+  defp finish(%{body: {:buffer, body}}), do: {:body, body}
+
+  defp finish(%{body: {:events, buffer, _scanned, sample}} = conn) do
+    case event(conn, buffer) do
+      {:response, response} -> {:response, response}
+      {:ok, _conn} -> {:unmatched, sample}
     end
   end
 
-  defp decode_event_stream(status, body, id) do
-    body
-    |> String.split(["\r\n\r\n", "\n\n"], trim: true)
-    |> Enum.find_value(fn event -> matching_response(event, id) end)
-    |> case do
-      nil -> unexpected(status, body)
-      response -> {:ok, response}
-    end
-  end
-
-  defp matching_response(event, id) do
+  defp event(conn, event) do
     data =
       event
       |> String.split(["\r\n", "\n"])
@@ -503,8 +566,24 @@ defmodule Snodo.Client.HTTP do
       |> Enum.join("\n")
 
     case Snodo.JSONValue.decode(data) do
-      {:ok, %{"id" => ^id} = response} when not is_map_key(response, "method") -> response
-      _notification_or_other -> nil
+      {:ok, %{"id" => id} = response} when id == conn.id and not is_map_key(response, "method") ->
+        {:response, response}
+
+      {:ok,
+       %{"method" => "notifications/progress", "params" => %{"progressToken" => token} = params}}
+      when not is_nil(token) and token == conn.token ->
+        conn.on_progress.(params)
+        {:ok, %{conn | deadline: Deadline.extend(conn.deadline)}}
+
+      _other ->
+        {:ok, conn}
+    end
+  end
+
+  defp decode_json(status, body) do
+    case Snodo.JSONValue.decode(body) do
+      {:ok, %{"jsonrpc" => "2.0"} = response} -> {:ok, response}
+      _other -> unexpected(status, body)
     end
   end
 

@@ -21,8 +21,14 @@ defmodule Snodo.Client.Stdio do
   closes when it exits. When a request times out, the transport answers the
   caller with a -32001 error and sends the server `notifications/cancelled` for
   that request ID. When the server exits, requests in flight and later requests
-  fail with -32000. Server-to-client requests are answered with -32601, and
-  server notifications are dropped.
+  fail with -32000. Server-to-client requests are answered with -32601.
+
+  A `notifications/progress` whose token belongs to a request made with
+  `progress:` is forwarded to the process waiting on that request, which calls
+  the progress function; with `reset_timeout_on_progress: true` the connection
+  process also restarts the request's timer. Other server notifications are
+  dropped. If the progress function raises, the request is cancelled on the
+  server.
 
   `close/1` closes the server's stdin. An MCP stdio server exits at EOF after
   finishing admitted requests; this transport does not signal or kill it.
@@ -31,6 +37,7 @@ defmodule Snodo.Client.Stdio do
   @behaviour Snodo.Client.Transport
   use GenServer
 
+  alias Snodo.Client.Deadline
   alias Snodo.Client.Transport
   alias Snodo.Error
   alias Snodo.Transport.Stdio.Framing
@@ -57,12 +64,25 @@ defmodule Snodo.Client.Stdio do
     end
   end
 
+  # The caller waits for its response in its own receive loop rather than in
+  # GenServer.call, so that it can run the progress function as notifications
+  # arrive. Replies go to a process alias, which is removed when the request
+  # returns, so a late message cannot reach the caller's mailbox.
   @impl Transport
   def request(pid, message, opts) when is_pid(pid) and is_map(message) do
-    GenServer.call(pid, {:request, message, Keyword.fetch!(opts, :timeout)}, :infinity)
-  catch
-    :exit, reason ->
-      {:error, Transport.connection_error("The stdio connection is closed", reason)}
+    on_progress = Keyword.get(opts, :on_progress)
+    reply_to = Process.alias()
+    monitor = Process.monitor(pid)
+
+    try do
+      case submit(pid, message, reply_to, opts) do
+        :ok -> await(pid, message["id"], reply_to, monitor, on_progress)
+        {:error, %Error{}} = error -> error
+      end
+    after
+      Process.unalias(reply_to)
+      Process.demonitor(monitor, [:flush])
+    end
   end
 
   @impl Transport
@@ -81,6 +101,7 @@ defmodule Snodo.Client.Stdio do
        port: port,
        owner: Process.monitor(owner),
        pending: %{},
+       tokens: %{},
        buffer: [],
        buffer_bytes: 0,
        discarding?: false,
@@ -93,18 +114,40 @@ defmodule Snodo.Client.Stdio do
   end
 
   @impl GenServer
-  def handle_call({:request, _message, _timeout}, _from, %{closed: %Error{} = error} = state) do
-    {:reply, {:error, error}, state}
+  def handle_call({:request, _message, _reply_to, _opts}, _from, %{closed: %Error{}} = state) do
+    {:reply, {:error, state.closed}, state}
   end
 
-  def handle_call({:request, %{"id" => id} = message, timeout}, from, state) do
+  def handle_call({:request, %{"id" => id} = message, reply_to, opts}, _from, state) do
     case write(state.port, message) do
       :ok ->
-        timer = start_timer(id, timeout)
-        {:noreply, put_in(state, [:pending, id], {from, timer, timeout})}
+        token =
+          if Keyword.has_key?(opts, :on_progress),
+            do: get_in(message, ["params", "_meta", "progressToken"])
+
+        entry =
+          %{reply_to: reply_to, token: token, deadline: Deadline.new(opts)}
+          |> start_timer(id)
+
+        state = put_in(state, [:pending, id], entry)
+        state = if token, do: put_in(state, [:tokens, token], id), else: state
+        {:reply, :ok, state}
 
       {:error, error} ->
         {:reply, {:error, error}, state}
+    end
+  end
+
+  @impl GenServer
+  def handle_cast({:abandon, id, reply_to}, state) do
+    case state.pending do
+      %{^id => %{reply_to: ^reply_to}} ->
+        _result = write(state.port, cancellation(id, "The client stopped waiting"))
+        {_entry, state} = pop_pending(state, id)
+        {:noreply, state}
+
+      _other ->
+        {:noreply, state}
     end
   end
 
@@ -125,23 +168,25 @@ defmodule Snodo.Client.Stdio do
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
     error = Transport.connection_error("The stdio server exited", {:exit_status, status})
 
-    for {_id, {from, timer, _timeout}} <- state.pending do
-      cancel_timer(timer)
-      GenServer.reply(from, {:error, error})
+    for {_id, entry} <- state.pending do
+      cancel_timer(entry)
+      deliver(entry, {:response, {:error, error}})
     end
 
-    {:noreply, %{state | pending: %{}, closed: error}}
+    {:noreply, %{state | pending: %{}, tokens: %{}, closed: error}}
   end
 
-  def handle_info({:request_timeout, id}, state) do
-    case Map.pop(state.pending, id) do
-      {nil, _pending} ->
+  # A timer that was restarted may already have fired, so the tag must match.
+  def handle_info({:request_timeout, id, tag}, state) do
+    case state.pending do
+      %{^id => %{timer: {_timer, ^tag}} = entry} ->
+        deliver(entry, {:response, {:error, Deadline.error(entry.deadline)}})
+        _result = write(state.port, cancellation(id, "Request timed out"))
+        {_entry, state} = pop_pending(state, id)
         {:noreply, state}
 
-      {{from, _timer, timeout}, pending} ->
-        GenServer.reply(from, {:error, Transport.timeout_error(timeout)})
-        _result = write(state.port, cancellation(id))
-        {:noreply, %{state | pending: pending}}
+      _other ->
+        {:noreply, state}
     end
   end
 
@@ -178,22 +223,81 @@ defmodule Snodo.Client.Stdio do
       {:ok, %{"id" => id} = response} ->
         complete(state, id, response)
 
-      # Notifications and lines that are not JSON-RPC are dropped.
+      {:ok,
+       %{"method" => "notifications/progress", "params" => %{"progressToken" => token} = params}}
+      when is_map_key(state.tokens, token) ->
+        progress(state, state.tokens[token], params)
+
+      # Other notifications and lines that are not JSON-RPC are dropped.
       _other ->
         state
     end
   end
 
   defp complete(state, id, response) do
-    case Map.pop(state.pending, id) do
-      {nil, _pending} ->
+    case pop_pending(state, id) do
+      {nil, state} ->
         state
 
-      {{from, timer, _timeout}, pending} ->
-        cancel_timer(timer)
-        GenServer.reply(from, {:ok, response})
-        %{state | pending: pending}
+      {entry, state} ->
+        deliver(entry, {:response, {:ok, response}})
+        state
     end
+  end
+
+  defp progress(state, id, params) do
+    entry = Map.fetch!(state.pending, id)
+    deliver(entry, {:progress, params})
+    deadline = Deadline.extend(entry.deadline)
+
+    if deadline.at == entry.deadline.at do
+      state
+    else
+      cancel_timer(entry)
+      put_in(state, [:pending, id], start_timer(%{entry | deadline: deadline}, id))
+    end
+  end
+
+  defp pop_pending(state, id) do
+    case Map.pop(state.pending, id) do
+      {nil, _pending} ->
+        {nil, state}
+
+      {entry, pending} ->
+        cancel_timer(entry)
+        {entry, %{state | pending: pending, tokens: Map.delete(state.tokens, entry.token)}}
+    end
+  end
+
+  defp deliver(%{reply_to: reply_to}, message), do: send(reply_to, {reply_to, message})
+
+  defp submit(pid, message, reply_to, opts) do
+    GenServer.call(pid, {:request, message, reply_to, opts}, :infinity)
+  catch
+    :exit, reason ->
+      {:error, Transport.connection_error("The stdio connection is closed", reason)}
+  end
+
+  defp await(pid, id, reply_to, monitor, on_progress) do
+    receive do
+      {^reply_to, {:progress, params}} ->
+        run_progress(pid, id, reply_to, on_progress, params)
+        await(pid, id, reply_to, monitor, on_progress)
+
+      {^reply_to, {:response, response}} ->
+        response
+
+      {:DOWN, ^monitor, :process, _pid, reason} ->
+        {:error, Transport.connection_error("The stdio connection is closed", reason)}
+    end
+  end
+
+  defp run_progress(pid, id, reply_to, on_progress, params) do
+    on_progress.(params)
+  catch
+    kind, reason ->
+      GenServer.cast(pid, {:abandon, id, reply_to})
+      :erlang.raise(kind, reason, __STACKTRACE__)
   end
 
   defp write(port, message) do
@@ -204,11 +308,11 @@ defmodule Snodo.Client.Stdio do
       {:error, Transport.connection_error("The stdio server is not accepting input", :closed)}
   end
 
-  defp cancellation(id) do
+  defp cancellation(id, reason) do
     %{
       "jsonrpc" => "2.0",
       "method" => "notifications/cancelled",
-      "params" => %{"requestId" => id, "reason" => "Request timed out"}
+      "params" => %{"requestId" => id, "reason" => reason}
     }
   end
 
@@ -220,12 +324,21 @@ defmodule Snodo.Client.Stdio do
     }
   end
 
-  defp start_timer(_id, :infinity), do: nil
-  defp start_timer(id, timeout), do: Process.send_after(self(), {:request_timeout, id}, timeout)
+  defp start_timer(entry, id) do
+    case Deadline.remaining(entry.deadline) do
+      :infinity ->
+        Map.put(entry, :timer, nil)
 
-  defp cancel_timer(nil), do: :ok
+      remaining ->
+        tag = make_ref()
+        timer = Process.send_after(self(), {:request_timeout, id, tag}, remaining)
+        Map.put(entry, :timer, {timer, tag})
+    end
+  end
 
-  defp cancel_timer(timer) do
+  defp cancel_timer(%{timer: nil}), do: :ok
+
+  defp cancel_timer(%{timer: {timer, _tag}}) do
     _remaining = Process.cancel_timer(timer)
     :ok
   end

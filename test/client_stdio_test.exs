@@ -25,7 +25,7 @@ defmodule Snodo.ClientStdioTest do
 
     assert {:ok, %{"supportedVersions" => ["2026-07-28"]}} = Client.discover(client)
     assert {:ok, tools} = Client.list_tools(client)
-    assert Enum.map(tools, & &1["name"]) |> Enum.sort() == ~w(echo halt large park parked)
+    assert Enum.map(tools, & &1["name"]) |> Enum.sort() == ~w(echo halt large park parked ticks)
 
     assert {:ok, %{"content" => [%{"text" => "over stdio"}]}} =
              Client.call_tool(client, "echo", %{"text" => "over stdio"})
@@ -107,6 +107,63 @@ defmodule Snodo.ClientStdioTest do
     assert {:ok, _result} = Client.call_tool(client, "echo", %{"text" => "still serving"})
   end
 
+  describe "progress" do
+    test "notifications reach the progress function in order before the result" do
+      client = connect()
+
+      assert {:ok, %{"content" => [%{"text" => "ticked 3"}]}} =
+               Client.call_tool(client, "ticks", %{"count" => 3}, progress: self())
+
+      assert [
+               %{"progress" => 1, "total" => 3, "message" => "tick 1"},
+               %{"progress" => 2},
+               %{"progress" => 3}
+             ] = drain_progress()
+    end
+
+    test "reset_timeout_on_progress keeps a request alive up to max_total_timeout" do
+      client = connect()
+      # The first request also waits for the server VM to boot.
+      assert {:ok, _result} = Client.discover(client)
+      arguments = %{"count" => 10, "intervalMs" => 100}
+
+      assert {:error, %Error{code: -32_001, data: %{"timeoutMs" => 500}}} =
+               Client.call_tool(client, "ticks", arguments, progress: self(), timeout: 500)
+
+      assert {:ok, %{"content" => [%{"text" => "ticked 10"}]}} =
+               Client.call_tool(client, "ticks", arguments,
+                 progress: self(),
+                 timeout: 500,
+                 reset_timeout_on_progress: true
+               )
+
+      assert {:error,
+              %Error{
+                code: -32_001,
+                message: "Maximum total timeout exceeded",
+                data: %{"maxTotalTimeoutMs" => 700}
+              }} =
+               Client.call_tool(client, "ticks", arguments,
+                 progress: self(),
+                 timeout: 500,
+                 reset_timeout_on_progress: true,
+                 max_total_timeout: 700
+               )
+    end
+
+    test "a progress function that raises abandons the request and the connection keeps serving" do
+      client = connect()
+
+      assert_raise RuntimeError, "stop", fn ->
+        Client.call_tool(client, "ticks", %{"count" => 50, "intervalMs" => 20},
+          progress: fn _params -> raise "stop" end
+        )
+      end
+
+      assert {:ok, _result} = Client.call_tool(client, "echo", %{"text" => "still serving"})
+    end
+  end
+
   test "a server exit fails the request in flight and every later request" do
     client = connect()
 
@@ -144,6 +201,14 @@ defmodule Snodo.ClientStdioTest do
 
     assert {:error, %Error{code: -32_000}} =
              Client.connect({:stdio, "snodo-no-such-command-#{System.unique_integer()}", []})
+  end
+
+  defp drain_progress do
+    receive do
+      {:snodo_progress, params} -> [params | drain_progress()]
+    after
+      0 -> []
+    end
   end
 
   defp eventually(check, attempts \\ 50) do
