@@ -3,7 +3,8 @@
 `Snodo.Instrumentation` is a dependency-free, opt-in event sink. It keeps
 observability outside protocol semantics and lets an application bridge the
 same events to `:telemetry`, OpenTelemetry, Logger, a metrics process, or a
-test collector.
+test collector. The `snodo_telemetry` package ships the `:telemetry` bridge;
+see [Forwarding to :telemetry](#forwarding-to-telemetry).
 
 A sink implements one callback:
 
@@ -70,6 +71,59 @@ Durations use the VM's native monotonic time unit. Convert them with
 The names and bounded metadata are framework API. A particular metrics backend,
 aggregation policy, sampling policy, and task-ID cardinality policy remain
 application concerns.
+
+## Forwarding to :telemetry
+
+The `snodo_telemetry` package provides `Snodo.Instrumentation.Telemetry`, a
+sink that hands every event in the catalog to `:telemetry.execute/3` under the
+same name, with the same measurements and metadata. Tooling that consumes
+`:telemetry` events, such as `telemetry_metrics`, Phoenix LiveDashboard, and
+the OpenTelemetry instrumentations, then sees the events without an
+application-written bridge.
+
+<!-- x-release-please-start-version -->
+```elixir
+{:snodo_telemetry, "~> 0.3.0"}
+```
+<!-- x-release-please-end -->
+
+Pass the module wherever a sink is accepted:
+
+```elixir
+runtime = MyServer.runtime(instrumentation: Snodo.Instrumentation.Telemetry)
+```
+
+The sink adds one metadata key. The `:start`, `:stop`, and `:exception`
+events of one dispatch or one runner job share a `telemetry_span_context`
+reference, as `:telemetry.span/3` emits it, so a handler can pair a stop or
+exception with its start. The reference lives in the emitting process between
+the two events: nested dispatches in one process form a stack, and runner
+jobs, which interleave in the runner process, are keyed by `task_id`. The
+subscription and store-transition events are not spans and are forwarded
+without the key. Measurements are forwarded unchanged, so `duration` stays in
+native time units:
+
+```elixir
+[
+  Telemetry.Metrics.summary("snodo.server.dispatch.stop.duration",
+    unit: {:native, :millisecond},
+    tags: [:method, :outcome]
+  ),
+  Telemetry.Metrics.counter("snodo.server.dispatch.exception.duration",
+    tags: [:method, :reason_class]
+  ),
+  Telemetry.Metrics.last_value("snodo.subscription.publish.queued"),
+  Telemetry.Metrics.distribution("snodo.tasks.runner.job.stop.duration",
+    unit: {:native, :millisecond},
+    tags: [:outcome]
+  )
+]
+```
+
+`:telemetry` runs handlers in the emitting process, inside the dispatch, the
+hub call, or the runner, so the advice above about fast callbacks applies to
+them too. A handler that raises is detached by `:telemetry`; the observed
+operation is not affected.
 
 The opt-in Tasks [contention and soak harness](https://github.com/joshrotenberg/snodo/blob/main/extensions/tasks/stress-testing.md) consumes the
 job and transition events directly. Its exact lifecycle invariants illustrate

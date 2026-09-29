@@ -28,7 +28,7 @@ mix setup
 (cd interop/official_client && npm ci --ignore-scripts)
 ```
 
-This repository builds six Hex packages: the core `snodo` at the root, and five siblings under `integrations/` and `extensions/`. `mix setup` fetches dependencies for all of them.
+This repository builds seven Hex packages: the core `snodo` at the root, and six siblings under `integrations/` and `extensions/`. `mix setup` fetches dependencies for all of them.
 
 ## Making a change
 

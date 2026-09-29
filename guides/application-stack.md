@@ -11,6 +11,7 @@ tested slice of the protocol, not a full-conformance or all-host compatibility c
 | `snodo` | Revision admission, routing, results, MRTR, progress, subscriptions, native transports | Tool/resource/prompt definitions, immutable runtime, execution and source supervision |
 | `snodo_plug` | Plug HTTP boundary, ordinary progress SSE and subscription streaming | Bandit/server choice, authenticated Plug pipeline, timeouts, TLS/proxy configuration |
 | `snodo_jsv` | Optional Draft 2020-12 argument/output validation through JSV | Original schemas, compile-once catalog policy, validation cost limits |
+| `snodo_telemetry` | Optional instrumentation sink that emits `:telemetry` events | Metric definitions, handlers, aggregation and cardinality policy |
 | `snodo_tasks` | Exact-versioned Tasks extension and recoverable work lifecycle | WorkExecutor, store configuration, authorization and idempotency |
 | `snodo_tasks_sqlite` / `snodo_tasks_postgres` | Optional transactional Task persistence | Repo, migrations, database operations, backups and deployment topology |
 
