@@ -8,7 +8,9 @@ defmodule Snodo.Client.Input do
   # keys a request of that kind must carry, and the client capability path
   # that advertises it. A new kind is one more entry here, one more
   # `valid_response?/2` clause, and one more member of
-  # `Snodo.Client.input_kind/0`; the loop in `Snodo.Client` does not change.
+  # `Snodo.Client.input_kind/0`; the loop in `Snodo.Client` does not change,
+  # and neither does `answer_request/2`, which answers the same methods when
+  # an initialize-era server sends them as top-level requests.
 
   alias Snodo.Client.Transport
   alias Snodo.Error
@@ -120,6 +122,62 @@ defmodule Snodo.Client.Input do
   end
 
   @doc false
+  # Answers one request the server sent to the client on an initialize-era
+  # connection, through the same registry as an embedded input request. The
+  # result is the JSON-RPC response object to send back: -32601 for a method
+  # or mode with no handler, -32602 for params that lack the kind's keys, and
+  # -32603 for a handler that failed. `ping` needs no handler. An exception
+  # raised by a handler propagates, as it does for an embedded request.
+  @spec answer_request(Snodo.Client.input_handlers(), map()) :: map()
+  def answer_request(_handlers, %{"id" => id, "method" => "ping"}), do: response(id, %{})
+
+  def answer_request(handlers, %{"id" => id, "method" => method} = request)
+      when is_binary(method) do
+    with {:ok, kind} <- classify_kind(request),
+         {:ok, params} <- request_params(kind, request),
+         {:ok, fun} <- Map.fetch(handlers, kind),
+         {:ok, response} <- run_request(fun, kind, params) do
+      response(id, response)
+    else
+      :error -> error_response(id, Error.method_not_found(method))
+      {:error, %Error{} = error} -> error_response(id, error)
+    end
+  end
+
+  defp request_params(kind, request) do
+    case check_params(kind, Map.get(request, "params")) do
+      :ok ->
+        {:ok, Map.get(request, "params")}
+
+      {:error, :not_an_object} ->
+        {:error, Error.invalid_params("params must be an object")}
+
+      {:error, {:missing, keys}} ->
+        {:error, Error.invalid_params("A #{describe(kind)} needs #{inspect(keys)} in its params")}
+    end
+  end
+
+  defp run_request(fun, kind, params) do
+    case fun.(params) do
+      {:ok, response} ->
+        if valid_response?(kind, response),
+          do: {:ok, response},
+          else: {:error, Error.internal("Input handler returned an invalid response")}
+
+      {:error, reason} ->
+        {:error, Error.internal("Input handler failed", reason)}
+
+      _other ->
+        {:error, Error.internal("Input handler returned an invalid value")}
+    end
+  end
+
+  defp response(id, result), do: %{"jsonrpc" => "2.0", "id" => id, "result" => result}
+
+  defp error_response(id, %Error{} = error),
+    do: %{"jsonrpc" => "2.0", "id" => id, "error" => Error.to_json_rpc(error)}
+
+  @doc false
   @spec rounds_exceeded(pos_integer(), map()) :: Error.t()
   def rounds_exceeded(limit, result) do
     error =
@@ -172,17 +230,24 @@ defmodule Snodo.Client.Input do
   end
 
   defp classify(id, %{"method" => method} = request, result) when is_binary(method) do
+    case classify_kind(request) do
+      {:ok, kind} -> {:ok, kind}
+      :error -> {:error, no_handler(id, method, result)}
+    end
+  end
+
+  defp classify(id, _request, result), do: {:error, no_handler(id, nil, result)}
+
+  defp classify_kind(%{"method" => method} = request) do
     mode = request |> Map.get("params") |> mode()
 
     case Enum.find(@kinds, fn {_kind, spec} ->
            spec.method == method and spec.mode in [nil, mode]
          end) do
       {kind, _spec} -> {:ok, kind}
-      nil -> {:error, no_handler(id, method, result)}
+      nil -> :error
     end
   end
-
-  defp classify(id, _request, result), do: {:error, no_handler(id, nil, result)}
 
   defp mode(%{"mode" => mode}), do: mode
   defp mode(_params), do: "form"
@@ -192,24 +257,33 @@ defmodule Snodo.Client.Input do
   defp checked_params(id, kind, request, result) do
     params = Map.get(request, "params")
 
-    cond do
-      not is_map(params) ->
+    case check_params(kind, params) do
+      :ok ->
+        {:ok, params}
+
+      {:error, :not_an_object} ->
         {:error,
          malformed(
            "The server sent input request #{inspect(id)} whose params is not an object",
            result
          )}
 
-      Enum.any?(@kinds[kind].required, &(not is_map_key(params, &1))) ->
+      {:error, {:missing, keys}} ->
         {:error,
          malformed(
            "The server sent input request #{inspect(id)}, a #{describe(kind)}, " <>
-             "without #{inspect(@kinds[kind].required)} in its params",
+             "without #{inspect(keys)} in its params",
            result
          )}
+    end
+  end
 
-      true ->
-        {:ok, params}
+  defp check_params(_kind, params) when not is_map(params), do: {:error, :not_an_object}
+
+  defp check_params(kind, params) do
+    case Enum.reject(@kinds[kind].required, &is_map_key(params, &1)) do
+      [] -> :ok
+      _missing -> {:error, {:missing, @kinds[kind].required}}
     end
   end
 

@@ -11,6 +11,22 @@ defmodule Snodo.Client.Transport do
     * `:timeout` - milliseconds to wait for the response.
     * `:dialect` - the protocol dialect module that built the request. HTTP
       uses its `transport_policy/1` to derive headers.
+    * `:headers` - request headers the client adds for the negotiated
+      session, as `{name, value}` string pairs: `MCP-Protocol-Version` and
+      `Mcp-Session-Id` on an initialize-era connection. A transport that has
+      no headers ignores them.
+    * `:on_response_headers` - present for `initialize`. A function of one
+      argument to call, in the process that called `request/3`, with the
+      response headers as `{name, value}` pairs with lowercase names, before
+      the response is returned. The client reads `Mcp-Session-Id` from them.
+    * `:on_server_request` - a function of one argument that answers a
+      request the server sends to the client while this request is in flight,
+      such as `elicitation/create` on an initialize-era connection. It
+      receives the request as sent and returns the JSON-RPC response object
+      to send back. A transport that carries server requests on the response
+      of the request in flight calls it in the calling process; `connect/2`
+      receives the same option for a transport whose connection outlives one
+      request.
     * `:on_progress` - present when the caller asked for progress. A function
       of one argument to call, in the process that called `request/3`, with
       the `params` of each `notifications/progress` whose `progressToken` is
@@ -24,6 +40,16 @@ defmodule Snodo.Client.Transport do
   A transport that ignores the progress options delivers no progress and keeps
   a fixed timeout.
 
+  Two callbacks are optional. `notify/3` sends a notification, a message
+  without an `id`, and returns once the transport has delivered it; it
+  receives `:timeout`, `:dialect`, and `:headers`. The client needs it for
+  `notifications/initialized`, so a transport without it cannot open an
+  initialize-era connection. `delete_session/2` is called by
+  `Snodo.Client.close/1` before `close/1` when the server issued a session
+  id; it receives `:headers` (`Mcp-Session-Id` and `MCP-Protocol-Version`)
+  and `:timeout`. Streamable HTTP sends a `DELETE`; a transport without it
+  simply closes.
+
   Failures of the connection itself are `%Snodo.Error{kind: :transport}`. Use
   `connection_error/2` (-32000) and `timeout_error/1` (-32001), the codes the
   official TypeScript SDK uses for the same client-side conditions.
@@ -36,7 +62,11 @@ defmodule Snodo.Client.Transport do
   @callback connect(init_arg :: term(), opts :: keyword()) :: {:ok, state()} | {:error, Error.t()}
   @callback request(state(), message :: map(), opts :: keyword()) ::
               {:ok, map()} | {:error, Error.t()}
+  @callback notify(state(), message :: map(), opts :: keyword()) :: :ok | {:error, Error.t()}
+  @callback delete_session(state(), opts :: keyword()) :: :ok
   @callback close(state()) :: :ok
+
+  @optional_callbacks notify: 3, delete_session: 2
 
   @connection_closed -32_000
   @request_timeout -32_001

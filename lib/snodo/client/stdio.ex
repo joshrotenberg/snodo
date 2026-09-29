@@ -16,12 +16,19 @@ defmodule Snodo.Client.Stdio do
     * `:max_line_bytes` - the largest response line to accept, default 16 MiB.
       The rest of a longer line is discarded as it arrives, so the request it
       answered times out; later responses are unaffected.
+    * `:on_server_request` - a function of one argument that answers a
+      request the server sends to the client, as `Snodo.Client.Transport`
+      describes. The connection process runs it in a process it owns, one per
+      request, and writes the response it returns; a function that raises is
+      answered with -32603. Without it, server-to-client requests are
+      answered with -32601.
 
   The connection process monitors the process that called `connect/2` and
   closes when it exits. When a request times out, the transport answers the
   caller with a -32001 error and sends the server `notifications/cancelled` for
   that request ID. When the server exits, requests in flight and later requests
-  fail with -32000. Server-to-client requests are answered with -32601.
+  fail with -32000. `notify/3` writes a notification and returns once the
+  line is in the port.
 
   A `notifications/progress` whose token belongs to a request made with
   `progress:` is forwarded to the process waiting on that request, which calls
@@ -53,9 +60,15 @@ defmodule Snodo.Client.Stdio do
       raise ArgumentError, ":max_line_bytes must be a positive integer"
     end
 
+    responder = Keyword.get(opts, :on_server_request)
+
+    unless is_nil(responder) or is_function(responder, 1) do
+      raise ArgumentError, ":on_server_request must be a function of one argument"
+    end
+
     with {:ok, executable} <- find_executable(command) do
       port_options = port_options(args, opts)
-      init_arg = {executable, port_options, self(), max_line_bytes}
+      init_arg = {executable, port_options, self(), max_line_bytes, responder}
 
       case GenServer.start(__MODULE__, init_arg) do
         {:ok, pid} -> {:ok, pid}
@@ -86,6 +99,14 @@ defmodule Snodo.Client.Stdio do
   end
 
   @impl Transport
+  def notify(pid, message, _opts) when is_pid(pid) and is_map(message) do
+    GenServer.call(pid, {:notify, message}, :infinity)
+  catch
+    :exit, reason ->
+      {:error, Transport.connection_error("The stdio connection is closed", reason)}
+  end
+
+  @impl Transport
   def close(pid) when is_pid(pid) do
     GenServer.stop(pid, :normal)
   catch
@@ -93,7 +114,7 @@ defmodule Snodo.Client.Stdio do
   end
 
   @impl GenServer
-  def init({executable, port_options, owner, max_line_bytes}) do
+  def init({executable, port_options, owner, max_line_bytes, responder}) do
     port = Port.open({:spawn_executable, executable}, port_options)
 
     {:ok,
@@ -106,6 +127,7 @@ defmodule Snodo.Client.Stdio do
        buffer_bytes: 0,
        discarding?: false,
        max_line_bytes: max_line_bytes,
+       responder: responder,
        closed: nil
      }}
   rescue
@@ -116,6 +138,14 @@ defmodule Snodo.Client.Stdio do
   @impl GenServer
   def handle_call({:request, _message, _reply_to, _opts}, _from, %{closed: %Error{}} = state) do
     {:reply, {:error, state.closed}, state}
+  end
+
+  def handle_call({:notify, _message}, _from, %{closed: %Error{}} = state) do
+    {:reply, {:error, state.closed}, state}
+  end
+
+  def handle_call({:notify, message}, _from, state) do
+    {:reply, write(state.port, message), state}
   end
 
   def handle_call({:request, %{"id" => id} = message, reply_to, opts}, _from, state) do
@@ -194,6 +224,13 @@ defmodule Snodo.Client.Stdio do
     {:stop, :normal, state}
   end
 
+  # The answer to a server request, from the process that ran the responder.
+  # After the server exited there is nowhere to write it.
+  def handle_info({:server_response, response}, state) do
+    if is_nil(state.closed), do: _result = write(state.port, response)
+    {:noreply, state}
+  end
+
   def handle_info(_message, state), do: {:noreply, state}
 
   @impl GenServer
@@ -216,9 +253,8 @@ defmodule Snodo.Client.Stdio do
 
   defp handle_line(state, line) do
     case Framing.decode_line(line) do
-      {:ok, %{"id" => id, "method" => method}} ->
-        _result = write(state.port, method_not_found(id, method))
-        state
+      {:ok, %{"id" => id, "method" => method} = request} when is_binary(method) ->
+        answer_server_request(state, id, request)
 
       {:ok, %{"id" => id} = response} ->
         complete(state, id, response)
@@ -232,6 +268,43 @@ defmodule Snodo.Client.Stdio do
       _other ->
         state
     end
+  end
+
+  # The responder runs a handler the application installed, so it runs in its
+  # own process: a slow handler must not stall the reader, and one that raises
+  # must not take the connection down. The process is linked to the
+  # connection, so it does not outlive it.
+  defp answer_server_request(%{responder: nil} = state, id, %{"method" => method}) do
+    _result = write(state.port, method_not_found(id, method))
+    state
+  end
+
+  defp answer_server_request(%{responder: responder} = state, id, request) do
+    connection = self()
+
+    _pid =
+      spawn_link(fn ->
+        response =
+          try do
+            responder.(request)
+          rescue
+            exception -> handler_failed(id, Exception.message(exception))
+          catch
+            kind, reason -> handler_failed(id, Exception.format_banner(kind, reason))
+          end
+
+        send(connection, {:server_response, response})
+      end)
+
+    state
+  end
+
+  defp handler_failed(id, detail) do
+    %{
+      "jsonrpc" => "2.0",
+      "id" => id,
+      "error" => Error.to_json_rpc(Error.internal("Input handler failed: " <> detail))
+    }
   end
 
   defp complete(state, id, response) do

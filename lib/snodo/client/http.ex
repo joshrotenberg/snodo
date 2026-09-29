@@ -18,11 +18,23 @@ defmodule Snodo.Client.HTTP do
   `notifications/progress` event for a request made with `progress:` is passed
   to the progress function when it arrives, and with
   `reset_timeout_on_progress: true` it moves the deadline for the rest of the
-  response. Other notifications are dropped. A JSON-RPC error body is returned
-  whatever the HTTP status, so `Snodo.Client` decodes it as `{:error,
-  %Snodo.Error{}}`. Anything else is a -32000 transport error with the status and
-  body in `cause`. A timeout closes the connection, which the server treats as
-  cancellation.
+  response. A request the server sends on the stream, such as
+  `elicitation/create` on an initialize-era connection, is answered by the
+  `:on_server_request` function in the calling process, and the response is
+  sent as its own `POST` before the stream is read further; without that
+  option such a request is dropped. Other notifications are dropped. A
+  JSON-RPC error body is returned whatever the HTTP status, so `Snodo.Client`
+  decodes it as `{:error, %Snodo.Error{}}`. Anything else is a -32000 transport
+  error with the status and body in `cause`. A timeout closes the connection,
+  which the server treats as cancellation.
+
+  On an initialize-era connection the client passes `MCP-Protocol-Version` and
+  `Mcp-Session-Id` in `:headers`, reads `Mcp-Session-Id` from the `initialize`
+  response through `:on_response_headers`, sends `notifications/initialized`
+  with `notify/3` (a `POST` answered with a 2xx and no body), and ends the
+  session with `delete_session/2`, a `DELETE` with the same headers whose
+  outcome is not reported: a server that does not support client-initiated
+  termination answers 405.
 
   The response is read by this module rather than `:httpc`, which reads the
   body of any status other than 200 and 206 in full before returning it.
@@ -124,24 +136,40 @@ defmodule Snodo.Client.HTTP do
   def request(state, message, opts) when is_map(message) do
     timeout = Keyword.fetch!(opts, :timeout)
     policy = policy(Keyword.fetch!(opts, :dialect), message)
-    [content_type | _other_types] = policy.request_content_types
 
-    headers = [
-      {"content-type", content_type},
-      {"accept", Enum.join(policy.required_accept_types, ", ")}
-      | mirrored_headers(policy, message) ++
-          parameter_headers(policy, message, Keyword.get(opts, :tool))
-    ]
+    headers =
+      message_headers(policy) ++
+        mirrored_headers(policy, message) ++
+        parameter_headers(policy, message, Keyword.get(opts, :tool)) ++
+        Keyword.get(opts, :headers, [])
 
-    case Enum.reject(headers, &valid_header?/1) do
-      [] ->
-        state
-        |> exchange(headers ++ state.headers, message, opts)
-        |> response(timeout, state.max_response_bytes)
-
-      [{name, _value} | _others] ->
-        {:error, Transport.connection_error("Invalid HTTP request header", name)}
+    with :ok <- check_headers(headers) do
+      state
+      |> exchange("POST", headers ++ state.headers, message, opts)
+      |> response(timeout, state.max_response_bytes)
     end
+  end
+
+  @impl Transport
+  def notify(state, message, opts) when is_map(message) do
+    policy = policy(Keyword.fetch!(opts, :dialect), message)
+
+    headers =
+      message_headers(policy) ++
+        mirrored_headers(policy, message) ++ Keyword.get(opts, :headers, [])
+
+    deliver(state, headers, message, opts)
+  end
+
+  @impl Transport
+  def delete_session(state, opts) do
+    headers = Keyword.get(opts, :headers, [])
+
+    with :ok <- check_headers(headers) do
+      _outcome = exchange(state, "DELETE", headers ++ state.headers, nil, opts)
+    end
+
+    :ok
   end
 
   @impl Transport
@@ -163,6 +191,55 @@ defmodule Snodo.Client.HTTP do
   defp policy(dialect, message) do
     {:ok, envelope} = Envelope.decode(message, %TransportContext{transport: :streamable_http})
     %Policy{} = dialect.transport_policy(envelope)
+  end
+
+  defp message_headers(%Policy{} = policy) do
+    [content_type | _other_types] = policy.request_content_types
+
+    [
+      {"content-type", content_type},
+      {"accept", Enum.join(policy.required_accept_types, ", ")}
+    ]
+  end
+
+  defp check_headers(headers) do
+    case Enum.reject(headers, &valid_header?/1) do
+      [] -> :ok
+      [{name, _value} | _others] when is_binary(name) -> invalid_header(name)
+      [invalid | _others] -> invalid_header(invalid)
+    end
+  end
+
+  defp invalid_header(header),
+    do: {:error, Transport.connection_error("Invalid HTTP request header", header)}
+
+  # A message that gets no JSON-RPC response: a notification, or the client's
+  # answer to a server request. The server accepts it with a 2xx and no body,
+  # or refuses it with an error body.
+  defp deliver(state, headers, message, opts) do
+    timeout = Keyword.fetch!(opts, :timeout)
+
+    with :ok <- check_headers(headers) do
+      case exchange(state, "POST", headers ++ state.headers, message, opts) do
+        {:ok, status, _body} when status in 200..299 -> :ok
+        {:ok, status, {:body, body}} -> refused(status, body)
+        {:ok, status, {:unmatched, sample}} -> unexpected(status, sample)
+        {:ok, status, {:response, response}} -> refused(status, JSON.encode!(response))
+        {:error, _reason} = failure -> response(failure, timeout, state.max_response_bytes)
+      end
+    end
+  end
+
+  defp refused(status, body) do
+    case Snodo.JSONValue.decode(body) do
+      {:ok, %{"error" => %{"code" => code, "message" => message} = error}}
+      when is_integer(code) and is_binary(message) ->
+        {:error,
+         %Snodo.Error{code: code, message: message, data: Map.get(error, "data"), kind: :protocol}}
+
+      _other ->
+        unexpected(status, body)
+    end
   end
 
   defp mirrored_headers(%Policy{mirrored_headers: mirrors}, message) do
@@ -223,26 +300,31 @@ defmodule Snodo.Client.HTTP do
 
   defp valid_extra_header?(_header), do: false
 
-  # The socket is closed when the exchange ends, whatever the outcome.
-  defp exchange(state, headers, message, opts) do
+  # The socket is closed when the exchange ends, whatever the outcome. A nil
+  # message sends no body (DELETE).
+  defp exchange(state, method, headers, message, opts) do
     timeout = Keyword.fetch!(opts, :timeout)
     on_progress = Keyword.get(opts, :on_progress)
+    on_headers = Keyword.get(opts, :on_response_headers)
 
     with {:ok, socket} <- open(state, state.connect_timeout || timeout, timeout) do
       conn = %{
         socket: socket,
         deadline: Deadline.new(opts),
         limit: state.max_response_bytes,
-        id: Map.get(message, "id"),
+        id: message && Map.get(message, "id"),
         on_progress: on_progress,
         token: if(on_progress, do: get_in(message, ["params", "_meta", "progressToken"])),
+        on_server_request: Keyword.get(opts, :on_server_request),
+        reply: {state, Keyword.get(opts, :headers, []), Keyword.take(opts, [:timeout])},
         read: 0,
         body: nil
       }
 
       try do
-        with :ok <- send_request(socket, state, headers, JSON.encode!(message)),
+        with :ok <- send_request(socket, state, method, headers, encode(message)),
              {:ok, status, response_headers, rest} <- read_head(conn, "", 0) do
+          if on_headers, do: on_headers.(response_headers)
           conn = %{conn | body: body_state(response_headers)}
 
           case read_body(conn, status, response_headers, rest) do
@@ -304,9 +386,13 @@ defmodule Snodo.Client.HTTP do
   defp send_timeout(:infinity), do: []
   defp send_timeout(timeout), do: [send_timeout: timeout]
 
-  defp send_request({module, socket}, state, headers, body) do
+  defp encode(nil), do: ""
+  defp encode(message), do: JSON.encode!(message)
+
+  defp send_request({module, socket}, state, method, headers, body) do
     head = [
-      "POST ",
+      method,
+      " ",
       state.target,
       " HTTP/1.1\r\nhost: ",
       state.authority,
@@ -575,9 +661,25 @@ defmodule Snodo.Client.HTTP do
         conn.on_progress.(params)
         {:ok, %{conn | deadline: Deadline.extend(conn.deadline)}}
 
+      {:ok, %{"id" => id, "method" => method} = request}
+      when not is_nil(id) and is_binary(method) and is_function(conn.on_server_request, 1) ->
+        answer_server_request(conn, request)
+        {:ok, conn}
+
       _other ->
         {:ok, conn}
     end
+  end
+
+  # The server waits for the answer before it finishes the request in flight,
+  # so the answer goes out on its own connection before the stream is read
+  # further. A refused answer surfaces as the failure of the request in
+  # flight, which the server then cannot complete.
+  defp answer_server_request(conn, request) do
+    {state, session_headers, opts} = conn.reply
+    response = conn.on_server_request.(request)
+    _outcome = deliver(state, message_headers(%Policy{}) ++ session_headers, response, opts)
+    :ok
   end
 
   defp decode_json(status, body) do

@@ -34,9 +34,18 @@ defmodule Snodo.Client do
       limit, and -32001 when a request times out.
 
   Each request takes a fresh integer ID, so one client can be used from many
-  processes at once. The client speaks the stateless `2026-07-28` protocol;
-  initialize-era servers, which need a session handshake, are not supported.
-  `subscriptions/listen` streams are not delivered.
+  processes at once.
+
+  The client speaks the protocol versions the server serves: the stateless
+  `2026-07-28`, and the initialize-era `2025-11-25` and `2025-06-18`.
+  `connect/2` settles the version before it returns: it probes with
+  `server/discover`, and a server that does not answer as a 2026-07-28 server
+  gets `initialize` with the highest initialize-era version instead. The
+  `:protocol` option pins one version or narrows the list. On an
+  initialize-era connection `session` holds what `initialize` returned, and
+  the requests the server sends to the client (`elicitation/create`) are
+  answered by the same `:input_handlers` that answer 2026-07-28 input
+  requests. `subscriptions/listen` streams are not delivered.
 
   Pass `progress:` to a request to receive the server's progress
   notifications for it while it runs:
@@ -56,13 +65,15 @@ defmodule Snodo.Client do
 
   alias Snodo.Client.Deadline
   alias Snodo.Client.Direct
+  alias Snodo.Client.Handshake
   alias Snodo.Client.HTTP
   alias Snodo.Client.Input
   alias Snodo.Client.Page
+  alias Snodo.Client.Session
   alias Snodo.Client.Stdio
   alias Snodo.Client.Transport
   alias Snodo.Error
-  alias Snodo.Protocol.Registry
+  alias Snodo.Protocol.Profile
   alias Snodo.Server.Runtime
   alias Snodo.Transport.ParamHeaders
 
@@ -90,30 +101,34 @@ defmodule Snodo.Client do
           transport: {module(), Transport.state()},
           protocol: String.t(),
           dialect: module(),
+          session: Session.t() | nil,
           client_capabilities: map(),
           client_info: map(),
           timeout: timeout(),
+          probe_timeout: timeout(),
           max_pages: pos_integer(),
           input_handlers: input_handlers(),
           max_input_rounds: pos_integer()
         }
 
   @default_max_input_rounds 10
+  @default_probe_timeout 10_000
 
   @enforce_keys [:transport, :protocol, :dialect]
   defstruct [
     :transport,
     :protocol,
     :dialect,
+    :session,
     client_capabilities: %{},
     client_info: %{},
     timeout: 30_000,
+    probe_timeout: @default_probe_timeout,
     max_pages: 1_000,
     input_handlers: %{},
     max_input_rounds: @default_max_input_rounds
   ]
 
-  @remote_dialects [Snodo.Protocol.V2026_07_28]
   @version Mix.Project.config()[:version]
 
   # The pause before retrying a result that carries only a requestState, which
@@ -134,9 +149,13 @@ defmodule Snodo.Client do
 
   Options:
 
-    * `:protocol` - the protocol version to speak. Defaults to the first
-      stateless-era version the runtime enables. Initialize-era versions need
-      a session, which a direct client does not hold, so they are refused.
+    * `:protocol` - a protocol version to speak, or a list of versions to
+      allow. Defaults to every version the client speaks: `2026-07-28`,
+      `2025-11-25`, and `2025-06-18`. The highest allowed version the runtime
+      enables is used; a version the client does not speak, or a choice the
+      runtime does not enable, is a -32602 error. An initialize-era version is
+      negotiated with `initialize` through the runtime, and the result is in
+      the client's `session`.
     * `:client_capabilities` - the capabilities sent with every request, for
       example `%{"elicitation" => %{"form" => %{}}}`. Defaults to `%{}`. The
       capabilities the installed `:input_handlers` imply are added to it.
@@ -164,10 +183,9 @@ defmodule Snodo.Client do
   """
   @spec direct(Runtime.t(), keyword()) :: {:ok, t()} | {:error, Error.t()}
   def direct(%Runtime{} = runtime, opts \\ []) when is_list(opts) do
-    with {:ok, version} <- select_protocol(runtime, Keyword.get(opts, :protocol)),
-         {:ok, dialect} <- Registry.fetch(runtime.protocol_registry, version),
-         :ok <- require_stateless(dialect) do
-      open(Direct, runtime, dialect, opts)
+    with {:ok, dialects} <- Handshake.dialects(Keyword.get(opts, :protocol)),
+         {:ok, dialect} <- Handshake.enabled(runtime.protocol_registry, dialects) do
+      open(Direct, runtime, opts, [dialect])
     end
   end
 
@@ -186,11 +204,37 @@ defmodule Snodo.Client do
 
   Options for every target:
 
-    * `:protocol` - defaults to `"2026-07-28"`, the only supported version.
+    * `:protocol` - a protocol version, or a list of versions to allow.
+      Defaults to every version the client speaks. See below.
+    * `:probe_timeout` - milliseconds to wait for the answer to the
+      `server/discover` probe, 10,000 unless set.
     * `:client_capabilities`, `:client_info`, `:max_pages`,
       `:input_handlers`, and `:max_input_rounds` - as for `direct/2`.
     * `:timeout` - the default request timeout in milliseconds, 30,000 unless
       set. Each request can override it with `timeout:`.
+
+  The version is settled before `connect/2` returns. When the allowed list
+  holds both a stateless-era and an initialize-era version, as it does by
+  default, the client sends `server/discover` under `:probe_timeout`. A result
+  with `supportedVersions` is a 2026-07-28 server's answer, and the highest
+  allowed version the server lists is used. Any other answer, whatever the
+  error code or the shape, means the server does not speak a stateless
+  version: the client closes and reopens the transport, which on stdio starts
+  the server again because the probe may already have been processed under
+  the older lifecycle rules, and sends `initialize` with the highest allowed
+  initialize-era version. A pin, or a list from one era, skips the probe: a
+  stateless pin sends nothing at connect time, and an initialize-era pin sends
+  `initialize` at once.
+
+  `initialize` carries `:client_capabilities` and `:client_info`. The server's
+  `protocolVersion` must be one the client allows, or the client closes the
+  connection and returns -32602 with `negotiated` and `requested` in `data`.
+  After `notifications/initialized` the client's `session` is a
+  `Snodo.Client.Session`; a transport without `notify/3` cannot open such a
+  connection. Over HTTP every later request carries `MCP-Protocol-Version`
+  and, when the server issued one, `Mcp-Session-Id`, and `close/1` sends a
+  `DELETE` for the session. A server that supports none of the allowed
+  versions is a -32602 error with `requested` and `supported` in `data`.
   """
   @spec connect(target(), keyword()) :: {:ok, t()} | {:error, Error.t()}
   def connect(target, opts \\ [])
@@ -207,18 +251,47 @@ defmodule Snodo.Client do
               "got a tuple starting with #{inspect(module)}"
     end
 
-    with {:ok, dialect} <- remote_dialect(Keyword.get(opts, :protocol)) do
-      open(module, init_arg, dialect, opts)
+    with {:ok, dialects} <- Handshake.dialects(Keyword.get(opts, :protocol)) do
+      open(module, init_arg, opts, dialects)
     end
   end
 
-  @doc "Closes the client's connection. Closing an in-process client does nothing."
+  @doc """
+  Closes the client's connection. Closing an in-process client does nothing.
+
+  When the server issued a session id, the transport is told to end the
+  session first: over HTTP that is a `DELETE` with `Mcp-Session-Id`.
+  """
   @spec close(t()) :: :ok
+  def close(%__MODULE__{transport: {module, state}, session: %Session{id: id}} = client)
+      when is_binary(id) do
+    if function_exported?(module, :delete_session, 2) do
+      :ok =
+        module.delete_session(state, headers: session_headers(client), timeout: client.timeout)
+    end
+
+    module.close(state)
+  end
+
   def close(%__MODULE__{transport: {module, state}}), do: module.close(state)
 
-  @doc "Requests `server/discover`."
+  @doc """
+  Requests `server/discover`.
+
+  The initialize-era versions do not define it, so on such a connection the
+  request is refused with -32601; the server's capabilities and instructions
+  are in the client's `session`.
+  """
   @spec discover(t()) :: response()
   def discover(%__MODULE__{} = client), do: request(client, "server/discover")
+
+  @doc """
+  Requests `ping`, which the initialize-era versions define; the server
+  answers with an empty result. 2026-07-28 does not define it, and a server
+  of that version answers -32601.
+  """
+  @spec ping(t()) :: response()
+  def ping(%__MODULE__{} = client), do: request(client, "ping")
 
   @doc """
   Lists every tool, following `nextCursor` to the last page.
@@ -390,6 +463,12 @@ defmodule Snodo.Client do
       (`"message"` and `"requestedSchema"` for a form, `"message"` and
       `"url"` for a URL). No handler has run.
 
+  On an initialize-era connection a method the negotiated dialect's catalog
+  does not define as a client request is refused with -32601 before anything
+  is sent. On 2026-07-28 a method the catalog does not list is sent as it
+  is, because negotiated extensions add methods the core catalog does not
+  carry.
+
   `subscriptions/listen` raises `ArgumentError`: it needs a stream to deliver
   events on, and dispatching it would open the application's source.
   """
@@ -400,7 +479,25 @@ defmodule Snodo.Client do
       raise ArgumentError, "Snodo.Client cannot stream subscriptions/listen"
     end
 
-    send_request(client, method, params, opts, input_plan(client, opts), 0)
+    with :ok <- check_method(client, method) do
+      send_request(client, method, params, opts, input_plan(client, opts), 0)
+    end
+  end
+
+  @doc false
+  # Sends a notification. The initialize-era handshake sends
+  # `notifications/initialized` this way.
+  @spec notify(t(), String.t(), map()) :: :ok | {:error, Error.t()}
+  def notify(%__MODULE__{transport: {module, state}} = client, method, params)
+      when is_binary(method) and is_map(params) do
+    message = %{
+      "jsonrpc" => "2.0",
+      "method" => method,
+      "params" => build_params(client, params, [])
+    }
+
+    opts = [dialect: client.dialect, timeout: client.timeout] ++ session_options(client)
+    module.notify(state, message, opts)
   end
 
   defp send_request(client, method, params, opts, plan, round) do
@@ -418,7 +515,8 @@ defmodule Snodo.Client do
 
     transport_opts =
       [dialect: client.dialect, timeout: Keyword.get(opts, :timeout, client.timeout)] ++
-        Keyword.take(opts, [:tool]) ++ progress_options(progress, opts)
+        Keyword.take(opts, [:tool, :on_response_headers]) ++
+        session_options(client) ++ progress_options(progress, opts)
 
     case module.request(state, raw, transport_opts) do
       {:ok, response} ->
@@ -478,9 +576,10 @@ defmodule Snodo.Client do
   defp put_present_option(opts, _key, empty) when empty == %{}, do: opts
   defp put_present_option(opts, key, value), do: Keyword.put(opts, key, value)
 
-  defp open(module, init_arg, dialect, opts) do
+  defp open(module, init_arg, opts, dialects) do
     capabilities = Keyword.get(opts, :client_capabilities, %{})
     timeout = Keyword.get(opts, :timeout, 30_000)
+    probe_timeout = Keyword.get(opts, :probe_timeout, @default_probe_timeout)
     max_pages = Keyword.get(opts, :max_pages, 1_000)
     handlers = opts |> Keyword.get(:input_handlers, %{}) |> Input.validate_handlers!()
 
@@ -496,6 +595,11 @@ defmodule Snodo.Client do
             ":timeout must be a positive integer or :infinity, got: #{inspect(timeout)}"
     end
 
+    unless probe_timeout == :infinity or (is_integer(probe_timeout) and probe_timeout > 0) do
+      raise ArgumentError,
+            ":probe_timeout must be a positive integer or :infinity, got: #{inspect(probe_timeout)}"
+    end
+
     unless is_integer(max_pages) and max_pages > 0 do
       raise ArgumentError, ":max_pages must be a positive integer, got: #{inspect(max_pages)}"
     end
@@ -503,22 +607,70 @@ defmodule Snodo.Client do
     client_info = Keyword.get_lazy(opts, :client_info, &default_client_info/0)
     validate_client_info!(client_info)
 
-    with {:ok, state} <- module.connect(init_arg, opts) do
-      {:ok,
-       %__MODULE__{
-         transport: {module, state},
-         protocol: dialect.version(),
-         dialect: dialect,
-         client_capabilities:
-           Input.merge_capabilities(Input.capabilities(handlers), capabilities),
-         client_info: client_info,
-         timeout: timeout,
-         max_pages: max_pages,
-         input_handlers: handlers,
-         max_input_rounds: max_input_rounds
+    # A transport whose connection outlives one request (stdio) answers the
+    # server's requests through the same handlers as the client itself.
+    connect_opts = Keyword.put(opts, :on_server_request, &Input.answer_request(handlers, &1))
+    reopen = fn -> module.connect(init_arg, connect_opts) end
+    [first | _others] = dialects
+
+    with {:ok, state} <- reopen.() do
+      client = %__MODULE__{
+        transport: {module, state},
+        protocol: first.version(),
+        dialect: first,
+        client_capabilities: Input.merge_capabilities(Input.capabilities(handlers), capabilities),
+        client_info: client_info,
+        timeout: timeout,
+        probe_timeout: probe_timeout,
+        max_pages: max_pages,
+        input_handlers: handlers,
+        max_input_rounds: max_input_rounds
+      }
+
+      Handshake.run(client, dialects, reopen, probe_timeout: probe_timeout)
+    end
+  end
+
+  # The dialect's catalog decides which requests the negotiated version
+  # defines. Extensions add methods the 2026-07-28 catalog does not list, so a
+  # stateless-era client sends an unlisted method as it is. The initialize-era
+  # dialects implement a fixed slice with no extensions, so there an unlisted
+  # method is refused before anything is sent.
+  defp check_method(%__MODULE__{dialect: dialect}, method) do
+    if dialect.era() == :stateless or defined?(dialect, method) do
+      :ok
+    else
+      {:error,
+       %Error{
+         code: -32_601,
+         message: "Protocol #{dialect.version()} does not define #{method}",
+         kind: :protocol,
+         data: %{"method" => method, "protocolVersion" => dialect.version()}
        }}
     end
   end
+
+  defp defined?(dialect, method) do
+    match?(
+      {:ok, %Profile.Method{kind: :request, status: :implemented}},
+      Profile.fetch_method(dialect.profile(), method, :client_to_server)
+    )
+  end
+
+  # Once a session exists, every message carries its headers and the server's
+  # own requests are answered. Before that, on a stateless connection, only a
+  # client with handlers has anything to answer them with.
+  defp session_options(%__MODULE__{session: %Session{}} = client),
+    do: [headers: session_headers(client), on_server_request: responder(client)]
+
+  defp session_options(%__MODULE__{input_handlers: handlers}) when handlers == %{}, do: []
+  defp session_options(%__MODULE__{} = client), do: [on_server_request: responder(client)]
+
+  defp session_headers(%__MODULE__{session: %Session{version: version, id: id}}) do
+    [{"mcp-protocol-version", version}] ++ if(id, do: [{"mcp-session-id", id}], else: [])
+  end
+
+  defp responder(%__MODULE__{input_handlers: handlers}), do: &Input.answer_request(handlers, &1)
 
   defp default_client_info, do: %{"name" => "snodo", "version" => @version}
 
@@ -534,58 +686,6 @@ defmodule Snodo.Client do
           ":client_info must be a map with string \"name\" and \"version\", got: #{inspect(info)}"
   end
 
-  defp remote_dialect(nil), do: {:ok, hd(@remote_dialects)}
-
-  defp remote_dialect(version) when is_binary(version) do
-    case Enum.find(@remote_dialects, &(&1.version() == version)) do
-      nil ->
-        {:error,
-         Error.invalid_params("Snodo.Client does not support protocol #{version}", %{
-           "requested" => version,
-           "supported" => Enum.map(@remote_dialects, & &1.version())
-         })}
-
-      dialect ->
-        {:ok, dialect}
-    end
-  end
-
-  defp remote_dialect(version) do
-    raise ArgumentError, ":protocol must be a version string, got: #{inspect(version)}"
-  end
-
-  defp select_protocol(runtime, nil) do
-    case Registry.versions(runtime.protocol_registry, era: :stateless) do
-      [version | _rest] ->
-        {:ok, version}
-
-      [] ->
-        {:error,
-         Error.invalid_params(
-           "The runtime enables no stateless protocol version for a direct client",
-           %{"enabled" => Registry.versions(runtime.protocol_registry)}
-         )}
-    end
-  end
-
-  defp select_protocol(_runtime, version) when is_binary(version), do: {:ok, version}
-
-  defp select_protocol(_runtime, version) do
-    raise ArgumentError, ":protocol must be a version string, got: #{inspect(version)}"
-  end
-
-  defp require_stateless(dialect) do
-    if dialect.era() == :stateless do
-      :ok
-    else
-      {:error,
-       Error.invalid_params(
-         "Protocol #{dialect.version()} needs a session, which a direct client does not hold",
-         %{"requested" => dialect.version()}
-       )}
-    end
-  end
-
   defp build_params(client, params, opts) do
     metadata =
       client.dialect.request_metadata(client.client_capabilities)
@@ -596,8 +696,13 @@ defmodule Snodo.Client do
     params
     |> put_present("inputResponses", Keyword.get(opts, :input_responses))
     |> put_present("requestState", Keyword.get(opts, :request_state))
-    |> Map.put("_meta", metadata)
+    |> put_metadata(metadata)
   end
+
+  # The initialize-era dialects have no request metadata, so an empty `_meta`
+  # is left out rather than sent as an empty object.
+  defp put_metadata(params, metadata) when metadata == %{}, do: Map.delete(params, "_meta")
+  defp put_metadata(params, metadata), do: Map.put(params, "_meta", metadata)
 
   # Only stateless dialects carry client info on every request.
   defp put_client_info(metadata, %__MODULE__{dialect: dialect, client_info: info}) do
@@ -617,13 +722,15 @@ defmodule Snodo.Client do
 
   defp put_progress_token(params, nil, _id), do: params
 
-  defp put_progress_token(%{"_meta" => metadata} = params, _progress, id) do
+  defp put_progress_token(params, _progress, id) do
+    metadata = Map.get(params, "_meta", %{})
+
     if Map.has_key?(metadata, "progressToken") do
       raise ArgumentError,
             ":progress sets the progressToken; do not also pass one in :meta or params"
     end
 
-    put_in(params, ["_meta", "progressToken"], id)
+    Map.put(params, "_meta", Map.put(metadata, "progressToken", id))
   end
 
   defp progress_options(nil, _opts), do: []

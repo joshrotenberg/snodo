@@ -1,5 +1,9 @@
 # A stdio MCP server for Snodo.Client transport tests. Run it as
-#   elixir -pa <snodo ebin> test/fixtures/client_stdio_server.exs
+#   elixir -pa <snodo ebin> test/fixtures/client_stdio_server.exs [--initialize-era]
+#
+# By default it serves 2026-07-28 only. With --initialize-era it serves the
+# 2025-11-25 and 2025-06-18 dialects only, so a client has to negotiate with
+# initialize.
 
 defmodule SnodoTest.ClientStdioFixture.Echo do
   use Snodo.Tool, name: "echo", description: "Echo text after an optional delay"
@@ -23,9 +27,11 @@ end
 defmodule SnodoTest.ClientStdioFixture.Park do
   use Snodo.Tool, name: "park", description: "Registers the worker and waits to be cancelled"
 
+  # The worker's own pid: inside the Agent function, self() is the Agent.
   @impl true
   def call(_arguments, _context) do
-    Agent.update(:client_stdio_parked, &[self() | &1])
+    worker = self()
+    Agent.update(:client_stdio_parked, &[worker | &1])
     Process.sleep(:infinity)
   end
 end
@@ -74,10 +80,17 @@ router =
     &Snodo.Router.register_tool(&2, &1)
   )
 
+protocols =
+  case System.argv() do
+    [] -> [Snodo.Protocol.V2026_07_28]
+    ["--initialize-era"] -> [Snodo.Protocol.V2025_11_25, Snodo.Protocol.V2025_06_18]
+    other -> raise "unexpected arguments: #{inspect(other)}"
+  end
+
 runtime =
   Snodo.Server.Runtime.new(
     router: router,
-    protocols: [Snodo.Protocol.V2026_07_28],
+    protocols: protocols,
     server_info: %{"name" => "client-stdio-fixture", "version" => "0.1.0"}
   )
 
