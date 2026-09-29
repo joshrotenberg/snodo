@@ -23,10 +23,12 @@ their output as `official-client-acceptance`, including on check failures.
 
 - `check:baseline`: stdio discovery, tool definition decoding, echo, cancellation,
   and a successful call after cancellation.
-- `check:mrtr`: five automatically retried workflows over both stdio and native
+- `check:mrtr`: eight automatically retried workflows over both stdio and native
   Streamable HTTP. These cover tools, resources, prompts, signed state replacement
   and discard, fresh request IDs, changed-argument rejection, form elicitation,
-  and URL consent that does not imply external workflow completion.
+  URL consent that does not imply external workflow completion, and the
+  deprecated (SEP-2577) sampling and roots requests, alone and in one result
+  next to a form, answered by the client's registered handlers.
 
 Successful checks print JSON summaries. An assertion or process error fails the
 command; the workflow does not suppress failures. MRTR fixtures bind HTTP to

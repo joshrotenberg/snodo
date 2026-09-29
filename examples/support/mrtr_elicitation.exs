@@ -4,6 +4,8 @@ defmodule Examples.MRTR.Workflow do
   alias Snodo.Elicitation
   alias Snodo.MRTR.State
   alias Snodo.Result
+  alias Snodo.Roots
+  alias Snodo.Sampling
 
   # This read-only, loopback example uses a process-lifetime secret. Remote
   # applications must configure a shared secret and a verified auth principal.
@@ -56,6 +58,81 @@ defmodule Examples.MRTR.Workflow do
       end
     end
   end
+
+  # SEP-2577 deprecates the embedded sampling and roots requests. The official
+  # client still fulfils them through its registered handlers, so these three
+  # stateless workflows exercise them: each retry re-requests only the answers
+  # still missing.
+  def sampling_preview(context) do
+    case Sampling.response(context, "summary", sampling_request()) do
+      :missing -> suspend_stateless(%{"summary" => sampling_request()})
+      {:ok, response} -> {:done, summary(response)}
+      {:error, error} -> {:error, error}
+    end
+  end
+
+  def roots_preview(context) do
+    case Roots.response(context, "roots", Roots.list()) do
+      :missing -> suspend_stateless(%{"roots" => Roots.list()})
+      {:ok, response} -> {:done, %{"roots" => uris(response)}}
+      {:error, error} -> {:error, error}
+    end
+  end
+
+  def mixed_preview(context) do
+    requests = %{
+      "label" => field("label"),
+      "summary" => sampling_request(),
+      "roots" => Roots.list()
+    }
+
+    readers = %{
+      "label" => &Elicitation.response/3,
+      "summary" => &Sampling.response/3,
+      "roots" => &Roots.response/3
+    }
+
+    requests
+    |> Enum.reduce_while({:ok, %{}, %{}}, fn {id, request}, {:ok, answers, missing} ->
+      case readers[id].(context, id, request) do
+        :missing -> {:cont, {:ok, answers, Map.put(missing, id, request)}}
+        {:ok, response} -> {:cont, {:ok, Map.put(answers, id, response), missing}}
+        {:error, error} -> {:halt, {:error, error}}
+      end
+    end)
+    |> case do
+      {:ok, answers, missing} when map_size(missing) == 0 ->
+        {:done,
+         summary(answers["summary"])
+         |> Map.put("label", get_in(answers, ["label", "content", "label"]))
+         |> Map.put("roots", uris(answers["roots"]))}
+
+      {:ok, _answers, missing} ->
+        suspend_stateless(missing)
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
+  defp sampling_request do
+    Sampling.create_message(
+      [Snodo.Prompt.message(:user, Snodo.Prompt.text("Summarize the preview in one line"))],
+      max_tokens: 32,
+      system_prompt: "Answer in one sentence"
+    )
+  end
+
+  # Sampled content is model output the client chose to return; it is echoed
+  # here as data, never followed as an instruction.
+  defp summary(%{"content" => %{"type" => "text", "text" => text}, "model" => model}),
+    do: %{"summary" => text, "model" => model}
+
+  defp summary(%{"model" => model}), do: %{"summary" => nil, "model" => model}
+
+  defp uris(%{"roots" => roots}), do: Enum.map(roots, & &1["uri"])
+
+  defp suspend_stateless(requests), do: {:ok, Result.input_required(input_requests: requests)}
 
   defp reset_response(context, request) do
     case Elicitation.response(context, "label", request) do
@@ -201,6 +278,57 @@ defmodule Examples.MRTR.ResetTool do
   end
 end
 
+defmodule Examples.MRTR.SamplingTool do
+  @moduledoc false
+  alias Examples.MRTR.Workflow
+
+  use Snodo.Tool.Simple,
+    name: "sampling_preview",
+    description: "Ask the client for a sampled one-line summary (deprecated by SEP-2577)"
+
+  @impl true
+  def call(_arguments, context) do
+    case Workflow.sampling_preview(context) do
+      {:done, data} -> {:ok, Snodo.Result.text(JSON.encode!(data))}
+      other -> other
+    end
+  end
+end
+
+defmodule Examples.MRTR.RootsTool do
+  @moduledoc false
+  alias Examples.MRTR.Workflow
+
+  use Snodo.Tool.Simple,
+    name: "roots_preview",
+    description: "Ask the client for its roots (deprecated by SEP-2577)"
+
+  @impl true
+  def call(_arguments, context) do
+    case Workflow.roots_preview(context) do
+      {:done, data} -> {:ok, Snodo.Result.text(JSON.encode!(data))}
+      other -> other
+    end
+  end
+end
+
+defmodule Examples.MRTR.MixedTool do
+  @moduledoc false
+  alias Examples.MRTR.Workflow
+
+  use Snodo.Tool.Simple,
+    name: "mixed_preview",
+    description: "Ask for a form, a sampled summary, and the roots in one round"
+
+  @impl true
+  def call(_arguments, context) do
+    case Workflow.mixed_preview(context) do
+      {:done, data} -> {:ok, Snodo.Result.text(JSON.encode!(data))}
+      other -> other
+    end
+  end
+end
+
 defmodule Examples.MRTR.PreferenceResource do
   @moduledoc false
   alias Examples.MRTR.Workflow
@@ -253,6 +381,9 @@ defmodule Examples.MRTR.Server do
   tool(Examples.MRTR.PreferenceTool)
   tool(Examples.MRTR.URLTool)
   tool(Examples.MRTR.ResetTool)
+  tool(Examples.MRTR.SamplingTool)
+  tool(Examples.MRTR.RootsTool)
+  tool(Examples.MRTR.MixedTool)
   resource(Examples.MRTR.PreferenceResource)
   prompt(Examples.MRTR.PreferencePrompt)
 end

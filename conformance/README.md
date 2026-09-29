@@ -199,21 +199,25 @@ root, so the root project must be compiled in the dev environment. The harness
 drives `Snodo.Client` the way an application would and adds no protocol
 behavior: discover, list tools, call the tools the scenario context names (or
 every listed tool with arguments sampled from its schema), answer
-`input_required` results, and list and read resources and prompts when the
-server advertises them. The runner scores the traffic its scenario server
-records.
+`input_required` results through the client's input handlers (form, URL,
+sampling, and roots), and list and read resources and prompts when the server
+advertises them. The runner scores the traffic its scenario server records.
 
-The 2026-09-26 run passes **6/32** whole required scenarios: `tools_call`,
-`sep-2322-client-request-state`, `http-custom-headers`,
+The 2026-09-29 run passes **7/32** whole required scenarios: `tools_call`,
+`request-metadata`, `sep-2322-client-request-state`, `http-custom-headers`,
 `http-invalid-tool-headers`, `json-schema-ref-no-deref`, and
 `auth/resource-mismatch`. The last passes only because the harness never starts
 authorization; it is not evidence of OAuth support. The unscored
-`json-schema-2020-12-preservation` scenario passes. The first run that day,
-before `Snodo.Client` sent `Mcp-Param-*` headers, passed 4/32.
+`json-schema-2020-12-preservation` scenario passes. `request-metadata` is new
+since 2026-09-26: the harness now installs `Snodo.Client` input handlers for
+all four kinds, so the client declares the deprecated `sampling` and `roots`
+capabilities and the two checks that were skipped now pass. The first run on
+2026-09-26, before `Snodo.Client` sent `Mcp-Param-*` headers, passed 4/32.
 
-- [Client report](results/2026-09-26-client-alpha.11-summary.md)
-- [Client machine-readable report](results/2026-09-26-client-alpha.11-summary.json)
-- [Client per-check outcomes](results/2026-09-26-client-alpha.11-checks.json)
+- [Client report](results/2026-09-29-client-alpha.11-summary.md)
+- [Client machine-readable report](results/2026-09-29-client-alpha.11-summary.json)
+- [Client per-check outcomes](results/2026-09-29-client-alpha.11-checks.json)
+- [Historical September 26 client report](results/2026-09-26-client-alpha.11-summary.md)
 
 [expected-failures-client.json](expected-failures-client.json) follows the
 same policy as the server baseline, with every check of all 39 scenarios
@@ -221,9 +225,6 @@ pinned. The remaining gaps:
 
 - The 25 required and 6 unscored `auth/*` scenarios: `Snodo.Client` has no
   OAuth support, and the harness exits before sending a request.
-- `request-metadata` is excluded from the score: the deprecated roots and
-  sampling capability checks are skipped because the client does not declare
-  them. Its other checks pass, including `io.modelcontextprotocol/clientInfo`.
 - `http-standard-headers` is excluded from the score: its `initialize` and
   `notifications/initialized` checks are skipped because a 2026-07-28 client
   sends neither method. Every method the client does send carries the correct
