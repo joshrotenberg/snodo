@@ -30,6 +30,16 @@ defmodule Snodo.Client.Stdio do
   dropped. If the progress function raises, the request is cancelled on the
   server.
 
+  A `subscriptions/listen` request opened with `Snodo.Client.listen/3` shares
+  the connection with ordinary requests. The connection process correlates
+  the acknowledgement, the events, and the terminal response by the
+  subscription ID (the request ID, carried in each notification's
+  `_meta["io.modelcontextprotocol/subscriptionId"]`), delivers the events to
+  the owner (see `Snodo.Client.Subscription`), and monitors the owner. Closing
+  the subscription, or the owner's exit, sends `notifications/cancelled` for
+  the request. When the server exits, or `close/1` stops the connection, open
+  subscriptions end with a -32000 error.
+
   `close/1` closes the server's stdin. An MCP stdio server exits at EOF after
   finishing admitted requests; this transport does not signal or kill it.
   """
@@ -38,12 +48,17 @@ defmodule Snodo.Client.Stdio do
   use GenServer
 
   alias Snodo.Client.Deadline
+  alias Snodo.Client.Response
+  alias Snodo.Client.Subscription.Buffer
   alias Snodo.Client.Transport
   alias Snodo.Error
   alias Snodo.Transport.Stdio.Framing
 
   @line_bytes 65_536
   @default_max_line_bytes 16 * 1024 * 1024
+  @subscription_id_key "io.modelcontextprotocol/subscriptionId"
+  @acknowledgement "notifications/subscriptions/acknowledged"
+  @closed_by_client "Closed by the client"
 
   @impl Transport
   def connect({command, args}, opts) when is_binary(command) and is_list(args) do
@@ -75,9 +90,39 @@ defmodule Snodo.Client.Stdio do
     monitor = Process.monitor(pid)
 
     try do
-      case submit(pid, message, reply_to, opts) do
+      case submit(pid, {:request, message, reply_to, opts}) do
         :ok -> await(pid, message["id"], reply_to, monitor, on_progress)
         {:error, %Error{}} = error -> error
+      end
+    after
+      Process.unalias(reply_to)
+      Process.demonitor(monitor, [:flush])
+    end
+  end
+
+  # The acknowledgement is awaited the way a response is. Once it arrives the
+  # connection process delivers the stream to the owner on its own.
+  @impl Transport
+  def listen(pid, message, opts) when is_pid(pid) and is_map(message) do
+    reply_to = Process.alias()
+    monitor = Process.monitor(pid)
+
+    try do
+      case submit(pid, {:listen, message, reply_to, opts}) do
+        :ok ->
+          receive do
+            {^reply_to, {:acknowledged, accepted}} ->
+              {:ok, accepted, pid}
+
+            {^reply_to, {:response, {:error, %Error{} = error}}} ->
+              {:error, error}
+
+            {:DOWN, ^monitor, :process, _pid, reason} ->
+              {:error, Transport.connection_error("The stdio connection is closed", reason)}
+          end
+
+        {:error, %Error{}} = error ->
+          error
       end
     after
       Process.unalias(reply_to)
@@ -102,6 +147,9 @@ defmodule Snodo.Client.Stdio do
        owner: Process.monitor(owner),
        pending: %{},
        tokens: %{},
+       subscriptions: %{},
+       subscription_refs: %{},
+       subscription_owners: %{},
        buffer: [],
        buffer_bytes: 0,
        discarding?: false,
@@ -116,6 +164,45 @@ defmodule Snodo.Client.Stdio do
   @impl GenServer
   def handle_call({:request, _message, _reply_to, _opts}, _from, %{closed: %Error{}} = state) do
     {:reply, {:error, state.closed}, state}
+  end
+
+  def handle_call({:listen, _message, _reply_to, _opts}, _from, %{closed: %Error{}} = state) do
+    {:reply, {:error, state.closed}, state}
+  end
+
+  def handle_call({:listen, %{"id" => id} = message, reply_to, opts}, _from, state) do
+    case write(state.port, message) do
+      :ok ->
+        owner = Keyword.fetch!(opts, :owner)
+        ref = Keyword.fetch!(opts, :ref)
+        owner_monitor = Process.monitor(owner)
+
+        entry = %{
+          ref: ref,
+          owner_monitor: owner_monitor,
+          buffer: Buffer.new(owner, ref, opts),
+          awaiting:
+            start_timer(%{reply_to: reply_to, deadline: Deadline.new(opts)}, {:listen, id})
+        }
+
+        state =
+          state
+          |> put_in([:subscriptions, id], entry)
+          |> put_in([:subscription_refs, ref], id)
+          |> put_in([:subscription_owners, owner_monitor], id)
+
+        {:reply, :ok, state}
+
+      {:error, error} ->
+        {:reply, {:error, error}, state}
+    end
+  end
+
+  def handle_call({:mcp_client_close, ref}, _from, state) do
+    case Map.fetch(state.subscription_refs, ref) do
+      {:ok, id} -> {:reply, :ok, cancel_subscription(state, id)}
+      :error -> {:reply, :ok, state}
+    end
   end
 
   def handle_call({:request, %{"id" => id} = message, reply_to, opts}, _from, state) do
@@ -173,7 +260,24 @@ defmodule Snodo.Client.Stdio do
       deliver(entry, {:response, {:error, error}})
     end
 
+    state =
+      Enum.reduce(Map.keys(state.subscriptions), state, fn id, state ->
+        end_subscription(state, id, {:error, error})
+      end)
+
     {:noreply, %{state | pending: %{}, tokens: %{}, closed: error}}
+  end
+
+  def handle_info({:request_timeout, {:listen, id}, tag}, state) do
+    case state.subscriptions do
+      %{^id => %{awaiting: %{timer: {_timer, ^tag}} = awaiting}} ->
+        deliver(awaiting, {:response, {:error, Deadline.error(awaiting.deadline)}})
+        _result = write(state.port, cancellation(id, "Request timed out"))
+        {:noreply, remove_subscription(state, id)}
+
+      _other ->
+        {:noreply, state}
+    end
   end
 
   # A timer that was restarted may already have fired, so the tag must match.
@@ -190,8 +294,24 @@ defmodule Snodo.Client.Stdio do
     end
   end
 
+  def handle_info({:mcp_client_demand, ref, n}, state) do
+    case Map.fetch(state.subscription_refs, ref) do
+      {:ok, id} ->
+        entry = Map.fetch!(state.subscriptions, id)
+        {:noreply, put_subscription(state, id, %{entry | buffer: Buffer.demand(entry.buffer, n)})}
+
+      :error ->
+        {:noreply, state}
+    end
+  end
+
   def handle_info({:DOWN, ref, :process, _owner, _reason}, %{owner: ref} = state) do
     {:stop, :normal, state}
+  end
+
+  def handle_info({:DOWN, monitor, :process, _owner, _reason}, state)
+      when is_map_key(state.subscription_owners, monitor) do
+    {:noreply, cancel_subscription(state, Map.fetch!(state.subscription_owners, monitor))}
   end
 
   def handle_info(_message, state), do: {:noreply, state}
@@ -199,6 +319,13 @@ defmodule Snodo.Client.Stdio do
   @impl GenServer
   def terminate(_reason, state) do
     if is_nil(state.closed), do: close_port(state.port)
+    error = Transport.connection_error("The stdio connection is closed", :closed)
+
+    for {_id, entry} <- state.subscriptions do
+      if entry.awaiting, do: deliver(entry.awaiting, {:response, {:error, error}})
+      _buffer = Buffer.abort(entry.buffer, {:error, error})
+    end
+
     :ok
   end
 
@@ -220,8 +347,16 @@ defmodule Snodo.Client.Stdio do
         _result = write(state.port, method_not_found(id, method))
         state
 
+      {:ok, %{"id" => id} = response} when is_map_key(state.subscriptions, id) ->
+        subscription_response(state, id, response)
+
       {:ok, %{"id" => id} = response} ->
         complete(state, id, response)
+
+      {:ok,
+       %{"method" => method, "params" => %{"_meta" => %{@subscription_id_key => id}} = params}}
+      when is_map_key(state.subscriptions, id) ->
+        subscription_notification(state, id, method, params)
 
       {:ok,
        %{"method" => "notifications/progress", "params" => %{"progressToken" => token} = params}}
@@ -232,6 +367,119 @@ defmodule Snodo.Client.Stdio do
       _other ->
         state
     end
+  end
+
+  # The acknowledgement answers the waiting listen/3 call; anything else on
+  # the stream after it is an event. An event before the acknowledgement is
+  # queued for the owner all the same.
+  defp subscription_notification(state, id, @acknowledgement, params) do
+    entry = Map.fetch!(state.subscriptions, id)
+
+    case {entry.awaiting, params} do
+      {nil, _params} ->
+        state
+
+      {awaiting, %{"notifications" => accepted}} when is_map(accepted) ->
+        cancel_timer(awaiting)
+        deliver(awaiting, {:acknowledged, accepted})
+        put_subscription(state, id, %{entry | awaiting: nil})
+
+      {awaiting, _invalid} ->
+        cancel_timer(awaiting)
+
+        error =
+          Transport.connection_error(
+            "The server sent an invalid subscription acknowledgement",
+            params
+          )
+
+        deliver(awaiting, {:response, {:error, error}})
+        _result = write(state.port, cancellation(id, "Invalid acknowledgement"))
+        remove_subscription(state, id)
+    end
+  end
+
+  defp subscription_notification(state, id, method, params) do
+    entry = Map.fetch!(state.subscriptions, id)
+    buffer = Buffer.push(entry.buffer, {:notification, method, params})
+    put_subscription(state, id, %{entry | buffer: buffer})
+  end
+
+  defp subscription_response(state, id, response) do
+    case Map.fetch!(state.subscriptions, id) do
+      %{awaiting: nil} ->
+        end_subscription(state, id, Response.terminal(response))
+
+      %{awaiting: awaiting} ->
+        cancel_timer(awaiting)
+
+        error =
+          case Response.terminal(response) do
+            {:error, error} ->
+              error
+
+            :complete ->
+              Transport.connection_error(
+                "The server ended the subscription before acknowledging it",
+                response
+              )
+          end
+
+        deliver(awaiting, {:response, {:error, error}})
+        remove_subscription(state, id)
+    end
+  end
+
+  # The server has finished; the entry stays until the owner has taken the
+  # queued events and the terminal message.
+  defp end_subscription(state, id, close_reason) do
+    entry = Map.fetch!(state.subscriptions, id)
+
+    if entry.awaiting do
+      cancel_timer(entry.awaiting)
+      deliver(entry.awaiting, {:response, {:error, closed_before_acknowledgement(close_reason)}})
+      remove_subscription(state, id)
+    else
+      put_subscription(state, id, %{entry | buffer: Buffer.close(entry.buffer, close_reason)})
+    end
+  end
+
+  defp closed_before_acknowledgement({:error, error}), do: error
+
+  defp closed_before_acknowledgement(:complete) do
+    Transport.connection_error("The server ended the subscription before acknowledging it", nil)
+  end
+
+  # A cancellation from this side: the owner closed the subscription or went
+  # away. A stream the server has already ended needs no cancellation.
+  defp cancel_subscription(state, id) do
+    entry = Map.fetch!(state.subscriptions, id)
+
+    _written =
+      unless Buffer.terminal?(entry.buffer) do
+        if entry.awaiting, do: :ok = cancel_timer(entry.awaiting)
+        write(state.port, cancellation(id, @closed_by_client))
+      end
+
+    remove_subscription(state, id)
+  end
+
+  defp put_subscription(state, id, entry) do
+    if Buffer.done?(entry.buffer),
+      do: remove_subscription(state, id),
+      else: put_in(state, [:subscriptions, id], entry)
+  end
+
+  defp remove_subscription(state, id) do
+    {entry, subscriptions} = Map.pop!(state.subscriptions, id)
+    Process.demonitor(entry.owner_monitor, [:flush])
+
+    %{
+      state
+      | subscriptions: subscriptions,
+        subscription_refs: Map.delete(state.subscription_refs, entry.ref),
+        subscription_owners: Map.delete(state.subscription_owners, entry.owner_monitor)
+    }
   end
 
   defp complete(state, id, response) do
@@ -271,8 +519,8 @@ defmodule Snodo.Client.Stdio do
 
   defp deliver(%{reply_to: reply_to}, message), do: send(reply_to, {reply_to, message})
 
-  defp submit(pid, message, reply_to, opts) do
-    GenServer.call(pid, {:request, message, reply_to, opts}, :infinity)
+  defp submit(pid, call) do
+    GenServer.call(pid, call, :infinity)
   catch
     :exit, reason ->
       {:error, Transport.connection_error("The stdio connection is closed", reason)}
