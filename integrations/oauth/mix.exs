@@ -28,7 +28,9 @@ defmodule Snodo.OAuth.MixProject do
       ],
       elixirc_paths: elixirc_paths(Mix.env()),
       dialyzer: [
-        plt_add_apps: [:inets, :mix],
+        # ex_unit for the fake servers under test/support, which the test
+        # environment compiles.
+        plt_add_apps: [:ex_unit, :inets, :mix],
         plt_local_path: "priv/plts",
         flags: [:unmatched_returns, :error_handling]
       ],
