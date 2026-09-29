@@ -51,6 +51,9 @@ task worker, `context.request_method` is still `"tools/call"`.
   in tests.
 - It defines no roles, scopes, or refusal codes. The application chooses the
   code (JSON-RPC reserves -32000 to -32099 for implementation-defined errors).
+  For OAuth scopes, [`snodo_oauth`](https://hexdocs.pm/snodo_oauth) ships
+  `Snodo.OAuth.ResourceServer.ScopePolicy`, a policy keyed on the scopes a
+  bearer token grants.
 - It does not log. The callback is the place to record refusals.
 - It does not filter list-changed notifications, which carry no component
   data. Subscription sources receive the same context for anything else.

@@ -13,6 +13,7 @@
         "extensions/tasks_sqlite/mix.exs",
         "integrations/plug/mix.exs",
         "integrations/schema_jsv/mix.exs",
+        "integrations/oauth/mix.exs",
         "integrations/telemetry/mix.exs",
         "README.md",
         "guides/getting-started.md",
@@ -22,6 +23,7 @@
         "extensions/tasks_sqlite/README.md",
         "integrations/plug/README.md",
         "integrations/schema_jsv/README.md",
+        "integrations/oauth/README.md",
         "integrations/telemetry/README.md"
       ]
     }

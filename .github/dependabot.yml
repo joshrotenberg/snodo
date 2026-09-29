@@ -27,6 +27,7 @@ updates:
       - /extensions/tasks_sqlite
       - /integrations/plug
       - /integrations/schema_jsv
+      - /integrations/oauth
       - /integrations/telemetry
       - /conformance/fixture
     schedule:

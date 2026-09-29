@@ -68,6 +68,9 @@ identity. It does not authenticate callers itself or reject missing credentials:
 your application must do that, normally with an HTTP 401/403 and `halt/1`. The
 `:auth_assign` option changes the assign name. Request peer information comes from
 the public Plug peer API; trusting a reverse proxy remains application policy.
+The [`snodo_oauth`](https://hexdocs.pm/snodo_oauth) package provides an
+authentication Plug for OAuth 2.1 bearer tokens that sets this assign, along
+with the protected resource metadata document and a scope policy.
 
 The second assign is optional. When both it and an auth map are present, valid
 `notifications/cancelled` can cancel an ordinary queued/running execution in the

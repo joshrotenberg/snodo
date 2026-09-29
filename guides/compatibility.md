@@ -10,9 +10,10 @@ combination counts as evidence only from a successful run of its job.
 
 ## BEAM matrix
 
-All seven packages declare Elixir `~> 1.18`: core, Tasks, two Tasks databases,
-Plug integration, JSV validation integration, and the `:telemetry` sink. The
-matrix exercises these supported pairs:
+All eight packages declare Elixir `~> 1.18`: core, Tasks, two Tasks databases,
+Plug integration, JSV validation integration, OAuth resource server
+integration, and the `:telemetry` sink. The matrix exercises these supported
+pairs:
 
 | Lane | Elixir | Erlang/OTP | Evidence |
 |---|---:|---:|---|
