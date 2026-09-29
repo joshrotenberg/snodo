@@ -455,10 +455,11 @@ defmodule Snodo.Client.Stdio do
   defp cancel_subscription(state, id) do
     entry = Map.fetch!(state.subscriptions, id)
 
-    unless Buffer.terminal?(entry.buffer) do
-      if entry.awaiting, do: cancel_timer(entry.awaiting)
-      _result = write(state.port, cancellation(id, @closed_by_client))
-    end
+    _written =
+      unless Buffer.terminal?(entry.buffer) do
+        if entry.awaiting, do: :ok = cancel_timer(entry.awaiting)
+        write(state.port, cancellation(id, @closed_by_client))
+      end
 
     remove_subscription(state, id)
   end

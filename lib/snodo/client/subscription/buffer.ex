@@ -8,13 +8,13 @@ defmodule Snodo.Client.Subscription.Buffer do
   # `{:closed, reason}` waits behind the queued events, so the owner sees
   # every event it asks for before the end of the stream.
 
-  @enforce_keys [:owner, :ref, :max_buffer, :overflow]
+  @enforce_keys [:owner, :ref, :max_buffer, :overflow, :queue]
   defstruct [
     :owner,
     :ref,
     :max_buffer,
     :overflow,
-    queue: :queue.new(),
+    :queue,
     size: 0,
     demand: 0,
     dropped: 0,
@@ -40,7 +40,8 @@ defmodule Snodo.Client.Subscription.Buffer do
       owner: owner,
       ref: ref,
       max_buffer: Keyword.fetch!(opts, :max_buffer),
-      overflow: Keyword.fetch!(opts, :overflow)
+      overflow: Keyword.fetch!(opts, :overflow),
+      queue: :queue.new()
     }
   end
 
