@@ -11,7 +11,7 @@ Add `snodo` to your dependencies:
 ```elixir
 def deps do
   [
-    {:snodo, "~> 0.3.0"}
+    {:snodo, "~> 0.3.1"}
   ]
 end
 ```
@@ -21,7 +21,7 @@ For a Plug or Bandit application, also add `snodo_plug`:
 
 <!-- x-release-please-start-version -->
 ```elixir
-{:snodo_plug, "~> 0.3.0"}
+{:snodo_plug, "~> 0.3.1"}
 ```
 <!-- x-release-please-end -->
 
