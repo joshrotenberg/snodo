@@ -4,13 +4,14 @@ Working instructions for coding agents, and a quick reference for people. [CONTR
 
 ## Project
 
-snodo is an Elixir library for Model Context Protocol (MCP) servers and clients. Six Hex packages are built from this repository and released together at one version:
+snodo is an Elixir library for Model Context Protocol (MCP) servers and clients. Seven Hex packages are built from this repository and released together at one version:
 
 | Package | Directory | Contents |
 |---|---|---|
 | `snodo` | `.` | Router, server DSL, protocol dialects, client, stdio and HTTP transports, executor |
 | `snodo_plug` | `integrations/plug` | Plug transport |
 | `snodo_jsv` | `integrations/schema_jsv` | JSON Schema validator backed by JSV |
+| `snodo_oauth` | `integrations/oauth` | OAuth 2.1 resource server plugs, JWT verification, scope policy |
 | `snodo_tasks` | `extensions/tasks` | Tasks extension, store contract, memory and DETS stores |
 | `snodo_tasks_postgres` | `extensions/tasks_postgres` | PostgreSQL task store |
 | `snodo_tasks_sqlite` | `extensions/tasks_sqlite` | SQLite task store |
@@ -34,7 +35,7 @@ Inside the repository each sibling depends on `snodo` by path. `RELEASING.md` ex
 Requirements: Elixir 1.18 or later on OTP 27 or later (CI runs 1.18/OTP 27, 1.19/OTP 28, and 1.20/OTP 29), and Node.js 24 for the interop and conformance checks. PostgreSQL is needed only for the live PostgreSQL lane.
 
 ```sh
-mix setup                                      # dependencies for the core, the five siblings, and the conformance fixture
+mix setup                                      # dependencies for the core, the six siblings, and the conformance fixture
 (cd interop/official_client && npm ci --ignore-scripts)
 ```
 
@@ -46,7 +47,7 @@ Run all of these before every push. CI runs the same commands.
 
 ```sh
 mix quality                                    # format, compile with warnings as errors, credo --strict, tests, contract, examples, every sibling
-MIX_ENV=test mix quality.types                 # Dialyzer across all six packages
+MIX_ENV=test mix quality.types                 # Dialyzer across all seven packages
 MIX_ENV=dev mix docs --warnings-as-errors      # documentation build
 mix compile && (cd interop/official_client && npm run check)   # official TypeScript client: baseline, MRTR, progress
 ```
@@ -75,7 +76,7 @@ mix test --repeat-until-failure 100 --max-failures 1   # look for flaky tests; a
 - `test/compliance/` holds literal protocol messages. Never build requests there with `Snodo.Client` or `Snodo.Test`.
 - Every limit has a default, is documented (`guides/transports.md` or the package README), and fails with a defined error.
 - Conformance baselines are reviewed by hand. A newly passing check fails the gate too, until the baseline is updated on purpose ([conformance/AGENTS.md](conformance/AGENTS.md)).
-- release-please owns the versions in the six `mix.exs` files, `CHANGELOG.md`, and the install snippets between `x-release-please-start-version` and `x-release-please-end` markers. Do not edit them by hand.
+- release-please owns the versions in the seven `mix.exs` files, `CHANGELOG.md`, and the install snippets between `x-release-please-start-version` and `x-release-please-end` markers. Do not edit them by hand.
 - Records in `docs/history/` stay as written. Add a new dated record rather than editing an old one.
 
 ## Code style

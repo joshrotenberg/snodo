@@ -85,7 +85,7 @@ jobs:
           version="${TAG#v}"
           for file in mix.exs extensions/tasks/mix.exs extensions/tasks_postgres/mix.exs \
                       extensions/tasks_sqlite/mix.exs integrations/plug/mix.exs \
-                      integrations/schema_jsv/mix.exs; do
+                      integrations/schema_jsv/mix.exs integrations/oauth/mix.exs; do
             grep -q "@version \"$version\"" "$file" ||
               { echo "::error::$file does not declare version $version"; exit 1; }
           done
@@ -104,7 +104,7 @@ jobs:
       # The siblings depend on the released snodo (and the Tasks stores on the
       # released snodo_tasks), so publish in dependency order. A package whose
       # version is already on Hex is skipped, so the job can be rerun.
-      - name: Publish all six packages
+      - name: Publish all seven packages
         env:
           HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
         run: |
@@ -138,9 +138,10 @@ jobs:
           publish snodo_tasks extensions/tasks
           publish snodo_plug integrations/plug
           publish snodo_jsv integrations/schema_jsv
+          publish snodo_oauth integrations/oauth
           publish snodo_tasks_postgres extensions/tasks_postgres
           publish snodo_tasks_sqlite extensions/tasks_sqlite
-      - name: Build all six release tarballs
+      - name: Build all seven release tarballs
         run: |
           version="${TAG#v}"
           mkdir -p release
@@ -156,10 +157,11 @@ jobs:
           build snodo_tasks extensions/tasks
           build snodo_plug integrations/plug
           build snodo_jsv integrations/schema_jsv
+          build snodo_oauth integrations/oauth
           build snodo_tasks_postgres extensions/tasks_postgres
           build snodo_tasks_sqlite extensions/tasks_sqlite
 
-          test "$(find release -maxdepth 1 -name '*.tar' -type f | wc -l)" -eq 6
+          test "$(find release -maxdepth 1 -name '*.tar' -type f | wc -l)" -eq 7
       # hex.publish builds its own archive. Compare the later local build with
       # what Hex serves before making a provenance claim about published bytes.
       - name: Verify release tarballs against Hex
@@ -188,6 +190,7 @@ jobs:
           verify snodo_tasks
           verify snodo_plug
           verify snodo_jsv
+          verify snodo_oauth
           verify snodo_tasks_postgres
           verify snodo_tasks_sqlite
       - name: Attest release tarballs

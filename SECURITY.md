@@ -2,9 +2,9 @@
 
 ## Supported versions
 
-Security fixes are released for the latest version of the six packages:
+Security fixes are released for the latest version of the seven packages:
 `snodo`, `snodo_tasks`, `snodo_tasks_postgres`, `snodo_tasks_sqlite`,
-`snodo_plug`, and `snodo_jsv`. While snodo is below 1.0, earlier minor versions
+`snodo_plug`, `snodo_jsv`, and `snodo_oauth`. While snodo is below 1.0, earlier minor versions
 do not receive fixes.
 
 ## Reporting a vulnerability

@@ -150,7 +150,9 @@ response with `halt/1` when access is denied. Do not copy an unverified header
 into the assign. A verified client-instance identifier may also be assigned to
 `:mcp_cancellation_scope` for cross-request cancellation; distinguish client
 instances even when they share a user. The transport does not authenticate
-callers itself.
+callers itself. For OAuth 2.1 bearer tokens, the
+[`snodo_oauth`](https://hexdocs.pm/snodo_oauth) package supplies that plug,
+the protected resource metadata document, and a scope policy.
 
 ```elixir
 pipeline :mcp do
