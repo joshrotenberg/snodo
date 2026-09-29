@@ -28,6 +28,7 @@ updates:
       - /integrations/plug
       - /integrations/schema_jsv
       - /integrations/oauth
+      - /integrations/telemetry
       - /conformance/fixture
     schedule:
       interval: weekly

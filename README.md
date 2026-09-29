@@ -21,7 +21,7 @@ initialize-era clients (`2025-11-25` and `2025-06-18`) over HTTP and stdio.
   cancellation, and multi round-trip requests with elicitation.
 - **No runtime dependencies** in the core: it uses Elixir's built-in `JSON`
   and OTP. Optional sibling packages add Tasks, Plug, OAuth 2.1 resource
-  server support, and full JSON Schema validation.
+  server support, full JSON Schema validation, and `:telemetry` events.
 
 ## Packages
 
@@ -31,6 +31,7 @@ initialize-era clients (`2025-11-25` and `2025-06-18`) over HTTP and stdio.
 | [`snodo_plug`](https://hex.pm/packages/snodo_plug) | `Snodo.Transport.Plug` for Plug and Bandit applications | [HexDocs](https://hexdocs.pm/snodo_plug) |
 | [`snodo_jsv`](https://hex.pm/packages/snodo_jsv) | Full JSON Schema 2020-12 validation through JSV | [HexDocs](https://hexdocs.pm/snodo_jsv) |
 | [`snodo_oauth`](https://hex.pm/packages/snodo_oauth) | OAuth 2.1 resource server plugs: protected resource metadata, bearer token verification, scope policy | [HexDocs](https://hexdocs.pm/snodo_oauth) |
+| [`snodo_telemetry`](https://hex.pm/packages/snodo_telemetry) | `Snodo.Instrumentation.Telemetry`, an instrumentation sink that emits `:telemetry` events | [HexDocs](https://hexdocs.pm/snodo_telemetry) |
 | [`snodo_tasks`](https://hex.pm/packages/snodo_tasks) | The `io.modelcontextprotocol/tasks` extension with an application-owned store and runner | [HexDocs](https://hexdocs.pm/snodo_tasks) |
 | [`snodo_tasks_postgres`](https://hex.pm/packages/snodo_tasks_postgres) | PostgreSQL store for Tasks | [HexDocs](https://hexdocs.pm/snodo_tasks_postgres) |
 | [`snodo_tasks_sqlite`](https://hex.pm/packages/snodo_tasks_sqlite) | SQLite store for Tasks | [HexDocs](https://hexdocs.pm/snodo_tasks_sqlite) |
@@ -154,7 +155,7 @@ in [docs/history](https://github.com/joshrotenberg/snodo/blob/main/docs/history/
 ```sh
 mix setup            # fetch dependencies for every package; rerun after a mix.lock changes
 mix quality          # format, compile, Credo, tests, examples, and every sibling package
-mix quality.types    # Dialyzer across all seven packages
+mix quality.types    # Dialyzer across all eight packages
 mix snodo.contract   # the protocol contract inventory
 ```
 
