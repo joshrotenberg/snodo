@@ -184,6 +184,35 @@ async function exercise(mode) {
       assert.ok(JSON.stringify(retry.final.result).includes("validated-retry"));
     }
 
+    // Deprecated by SEP-2577, still defined: sampling and roots input requests
+    // need their client capabilities, which the default request() omits.
+    const deprecated = { "io.modelcontextprotocol/clientCapabilities": { elicitation: { form: {} }, sampling: {}, roots: {} } };
+    const sampled = { role: "assistant", content: { type: "text", text: "validated-sample" }, model: "schema-model", stopReason: "endTurn" };
+    const roots = { roots: [{ uri: "file:///schema/root", name: "Schema root" }] };
+    for (const [mode, id, response, method, expected] of [
+      ["sampling", "summary", sampled, "sampling/createMessage", "validated-sample"],
+      ["roots", "client_roots", roots, "roots/list", "file:///schema/root"],
+    ]) {
+      const params = { name: "schema_preview", arguments: { mode }, _meta: deprecated };
+      const initial = await call("tools/call", params, "input_required");
+      assert.deepEqual(Object.keys(initial.final.result.inputRequests), [id]);
+      assert.equal(initial.final.result.inputRequests[id].method, method);
+      const retry = await call("tools/call", { ...params, inputResponses: { [id]: response } });
+      assert.notEqual(initial.id, retry.id);
+      assert.ok(JSON.stringify(retry.final.result).includes(expected));
+    }
+    const everyParams = { name: "schema_preview", arguments: { mode: "every_kind" }, _meta: deprecated };
+    const every = await call("tools/call", everyParams, "input_required");
+    assert.deepEqual(Object.keys(every.final.result.inputRequests).sort(), ["client_roots", "label", "summary"]);
+    const everyRetry = await call("tools/call", { ...everyParams, inputResponses: {
+      label: { action: "accept", content: { label: "validated-retry" } }, summary: sampled, client_roots: roots,
+    } });
+    assert.equal(everyRetry.final.result.content[0].text, "label,summary,client_roots");
+    // Without the sampling capability the dialect refuses the result before it is sent.
+    const refused = await call("tools/call", { name: "schema_preview", arguments: { mode: "sampling" } }, "error");
+    assert.equal(refused.final.error.code, -32021);
+    assert.deepEqual(refused.final.error.data.requiredCapabilities, { sampling: {} });
+
     const subscription = await call("subscriptions/listen", {
       notifications: { toolsListChanged: true, resourceSubscriptions: ["schema://text"] },
     });
@@ -192,8 +221,8 @@ async function exercise(mode) {
       "notifications/resources/updated", "terminal",
     ]);
     assert.equal(subscription.final.result._meta[subscriptionKey], subscription.id);
-    assert.equal(emissions, 26);
-    assert.equal(operations, 20);
+    assert.equal(emissions, 33);
+    assert.equal(operations, 27);
     return { transport: mode, operations, emissions, negativeControls, definitions: [...definitions].sort() };
   } finally { await peer.close(); }
 }

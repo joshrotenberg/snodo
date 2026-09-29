@@ -27,6 +27,7 @@ updates:
       - /extensions/tasks_sqlite
       - /integrations/plug
       - /integrations/schema_jsv
+      - /integrations/telemetry
       - /conformance/fixture
     schedule:
       interval: weekly

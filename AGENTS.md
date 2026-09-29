@@ -4,13 +4,14 @@ Working instructions for coding agents, and a quick reference for people. [CONTR
 
 ## Project
 
-snodo is an Elixir library for Model Context Protocol (MCP) servers and clients. Six Hex packages are built from this repository and released together at one version:
+snodo is an Elixir library for Model Context Protocol (MCP) servers and clients. Seven Hex packages are built from this repository and released together at one version:
 
 | Package | Directory | Contents |
 |---|---|---|
 | `snodo` | `.` | Router, server DSL, protocol dialects, client, stdio and HTTP transports, executor |
 | `snodo_plug` | `integrations/plug` | Plug transport |
 | `snodo_jsv` | `integrations/schema_jsv` | JSON Schema validator backed by JSV |
+| `snodo_telemetry` | `integrations/telemetry` | Instrumentation sink that emits `:telemetry` events |
 | `snodo_tasks` | `extensions/tasks` | Tasks extension, store contract, memory and DETS stores |
 | `snodo_tasks_postgres` | `extensions/tasks_postgres` | PostgreSQL task store |
 | `snodo_tasks_sqlite` | `extensions/tasks_sqlite` | SQLite task store |
@@ -34,7 +35,7 @@ Inside the repository each sibling depends on `snodo` by path. `RELEASING.md` ex
 Requirements: Elixir 1.18 or later on OTP 27 or later (CI runs 1.18/OTP 27, 1.19/OTP 28, and 1.20/OTP 29), and Node.js 24 for the interop and conformance checks. PostgreSQL is needed only for the live PostgreSQL lane.
 
 ```sh
-mix setup                                      # dependencies for the core, the five siblings, and the conformance fixture
+mix setup                                      # dependencies for the core, the six siblings, and the conformance fixture
 (cd interop/official_client && npm ci --ignore-scripts)
 ```
 
@@ -46,12 +47,12 @@ Run all of these before every push. CI runs the same commands.
 
 ```sh
 mix quality                                    # format, compile with warnings as errors, credo --strict, tests, contract, examples, every sibling
-MIX_ENV=test mix quality.types                 # Dialyzer across all six packages
+MIX_ENV=test mix quality.types                 # Dialyzer across all seven packages
 MIX_ENV=dev mix docs --warnings-as-errors      # documentation build
 mix compile && (cd interop/official_client && npm run check)   # official TypeScript client: baseline, MRTR, progress
 ```
 
-- `mix quality` includes `mix snodo.contract`, which reports 31 evidence groups. A change that moves that count needs a reason in the pull request.
+- `mix quality` includes `mix snodo.contract`, which reports 32 evidence groups. A change that moves that count needs a reason in the pull request.
 - A change to a transport or to what goes on the wire also runs the conformance lanes ([conformance/AGENTS.md](conformance/AGENTS.md)) and the wire-schema check ([interop/AGENTS.md](interop/AGENTS.md)).
 - CI formats with Elixir 1.18 as well, and its formatter wraps some long lines differently. For each changed core file, with Docker available: `docker run --rm -i -w /tmp elixir:1.18-otp-27 mix format - < FILE | diff FILE -` should print nothing. Sibling files that import Ecto formatter settings can report false differences this way.
 

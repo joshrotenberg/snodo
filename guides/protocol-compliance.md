@@ -12,14 +12,14 @@ code and reports:
 | Evidence lane | What it proves | Current status |
 |---|---|---|
 | Exact protocol profile | Which core methods exist in the pinned revision and which capabilities, methods, transports, and limitations this build implements | Complete catalog; implemented slice explicit |
-| Core internal contract | Literal wire requests plus HTTP and generic extension acceptance obey the declared core slice | 31 evidence groups passing |
+| Core internal contract | Literal wire requests plus HTTP and generic extension acceptance obey the declared core slice | 32 evidence groups passing |
 | Tasks package contract | The independent child package obeys its Tasks wire, lifecycle, subscriptions, HTTP, descriptor, durable-store, and recovery contract | 10 evidence groups passing |
 | Released-client interop | A real official TypeScript client can discover, list, call, cancel, and call again over stdio | Passing with client 2.1.0 |
 | Target application acceptance | The real Hex.pm server's catalog, tool outcomes, prompts, and resource reads work with seeded domain responses over stdio and HTTP | Passing with client 2.0.0; [scope and commands](https://github.com/joshrotenberg/snodo/blob/main/docs/history/target-application-findings.md) |
 | MRTR client acceptance | Ordinary tool/resource/prompt elicitation, signed state, automatic retries, and URL consent work over stdio and HTTP | Passing with client 2.1.0; [scope and commands](interactive-operations.md) |
-| Official server requirements | The implementation passes the frozen upstream scenarios for the released revision | Partial: 32/37 exercised whole scenarios pass (2026-09-26); all 37 attempted |
+| Official server requirements | The implementation passes the frozen upstream scenarios for the released revision | 37/37 exercised whole scenarios pass on the frozen alpha.11 runner (2026-09-29); the runner's score, not full revision conformance |
 | Ordinary progress | Correlated progress precedes normal/error/MRTR terminal messages; cancellation and no-token behavior are checked over stdio and HTTP | Passing wire and controlled client checks; [SDK callback caveat](https://github.com/joshrotenberg/snodo/blob/main/interop/official_client/PROGRESS.md) |
-| Independent wire-schema corpus | Representative real emissions validate against named definitions and concrete result branches in the pinned official schema using AJV | 78 emissions across direct/stdio/HTTP; 78 negative mutations and 7 unit controls; not every possible message |
+| Independent wire-schema corpus | Representative real emissions validate against named definitions and concrete result, input-request, and error branches in the pinned official schema using AJV | 99 emissions across direct/stdio/HTTP; 99 negative mutations and 9 unit controls; not every possible message |
 
 The repository's `snodo.contract` Mix task prints the core buckets without converting internal evidence
 or unsupported features into an official score. The one-way-dependent Tasks
@@ -229,13 +229,17 @@ mix tasks.contract
 
 ## Ordinary MRTR evidence
 
-Four internal groups now cover ordinary elicitation wire behavior, result
-placement and peer-capability admission, request-bound signed state, and
-extension middleware composition. The profile marks `elicitation/create`
-implemented only in its embedded placement; roots/sampling remain unsupported.
-Literal requests cover malformed and partial input, repeated retries, and
-all three permitted core operations. An independent pinned TypeScript client
-exercises automatic round trips over stdio and native HTTP.
+Five internal groups now cover ordinary elicitation wire behavior, the
+deprecated sampling and roots input requests, result placement and
+peer-capability admission, request-bound signed state, and extension
+middleware composition. The profile marks `elicitation/create`,
+`sampling/createMessage`, and `roots/list` implemented only in their embedded
+placement; the last two carry the `deprecated` lifecycle from SEP-2577.
+Literal requests cover malformed and partial input, repeated retries, mixed
+request kinds in one result, the merged `-32021` `requiredCapabilities`
+object, and all three permitted core operations. An independent pinned
+TypeScript client exercises automatic elicitation round trips over stdio and
+native HTTP; it does not exercise sampling or roots.
 
 The 2026-09-14 external run now exercises nine additional ordinary MRTR scenarios.
 See [the MRTR guide](interactive-operations.md) for supported schema limits, state
@@ -244,23 +248,24 @@ security, the Tasks boundary, and the empty-input-map SDK caveat.
 ## Official conformance lane
 
 The native Streamable HTTP fixture has been exercised by the frozen official
-server runner. All 37 required scenarios were attempted. The honest score is
-**32/37 exercised whole scenarios passed** in the 2026-09-26 run. All 32 have
-semantic successes and no failure, warning, or skipped checks. Ordinary MRTR
-fixtures replace the three formerly unexercised false-positive paths. The five
-failing scenarios all depend on the deprecated sampling and roots features.
+server runner. All 37 required scenarios were attempted. The score is
+**37/37 exercised whole scenarios passed** in the 2026-09-29 run. All 37 have
+semantic successes and no failure, warning, or skipped checks. The five
+scenarios that failed on 2026-09-26 needed the deprecated sampling and roots
+input requests, which the fixture now serves. This is the frozen runner's
+score for its own 37 scenarios, not full conformance to the revision.
 
-The required checks total 110 `SUCCESS`, 6 `FAILURE`, 0 `SKIPPED`, 0 `WARNING`,
+The required checks total 119 `SUCCESS`, 0 `FAILURE`, 0 `SKIPPED`, 0 `WARNING`,
 and 1 `INFO`. The subscription checks in `server-stateless` run against a
 fixture subscription hub. Three pending, not-scored scenarios pass completely:
 `json-schema-2020-12` (8/8), `http-header-validation` (14/14), and
 `http-custom-header-server-validation` (10/10). The exact
 pass list, raw no-failure list, and exclusion reasons are checked in as both
-[JSON](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-09-26-alpha.11-summary.json) and
-[Markdown](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-09-26-alpha.11-summary.md), with
-[per-check outcomes](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-09-26-alpha.11-checks.json).
-The September 14 and August 25 summaries are retained as historical evidence,
-not current scores.
+[JSON](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-09-29-alpha.11-summary.json) and
+[Markdown](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-09-29-alpha.11-summary.md), with
+[per-check outcomes](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-09-29-alpha.11-checks.json).
+The September 26, September 14, and August 25 summaries are retained as
+historical evidence, not current scores.
 
 The runner's client leg measures `Snodo.Client` separately, through a harness
 that drives it against each scenario server. The 2026-09-26 run passes 6 of 32
@@ -345,24 +350,27 @@ visible and claims only the 35 Tasks assertions:
 ## Independent full-schema engine lane
 
 [`interop/schema_validation`](https://github.com/joshrotenberg/snodo/blob/main/interop/schema_validation/README.md) pins the
-official artifact and provenance, uses AJV 2020-12, and validates 78 actual
-serialized emissions from 60 operations over direct, stdio, and native HTTP.
-It selects 26 named definitions and concrete result branches: the generated
-schema's root is not an envelope validator, and its permissive MRTR union alone
-can accept malformed complete results. Negative controls demonstrate both traps.
-The original upstream schema bytes are retained unchanged with their license.
+official artifact and provenance, uses AJV 2020-12, and validates 99 actual
+serialized emissions from 81 operations over direct, stdio, and native HTTP.
+It selects 31 named definitions and concrete result, input-request, and error
+branches: the generated schema's root is not an envelope validator, its
+permissive MRTR union alone can accept malformed complete results, and the
+generic error envelope accepts any `data`. Negative controls demonstrate each
+trap. The original upstream schema bytes are retained unchanged with their
+license.
 
 This is independent of JSV application argument validation and of the client and
 external runner. The checked-in CI job executes the corpus; no remote CI pass is
-inferred. The corpus intentionally excludes Tasks and deprecated roots/sampling,
-among other paths documented in its README. It does not establish universal
-wire validity or encode every prose requirement in JSON Schema.
+inferred. The corpus intentionally excludes Tasks, among other paths documented
+in its README. It does not establish universal wire validity or encode every
+prose requirement in JSON Schema.
 
 ## Next compliance increments
 
-1. Preserve the checked-in honest core summary while filling the remaining
-   required scenarios with real fixtures and framework surface; never promote a
-   warning-only or missing-fixture result to a pass.
+1. Preserve the checked-in honest core summary as the runner and its
+   requirement set evolve; never promote a warning-only or missing-fixture
+   result to a pass, and never describe the frozen runner's score as full
+   revision conformance.
 2. Maintain the exact per-check CI inventory: fail unexpected/stale failures,
    missing/new occurrences, and all status drift. Never increase a conformance
    score through baselining.

@@ -22,6 +22,7 @@ defmodule Snodo.MRTR.ProtocolAcceptanceTest do
   ]
   @transports [:direct, :stdio, :http]
   @form_caps %{"elicitation" => %{"form" => %{}}}
+  @deprecated_caps %{"elicitation" => %{}, "sampling" => %{}, "roots" => %{}}
 
   @tag mcp_contract: ["mrtr-elicitation-wire"]
   test "all three feature families complete independent literal retries over every boundary" do
@@ -152,7 +153,14 @@ defmodule Snodo.MRTR.ProtocolAcceptanceTest do
   end
 
   test "invalid generated variants are internal errors while state-only and empty maps are valid" do
-    for variant <- ["empty", "state_null", "bad_request", "roots"] do
+    for variant <- [
+          "empty",
+          "state_null",
+          "bad_request",
+          "unknown_kind",
+          "bad_sampling",
+          "bad_roots"
+        ] do
       params = %{"name" => "invalid_input", "arguments" => %{"variant" => variant}}
       assert dispatch(:direct, request(10, "tools/call", params))["error"]["code"] == -32_603
     end
@@ -194,6 +202,202 @@ defmodule Snodo.MRTR.ProtocolAcceptanceTest do
              dispatch(:direct, request(12, "elicitation/create", Choice.request()["params"]))
   end
 
+  @tag mcp_contract: ["mrtr-sampling-roots-wire"]
+  test "sampling and roots requests complete literal retries over every boundary" do
+    sampling_request = %{
+      "method" => "sampling/createMessage",
+      "params" => %{
+        "messages" => [
+          %{"role" => "user", "content" => %{"type" => "text", "text" => "Summarize the label"}}
+        ],
+        "maxTokens" => 64
+      }
+    }
+
+    sampling_targets = [
+      {"tools/call", %{"name" => "sample", "arguments" => %{}}},
+      {"resources/read", %{"uri" => "sample://value"}},
+      {"prompts/get", %{"name" => "sample", "arguments" => %{}}}
+    ]
+
+    for transport <- @transports, {method, params} <- sampling_targets do
+      initial = dispatch(transport, request(30, method, params, @deprecated_caps))
+      assert initial["result"]["resultType"] == "input_required"
+      assert initial["result"]["inputRequests"] == %{"summary" => sampling_request}
+      refute Map.has_key?(initial["result"], "requestState")
+
+      retry = Map.put(params, "inputResponses", %{"summary" => sampled("Paris")})
+      response = dispatch(transport, request(31, method, retry, @deprecated_caps))
+      assert response["id"] == 31
+      assert response["result"]["resultType"] == "complete"
+      refute Map.has_key?(response["result"], "inputRequests")
+      assert JSON.encode!(response["result"]) =~ "Paris"
+      assert JSON.encode!(response["result"]) =~ "test-model"
+    end
+
+    for transport <- @transports do
+      params = %{"name" => "roots", "arguments" => %{}}
+      initial = dispatch(transport, request(32, "tools/call", params, @deprecated_caps))
+      assert initial["result"]["resultType"] == "input_required"
+
+      assert initial["result"]["inputRequests"] == %{
+               "client_roots" => %{"method" => "roots/list", "params" => %{}}
+             }
+
+      roots = %{
+        "roots" => [%{"uri" => "file:///work", "name" => "Work"}, %{"uri" => "file:///tmp"}]
+      }
+
+      retry = Map.put(params, "inputResponses", %{"client_roots" => roots})
+      final = dispatch(transport, request(33, "tools/call", retry, @deprecated_caps))["result"]
+      assert final["resultType"] == "complete"
+      assert final["structuredContent"] == %{"uris" => ["file:///work", "file:///tmp"]}
+    end
+  end
+
+  @tag mcp_contract: ["mrtr-sampling-roots-wire"]
+  test "one result carries every kind and only the missing answers are requested again" do
+    params = %{"name" => "mixed", "arguments" => %{}}
+
+    for transport <- @transports do
+      first = dispatch(transport, request(34, "tools/call", params, @deprecated_caps))["result"]
+      assert first["resultType"] == "input_required"
+
+      assert first["inputRequests"] |> Map.keys() |> Enum.sort() ==
+               ["choice", "client_roots", "summary"]
+
+      assert get_in(first, ["inputRequests", "choice", "method"]) == "elicitation/create"
+      assert get_in(first, ["inputRequests", "summary", "method"]) == "sampling/createMessage"
+      assert get_in(first, ["inputRequests", "client_roots", "method"]) == "roots/list"
+
+      partial = Map.put(params, "inputResponses", %{"choice" => accepted("chosen")})
+      second = dispatch(transport, request(35, "tools/call", partial, @deprecated_caps))["result"]
+      assert second["resultType"] == "input_required"
+      assert second["inputRequests"] |> Map.keys() |> Enum.sort() == ["client_roots", "summary"]
+
+      responses = %{
+        "choice" => accepted("chosen"),
+        "summary" => sampled("Paris"),
+        "client_roots" => %{"roots" => [%{"uri" => "file:///work"}]}
+      }
+
+      complete = Map.put(params, "inputResponses", responses)
+      final = dispatch(transport, request(36, "tools/call", complete, @deprecated_caps))["result"]
+      assert final["resultType"] == "complete"
+      assert final["structuredContent"] == responses
+    end
+  end
+
+  @tag mcp_contract: ["mrtr-sampling-roots-wire"]
+  test "malformed sampling and roots answers fail with invalid params before the component completes" do
+    for transport <- @transports do
+      for response <- [
+            %{},
+            %{"role" => "assistant", "content" => %{"type" => "text", "text" => "x"}},
+            %{
+              "role" => "system",
+              "content" => %{"type" => "text", "text" => "x"},
+              "model" => "m"
+            },
+            %{"role" => "assistant", "content" => %{"type" => "text"}, "model" => "m"},
+            %{"role" => "assistant", "content" => [], "model" => "m"},
+            %{
+              "role" => "assistant",
+              "content" => %{"type" => "text", "text" => "x"},
+              "model" => 1
+            },
+            Map.put(sampled("x"), "stopReason", 7),
+            %{"result" => sampled("wrapped")}
+          ] do
+        params = %{"name" => "sample", "inputResponses" => %{"summary" => response}}
+
+        assert %{"error" => %{"code" => -32_602}} =
+                 dispatch(transport, request(37, "tools/call", params, @deprecated_caps))
+      end
+
+      for response <- [
+            %{},
+            %{"roots" => %{}},
+            %{"roots" => [%{"name" => "no uri"}]},
+            %{"roots" => [%{"uri" => "https://example.test/"}]},
+            %{"roots" => [%{"uri" => "file:///work", "name" => 1}]},
+            %{"result" => %{"roots" => []}}
+          ] do
+        params = %{"name" => "roots", "inputResponses" => %{"client_roots" => response}}
+
+        assert %{"error" => %{"code" => -32_602}} =
+                 dispatch(transport, request(38, "tools/call", params, @deprecated_caps))
+      end
+    end
+  end
+
+  @tag mcp_contract: ["mrtr-sampling-roots-wire", "mrtr-capability-admission"]
+  test "sampling and roots requests are refused with the ClientCapabilities they need" do
+    for transport <- @transports do
+      sample = %{"name" => "sample", "arguments" => %{}}
+
+      for caps <- [%{}, %{"roots" => %{}}, @form_caps] do
+        assert %{"error" => %{"code" => -32_021, "data" => data}} =
+                 dispatch(transport, request(40, "tools/call", sample, caps))
+
+        assert data == %{"requiredCapabilities" => %{"sampling" => %{}}}
+      end
+
+      for caps <- [%{}, %{"sampling" => %{}}] do
+        assert %{"error" => %{"code" => -32_021, "data" => data}} =
+                 dispatch(transport, request(41, "tools/call", %{"name" => "roots"}, caps))
+
+        assert data == %{"requiredCapabilities" => %{"roots" => %{}}}
+      end
+
+      tools = %{"name" => "sample", "arguments" => %{"tools" => true}}
+
+      assert %{"error" => %{"code" => -32_021, "data" => data}} =
+               dispatch(transport, request(42, "tools/call", tools, %{"sampling" => %{}}))
+
+      assert data == %{"requiredCapabilities" => %{"sampling" => %{"tools" => %{}}}}
+
+      tools_caps = %{"sampling" => %{"tools" => %{}}}
+      result = dispatch(transport, request(43, "tools/call", tools, tools_caps))["result"]
+      assert result["resultType"] == "input_required"
+
+      assert get_in(result, ["inputRequests", "summary", "params", "toolChoice"]) == %{
+               "mode" => "auto"
+             }
+
+      context = %{"name" => "sample", "arguments" => %{"context" => true, "tools" => true}}
+
+      assert %{"error" => %{"code" => -32_021, "data" => data}} =
+               dispatch(transport, request(44, "tools/call", context, tools_caps))
+
+      assert data == %{
+               "requiredCapabilities" => %{"sampling" => %{"tools" => %{}, "context" => %{}}}
+             }
+
+      both = %{"sampling" => %{"tools" => %{}, "context" => %{}}}
+
+      assert dispatch(transport, request(45, "tools/call", context, both))["result"]["resultType"] ==
+               "input_required"
+
+      # Every unsupported request contributes to one merged ClientCapabilities object.
+      assert %{"error" => %{"code" => -32_021, "data" => data}} =
+               dispatch(transport, request(46, "tools/call", %{"name" => "mixed"}, %{}))
+
+      assert data == %{
+               "requiredCapabilities" => %{
+                 "elicitation" => %{"form" => %{}},
+                 "sampling" => %{},
+                 "roots" => %{}
+               }
+             }
+
+      assert %{"error" => %{"code" => -32_021, "data" => data}} =
+               dispatch(transport, request(47, "tools/call", %{"name" => "mixed"}, @form_caps))
+
+      assert data == %{"requiredCapabilities" => %{"sampling" => %{}, "roots" => %{}}}
+    end
+  end
+
   test "an input-required result releases its execution slot and leaves no cancellation target" do
     {:ok, executor} = start_supervised({Executor, max_concurrency: 1, max_queue: 0})
     raw = request(13, "tools/call", %{"name" => "choice"})
@@ -206,6 +410,15 @@ defmodule Snodo.MRTR.ProtocolAcceptanceTest do
   end
 
   defp accepted(label), do: %{"action" => "accept", "content" => %{"label" => label}}
+
+  defp sampled(text) do
+    %{
+      "role" => "assistant",
+      "content" => %{"type" => "text", "text" => text},
+      "model" => "test-model",
+      "stopReason" => "endTurn"
+    }
+  end
 
   defp context do
     %Context{

@@ -78,36 +78,188 @@ defmodule SnodoTest.MRTR.InvalidTool do
   use Snodo.Tool, name: "invalid_input"
 
   @impl true
-  def call(%{"variant" => variant}, _context) do
-    result =
-      case variant do
-        "empty" ->
-          Snodo.Result.input_required()
+  def call(%{"variant" => variant}, _context), do: {:ok, variant(variant)}
 
-        "state_null" ->
-          Snodo.Result.input_required(request_state: nil)
+  defp variant("empty"), do: Snodo.Result.input_required()
+  defp variant("state_null"), do: Snodo.Result.input_required(request_state: nil)
+  defp variant("bad_request"), do: Snodo.Result.input_required(input_requests: %{"x" => %{}})
 
-        "bad_request" ->
-          Snodo.Result.input_required(input_requests: %{"x" => %{}})
+  defp variant("unknown_kind") do
+    Snodo.Result.input_required(
+      input_requests: %{"x" => %{"method" => "logging/setLevel", "params" => %{}}}
+    )
+  end
 
-        "roots" ->
-          Snodo.Result.input_required(input_requests: %{"x" => %{"method" => "roots/list"}})
+  defp variant("bad_sampling") do
+    Snodo.Result.input_required(
+      input_requests: %{
+        "x" => %{"method" => "sampling/createMessage", "params" => %{"messages" => []}}
+      }
+    )
+  end
 
-        "state_only" ->
-          Snodo.Result.input_required(request_state: "unused-opaque-marker")
+  defp variant("bad_roots") do
+    Snodo.Result.input_required(
+      input_requests: %{"x" => %{"method" => "roots/list", "params" => %{"cursor" => 1}}}
+    )
+  end
 
-        "empty_requests" ->
-          Snodo.Result.input_required(input_requests: %{})
+  defp variant("state_only"),
+    do: Snodo.Result.input_required(request_state: "unused-opaque-marker")
 
-        "url" ->
-          Snodo.Result.input_required(
-            input_requests: %{
-              "x" => Snodo.Elicitation.url("Preview", "https://example.invalid/preview")
-            }
-          )
+  defp variant("empty_requests"), do: Snodo.Result.input_required(input_requests: %{})
+
+  defp variant("url") do
+    Snodo.Result.input_required(
+      input_requests: %{
+        "x" => Snodo.Elicitation.url("Preview", "https://example.invalid/preview")
+      }
+    )
+  end
+end
+
+defmodule SnodoTest.MRTR.Sample do
+  @moduledoc false
+  alias Snodo.Prompt
+  alias Snodo.Result
+  alias Snodo.Sampling
+
+  # The "tools" and "context" arguments opt into the sampling settings that
+  # need sampling.tools and sampling.context on the client.
+  def request(arguments \\ %{}) do
+    tools =
+      if arguments["tools"],
+        do: [
+          tools: [%{"name" => "lookup", "inputSchema" => %{"type" => "object"}}],
+          tool_choice: %{"mode" => "auto"}
+        ],
+        else: []
+
+    context = if arguments["context"], do: [include_context: "thisServer"], else: []
+
+    Sampling.create_message(
+      [Prompt.message(:user, Prompt.text("Summarize the label"))],
+      [max_tokens: 64] ++ tools ++ context
+    )
+  end
+
+  def run(context, id, request, complete) do
+    case Sampling.response(context, id, request) do
+      :missing ->
+        {:ok, Result.input_required(input_requests: %{id => request})}
+
+      {:ok, %{"content" => %{"type" => "text", "text" => text}, "model" => model}} ->
+        {:ok, complete.(%{"summary" => text, "model" => model})}
+
+      {:ok, %{"content" => content}} ->
+        {:ok, complete.(%{"content" => content})}
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+end
+
+defmodule SnodoTest.MRTR.SamplingTool do
+  @moduledoc false
+  use Snodo.Tool, name: "sample"
+  alias SnodoTest.MRTR.Sample
+
+  @impl true
+  def call(arguments, context) do
+    Sample.run(context, "summary", Sample.request(arguments), &Snodo.Result.structured/1)
+  end
+end
+
+defmodule SnodoTest.MRTR.SamplingResource do
+  @moduledoc false
+  use Snodo.Resource, name: "sample", uri: "sample://value"
+  alias SnodoTest.MRTR.Sample
+
+  @impl true
+  def read(%{"uri" => uri}, context) do
+    Sample.run(context, "summary", Sample.request(), fn value ->
+      Snodo.Result.resource_read(Snodo.Resource.json(uri, value))
+    end)
+  end
+end
+
+defmodule SnodoTest.MRTR.SamplingPrompt do
+  @moduledoc false
+  use Snodo.Prompt, name: "sample", arguments: []
+  alias SnodoTest.MRTR.Sample
+
+  @impl true
+  def render(_arguments, context) do
+    Sample.run(context, "summary", Sample.request(), fn value ->
+      Snodo.Result.prompt_get(Snodo.Prompt.message(:user, Snodo.Prompt.text(JSON.encode!(value))))
+    end)
+  end
+end
+
+defmodule SnodoTest.MRTR.RootsTool do
+  @moduledoc false
+  use Snodo.Tool, name: "roots"
+  alias Snodo.Result
+  alias Snodo.Roots
+
+  @impl true
+  def call(_arguments, context) do
+    request = Roots.list()
+
+    case Roots.response(context, "client_roots", request) do
+      :missing ->
+        {:ok, Result.input_required(input_requests: %{"client_roots" => request})}
+
+      {:ok, %{"roots" => roots}} ->
+        {:ok, Result.structured(%{"uris" => Enum.map(roots, & &1["uri"])})}
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+end
+
+defmodule SnodoTest.MRTR.MixedTool do
+  @moduledoc false
+  # One elicitation, one sampling, and one roots request in a single result.
+  # No state: every retry re-requests exactly the answers still missing.
+  use Snodo.Tool, name: "mixed"
+
+  alias Snodo.Elicitation
+  alias Snodo.Result
+  alias Snodo.Roots
+  alias Snodo.Sampling
+  alias SnodoTest.MRTR.Choice
+  alias SnodoTest.MRTR.Sample
+
+  @impl true
+  def call(_arguments, context) do
+    requests = %{
+      "choice" => Choice.request(),
+      "summary" => Sample.request(),
+      "client_roots" => Roots.list()
+    }
+
+    readers = %{
+      "choice" => &Elicitation.response/3,
+      "summary" => &Sampling.response/3,
+      "client_roots" => &Roots.response/3
+    }
+
+    requests
+    |> Enum.reduce_while({:ok, %{}, %{}}, fn {id, request}, {:ok, answers, missing} ->
+      case readers[id].(context, id, request) do
+        :missing -> {:cont, {:ok, answers, Map.put(missing, id, request)}}
+        {:ok, response} -> {:cont, {:ok, Map.put(answers, id, response), missing}}
+        {:error, error} -> {:halt, {:error, error}}
       end
-
-    {:ok, result}
+    end)
+    |> case do
+      {:ok, answers, missing} when map_size(missing) == 0 -> {:ok, Result.structured(answers)}
+      {:ok, _answers, missing} -> {:ok, Result.input_required(input_requests: missing)}
+      {:error, error} -> {:error, error}
+    end
   end
 end
 
@@ -142,9 +294,14 @@ defmodule SnodoTest.MRTR.Server do
   tool(SnodoTest.MRTR.UrlTool)
   tool(SnodoTest.MRTR.InvalidTool)
   tool(SnodoTest.MRTR.MultipleTool)
+  tool(SnodoTest.MRTR.SamplingTool)
+  tool(SnodoTest.MRTR.RootsTool)
+  tool(SnodoTest.MRTR.MixedTool)
   tool(SnodoTest.MRTR.SequentialTool)
   resource(SnodoTest.MRTR.Resource)
+  resource(SnodoTest.MRTR.SamplingResource)
   prompt(SnodoTest.MRTR.Prompt)
+  prompt(SnodoTest.MRTR.SamplingPrompt)
 end
 
 defmodule SnodoTest.MRTR.SequentialTool do

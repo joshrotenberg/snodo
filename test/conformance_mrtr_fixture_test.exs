@@ -1,4 +1,5 @@
 Code.require_file("../conformance/support/mrtr.ex", __DIR__)
+Code.require_file("../conformance/support/stateless.ex", __DIR__)
 
 defmodule SnodoTest.Conformance.MRTRFixtureTest do
   use ExUnit.Case, async: false
@@ -8,6 +9,7 @@ defmodule SnodoTest.Conformance.MRTRFixtureTest do
   alias Snodo.Server.Runtime
   alias Snodo.Transport.Context, as: TransportContext
   alias SnodoTest.Conformance.MRTR
+  alias SnodoTest.Conformance.Stateless
 
   @basic "test_input_required_result_elicitation"
   @state "test_input_required_result_request_state"
@@ -15,7 +17,26 @@ defmodule SnodoTest.Conformance.MRTRFixtureTest do
   @multi "test_input_required_result_multi_round"
   @parallel "test_input_required_result_parallel_forms"
   @url "test_input_required_result_url_consent"
+  @sampling "test_input_required_result_sampling"
+  @roots "test_input_required_result_list_roots"
+  @multiple "test_input_required_result_multiple_inputs"
+  @capabilities "test_input_required_result_capabilities"
+  @missing "test_missing_capability"
   @form_caps %{"elicitation" => %{"form" => %{}}}
+  @all_caps %{"elicitation" => %{"form" => %{}}, "sampling" => %{}, "roots" => %{}}
+  @capital_question %{
+    "method" => "sampling/createMessage",
+    "params" => %{
+      "messages" => [
+        %{
+          "role" => "user",
+          "content" => %{"type" => "text", "text" => "What is the capital of France?"}
+        }
+      ],
+      "maxTokens" => 100
+    }
+  }
+  @test_root %{"roots" => [%{"uri" => "file:///test/root", "name" => "Test Root"}]}
   @targets [
     {"tools/call", %{"name" => @basic, "arguments" => %{}}, "user_name", "name"},
     {"prompts/get", %{"name" => "test_input_required_result_prompt"}, "user_context", "context"},
@@ -36,24 +57,29 @@ defmodule SnodoTest.Conformance.MRTRFixtureTest do
     :ok
   end
 
-  test "registered fixtures distinguish elicitation-only coverage from unsupported scenarios" do
+  test "every alpha.11 input-required fixture is registered with a description" do
     result = dispatch("tools/list", %{})["result"]
     names = Enum.map(result["tools"], & &1["name"])
 
-    for name <- [@basic, @state, @tampered, @multi, @parallel, @url], do: assert(name in names)
+    for name <- [
+          @basic,
+          @state,
+          @tampered,
+          @multi,
+          @parallel,
+          @url,
+          @sampling,
+          @roots,
+          @multiple,
+          @capabilities,
+          @missing
+        ],
+        do: assert(name in names)
 
     for tool <- result["tools"] do
       assert is_binary(tool["description"])
       assert tool["description"] != ""
     end
-
-    for name <- [
-          "test_input_required_result_sampling",
-          "test_input_required_result_list_roots",
-          "test_input_required_result_multiple_inputs",
-          "test_input_required_result_capabilities"
-        ],
-        do: refute(name in names)
 
     assert result["resultType"] == "complete"
     prompts = dispatch("prompts/list", %{})["result"]
@@ -332,19 +358,251 @@ defmodule SnodoTest.Conformance.MRTRFixtureTest do
     end
   end
 
+  test "the sampling fixture reports the sampled text and refuses undeclared sampling" do
+    caps = %{"sampling" => %{}}
+    first = tool(@sampling, %{}, caps)["result"]
+    assert first["resultType"] == "input_required"
+    assert first["inputRequests"] == %{"capital_question" => @capital_question}
+    refute Map.has_key?(first, "requestState")
+
+    responses = %{"capital_question" => sampled("The capital of France is Paris.")}
+    final = tool(@sampling, %{"inputResponses" => responses}, caps)["result"]
+    assert final["resultType"] == "complete"
+
+    assert final["content"] == [
+             %{
+               "type" => "text",
+               "text" => "Sampled by test-model: The capital of France is Paris."
+             }
+           ]
+
+    for responses <- [%{}, %{"wrong_key" => sampled("Paris")}] do
+      again = tool(@sampling, %{"inputResponses" => responses}, caps)["result"]
+      assert again["resultType"] == "input_required"
+      assert Map.keys(again["inputRequests"]) == ["capital_question"]
+    end
+
+    for response <- [
+          %{},
+          %{"action" => "accept", "content" => %{"answer" => "Paris"}},
+          Map.delete(sampled("Paris"), "model"),
+          Map.put(sampled("Paris"), "role", "system"),
+          %{"result" => sampled("Paris")}
+        ] do
+      params = %{"inputResponses" => %{"capital_question" => response}}
+      assert tool(@sampling, params, caps)["error"]["code"] == -32_602
+    end
+
+    for capabilities <- [%{}, @form_caps, %{"roots" => %{}}] do
+      error = tool(@sampling, %{}, capabilities)["error"]
+      assert error["code"] == -32_021
+      assert error["data"] == %{"requiredCapabilities" => %{"sampling" => %{}}}
+    end
+  end
+
+  test "the roots fixture reports client roots and refuses undeclared roots" do
+    caps = %{"roots" => %{}}
+    first = tool(@roots, %{}, caps)["result"]
+    assert first["resultType"] == "input_required"
+
+    assert first["inputRequests"] == %{
+             "client_roots" => %{"method" => "roots/list", "params" => %{}}
+           }
+
+    final = tool(@roots, %{"inputResponses" => %{"client_roots" => @test_root}}, caps)["result"]
+    assert final["resultType"] == "complete"
+
+    assert final["content"] == [
+             %{"type" => "text", "text" => "Client roots: Test Root (file:///test/root)"}
+           ]
+
+    unnamed = %{"roots" => [%{"uri" => "file:///a"}, %{"uri" => "file:///b"}]}
+    final = tool(@roots, %{"inputResponses" => %{"client_roots" => unnamed}}, caps)["result"]
+
+    assert final["content"] == [
+             %{"type" => "text", "text" => "Client roots: file:///a, file:///b"}
+           ]
+
+    for response <- [
+          %{},
+          %{"roots" => [%{"uri" => "https://example.test/"}]},
+          %{"roots" => [%{"name" => "missing uri"}]},
+          %{"action" => "accept"}
+        ] do
+      params = %{"inputResponses" => %{"client_roots" => response}}
+      assert tool(@roots, params, caps)["error"]["code"] == -32_602
+    end
+
+    for capabilities <- [%{}, @form_caps, %{"sampling" => %{}}] do
+      error = tool(@roots, %{}, capabilities)["error"]
+      assert error["code"] == -32_021
+      assert error["data"] == %{"requiredCapabilities" => %{"roots" => %{}}}
+    end
+  end
+
+  test "the multiple-inputs fixture carries all three kinds with signed partial progress" do
+    first = tool(@multiple, %{}, @all_caps)["result"]
+    assert first["resultType"] == "input_required"
+    assert is_binary(first["requestState"])
+
+    assert Enum.sort(Map.keys(first["inputRequests"])) == [
+             "client_roots",
+             "greeting",
+             "user_name"
+           ]
+
+    assert get_in(first, ["inputRequests", "user_name", "method"]) == "elicitation/create"
+    assert get_in(first, ["inputRequests", "greeting", "method"]) == "sampling/createMessage"
+    assert get_in(first, ["inputRequests", "client_roots", "method"]) == "roots/list"
+
+    second =
+      tool(@multiple, retry(first, %{"user_name" => accept(%{"name" => "Alice"})}), @all_caps)[
+        "result"
+      ]
+
+    assert second["resultType"] == "input_required"
+    assert Enum.sort(Map.keys(second["inputRequests"])) == ["client_roots", "greeting"]
+    refute second["requestState"] == first["requestState"]
+
+    final =
+      tool(
+        @multiple,
+        retry(second, %{
+          "user_name" => accept(%{"name" => "Mallory"}),
+          "greeting" => sampled("Hello there!"),
+          "client_roots" => @test_root
+        }),
+        @all_caps
+      )["result"]
+
+    assert final["resultType"] == "complete"
+
+    assert final["content"] |> hd() |> Map.fetch!("text") |> JSON.decode!() == %{
+             "user_name" => "Alice",
+             "greeting" => "Hello there!",
+             "client_roots" => ["file:///test/root"]
+           }
+
+    all_at_once =
+      retry(first, %{
+        "user_name" => accept(%{"name" => "Alice"}),
+        "greeting" => sampled("Hello there!"),
+        "client_roots" => @test_root
+      })
+
+    assert tool(@multiple, all_at_once, @all_caps)["result"]["resultType"] == "complete"
+
+    declined = retry(first, %{"user_name" => %{"action" => "decline"}})
+    declined_result = tool(@multiple, declined, @all_caps)["result"]
+    assert declined_result["resultType"] == "complete"
+    assert declined_result["content"] |> hd() |> Map.fetch!("text") =~ "decline"
+
+    malformed = retry(first, %{"greeting" => %{"role" => "assistant", "model" => "m"}})
+    assert tool(@multiple, malformed, @all_caps)["error"]["code"] == -32_602
+
+    assert tool(@multiple, Map.delete(all_at_once, "requestState"), @all_caps)["error"]["code"] ==
+             -32_602
+
+    error = tool(@multiple, %{}, %{})["error"]
+    assert error["code"] == -32_021
+
+    assert error["data"] == %{
+             "requiredCapabilities" => %{
+               "elicitation" => %{"form" => %{}},
+               "sampling" => %{},
+               "roots" => %{}
+             }
+           }
+
+    assert tool(@multiple, %{}, @form_caps)["error"]["data"] == %{
+             "requiredCapabilities" => %{"sampling" => %{}, "roots" => %{}}
+           }
+  end
+
+  test "the capability fixture requests only the kinds the client declared" do
+    sampling_only = tool(@capabilities, %{}, %{"sampling" => %{}})["result"]
+    assert sampling_only["resultType"] == "input_required"
+    assert Map.keys(sampling_only["inputRequests"]) == ["greeting"]
+
+    assert get_in(sampling_only, ["inputRequests", "greeting", "method"]) ==
+             "sampling/createMessage"
+
+    form_only = tool(@capabilities, %{}, @form_caps)["result"]
+    assert Map.keys(form_only["inputRequests"]) == ["user_name"]
+
+    all = tool(@capabilities, %{}, @all_caps)["result"]
+    assert Enum.sort(Map.keys(all["inputRequests"])) == ["client_roots", "greeting", "user_name"]
+
+    nothing = tool(@capabilities, %{}, %{})["result"]
+    assert nothing["resultType"] == "complete"
+
+    assert nothing["content"] |> hd() |> Map.fetch!("text") |> JSON.decode!() == %{
+             "declared" => [],
+             "answered" => %{}
+           }
+
+    responses = %{
+      "user_name" => accept(%{"name" => "Alice"}),
+      "greeting" => sampled("Hello there!"),
+      "client_roots" => @test_root
+    }
+
+    final = tool(@capabilities, %{"inputResponses" => responses}, @all_caps)["result"]
+    assert final["resultType"] == "complete"
+
+    assert final["content"] |> hd() |> Map.fetch!("text") |> JSON.decode!() == %{
+             "declared" => ["elicitation", "roots", "sampling"],
+             "answered" => %{
+               "user_name" => "elicitation/create",
+               "greeting" => "sampling/createMessage",
+               "client_roots" => "roots/list"
+             }
+           }
+
+    partial =
+      tool(@capabilities, %{"inputResponses" => responses}, %{"sampling" => %{}})["result"]
+
+    assert partial["resultType"] == "complete"
+
+    assert partial["content"] |> hd() |> Map.fetch!("text") |> JSON.decode!() == %{
+             "declared" => ["sampling"],
+             "answered" => %{"greeting" => "sampling/createMessage"}
+           }
+  end
+
+  test "the server-stateless diagnostic is refused with -32021 naming sampling" do
+    error = tool(@missing, %{}, %{})["error"]
+    assert error["code"] == -32_021
+    assert error["data"] == %{"requiredCapabilities" => %{"sampling" => %{}}}
+
+    result = tool(@missing, %{}, %{"sampling" => %{}})["result"]
+    assert result["resultType"] == "input_required"
+    assert result["inputRequests"] == %{"capital_question" => @capital_question}
+  end
+
   defp accept(content), do: %{"action" => "accept", "content" => content}
+
+  defp sampled(text) do
+    %{
+      "role" => "assistant",
+      "content" => %{"type" => "text", "text" => text},
+      "model" => "test-model",
+      "stopReason" => "endTurn"
+    }
+  end
 
   defp retry(result, responses),
     do: %{"requestState" => result["requestState"], "inputResponses" => responses}
 
-  defp tool(name, extra \\ %{}) do
-    dispatch("tools/call", Map.merge(%{"name" => name, "arguments" => %{}}, extra))
+  defp tool(name, extra \\ %{}, capabilities \\ @form_caps) do
+    dispatch("tools/call", Map.merge(%{"name" => name, "arguments" => %{}}, extra), capabilities)
   end
 
   # Every dispatch builds a fresh router/runtime and request ID. Only the signed
   # token carries progress; the fixture has no in-memory request continuation.
   defp dispatch(method, params, capabilities \\ @form_caps) do
-    router = Enum.reduce(MRTR.tools(), Router.new(), &Router.register_tool(&2, &1))
+    tools = MRTR.tools() ++ [Stateless.MissingCapability]
+    router = Enum.reduce(tools, Router.new(), &Router.register_tool(&2, &1))
     router = Enum.reduce(MRTR.prompts(), router, &Router.register_prompt(&2, &1))
     router = Enum.reduce(MRTR.resources(), router, &Router.register_resource(&2, &1))
 

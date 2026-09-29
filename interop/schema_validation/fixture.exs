@@ -7,15 +7,13 @@ true = Code.prepend_path(ebin)
 defmodule SchemaFixture.Input do
   @moduledoc false
   alias Snodo.Elicitation
+  alias Snodo.Prompt
   alias Snodo.Result
+  alias Snodo.Roots
+  alias Snodo.Sampling
 
   def resolve(context, complete) do
-    request =
-      Elicitation.form("Provide a preview label", %{
-        "type" => "object",
-        "properties" => %{"label" => %{"type" => "string"}},
-        "required" => ["label"]
-      })
+    request = label_request()
 
     case Elicitation.response(context, "label", request) do
       :missing -> {:ok, Result.input_required(input_requests: %{"label" => request})}
@@ -24,6 +22,67 @@ defmodule SchemaFixture.Input do
       {:error, error} -> {:error, error}
     end
   end
+
+  # Deprecated by SEP-2577, still defined: the sampled text is untrusted
+  # model output and the roots are client claims, echoed here as-is.
+  def sample(context, complete) do
+    request = summary_request()
+
+    case Sampling.response(context, "summary", request) do
+      :missing -> {:ok, Result.input_required(input_requests: %{"summary" => request})}
+      {:ok, response} -> {:ok, complete.(sampled_text(response))}
+      {:error, error} -> {:error, error}
+    end
+  end
+
+  def roots(context, complete) do
+    request = Roots.list()
+
+    case Roots.response(context, "client_roots", request) do
+      :missing -> {:ok, Result.input_required(input_requests: %{"client_roots" => request})}
+      {:ok, %{"roots" => roots}} -> {:ok, complete.(Enum.map_join(roots, ",", & &1["uri"]))}
+      {:error, error} -> {:error, error}
+    end
+  end
+
+  # All three kinds in one result; each retry re-requests only what is missing.
+  def every_kind(context, complete) do
+    readers = [
+      {"label", label_request(), &Elicitation.response/3},
+      {"summary", summary_request(), &Sampling.response/3},
+      {"client_roots", Roots.list(), &Roots.response/3}
+    ]
+
+    Enum.reduce_while(readers, {:ok, [], %{}}, fn {id, request, read}, {:ok, seen, missing} ->
+      case read.(context, id, request) do
+        :missing -> {:cont, {:ok, seen, Map.put(missing, id, request)}}
+        {:ok, _response} -> {:cont, {:ok, seen ++ [id], missing}}
+        {:error, error} -> {:halt, {:error, error}}
+      end
+    end)
+    |> case do
+      {:ok, seen, missing} when map_size(missing) == 0 -> {:ok, complete.(Enum.join(seen, ","))}
+      {:ok, _seen, missing} -> {:ok, Result.input_required(input_requests: missing)}
+      {:error, error} -> {:error, error}
+    end
+  end
+
+  defp label_request do
+    Elicitation.form("Provide a preview label", %{
+      "type" => "object",
+      "properties" => %{"label" => %{"type" => "string"}},
+      "required" => ["label"]
+    })
+  end
+
+  defp summary_request do
+    Sampling.create_message([Prompt.message(:user, Prompt.text("Summarize the preview"))],
+      max_tokens: 32
+    )
+  end
+
+  defp sampled_text(%{"content" => %{"type" => "text", "text" => text}}), do: text
+  defp sampled_text(%{"content" => _other}), do: "non-text"
 end
 
 defmodule SchemaFixture.Tool do
@@ -51,6 +110,15 @@ defmodule SchemaFixture.Tool do
 
   def call(%{"mode" => "mrtr"}, context),
     do: SchemaFixture.Input.resolve(context, &Snodo.Result.text/1)
+
+  def call(%{"mode" => "sampling"}, context),
+    do: SchemaFixture.Input.sample(context, &Snodo.Result.text/1)
+
+  def call(%{"mode" => "roots"}, context),
+    do: SchemaFixture.Input.roots(context, &Snodo.Result.text/1)
+
+  def call(%{"mode" => "every_kind"}, context),
+    do: SchemaFixture.Input.every_kind(context, &Snodo.Result.text/1)
 
   def call(%{"mode" => "domain_error"}, _context),
     do: {:ok, Snodo.Result.error("Preview unavailable")}

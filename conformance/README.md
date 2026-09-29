@@ -12,26 +12,27 @@ own score and baseline: `server`, `client`, and the
 
 ## Latest external measurement
 
-The frozen alpha.11 runner passes **32/37 exercised whole required scenarios**
-on 2026-09-26, the same score as the 2026-09-14 run and up from the August 25
-measurement of 22/37. All 37 required scenarios and 13 unscored
-extension/pending scenarios were attempted.
+The frozen alpha.11 runner passes **37/37 exercised whole required scenarios**
+on 2026-09-29, up from 32/37 on 2026-09-26 and 22/37 on August 25. All 37
+required scenarios and 13 unscored extension/pending scenarios were attempted.
+This is the frozen runner's own score for its 37 scenarios. It is not full
+protocol conformance: the runner does not cover every requirement of the
+revision, and a green lane means "matches the reviewed baseline".
 
-Required checks: **110 success, 6 failure, 0 skipped, 0 warning, 1 info**.
-Since 2026-09-14, the fixture has a subscription hub and the diagnostic tools
-`server-stateless` calls: `test_trigger_tool_change`, `test_trigger_prompt_change`,
-`test_streaming_elicitation`, and `test_logging_tool`. Five subscription checks
-that were skipped and two diagnostics that failed now pass. `test_logging_tool`
-passes because Snodo never sends the deprecated `notifications/message`.
+Required checks: **119 success, 0 failure, 0 skipped, 0 warning, 1 info**.
+Since 2026-09-26, the fixture serves the deprecated (SEP-2577) sampling and
+roots input requests through `Snodo.Sampling` and `Snodo.Roots`: the tools
+`test_input_required_result_sampling`, `test_input_required_result_list_roots`,
+`test_input_required_result_multiple_inputs`,
+`test_input_required_result_capabilities`, and the `server-stateless`
+diagnostic `test_missing_capability`, which the dialect refuses with `-32021`
+when the client has not declared `sampling`. Six checks that failed now pass,
+and the runner reaches three `-complete` checks it could not emit before.
 
-The five remaining required scenarios all depend on the deprecated sampling
-and roots features, which Snodo does not implement. Internal and
-official-client elicitation capability tests do not substitute for the frozen
-runner's sampling-specific diagnostics.
-
-- [Current human-readable report](results/2026-09-26-alpha.11-summary.md)
-- [Current machine-readable report](results/2026-09-26-alpha.11-summary.json)
-- [Retained per-check outcomes](results/2026-09-26-alpha.11-checks.json)
+- [Current human-readable report](results/2026-09-29-alpha.11-summary.md)
+- [Current machine-readable report](results/2026-09-29-alpha.11-summary.json)
+- [Retained per-check outcomes](results/2026-09-29-alpha.11-checks.json)
+- [Historical September 26 report](results/2026-09-26-alpha.11-summary.md)
 - [Historical September 14 report](results/2026-09-14-alpha.11-summary.md)
 - [Historical August 25 report](results/2026-07-28-alpha.11-summary.md)
 
@@ -118,10 +119,12 @@ scenario. Even newly passing checks require a deliberate baseline review.
 A failure-free scenario counts only when it has semantic successes and no
 warnings or skipped checks; a schema-only success cannot stand in for a fixture.
 
-The official runner still exits **1** for this partial implementation. The managed
-lane can exit **0** only when those same failures match the reviewed baseline;
-the report retains the runner exit code, failures, and **32/37** score. Never
-call a passing regression gate full protocol conformance.
+The official runner exits **0** since 2026-09-29: its exit code follows the
+scored scenarios, and the eight unscored Tasks wire-schema failures stay in the
+baseline as failures. The managed lane exits **0** only when every check matches
+the reviewed baseline; the report retains the runner exit code, failures, and
+the **37/37** score. Never call a passing regression gate full protocol
+conformance.
 
 ## Manual runner
 
@@ -163,8 +166,8 @@ validation.
 ## Additional server lanes
 
 - `server-plug` runs the same 2026-07-28 fixture through `Snodo.Transport.Plug`
-  on Bandit instead of the native listener. On 2026-09-26 it matched the native
-  lane check for check (32/37), so it shares `expected-failures.json`: any
+  on Bandit instead of the native listener. On 2026-09-29 it matched the native
+  lane check for check (37/37), so it shares `expected-failures.json`: any
   difference between the two listeners fails one of the gates.
 - `server-2025-11-25` enables the initialize-era dialects next to 2026-07-28 on
   a fixture with tools, resources, prompts, and completion, and runs the frozen
@@ -183,7 +186,7 @@ validation.
   [expected-failures-2025-06-18.json](expected-failures-2025-06-18.json) still
   gates every change.
 
-Results: [Plug](results/2026-09-26-plug-alpha.11-summary.md),
+Results: [Plug](results/2026-09-29-plug-alpha.11-summary.md),
 [2025-11-25](results/2026-09-26-2025-11-25-alpha.11-summary.md),
 [2025-06-18](results/2026-09-26-2025-06-18-alpha.11-summary.md).
 

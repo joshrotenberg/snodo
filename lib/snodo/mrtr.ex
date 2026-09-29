@@ -8,10 +8,15 @@ defmodule Snodo.MRTR do
   Components should consume only the input IDs they need, re-request missing
   answers, and perform effects only after validating input and any state.
 
-  This slice implements elicitation and state-only continuations. Deprecated
-  roots and sampling input requests remain unsupported. Extensions retain
-  their own negotiated routes and wire results; ordinary core results still
-  pass the selected dialect's admission after extension middleware completes.
+  An input request is an elicitation (`Snodo.Elicitation`), a sampling request
+  (`Snodo.Sampling`), or a roots request (`Snodo.Roots`); a result may also be
+  a state-only continuation. Sampling and roots are deprecated by SEP-2577 but
+  still defined. Each kind validates its own request shape and is checked
+  against the client capabilities of the current request; a result carrying a
+  request the client cannot fulfil fails with `-32021` and the merged
+  `requiredCapabilities`. Extensions retain their own negotiated routes and
+  wire results; ordinary core results still pass the selected dialect's
+  admission after extension middleware completes.
   """
 
   alias Snodo.Context
@@ -19,8 +24,15 @@ defmodule Snodo.MRTR do
   alias Snodo.Error
   alias Snodo.JSONValue
   alias Snodo.Result
+  alias Snodo.Roots
+  alias Snodo.Sampling
 
   @operations [:tools_call, :resource_read, :prompt_get]
+  @kinds %{
+    "elicitation/create" => Elicitation,
+    "sampling/createMessage" => Sampling,
+    "roots/list" => Roots
+  }
 
   @doc false
   @spec inspect_params(map()) :: :ok | {:error, String.t()}
@@ -94,7 +106,7 @@ defmodule Snodo.MRTR do
 
   defp validate_requests(requests) when is_map(requests) do
     Enum.reduce_while(requests, :ok, fn {_id, request}, :ok ->
-      case Elicitation.validate_request(request) do
+      case validate_request(request) do
         :ok -> {:cont, :ok}
         {:error, _reason} -> {:halt, :error}
       end
@@ -103,12 +115,26 @@ defmodule Snodo.MRTR do
 
   defp validate_requests(_invalid), do: :error
 
+  defp validate_request(%{"method" => method} = request) when is_map_key(@kinds, method),
+    do: Map.fetch!(@kinds, method).validate_request(request)
+
+  defp validate_request(_request), do: {:error, "Unsupported input request kind"}
+
+  # Every request is already valid here, so each has a known kind. The error
+  # names the full requirement of each unsupported request as a
+  # ClientCapabilities object, merging nested settings such as sampling.tools.
   defp require_capabilities(requests, context) do
     required =
-      for {_id, request} <- requests,
-          not Elicitation.supported?(request, context.client_capabilities),
-          into: %{},
-          do: {Map.get(request["params"], "mode", "form"), %{}}
+      Enum.reduce(requests, %{}, fn {_id, %{"method" => method} = request}, required ->
+        kind = Map.fetch!(@kinds, method)
+
+        if kind.supported?(request, context.client_capabilities) do
+          required
+        else
+          {name, settings} = kind.required_capability(request)
+          Map.update(required, name, settings, &Map.merge(&1, settings))
+        end
+      end)
 
     if map_size(required) == 0 do
       :ok
@@ -118,7 +144,7 @@ defmodule Snodo.MRTR do
          code: -32_021,
          kind: :protocol,
          message: "Missing required client capability",
-         data: %{"requiredCapabilities" => %{"elicitation" => required}}
+         data: %{"requiredCapabilities" => required}
        }}
     end
   end

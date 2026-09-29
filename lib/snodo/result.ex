@@ -206,10 +206,12 @@ defmodule Snodo.Result do
 
       Result.input_required(input_requests: %{"approval" => request})
 
-  The current request ends when this result is sent. The client may retry with
-  a fresh ID and new `Snodo.Context.input_responses` / `request_state` values, or
-  never retry. Keep side effects explicit and defer them until inputs are ready.
-  Use `Snodo.MRTR.State` when state influences business logic; a plain string is
+  Bare input requests come from `Snodo.Elicitation`, or from the deprecated
+  `Snodo.Sampling` and `Snodo.Roots` kinds. The current request ends when this
+  result is sent. The client may retry with a fresh ID and new
+  `Snodo.Context.input_responses` / `request_state` values, or never retry.
+  Keep side effects explicit and defer them until inputs are ready. Use
+  `Snodo.MRTR.State` when state influences business logic; a plain string is
   not integrity protection. The dialect validates placement and peer support.
 
   Prefer a nonempty input map or a state-only continuation. The pinned official

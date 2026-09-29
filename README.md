@@ -20,8 +20,8 @@ initialize-era clients (`2025-11-25` and `2025-06-18`) over HTTP and stdio.
   prompts, completion, pagination, `subscriptions/listen`, progress,
   cancellation, and multi round-trip requests with elicitation.
 - **No runtime dependencies** in the core: it uses Elixir's built-in `JSON`
-  and OTP. Optional sibling packages add Tasks, Plug, and full JSON Schema
-  validation.
+  and OTP. Optional sibling packages add Tasks, Plug, full JSON Schema
+  validation, and `:telemetry` events.
 
 ## Packages
 
@@ -30,6 +30,7 @@ initialize-era clients (`2025-11-25` and `2025-06-18`) over HTTP and stdio.
 | [`snodo`](https://hex.pm/packages/snodo) | Protocol core, router, server DSL, client, stdio and HTTP transports | [HexDocs](https://hexdocs.pm/snodo) |
 | [`snodo_plug`](https://hex.pm/packages/snodo_plug) | `Snodo.Transport.Plug` for Plug and Bandit applications | [HexDocs](https://hexdocs.pm/snodo_plug) |
 | [`snodo_jsv`](https://hex.pm/packages/snodo_jsv) | Full JSON Schema 2020-12 validation through JSV | [HexDocs](https://hexdocs.pm/snodo_jsv) |
+| [`snodo_telemetry`](https://hex.pm/packages/snodo_telemetry) | `Snodo.Instrumentation.Telemetry`, an instrumentation sink that emits `:telemetry` events | [HexDocs](https://hexdocs.pm/snodo_telemetry) |
 | [`snodo_tasks`](https://hex.pm/packages/snodo_tasks) | The `io.modelcontextprotocol/tasks` extension with an application-owned store and runner | [HexDocs](https://hexdocs.pm/snodo_tasks) |
 | [`snodo_tasks_postgres`](https://hex.pm/packages/snodo_tasks_postgres) | PostgreSQL store for Tasks | [HexDocs](https://hexdocs.pm/snodo_tasks_postgres) |
 | [`snodo_tasks_sqlite`](https://hex.pm/packages/snodo_tasks_sqlite) | SQLite store for Tasks | [HexDocs](https://hexdocs.pm/snodo_tasks_sqlite) |
@@ -142,8 +143,9 @@ use Snodo.Server,
 They cover tools, resources, prompts, completion, and pagination, over HTTP
 without sessions and over stdio. They add no session storage.
 
-Against the frozen official conformance suite, 32 of 37 `2026-07-28` server
-scenarios pass. On the client side, 6 of 32 pass: 25 of the client scenarios
+Against the frozen official conformance suite, all 37 `2026-07-28` server
+scenarios pass; that is the pinned runner's score, not a claim of full revision
+conformance. On the client side, 6 of 32 pass: 25 of the client scenarios
 cover OAuth, which `Snodo.Client` does not implement. The [compliance guide](https://hexdocs.pm/snodo/protocol-compliance.html) lists
 what is measured and what is not. Design records from the project's history are
 in [docs/history](https://github.com/joshrotenberg/snodo/blob/main/docs/history/README.md).
@@ -153,7 +155,7 @@ in [docs/history](https://github.com/joshrotenberg/snodo/blob/main/docs/history/
 ```sh
 mix setup            # fetch dependencies for every package; rerun after a mix.lock changes
 mix quality          # format, compile, Credo, tests, examples, and every sibling package
-mix quality.types    # Dialyzer across all six packages
+mix quality.types    # Dialyzer across all seven packages
 mix snodo.contract   # the protocol contract inventory
 ```
 

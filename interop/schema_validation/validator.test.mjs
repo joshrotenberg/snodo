@@ -28,10 +28,40 @@ test("recursive MRTR request definitions are active, not only the envelope", () 
   assert.throws(() => validateEmission("tools/call", message));
 });
 
+test("embedded sampling and roots requests are validated as their concrete definitions", () => {
+  const message = { jsonrpc: "2.0", id: 4, result: { resultType: "input_required", inputRequests: {
+    summary: { method: "sampling/createMessage", params: {
+      messages: [{ role: "user", content: { type: "text", text: "Summarize" } }], maxTokens: 32,
+    } },
+    client_roots: { method: "roots/list", params: {} },
+  } } };
+  assert.deepEqual(validateEmission("tools/call", message),
+    ["CallToolResultResponse", "InputRequiredResult", "CreateMessageRequest", "ListRootsRequest"]);
+  const damaged = structuredClone(message);
+  damaged.result.inputRequests.summary.params.maxTokens = "32";
+  assert.throws(() => validateEmission("tools/call", damaged));
+  assert.throws(() => validate("CreateMessageRequest", damaged.result.inputRequests.summary), /CreateMessageRequest:/);
+  const unmapped = structuredClone(message);
+  unmapped.result.inputRequests.summary = { method: "logging/setLevel", params: { level: "info" } };
+  assert.throws(() => validateEmission("tools/call", unmapped));
+});
+
+test("the -32021 refusal validates its named response, whose requiredCapabilities is an object", () => {
+  const message = { jsonrpc: "2.0", id: 5, error: { code: -32021, message: "Missing required client capability",
+    data: { requiredCapabilities: { sampling: {}, roots: {} } } } };
+  assert.deepEqual(validateEmission("tools/call", message), ["JSONRPCErrorResponse", "MissingRequiredClientCapabilityError"]);
+  message.error.data.requiredCapabilities = ["sampling"];
+  // The generic envelope accepts any data; only the named error rejects the list.
+  validate("JSONRPCErrorResponse", message);
+  assert.throws(() => validateEmission("tools/call", message), /MissingRequiredClientCapabilityError/);
+  const unnamed = { jsonrpc: "2.0", id: 6, error: { code: -32000, message: "Application error" } };
+  assert.deepEqual(validateEmission("tools/call", unnamed), ["JSONRPCErrorResponse"]);
+});
+
 test("validation never applies defaults, coerces numbers, or drops extra keys", () => {
   const message = { jsonrpc: "2.0", id: 3, error: { code: -32602, message: "Invalid", extra: true } };
   const before = structuredClone(message);
-  validateEmission("tools/call", message);
+  assert.deepEqual(validateEmission("tools/call", message), ["JSONRPCErrorResponse", "InvalidParamsError"]);
   assert.deepEqual(message, before);
   message.error.code = "-32602";
   assert.throws(() => validateEmission("tools/call", message));
