@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.3.1](https://github.com/joshrotenberg/snodo/compare/v0.3.0...v0.3.1) (2026-09-29)
+
+
+### Features
+
+* add reusable Tasks store contract tests ([#172](https://github.com/joshrotenberg/snodo/issues/172)) ([6b03f90](https://github.com/joshrotenberg/snodo/commit/6b03f904d17cb4e39879b93b82a4a09c67bc379b))
+* add title, icons, and metadata to tool definitions ([#169](https://github.com/joshrotenberg/snodo/issues/169)) ([6e04d22](https://github.com/joshrotenberg/snodo/commit/6e04d2205116c019cd94da8454d693763e81df47))
+* attest release tarballs ([#175](https://github.com/joshrotenberg/snodo/issues/175)) ([550acf1](https://github.com/joshrotenberg/snodo/commit/550acf1275716df0d1f5e3d38f884ca4e0f03756))
+* deliver progress notifications in Snodo.Client ([#177](https://github.com/joshrotenberg/snodo/issues/177)) ([361595b](https://github.com/joshrotenberg/snodo/commit/361595b874c3984b9d4bc4cc23752ea1486b3a9a))
+
+
+### Bug Fixes
+
+* exclude repository Mix tasks from sibling packages ([#168](https://github.com/joshrotenberg/snodo/issues/168)) ([d785636](https://github.com/joshrotenberg/snodo/commit/d785636a8d34f4fb21566fcdf3ce6ab338ad1e73))
+
+
+### Performance Improvements
+
+* index Hub resource subscriptions by URI ([#173](https://github.com/joshrotenberg/snodo/issues/173)) ([1238f05](https://github.com/joshrotenberg/snodo/commit/1238f05f1f74b5f1341f0996dfe079eeb4671550))
+
 ## [0.3.0](https://github.com/joshrotenberg/snodo/compare/v0.2.1...v0.3.0) (2026-09-27)
 
 
