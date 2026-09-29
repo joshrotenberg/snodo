@@ -189,24 +189,37 @@ test("a sampling or roots check that fails again is a new failure, not a stale b
 });
 
 test("the frozen client check inventory passes without waiving its partial score", async () => {
-  const evidence = await frozenEvidence("2026-09-26-client-alpha.11-checks.json", "expected-failures-client.json");
+  const evidence = await frozenEvidence("2026-09-29-client-alpha.11-checks.json", "expected-failures-client.json");
   assert.equal(Object.keys(evidence.baseline.checkInventory).length, 39);
   const report = summarize(evidence.manifest, evidence.results, evidence.baseline, "client");
   assert.equal(report.regression.passed, true);
   assert.deepEqual(report.regression.checkStatusDrift, []);
-  assert.equal(report.score.passedScenarios, 6);
+  assert.equal(report.score.passedScenarios, 30);
   assert.equal(report.score.status, "partial");
+  assert.equal(evidence.baseline.failures.length, 11);
 });
 
 test("a regression in the Mcp-Param checks fails the client gate", async () => {
-  const evidence = await frozenEvidence("2026-09-26-client-alpha.11-checks.json", "expected-failures-client.json");
+  const evidence = await frozenEvidence("2026-09-29-client-alpha.11-checks.json", "expected-failures-client.json");
   for (const check of evidence.results["http-custom-headers"]) {
     if (check.id !== "sep-2243-client-omit-null") check.status = "FAILURE";
   }
   const report = summarize(evidence.manifest, evidence.results, evidence.baseline, "client");
   assert.equal(report.regression.passed, false);
   assert.equal(report.regression.unexpectedFailures.length, 17);
-  assert.equal(report.score.passedScenarios, 5);
+  assert.equal(report.score.passedScenarios, 29);
+});
+
+test("an auth check that regresses to a warning fails the client gate", async () => {
+  const evidence = await frozenEvidence("2026-09-29-client-alpha.11-checks.json", "expected-failures-client.json");
+  for (const check of evidence.results["auth/scope-step-up"]) {
+    if (check.id === "sep-2350-scope-union-on-reauth") check.status = "WARNING";
+  }
+  const report = summarize(evidence.manifest, evidence.results, evidence.baseline, "client");
+  assert.equal(report.regression.passed, false);
+  assert.deepEqual(report.regression.unexpectedFailures, []);
+  assert.equal(report.regression.checkStatusDrift.length, 1);
+  assert.equal(report.score.passedScenarios, 29);
 });
 
 test("the frozen 2025-11-25 lane inventory passes without waiving its partial score", async () => {
