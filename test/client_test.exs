@@ -8,6 +8,7 @@ defmodule Snodo.ClientTest do
   alias Snodo.Protocol.V2026_07_28
   alias SnodoTest.MRTR.Choice
   alias SnodoTest.MRTR.Server, as: ChoiceServer
+  alias SnodoTest.MRTR.UrlTool
   alias SnodoTest.TestAuthorization.Policy
   alias SnodoTest.TestFixtures
   alias SnodoTest.TestPrompts.PackageAnalysis
@@ -437,7 +438,25 @@ defmodule Snodo.ClientTest do
              ) ==
                %{"elicitation" => %{"form" => %{}, "url" => %{}}, "experimental" => %{"x" => %{}}}
 
+      assert declared(input_handlers: %{form: form}, client_capabilities: %{"elicitation" => %{}}) ==
+               %{"elicitation" => %{"form" => %{}}}
+
+      # Without handlers the declared capabilities go out as given.
       assert declared([]) == %{}
+      assert declared(client_capabilities: %{"elicitation" => %{}}) == %{"elicitation" => %{}}
+
+      assert {:ok, %Client{client_capabilities: %{"elicitation" => true}}} =
+               Client.direct(TestFixtures.runtime(),
+                 client_capabilities: %{"elicitation" => true}
+               )
+
+      # A handler cannot merge its entry into a value that is not a map.
+      assert_raise ArgumentError, ~r/declares "elicitation" as true/, fn ->
+        Client.direct(TestFixtures.runtime(),
+          input_handlers: %{form: form},
+          client_capabilities: %{"elicitation" => true}
+        )
+      end
     end
 
     test "answer_input: false hands the input_required result to the caller" do
@@ -463,20 +482,101 @@ defmodule Snodo.ClientTest do
                 code: -32_602,
                 kind: :protocol,
                 data: %{"inputRequest" => "consent"},
-                cause: {:no_input_handler, :url}
+                cause: {:no_input_handler, :url, %{"inputRequests" => %{"consent" => _}}}
               }} = Client.call_tool(client, "consent")
 
       {:ok, client} = Client.connect({CannedTransport, self()}, input_handlers: %{form: form})
 
       canned(%{"inputRequests" => %{"r" => %{"method" => "roots/list"}}})
 
-      assert {:error, %Error{code: -32_602, cause: {:no_input_handler, "roots/list"}}} =
+      assert {:error, %Error{code: -32_602, cause: {:no_input_handler, "roots/list", _}}} =
                Client.discover(client)
 
       canned(%{"inputRequests" => %{"r" => %{"params" => %{}}}})
 
-      assert {:error, %Error{code: -32_602, cause: {:no_input_handler, nil}}} =
+      assert {:error, %Error{code: -32_602, cause: {:no_input_handler, nil, _}}} =
                Client.discover(client)
+    end
+
+    test "no handler runs unless every request in the round has one" do
+      form = fn _params -> flunk("the form handler was called") end
+      {:ok, client} = Client.connect({CannedTransport, self()}, input_handlers: %{form: form})
+
+      requests = %{
+        "1" => Choice.request(),
+        "2" => UrlTool.request()
+      }
+
+      canned(%{"inputRequests" => requests, "requestState" => "s1"})
+
+      assert {:error,
+              %Error{
+                code: -32_602,
+                data: %{"inputRequest" => "2"},
+                cause: {:no_input_handler, :url, %{"inputRequests" => ^requests}}
+              }} = Client.discover(client)
+
+      # The one request was sent and nothing was retried.
+      assert_receive {:canned_request, _message, _opts}
+      refute_receive {:canned_request, _message, _opts}, 100
+    end
+
+    test "handlers run in the sort order of the request IDs" do
+      test = self()
+
+      form = fn %{"message" => message} ->
+        send(test, {:asked, message})
+        {:ok, accepted("x")}
+      end
+
+      {:ok, client} = Client.connect({CannedTransport, self()}, input_handlers: %{form: form})
+
+      requests =
+        Map.new(~w(2 10 1), fn id ->
+          {id, put_in(Choice.request(), ["params", "message"], "request #{id}")}
+        end)
+
+      canned(%{"inputRequests" => requests})
+      assert {:ok, %{"canned" => true}} = Client.discover(client)
+
+      assert_receive {:asked, "request 1"}
+      assert_receive {:asked, "request 10"}
+      assert_receive {:asked, "request 2"}
+    end
+
+    test "a malformed input request is a -32000 error and no handler runs" do
+      form = fn _params -> flunk("the form handler was called") end
+      url = fn _params -> flunk("the URL handler was called") end
+
+      {:ok, client} =
+        Client.connect({CannedTransport, self()}, input_handlers: %{form: form, url: url})
+
+      form_params = Choice.request()["params"]
+      url_params = UrlTool.request()["params"]
+
+      malformed = [
+        "junk",
+        %{"method" => "elicitation/create", "params" => "junk"},
+        %{"method" => "elicitation/create", "params" => nil},
+        %{"method" => "elicitation/create", "params" => 7},
+        %{"method" => "elicitation/create"},
+        %{"method" => "elicitation/create", "params" => Map.delete(form_params, "message")},
+        %{
+          "method" => "elicitation/create",
+          "params" => Map.delete(form_params, "requestedSchema")
+        },
+        %{"method" => "elicitation/create", "params" => Map.delete(url_params, "url")},
+        %{"method" => "elicitation/create", "params" => Map.delete(url_params, "message")}
+      ]
+
+      for request <- malformed do
+        requests = %{"r" => request}
+        canned(%{"inputRequests" => requests})
+
+        assert {:error,
+                %Error{code: -32_000, kind: :transport, cause: %{"inputRequests" => ^requests}}} =
+                 Client.discover(client)
+      end
     end
 
     test "a handler failure is a -32603 error and an exception propagates" do
@@ -494,7 +594,8 @@ defmodule Snodo.ClientTest do
                 %Error{
                   code: -32_603,
                   kind: :execution,
-                  cause: {:input_handler, "choice", ^reason}
+                  cause:
+                    {:input_handler, "choice", ^reason, %{"inputRequests" => %{"choice" => _}}}
                 }} =
                  Client.call_tool(client, "choice")
       end

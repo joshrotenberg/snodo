@@ -107,12 +107,18 @@ handler is a function of one argument: it receives the request's `params`
 
 The declared client capabilities follow the handlers: `:form` adds
 `"elicitation" => %{"form" => %{}}` and `:url` adds `"url"` next to it, merged
-with any `:client_capabilities` given. A server therefore does not ask for a
-kind the client cannot answer.
+with any `:client_capabilities` given. An explicit `"elicitation" => %{}` next
+to a `:url` handler is kept as form. A declared entry the handlers need to
+merge into must be a map; `"elicitation" => true` with a handler installed
+raises `ArgumentError`. A server therefore does not ask for a kind the client
+cannot answer.
 
-When a result asks for input, the client calls the handler of each request in
-the calling process, then sends the request again, on a fresh request ID, with
-the responses as `inputResponses` and the result's `requestState` unchanged.
+When a result asks for input, the client first matches every request to a
+handler and checks that its `params` carry the keys of its kind; only then
+does it call the handlers, one at a time in the calling process, in the sort
+order of the request IDs. It sends the request again, on a fresh request ID,
+with the responses as `inputResponses` and the result's `requestState`
+unchanged.
 That repeats until the server returns a complete result or `:max_input_rounds`
 results (10 by default) have been answered. A result that carries only a
 `requestState` is sent again with it after 250 ms, as the official TypeScript
@@ -122,14 +128,14 @@ client does, and counts as a round. Each round has its own `timeout:`, and
 | Condition | Return |
 |---|---|
 | no handlers installed, or `answer_input: false` on the call | `{:input_required, result}` |
-| a request of a kind with no handler, or with a method the client does not know | -32602, `kind: :protocol`, `cause: {:no_input_handler, kind}` |
-| a handler returned `{:error, reason}`, or something other than `{:ok, response}` with a valid `"action"` | -32603, `kind: :execution`, `cause: {:input_handler, id, reason}` |
-| the server still required input after `:max_input_rounds` rounds | -32000, `kind: :transport`, `data: %{"maxInputRounds" => n}`, `cause: {:max_input_rounds, last_result}` |
-| a result with nothing to answer and no `requestState` | -32000, `kind: :transport` |
+| a request of a kind with no handler, or with a method the client does not know (no handler has run) | -32602, `kind: :protocol`, `cause: {:no_input_handler, kind, result}` |
+| a handler returned `{:error, reason}`, or something other than `{:ok, response}` with a valid `"action"` | -32603, `kind: :execution`, `cause: {:input_handler, id, reason, result}` |
+| the server still required input after `:max_input_rounds` rounds | -32000, `kind: :transport`, `data: %{"maxInputRounds" => n}`, `cause: {:max_input_rounds, result}` |
+| a result with nothing to answer and no `requestState`, or an input request whose `params` is not a map or lacks `"message"` and `"requestedSchema"` (form) or `"message"` and `"url"` (URL); no handler has run | -32000, `kind: :transport`, `cause: result` |
 
-A handler that raises stops the call with that exception. The round-limit
-error carries the last `input_required` result in its `cause`, so the caller
-can finish the flow by hand with `input_responses:` and `request_state:`.
+A handler that raises stops the call with that exception. Each error carries
+the last `input_required` result at the end of its `cause`, so the caller can
+finish the flow by hand with `input_responses:` and `request_state:`.
 Responses are not checked against `requestedSchema` on the client; the server
 validates them and answers -32602 for an invalid one, as it does for a
 hand-written response.

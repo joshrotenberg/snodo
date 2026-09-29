@@ -360,27 +360,35 @@ defmodule Snodo.Client do
       request.
 
   With `:input_handlers` installed, an `input_required` result is answered
-  in the calling process: each entry of `"inputRequests"` goes to the
-  handler for its kind, and the request is sent again, on a fresh ID, with
-  the responses as `inputResponses` and the result's `"requestState"`
+  in the calling process. Every entry of `"inputRequests"` is first matched
+  to the handler for its kind and checked for the `params` that kind
+  documents; only when all of them pass do the handlers run, one request at
+  a time in the sort order of the request IDs (strings, so `"10"` sorts
+  before `"2"`). The request is then sent again, on a fresh ID, with the
+  responses as `inputResponses` and the result's `"requestState"`
   unchanged. That repeats until the server returns a complete result or
   `:max_input_rounds` results have been answered. A result that carries only
   a `"requestState"` is sent again with it after 250 milliseconds and counts
   as a round. Each round has its own `:timeout`, and `:progress` is delivered
-  for every round. The loop stops with:
+  for every round. The loop stops with an error whose `cause` ends with the
+  last `input_required` result, so the caller can finish the flow by hand:
 
-    * -32602 (`kind: :protocol`, `cause: {:no_input_handler, kind}`) for a
-      request of a kind with no handler; `kind` is the method string for a
-      method the client does not know, and `nil` for an entry without one.
-    * -32603 (`kind: :execution`, `cause: {:input_handler, id, reason}`) when
-      a handler returned `{:error, reason}`, a value other than
+    * -32602 (`kind: :protocol`, `cause: {:no_input_handler, kind, result}`)
+      for a request of a kind with no handler; `kind` is the method string
+      for a method the client does not know, and `nil` for an entry without
+      one. No handler has run.
+    * -32603 (`kind: :execution`, `cause: {:input_handler, id, reason, result}`)
+      when a handler returned `{:error, reason}`, a value other than
       `{:ok, response}` (`reason` is `{:invalid_return, value}`), or a
       response without a valid `"action"` (`{:invalid_response, response}`).
       An exception raised by a handler propagates to the caller.
     * -32000 (`kind: :transport`, `data: %{"maxInputRounds" => limit}`,
-      `cause: {:max_input_rounds, last_result}`) at the round limit.
-    * -32000 (`kind: :transport`) for a result with nothing to answer and no
-      `"requestState"`.
+      `cause: {:max_input_rounds, result}`) at the round limit.
+    * -32000 (`kind: :transport`, `cause: result`) for a malformed result: one
+      with nothing to answer and no `"requestState"`, or an input request
+      whose `params` is not an object or lacks the keys of its kind
+      (`"message"` and `"requestedSchema"` for a form, `"message"` and
+      `"url"` for a URL). No handler has run.
 
   `subscriptions/listen` raises `ArgumentError`: it needs a stream to deliver
   events on, and dispatching it would open the application's source.
