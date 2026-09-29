@@ -225,6 +225,29 @@ defmodule Snodo.ClientHTTPTest do
                Client.call_tool(client, "choice", %{}, input_responses: %{"choice" => answer})
     end
 
+    test "input handlers answer form and URL requests over HTTP" do
+      handlers = %{
+        form: fn %{"mode" => "form"} ->
+          {:ok, %{"action" => "accept", "content" => %{"label" => "http"}}}
+        end,
+        url: fn %{"mode" => "url"} -> {:ok, %{"action" => "accept"}} end
+      }
+
+      client = connect(serve(ChoiceServer.runtime()), input_handlers: handlers)
+
+      assert {:ok, %{"structuredContent" => %{"label" => "http"}}} =
+               Client.call_tool(client, "choice")
+
+      assert {:ok, %{"structuredContent" => %{"action" => "accept"}}} =
+               Client.call_tool(client, "consent")
+
+      assert {:ok, %{"structuredContent" => %{"first" => "http", "second" => "http"}}} =
+               Client.call_tool(client, "sequential_choices")
+
+      assert {:input_required, %{"inputRequests" => %{"choice" => _request}}} =
+               Client.call_tool(client, "choice", %{}, answer_input: false)
+    end
+
     test "a timeout returns -32001 and the listener keeps serving" do
       client = connect(serve(TestFixtures.runtime()))
 

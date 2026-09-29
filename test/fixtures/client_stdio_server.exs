@@ -66,7 +66,9 @@ router =
       SnodoTest.ClientStdioFixture.Parked,
       SnodoTest.ClientStdioFixture.Halt,
       SnodoTest.ClientStdioFixture.Large,
-      SnodoTest.TestTools.Ticks
+      SnodoTest.TestTools.Ticks,
+      SnodoTest.MRTR.Tool,
+      SnodoTest.MRTR.UrlTool
     ],
     Snodo.Router.new(),
     &Snodo.Router.register_tool(&2, &1)
