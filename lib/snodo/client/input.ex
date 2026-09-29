@@ -5,16 +5,12 @@ defmodule Snodo.Client.Input do
   #
   # `@kinds` is the registry. Each kind names the embedded request method it
   # answers, the elicitation `mode` when the method has one, and the client
-  # capability path that advertises it. A new kind is one more entry here and
-  # one more `valid_response?/2` clause; the loop in `Snodo.Client` does not
-  # change.
+  # capability path that advertises it. A new kind is one more entry here, one
+  # more `valid_response?/2` clause, and one more member of
+  # `Snodo.Client.input_kind/0`; the loop in `Snodo.Client` does not change.
 
   alias Snodo.Client.Transport
   alias Snodo.Error
-
-  @type kind :: :form | :url
-  @type handler :: (map() -> {:ok, map()} | {:error, term()})
-  @type handlers :: %{optional(kind()) => handler()}
 
   @kinds %{
     form: %{method: "elicitation/create", mode: "form", capability: ["elicitation", "form"]},
@@ -24,7 +20,7 @@ defmodule Snodo.Client.Input do
   @elicitation_actions ~w(accept decline cancel)
 
   @doc false
-  @spec validate_handlers!(term()) :: handlers()
+  @spec validate_handlers!(term()) :: Snodo.Client.input_handlers()
   def validate_handlers!(handlers) when is_map(handlers) and not is_struct(handlers) do
     Enum.each(handlers, fn
       {kind, fun} when is_map_key(@kinds, kind) and is_function(fun, 1) ->
@@ -50,7 +46,7 @@ defmodule Snodo.Client.Input do
   end
 
   @doc false
-  @spec capabilities(handlers()) :: map()
+  @spec capabilities(Snodo.Client.input_handlers()) :: map()
   def capabilities(handlers) do
     Enum.reduce(handlers, %{}, fn {kind, _fun}, capabilities ->
       put_path(capabilities, @kinds[kind].capability)
@@ -74,7 +70,7 @@ defmodule Snodo.Client.Input do
   result with a `requestState` and no input requests has nothing to answer
   and returns `{:ok, %{}}`.
   """
-  @spec answer(handlers(), map()) :: {:ok, map()} | {:error, Error.t()}
+  @spec answer(Snodo.Client.input_handlers(), map()) :: {:ok, map()} | {:error, Error.t()}
   def answer(handlers, result) do
     requests = Map.get(result, "inputRequests", %{})
 

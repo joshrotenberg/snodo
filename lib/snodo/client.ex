@@ -70,6 +70,18 @@ defmodule Snodo.Client do
 
   @type response :: {:ok, map()} | {:input_required, map()} | {:error, Error.t()}
   @type list_kind :: :tools | :resources | :resource_templates | :prompts
+
+  @typedoc "A kind of input request a handler answers: one of the elicitation modes."
+  @type input_kind :: :form | :url
+
+  @typedoc """
+  Answers one input request. Receives the request's `params` map and returns
+  the response the server expects, or the reason the request was not answered.
+  """
+  @type input_handler :: (map() -> {:ok, map()} | {:error, term()})
+
+  @typedoc "The `:input_handlers` option: at most one handler per kind."
+  @type input_handlers :: %{optional(input_kind()) => input_handler()}
   @type target ::
           {:stdio, String.t(), [String.t()]}
           | {:http, String.t()}
@@ -82,7 +94,7 @@ defmodule Snodo.Client do
           client_info: map(),
           timeout: timeout(),
           max_pages: pos_integer(),
-          input_handlers: Input.handlers(),
+          input_handlers: input_handlers(),
           max_input_rounds: pos_integer()
         }
 
