@@ -78,50 +78,43 @@ defmodule SnodoTest.MRTR.InvalidTool do
   use Snodo.Tool, name: "invalid_input"
 
   @impl true
-  def call(%{"variant" => variant}, _context) do
-    result =
-      case variant do
-        "empty" ->
-          Snodo.Result.input_required()
+  def call(%{"variant" => variant}, _context), do: {:ok, variant(variant)}
 
-        "state_null" ->
-          Snodo.Result.input_required(request_state: nil)
+  defp variant("empty"), do: Snodo.Result.input_required()
+  defp variant("state_null"), do: Snodo.Result.input_required(request_state: nil)
+  defp variant("bad_request"), do: Snodo.Result.input_required(input_requests: %{"x" => %{}})
 
-        "bad_request" ->
-          Snodo.Result.input_required(input_requests: %{"x" => %{}})
+  defp variant("unknown_kind") do
+    Snodo.Result.input_required(
+      input_requests: %{"x" => %{"method" => "logging/setLevel", "params" => %{}}}
+    )
+  end
 
-        "unknown_kind" ->
-          Snodo.Result.input_required(
-            input_requests: %{"x" => %{"method" => "logging/setLevel", "params" => %{}}}
-          )
+  defp variant("bad_sampling") do
+    Snodo.Result.input_required(
+      input_requests: %{
+        "x" => %{"method" => "sampling/createMessage", "params" => %{"messages" => []}}
+      }
+    )
+  end
 
-        "bad_sampling" ->
-          Snodo.Result.input_required(
-            input_requests: %{
-              "x" => %{"method" => "sampling/createMessage", "params" => %{"messages" => []}}
-            }
-          )
+  defp variant("bad_roots") do
+    Snodo.Result.input_required(
+      input_requests: %{"x" => %{"method" => "roots/list", "params" => %{"cursor" => 1}}}
+    )
+  end
 
-        "bad_roots" ->
-          Snodo.Result.input_required(
-            input_requests: %{"x" => %{"method" => "roots/list", "params" => %{"cursor" => 1}}}
-          )
+  defp variant("state_only"),
+    do: Snodo.Result.input_required(request_state: "unused-opaque-marker")
 
-        "state_only" ->
-          Snodo.Result.input_required(request_state: "unused-opaque-marker")
+  defp variant("empty_requests"), do: Snodo.Result.input_required(input_requests: %{})
 
-        "empty_requests" ->
-          Snodo.Result.input_required(input_requests: %{})
-
-        "url" ->
-          Snodo.Result.input_required(
-            input_requests: %{
-              "x" => Snodo.Elicitation.url("Preview", "https://example.invalid/preview")
-            }
-          )
-      end
-
-    {:ok, result}
+  defp variant("url") do
+    Snodo.Result.input_required(
+      input_requests: %{
+        "x" => Snodo.Elicitation.url("Preview", "https://example.invalid/preview")
+      }
+    )
   end
 end
 
