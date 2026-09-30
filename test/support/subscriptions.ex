@@ -32,8 +32,8 @@ defmodule SnodoTest.TestSubscriptionHub do
     {:reply, {:ok, filter, {self(), token}}, state}
   end
 
-  def handle_call({:next, token}, from, state) do
-    subscription = get_in(state, [:subscriptions, token])
+  def handle_call({:next, token}, from, state) when is_map_key(state.subscriptions, token) do
+    subscription = Map.fetch!(state.subscriptions, token)
     notify(state.owner, {:subscription_next, subscription.request_id})
 
     case :queue.out(subscription.queue) do
@@ -47,6 +47,10 @@ defmodule SnodoTest.TestSubscriptionHub do
         {:noreply, put_in(state, [:subscriptions, token, :waiter], from)}
     end
   end
+
+  # The worker's puller can ask for the next event after close/3 removed the
+  # subscription; answer it the way Snodo.Subscription.Hub does.
+  def handle_call({:next, _token}, _from, state), do: {:reply, :closed, state}
 
   def handle_call({:emit, request_id, event}, _from, state) do
     {reply, state} = deliver_by_request_id(state, request_id, {:ok, event})
