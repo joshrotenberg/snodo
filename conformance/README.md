@@ -200,27 +200,34 @@ fixture project must be compiled in the dev environment. The harness drives
 `Snodo.Client` the way an application would and adds no protocol behavior:
 discover, list tools, call the tools the scenario context names (or every
 listed tool with arguments sampled from its schema), answer `input_required`
-results, and list and read resources and prompts when the server advertises
-them. For an `auth/*` scenario it installs a `Snodo.OAuth.Client` as the token
-provider, stands in for the browser by following the authorization redirect to
-the client's loopback listener, and takes pre-registered or client-credentials
+results through the client's input handlers (form, URL, sampling, and roots),
+and list and read resources and prompts when the server advertises them. For
+an `auth/*` scenario it installs a `Snodo.OAuth.Client` as the token provider,
+stands in for the browser by following the authorization redirect to the
+client's loopback listener, and takes pre-registered or client-credentials
 settings from the scenario context. The runner scores the traffic its scenario
 server records.
 
-The 2026-09-29 run passes **30/32** whole required scenarios, up from 6/32 on
-2026-09-26: every required `auth/*` scenario (metadata discovery at each
+The 2026-09-30 run passes **31/32** whole required scenarios, up from 7/32 on
+2026-09-29: every required `auth/*` scenario (metadata discovery at each
 location, client ID metadata documents, dynamic client registration and
 pre-registration, each token endpoint authentication method, scope selection
 and step-up, the retry limit, resource indicators and the resource mismatch
 check, `offline_access`, authorization server migration, and the `iss` checks)
-and the non-auth scenarios. Required checks: 403 success, 0 failure, 4
-skipped, 0 warning. The unscored `auth/client-credentials-basic`,
-`auth/client-credentials-jwt`, and `json-schema-2020-12-preservation`
-scenarios pass as well.
+and every non-auth scenario except `http-standard-headers`. Required checks:
+405 success, 0 failure, 2 skipped, 0 warning. The unscored
+`auth/client-credentials-basic`, `auth/client-credentials-jwt`, and
+`json-schema-2020-12-preservation` scenarios pass as well. The 2026-09-29 run,
+before `Snodo.OAuth.Client` existed, passed 7/32; `request-metadata` passes
+since that run because the harness installs input handlers for all four
+kinds, so the client declares the deprecated `sampling` and `roots`
+capabilities. The first run on 2026-09-26, before `Snodo.Client` sent
+`Mcp-Param-*` headers, passed 4/32.
 
-- [Client report](results/2026-09-29-client-alpha.11-summary.md)
-- [Client machine-readable report](results/2026-09-29-client-alpha.11-summary.json)
-- [Client per-check outcomes](results/2026-09-29-client-alpha.11-checks.json)
+- [Client report](results/2026-09-30-client-alpha.11-summary.md)
+- [Client machine-readable report](results/2026-09-30-client-alpha.11-summary.json)
+- [Client per-check outcomes](results/2026-09-30-client-alpha.11-checks.json)
+- [Historical September 29 client report](results/2026-09-29-client-alpha.11-summary.md)
 - [Historical September 26 client report](results/2026-09-26-client-alpha.11-summary.md)
 
 [expected-failures-client.json](expected-failures-client.json) follows the
@@ -233,9 +240,6 @@ pinned. The remaining gaps:
   authorization code or client credentials grant; DPoP (RFC 9449),
   enterprise-managed authorization (SEP-990), and workload identity
   federation are not implemented.
-- `request-metadata` is excluded from the score: the deprecated roots and
-  sampling capability checks are skipped because the client does not declare
-  them. Its other checks pass, including `io.modelcontextprotocol/clientInfo`.
 - `http-standard-headers` is excluded from the score: its `initialize` and
   `notifications/initialized` checks are skipped because a 2026-07-28 client
   sends neither method. Every method the client does send carries the correct

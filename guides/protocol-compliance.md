@@ -238,8 +238,9 @@ placement; the last two carry the `deprecated` lifecycle from SEP-2577.
 Literal requests cover malformed and partial input, repeated retries, mixed
 request kinds in one result, the merged `-32021` `requiredCapabilities`
 object, and all three permitted core operations. An independent pinned
-TypeScript client exercises automatic elicitation round trips over stdio and
-native HTTP; it does not exercise sampling or roots.
+TypeScript client exercises automatic elicitation, sampling, and roots round
+trips over stdio and native HTTP, including one result that asks for all
+three kinds.
 
 The 2026-09-14 external run now exercises nine additional ordinary MRTR scenarios.
 See [the MRTR guide](interactive-operations.md) for supported schema limits, state
@@ -269,15 +270,18 @@ historical evidence, not current scores.
 
 The runner's client leg measures `Snodo.Client` separately, through a harness
 that drives it against each scenario server, with `Snodo.OAuth.Client` from
-`snodo_oauth` as the token provider. The 2026-09-29 run passes 30 of 32
+`snodo_oauth` as the token provider. The 2026-09-30 run passes 31 of 32
 required client scenarios, including all 25 that cover OAuth: metadata
 discovery, client identity, PKCE, scope selection and step-up, resource
-indicators, and the `iss` checks. The two others are excluded from the score
-because a 2026-07-28 client sends no `initialize` and declares neither roots
-nor sampling. DPoP, enterprise-managed authorization, and workload identity
-federation are not implemented; their unscored scenarios stay in the
-baseline. See the
-[client leg notes](https://github.com/joshrotenberg/snodo/blob/main/conformance/README.md#client-leg).
+indicators, and the `iss` checks. The one other is excluded from the score
+because a 2026-07-28 client sends no `initialize`. The harness installs input
+handlers for all four kinds, so the client declares the deprecated `sampling`
+and `roots` capabilities and `request-metadata` passes whole, as it did on
+2026-09-29 when 7 of 32 passed. DPoP, enterprise-managed authorization, and
+workload identity federation are not implemented; their unscored scenarios
+stay in the baseline. See the
+[client leg notes](https://github.com/joshrotenberg/snodo/blob/main/conformance/README.md#client-leg)
+for the remaining gaps.
 
 Three more server lanes run in CI. The same fixture served through
 `Snodo.Transport.Plug` on Bandit matches the native listener check for check.

@@ -146,10 +146,9 @@ without sessions and over stdio. They add no session storage.
 
 Against the frozen official conformance suite, all 37 `2026-07-28` server
 scenarios pass; that is the pinned runner's score, not a claim of full revision
-conformance. On the client side, 30 of 32 pass, including the 25 that cover
-OAuth with `snodo_oauth` as the token provider; the two others are excluded
-from the score because a 2026-07-28 client sends no `initialize` and declares
-neither roots nor sampling. The [compliance guide](https://hexdocs.pm/snodo/protocol-compliance.html) lists
+conformance. On the client side, 31 of 32 pass, including the 25 that cover
+OAuth with `snodo_oauth` as the token provider; the other one is excluded from
+the score because a 2026-07-28 client sends no `initialize`. The [compliance guide](https://hexdocs.pm/snodo/protocol-compliance.html) lists
 what is measured and what is not. Design records from the project's history are
 in [docs/history](https://github.com/joshrotenberg/snodo/blob/main/docs/history/README.md).
 
