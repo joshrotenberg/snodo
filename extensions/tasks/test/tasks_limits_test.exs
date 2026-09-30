@@ -579,7 +579,7 @@ defmodule Snodo.TasksLimitsTest do
     path =
       Path.join(
         System.tmp_dir!(),
-        "snodo-tasks-#{label}-#{System.unique_integer([:positive])}.dets"
+        "snodo-tasks-#{label}-#{System.pid()}-#{System.unique_integer([:positive])}.dets"
       )
 
     on_exit(fn -> File.rm(path) end)

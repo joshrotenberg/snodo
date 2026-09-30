@@ -13,6 +13,17 @@ defmodule Snodo.Extensions.Tasks.Store.ContractTest do
       use Snodo.Extensions.Tasks.Store.ContractTest,
         start_store: &__MODULE__.start_contract_store/2
 
+  A store whose concurrent writers can be refused with a documented, retryable
+  backpressure result passes `:retryable?`, an arity-1 function that returns
+  true for such a result. The capacity check races two creations; a creation
+  refused that way is retried once after the race, so the check still requires
+  exactly one creation and one capacity refusal. Without `:retryable?`, no
+  result is retried.
+
+      use Snodo.Extensions.Tasks.Store.ContractTest,
+        start_store: &__MODULE__.start_contract_store/2,
+        retryable?: &(&1 == {:error, :database_busy})
+
   The suite checks the public store boundary. Run backend-specific persistence,
   restart, database transaction, and stress tests alongside it.
   """
@@ -21,6 +32,11 @@ defmodule Snodo.Extensions.Tasks.Store.ContractTest do
   alias Snodo.Extensions.Tasks.Store
   alias Snodo.Extensions.Tasks.Task, as: ProtocolTask
   alias Snodo.Extensions.Tasks.Work
+
+  @doc false
+  @spec retry(result, (result -> boolean()) | nil, (-> result)) :: result when result: term()
+  def retry(result, nil, _again), do: result
+  def retry(result, retryable, again), do: if(retryable.(result), do: again.(), else: result)
 
   @doc false
   @spec create(Store.ref(), String.t(), String.t(), (String.t() -> Context.t()), keyword()) ::
@@ -64,12 +80,13 @@ defmodule Snodo.Extensions.Tasks.Store.ContractTest do
   @doc "Injects the shared store contract tests into an ExUnit case."
   defmacro __using__(opts) do
     starter = Keyword.fetch!(opts, :start_store)
+    retryable = Keyword.get(opts, :retryable?)
 
     tests = [
       revision_test(starter),
       claim_test(starter),
       retry_test(starter),
-      capacity_test(starter),
+      capacity_test(starter, retryable),
       ttl_test(starter),
       input_test(starter)
     ]
@@ -209,7 +226,7 @@ defmodule Snodo.Extensions.Tasks.Store.ContractTest do
     end
   end
 
-  defp capacity_test(starter) do
+  defp capacity_test(starter, retryable) do
     quote do
       test "capacity counts atomic creations and separates scopes", context do
         store = unquote(starter).(context, max_tasks: 2, max_active_tasks_per_scope: 1)
@@ -222,6 +239,12 @@ defmodule Snodo.Extensions.Tasks.Store.ContractTest do
             Elixir.Task.async(fn -> ContractTest.create(store, id, "tenant-a", context_for) end)
           end)
           |> Elixir.Task.await_many(15_000)
+          |> Enum.zip(ids)
+          |> Enum.map(fn {result, id} ->
+            ContractTest.retry(result, unquote(retryable), fn ->
+              ContractTest.create(store, id, "tenant-a", context_for)
+            end)
+          end)
 
         assert Enum.count(results, &match?({:ok, %Snapshot{}}, &1)) == 1
 
