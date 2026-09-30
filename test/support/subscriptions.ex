@@ -32,19 +32,13 @@ defmodule SnodoTest.TestSubscriptionHub do
     {:reply, {:ok, filter, {self(), token}}, state}
   end
 
+  # The server stops a subscription's puller and closes its handle from
+  # different processes, so a pull can arrive after the close. Like a real
+  # source, the hub answers it rather than crashing the server.
   def handle_call({:next, token}, from, state) do
-    subscription = get_in(state, [:subscriptions, token])
-    notify(state.owner, {:subscription_next, subscription.request_id})
-
-    case :queue.out(subscription.queue) do
-      {{:value, value}, queue} ->
-        {:reply, value, put_in(state, [:subscriptions, token, :queue], queue)}
-
-      {:empty, _queue} when subscription.closed? ->
-        {:reply, :closed, state}
-
-      {:empty, _queue} ->
-        {:noreply, put_in(state, [:subscriptions, token, :waiter], from)}
+    case get_in(state, [:subscriptions, token]) do
+      nil -> {:reply, :closed, state}
+      subscription -> next(subscription, token, from, state)
     end
   end
 
@@ -84,6 +78,21 @@ defmodule SnodoTest.TestSubscriptionHub do
         if subscription.waiter, do: GenServer.reply(subscription.waiter, :closed)
         notify(state.owner, {:subscription_closed, subscription.request_id, reason})
         {:reply, :ok, %{state | subscriptions: subscriptions}}
+    end
+  end
+
+  defp next(subscription, token, from, state) do
+    notify(state.owner, {:subscription_next, subscription.request_id})
+
+    case :queue.out(subscription.queue) do
+      {{:value, value}, queue} ->
+        {:reply, value, put_in(state, [:subscriptions, token, :queue], queue)}
+
+      {:empty, _queue} when subscription.closed? ->
+        {:reply, :closed, state}
+
+      {:empty, _queue} ->
+        {:noreply, put_in(state, [:subscriptions, token, :waiter], from)}
     end
   end
 
