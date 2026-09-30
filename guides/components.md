@@ -60,6 +60,54 @@ Options include `:required`, `:description`, `:enum`, `:default`, `:pattern`,
 the length, item, and numeric bounds, and `:schema` to merge any other JSON
 Schema keywords.
 
+An `:object` or `{:array, :object}` argument can take a `do` block of further
+`argument` declarations. They become the properties of the object, or of each
+array item, and blocks can nest. `output` builds the output schema from the
+same declarations:
+
+```elixir
+defmodule MyServer.Order do
+  use Snodo.Tool.Simple, name: "order", description: "Place an order"
+
+  argument "customer", :object, required: true do
+    argument "id", :string, required: true
+    argument "email", :string
+  end
+
+  argument "lines", {:array, :object},
+    required: true,
+    min_items: 1,
+    additional_properties: false do
+    argument "sku", :string, required: true
+    argument "quantity", :integer, required: true, minimum: 1
+  end
+
+  output do
+    argument "order_id", :string, required: true
+    argument "total", :number, required: true
+  end
+
+  @impl true
+  def call(_arguments, _context) do
+    {:ok, Snodo.Result.structured(%{"order_id" => "o-1", "total" => 12.5})}
+  end
+end
+```
+
+`required: true` inside a block adds the name to that object's `"required"`
+list, so here `"customer"` requires `"id"` and each line requires `"sku"` and
+`"quantity"`. The router enforces only the top-level `"required"` list on its
+own; nested lists are enforced by an installed validator. A block argument also takes `additional_properties:`, which is
+set on the nested object; for an array that is the object in `"items"`, while
+the other options, such as `min_items:`, stay on the array. `output` takes
+`additional_properties:` and `schema:` for the output root. The result is the
+plain JSON Schema that `input_schema/1` and `output_schema/1` accept, checked
+when the module compiles. A block on another type, a repeated name inside a
+block, and a second `output` are compile errors, and the messages name the
+nested path, such as `argument "lines.sku"`. With an output schema, `call/2`
+must return structured content, which the runtime's schema validator checks
+(see [Validation](#validation)).
+
 Tools can set `title:`, `icons:`, and `metadata:` on `use Snodo.Tool`,
 `use Snodo.Tool.Simple`, or an inline `tool` block. Raw tools can also set
 them with `title/1`, `icons/1`, and `metadata/1` in the module body. For example:
