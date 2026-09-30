@@ -169,9 +169,11 @@ defmodule Snodo.Client.Input do
   end
 
   defp request_params(kind, request) do
-    case check_params(kind, Map.get(request, "params")) do
+    params = Map.get(request, "params", absent_params(@kinds[kind]))
+
+    case check_params(kind, params) do
       :ok ->
-        {:ok, Map.get(request, "params")}
+        {:ok, params}
 
       {:error, :not_an_object} ->
         {:error, Error.invalid_params("params must be an object")}

@@ -43,9 +43,9 @@ defmodule Snodo.Client do
   gets `initialize` with the highest initialize-era version instead. The
   `:protocol` option pins one version or narrows the list. On an
   initialize-era connection `session` holds what `initialize` returned, and
-  the requests the server sends to the client (`elicitation/create`) are
-  answered by the same `:input_handlers` that answer 2026-07-28 input
-  requests.
+  the requests the server sends to the client (`elicitation/create`,
+  `sampling/createMessage`, `roots/list`) are answered by the same
+  `:input_handlers` that answer 2026-07-28 input requests.
 
   Pass `progress:` to a request to receive the server's progress
   notifications for it while it runs:

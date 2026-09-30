@@ -938,6 +938,52 @@ defmodule Snodo.ClientHTTPTest do
                      1_000
     end
 
+    test "sampling and roots requests on the event stream reach their handlers" do
+      message = %{
+        "role" => "assistant",
+        "content" => %{"type" => "text", "text" => "hi"},
+        "model" => "m"
+      }
+
+      roots = %{"roots" => [%{"uri" => "file:///work"}]}
+
+      url =
+        legacy_server(fn %{"method" => "tools/call"} = call ->
+          events = [
+            %{
+              "jsonrpc" => "2.0",
+              "id" => "srv-1",
+              "method" => "sampling/createMessage",
+              "params" => %{"messages" => [], "maxTokens" => 5}
+            },
+            %{"jsonrpc" => "2.0", "id" => "srv-2", "method" => "roots/list"},
+            %{
+              "jsonrpc" => "2.0",
+              "id" => call["id"],
+              "result" => %{"content" => [%{"type" => "text", "text" => "done"}]}
+            }
+          ]
+
+          body = Enum.map_join(events, &"data: #{JSON.encode!(&1)}\n\n")
+          {200, [{"content-type", "text/event-stream"}], body}
+        end)
+
+      {:ok, client} =
+        negotiate(url,
+          input_handlers: %{
+            sampling: fn %{"maxTokens" => 5} -> {:ok, message} end,
+            roots: fn %{} -> {:ok, roots} end
+          }
+        )
+
+      assert client.client_capabilities["sampling"] == %{}
+      assert {:ok, %{"content" => [%{"text" => "done"}]}} = Client.call_tool(client, "ask")
+
+      assert_receive {:fake_http, headers, %{"id" => "srv-1", "result" => ^message}}, 1_000
+      assert headers["mcp-session-id"] == "s-1"
+      assert_receive {:fake_http, _headers, %{"id" => "srv-2", "result" => ^roots}}, 1_000
+    end
+
     test "a probe that times out, or gets a body that is not JSON-RPC, falls back to initialize" do
       keepalive = Stream.repeatedly(fn -> Process.sleep(50) && ": keepalive\n\n" end)
 

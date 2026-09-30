@@ -73,8 +73,9 @@ a server built on an older SDK, or a snodo server configured with only these
 dialects. By default `connect/2` probes with `server/discover` and falls back
 to `initialize` with 2025-11-25, then 2025-06-18; `protocol:` pins a version.
 The negotiated session, the `Mcp-Session-Id` handling, `DELETE` on close, and
-the routing of the server's own `elicitation/create` requests to the client's
-input handlers are described in the [client guide](client.md#protocol-versions).
+the routing of the server's own requests (`elicitation/create`,
+`sampling/createMessage`, `roots/list`) to the client's input handlers are
+described in the [client guide](client.md#protocol-versions).
 Against a snodo server with these dialects, a direct, stdio, or HTTP client
 negotiates without any application code: the runtime's registry (direct) or
 the probe (stdio and HTTP) picks the version.

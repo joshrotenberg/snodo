@@ -98,11 +98,12 @@ On an initialize-era connection:
   server admits requests against, so the client and the server stay in
   step. On 2026-07-28 an unlisted method is sent as it is, because
   negotiated extensions add methods the core catalog does not carry.
-- The requests the server sends to the client (`elicitation/create` today,
-  and the other kinds as the client learns them) are answered by the same
+- The requests the server sends to the client (`elicitation/create`,
+  `sampling/createMessage`, and `roots/list`) are answered by the same
   `:input_handlers` that answer 2026-07-28 input requests, keyed by method
-  and mode: a form elicitation goes to `:form`, a URL elicitation to `:url`.
-  A server `ping` is answered without a handler. A request of a kind with no
+  and mode: a form elicitation goes to `:form`, a URL elicitation to `:url`,
+  a sampling request to `:sampling`, and a roots request to `:roots`. A
+  server `ping` is answered without a handler. A request of a kind with no
   handler is answered -32601, one whose `params` lack the kind's keys -32602,
   and a handler that fails -32603. Over HTTP such a request arrives on the
   event stream of the request in flight, the handler runs in the calling

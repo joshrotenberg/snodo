@@ -1401,6 +1401,62 @@ defmodule Snodo.ClientTest do
         Input.answer_request(%{form: fn _params -> raise "boom" end}, form)
       end
     end
+
+    test "answers sampling and roots requests through the same registry" do
+      test = self()
+
+      message = %{
+        "role" => "assistant",
+        "content" => %{"type" => "text", "text" => "hi"},
+        "model" => "m"
+      }
+
+      handlers = %{
+        sampling: fn params ->
+          send(test, {:sampling, params})
+          {:ok, message}
+        end,
+        roots: fn params ->
+          send(test, {:roots, params})
+          {:ok, @roots}
+        end
+      }
+
+      sampling_params = %{"messages" => [], "maxTokens" => 10}
+
+      sampling = %{
+        "jsonrpc" => "2.0",
+        "id" => 1,
+        "method" => "sampling/createMessage",
+        "params" => sampling_params
+      }
+
+      assert Input.answer_request(handlers, sampling) ==
+               %{"jsonrpc" => "2.0", "id" => 1, "result" => message}
+
+      assert_receive {:sampling, ^sampling_params}, 1_000
+
+      assert %{"id" => 1, "error" => %{"code" => -32_602}} =
+               Input.answer_request(handlers, put_in(sampling, ["params"], %{"messages" => []}))
+
+      # roots/list has no params; the handler still gets a map.
+      roots = %{"jsonrpc" => "2.0", "id" => 2, "method" => "roots/list"}
+
+      assert Input.answer_request(handlers, roots) ==
+               %{"jsonrpc" => "2.0", "id" => 2, "result" => @roots}
+
+      assert_receive {:roots, %{}}, 1_000
+
+      meta = %{"_meta" => %{"trace" => "t1"}}
+
+      assert %{"result" => @roots} =
+               Input.answer_request(handlers, Map.put(roots, "params", meta))
+
+      assert_receive {:roots, ^meta}, 1_000
+
+      assert %{"id" => 2, "error" => %{"code" => -32_602}} =
+               Input.answer_request(handlers, Map.put(roots, "params", "junk"))
+    end
   end
 
   test "request/4 refuses subscriptions/listen before dispatch" do
