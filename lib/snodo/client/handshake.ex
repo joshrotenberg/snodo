@@ -37,6 +37,7 @@ defmodule Snodo.Client.Handshake do
 
   def dialects(other), do: invalid_option!(other)
 
+  @spec invalid_option!(term()) :: no_return()
   defp invalid_option!(value) do
     raise ArgumentError,
           ":protocol must be a version string or a non-empty list of version strings, " <>

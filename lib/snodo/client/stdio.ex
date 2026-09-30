@@ -341,10 +341,12 @@ defmodule Snodo.Client.Stdio do
 
   # The answer to a server request, from the process that ran the responder.
   # After the server exited there is nowhere to write it.
-  def handle_info({:server_response, response}, state) do
-    if is_nil(state.closed), do: _result = write(state.port, response)
+  def handle_info({:server_response, response}, %{closed: nil} = state) do
+    _result = write(state.port, response)
     {:noreply, state}
   end
+
+  def handle_info({:server_response, _response}, state), do: {:noreply, state}
 
   def handle_info({:DOWN, monitor, :process, _owner, _reason}, state)
       when is_map_key(state.subscription_owners, monitor) do
