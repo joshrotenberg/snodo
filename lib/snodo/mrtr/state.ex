@@ -169,7 +169,8 @@ defmodule Snodo.MRTR.State do
   end
 
   defp validate_keys!(keys) do
-    unless is_list(keys) and keys != [] and length(keys) <= @max_keys and
+    unless is_list(keys) and not List.improper?(keys) and keys != [] and
+             length(keys) <= @max_keys and
              Enum.all?(keys, &match?({_key_id, _secret}, &1)) do
       raise ArgumentError,
             "request state keys must be a list of 1 to #{@max_keys} {key_id, secret} pairs"
@@ -295,8 +296,9 @@ defmodule Snodo.MRTR.State do
   defp authenticated_payload(_token, _keys), do: :error
 
   # A token without a key identifier is checked against every key, which is
-  # bounded by the keyring limit. A token with one is checked against the key
-  # it names, or against `:secret`, which has no identifier to match.
+  # bounded by the keyring limit. A token with one must carry a well-formed
+  # identifier, and is checked against the key it names, or against
+  # `:secret`, which has no identifier to match.
   defp candidates(@unidentified_prefix <> rest, keys) do
     case :binary.split(rest, ".", [:global]) do
       [encoded, mac] ->
@@ -311,17 +313,16 @@ defmodule Snodo.MRTR.State do
   end
 
   defp candidates(@identified_prefix <> rest, keys) do
-    case :binary.split(rest, ".", [:global]) do
-      [token_key_id, encoded, mac] when byte_size(token_key_id) <= @max_key_id_bytes ->
-        candidates =
-          for {key_id, secret} <- keys, key_id == nil or secure_equal?(key_id, token_key_id) do
-            {encoded, mac, secret, signature(token_key_id, encoded, secret)}
-          end
+    with [token_key_id, encoded, mac] <- :binary.split(rest, ".", [:global]),
+         true <- valid_key_id?(token_key_id) do
+      candidates =
+        for {key_id, secret} <- keys, key_id == nil or secure_equal?(key_id, token_key_id) do
+          {encoded, mac, secret, signature(token_key_id, encoded, secret)}
+        end
 
-        {:ok, @identified_version, candidates}
-
-      _invalid ->
-        :error
+      {:ok, @identified_version, candidates}
+    else
+      _invalid -> :error
     end
   end
 

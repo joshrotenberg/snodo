@@ -319,6 +319,29 @@ defmodule Snodo.MRTR.StateTest do
       assert_invalid(State.open(forged, context, keyring([{"b", @current}, {"a", @retired}])))
     end
 
+    test "a token re-signed under another key's identifier is rejected", %{context: context} do
+      opts = keyring([{"a", @current}, {"b", @retired}])
+      token = State.seal(%{}, context, opts)
+      ["mrtr2", "a", encoded, _signature] = String.split(token, ".")
+
+      assert {:ok, %{}} = State.open(sign_identified("a", encoded, @current), context, opts)
+      assert_invalid(State.open(sign_identified("b", encoded, @current), context, opts))
+    end
+
+    test ":secret rejects signed tokens with malformed identifiers", %{
+      context: context,
+      opts: opts
+    } do
+      token = State.seal(%{}, context, keyring([{"a", @secret}]))
+      ["mrtr2", "a", encoded, _signature] = String.split(token, ".")
+
+      assert {:ok, %{}} = State.open(sign_identified("a", encoded, @secret), context, opts)
+
+      for key_id <- ["", :binary.copy("a", 33), "a b", "é", "a+b"] do
+        assert_invalid(State.open(sign_identified(key_id, encoded, @secret), context, opts))
+      end
+    end
+
     test "unidentified and identified tokens open across :secret and :keys", %{
       context: context,
       opts: opts
@@ -362,6 +385,7 @@ defmodule Snodo.MRTR.StateTest do
             {%{"a" => @current}, ~r/1 to 8/},
             {[@current], ~r/1 to 8/},
             {[{"a", @current, :extra}], ~r/1 to 8/},
+            {[{"a", @current} | :tail], ~r/1 to 8/},
             {[{"", @current}], ~r/identifiers must be 1 to 32/},
             {[{:binary.copy("a", 33), @current}], ~r/identifiers must be 1 to 32/},
             {[{"a.b", @current}], ~r/identifiers must be 1 to 32/},
