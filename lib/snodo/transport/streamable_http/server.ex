@@ -30,6 +30,30 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
       once, default 256. The executor holds one count per listener and returns
       a slot when the connection serving that stream exits. A stream over the
       limit is closed at its source and the request gets 503.
+    * `:drain_timeout` - milliseconds the listener waits on shutdown for open
+      connections to finish, default 5,000.
+
+  ## Shutdown
+
+  The listener drains when it terminates, including when its supervisor stops
+  it:
+
+    1. The listening socket closes, so new connections are refused.
+    2. A connection whose request head or body is still arriving gets 503 and
+       closes. A request read in full before the drain began is admitted and
+       runs to its response.
+    3. Each open `subscriptions/listen` stream gets its successful completion
+       response, its source is closed with reason `:shutdown`, and the
+       connection closes.
+    4. Connections still open when `:drain_timeout` passes are killed, which
+       cancels their executor work and closes their subscription sources.
+    5. An executor the listener started is stopped. An application-owned
+       executor keeps running.
+
+  `child_spec/1` sets the child's `:shutdown` to `:drain_timeout` plus 5,000
+  ms, the default worker shutdown, so the supervisor does not kill the
+  listener during the drain. A child spec that overrides `:shutdown` must keep
+  it above `:drain_timeout`. A listener that is killed does not drain.
 
   Applications that already run Plug, Bandit, or Cowboy can translate their
   request into `Snodo.Transport.StreamableHTTP.Request` and use the pure adapter
@@ -59,17 +83,31 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   @default_head_timeout 10_000
   @default_body_timeout 10_000
   @default_max_subscriptions 256
+  @default_drain_timeout 5_000
+  # The supervisor's default worker shutdown, kept for the work after a drain.
+  @shutdown_margin 5_000
 
   @impl true
   def start_link(opts) when is_list(opts) do
     GenServer.start_link(__MODULE__, opts, Keyword.take(opts, [:name]))
   end
 
+  @doc """
+  Returns a worker child spec whose `:shutdown` exceeds `:drain_timeout` by
+  5,000 ms. An invalid `:drain_timeout` is rejected when the listener starts.
+  """
   def child_spec(opts) do
+    drain_timeout =
+      case Keyword.get(opts, :drain_timeout, @default_drain_timeout) do
+        timeout when is_integer(timeout) and timeout > 0 -> timeout
+        _invalid -> 0
+      end
+
     %{
       id: Keyword.get(opts, :id, __MODULE__),
       start: {__MODULE__, :start_link, [opts]},
-      type: :worker
+      type: :worker,
+      shutdown: drain_timeout + @shutdown_margin
     }
   end
 
@@ -98,6 +136,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     head_timeout = positive_option!(opts, :head_timeout, @default_head_timeout)
     body_timeout = positive_option!(opts, :body_timeout, @default_body_timeout)
     max_subscriptions = positive_option!(opts, :max_subscriptions, @default_max_subscriptions)
+    drain_timeout = positive_option!(opts, :drain_timeout, @default_drain_timeout)
 
     listen_opts = [
       :binary,
@@ -156,10 +195,12 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
          address: {bound_ip, bound_port, path},
          acceptor: acceptor,
          connection_supervisor: connection_supervisor,
+         drain_timeout: drain_timeout,
          executor: executor,
          executor_monitor: executor_monitor,
          listen_socket: listen_socket,
-         owns_executor?: owns_executor?
+         owns_executor?: owns_executor?,
+         server_ref: server_ref
        }}
     end
   end
@@ -190,11 +231,70 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   @impl true
   def terminate(_reason, state) do
     _closed = :gen_tcp.close(state.listen_socket)
+    deadline = System.monotonic_time(:millisecond) + state.drain_timeout
+    :ok = drain_connections(state, deadline)
     Process.demonitor(state.executor_monitor, [:flush])
 
     if state.owns_executor?, do: stop_executor(state.executor)
     :ok
   end
+
+  # Closing the listening socket ends the acceptor. Once it has exited no
+  # connection can start, so the supervisor's children are every connection
+  # left to drain. Connections still open at the deadline are killed; the
+  # executor cancels work whose submitter died, and a subscription worker
+  # closes its source when its owner dies.
+  defp drain_connections(state, deadline) do
+    :ok = await_acceptor(state.acceptor, deadline)
+    connections = connection_pids(state.connection_supervisor)
+    monitors = Map.new(connections, fn pid -> {Process.monitor(pid), pid} end)
+    Enum.each(connections, &send(&1, {:mcp_http_drain, state.server_ref}))
+    await_connections(monitors, deadline)
+  end
+
+  defp await_acceptor(acceptor, deadline) do
+    monitor = Process.monitor(acceptor)
+
+    receive do
+      {:DOWN, ^monitor, :process, ^acceptor, _reason} -> :ok
+    after
+      remaining(deadline) ->
+        Process.exit(acceptor, :kill)
+
+        receive do
+          {:DOWN, ^monitor, :process, ^acceptor, _reason} -> :ok
+        end
+    end
+  end
+
+  defp connection_pids(supervisor) do
+    Task.Supervisor.children(supervisor)
+  catch
+    :exit, _reason -> []
+  end
+
+  defp await_connections(monitors, _deadline) when map_size(monitors) == 0, do: :ok
+
+  defp await_connections(monitors, deadline) do
+    receive do
+      {:DOWN, monitor, :process, _pid, _reason} when is_map_key(monitors, monitor) ->
+        await_connections(Map.delete(monitors, monitor), deadline)
+    after
+      remaining(deadline) -> kill_connections(monitors)
+    end
+  end
+
+  defp kill_connections(monitors) do
+    Enum.each(monitors, fn {monitor, pid} ->
+      Process.exit(pid, :kill)
+
+      receive do
+        {:DOWN, ^monitor, :process, ^pid, _reason} -> :ok
+      end
+    end)
+  end
+
+  defp remaining(deadline), do: max(deadline - System.monotonic_time(:millisecond), 0)
 
   defp accept_loop(state) do
     case :gen_tcp.accept(state.listen_socket) do
@@ -280,7 +380,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
         {:response, response} -> response
       end
 
-    _send_result = maybe_send_response(socket, response)
+    _send_result = maybe_send_response(socket, response, opts)
     _closed = :gen_tcp.close(socket)
     :ok
   catch
@@ -507,6 +607,9 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
       {:error, status, message} ->
         {:response, basic_error(status, message)}
 
+      {:error, :draining} ->
+        {:response, basic_error(503, "Server is shutting down", -32_603)}
+
       {:error, _socket_reason} ->
         {:response, basic_error(400, "Failed to read HTTP request")}
     end
@@ -536,8 +639,39 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     remaining = opts.head_deadline - System.monotonic_time(:millisecond)
 
     if remaining > 0,
-      do: :gen_tcp.recv(socket, 0, min(remaining, opts.read_timeout)),
+      do: recv_chunk(socket, min(remaining, opts.read_timeout), opts.server_ref),
       else: {:error, :timeout}
+  end
+
+  # Request reads are active-once rather than blocking `recv` calls, so the
+  # drain signal reaches a connection whose request has not fully arrived.
+  defp recv_chunk(socket, timeout, server_ref) do
+    case arm_socket(socket) do
+      :ok -> await_chunk(socket, timeout, server_ref)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp await_chunk(socket, timeout, server_ref) do
+    receive do
+      {:tcp, ^socket, data} -> {:ok, data}
+      {:tcp_closed, ^socket} -> {:error, :closed}
+      {:tcp_error, ^socket, reason} -> {:error, reason}
+      {:mcp_http_drain, ^server_ref} -> {:error, :draining}
+    after
+      timeout -> disarm_socket(socket)
+    end
+  end
+
+  # Data that arrived as the timer fired is still a completed read.
+  defp disarm_socket(socket) do
+    _result = :inet.setopts(socket, active: false)
+
+    receive do
+      {:tcp, ^socket, data} -> {:ok, data}
+    after
+      0 -> {:error, :timeout}
+    end
   end
 
   @doc false
@@ -634,7 +768,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     remaining = deadline - System.monotonic_time(:millisecond)
 
     if remaining > 0 do
-      with {:ok, chunk} <- :gen_tcp.recv(socket, 0, min(remaining, opts.read_timeout)) do
+      with {:ok, chunk} <- recv_chunk(socket, min(remaining, opts.read_timeout), opts.server_ref) do
         recv_body(socket, acc <> chunk, length, deadline, opts)
       end
     else
@@ -678,15 +812,20 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     ])
   end
 
-  defp maybe_send_response(socket, %Response{} = response), do: send_response(socket, response)
+  defp maybe_send_response(socket, %Response{} = response, _opts),
+    do: send_response(socket, response)
 
-  defp maybe_send_response(socket, %StreamResponse{} = response) do
-    serve_subscription(socket, response)
+  defp maybe_send_response(socket, %StreamResponse{} = response, opts) do
+    serve_subscription(socket, response, opts.server_ref)
   end
 
-  defp maybe_send_response(_socket, _cancelled), do: :ok
+  defp maybe_send_response(_socket, _cancelled, _opts), do: :ok
 
-  defp serve_subscription(socket, %StreamResponse{subscription: subscription} = response) do
+  defp serve_subscription(
+         socket,
+         %StreamResponse{subscription: subscription} = response,
+         server_ref
+       ) do
     # The worker closes the source if this process exits, so it starts before
     # the first write, which can block for the socket's send timeout.
     {worker, monitor} = Subscription.start_worker(subscription, self())
@@ -697,14 +836,8 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
              :ok <- send_sse_message(socket, acknowledgement),
              :ok <- arm_socket(socket) do
           :ok = Subscription.continue(worker)
-
-          stream_subscription(
-            socket,
-            subscription,
-            worker,
-            monitor,
-            response.keepalive_ms
-          )
+          stream = %{keepalive_ms: response.keepalive_ms, server_ref: server_ref}
+          stream_subscription(socket, subscription, worker, monitor, stream)
         else
           # Each step is a socket operation, so a failure here means the
           # client went away. A client that closes right after reading the
@@ -719,10 +852,12 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     end
   end
 
-  defp stream_subscription(socket, subscription, worker, monitor, keepalive_ms) do
+  defp stream_subscription(socket, subscription, worker, monitor, stream) do
+    server_ref = stream.server_ref
+
     receive do
       {:mcp_subscription, ^worker, outcome} ->
-        handle_stream_outcome(socket, subscription, worker, monitor, keepalive_ms, outcome)
+        handle_stream_outcome(socket, subscription, worker, monitor, stream, outcome)
 
       {:DOWN, ^monitor, :process, ^worker, reason} ->
         _send_result = send_sse_message(socket, Subscription.failure(subscription, reason))
@@ -735,11 +870,15 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
         stop_subscription(subscription, worker, monitor, {:disconnected, reason})
 
       {:tcp, ^socket, _unexpected_data} ->
-        continue_stream(arm_socket(socket), socket, subscription, worker, monitor, keepalive_ms)
+        continue_stream(arm_socket(socket), socket, subscription, worker, monitor, stream)
+
+      {:mcp_http_drain, ^server_ref} ->
+        _send_result = send_subscription_completion(socket, subscription)
+        stop_subscription(subscription, worker, monitor, :shutdown)
     after
-      keepalive_ms ->
+      stream.keepalive_ms ->
         result = :gen_tcp.send(socket, ": keepalive\r\n\r\n")
-        continue_stream(result, socket, subscription, worker, monitor, keepalive_ms)
+        continue_stream(result, socket, subscription, worker, monitor, stream)
     end
   end
 
@@ -748,16 +887,16 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
          subscription,
          worker,
          monitor,
-         keepalive_ms,
+         stream,
          {:ok, event}
        ) do
     case Subscription.notification(subscription, event) do
       {:ok, notification} ->
         result = send_sse_message(socket, notification)
-        continue_source(result, socket, subscription, worker, monitor, keepalive_ms)
+        continue_source(result, socket, subscription, worker, monitor, stream)
 
       :drop ->
-        continue_source(:ok, socket, subscription, worker, monitor, keepalive_ms)
+        continue_source(:ok, socket, subscription, worker, monitor, stream)
 
       {:error, error} ->
         _send_result = send_sse_message(socket, Subscription.failure(subscription, error))
@@ -770,7 +909,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
          subscription,
          worker,
          monitor,
-         _keepalive_ms,
+         _stream,
          :closed
        ) do
     _send_result = send_subscription_completion(socket, subscription)
@@ -782,27 +921,27 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
          subscription,
          worker,
          monitor,
-         _keepalive_ms,
+         _stream,
          {:error, reason}
        ) do
     _send_result = send_sse_message(socket, Subscription.failure(subscription, reason))
     stop_subscription(subscription, worker, monitor, {:error, reason})
   end
 
-  defp continue_source(:ok, socket, subscription, worker, monitor, keepalive_ms) do
+  defp continue_source(:ok, socket, subscription, worker, monitor, stream) do
     :ok = Subscription.continue(worker)
-    stream_subscription(socket, subscription, worker, monitor, keepalive_ms)
+    stream_subscription(socket, subscription, worker, monitor, stream)
   end
 
-  defp continue_source({:error, reason}, _socket, subscription, worker, monitor, _keepalive_ms) do
+  defp continue_source({:error, reason}, _socket, subscription, worker, monitor, _stream) do
     stop_subscription(subscription, worker, monitor, {:disconnected, reason})
   end
 
-  defp continue_stream(:ok, socket, subscription, worker, monitor, keepalive_ms) do
-    stream_subscription(socket, subscription, worker, monitor, keepalive_ms)
+  defp continue_stream(:ok, socket, subscription, worker, monitor, stream) do
+    stream_subscription(socket, subscription, worker, monitor, stream)
   end
 
-  defp continue_stream({:error, reason}, _socket, subscription, worker, monitor, _keepalive_ms) do
+  defp continue_stream({:error, reason}, _socket, subscription, worker, monitor, _stream) do
     stop_subscription(subscription, worker, monitor, {:disconnected, reason})
   end
 
@@ -848,11 +987,11 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
 
   defp arm_socket(socket), do: :inet.setopts(socket, active: :once)
 
-  defp basic_error(status, message) do
+  defp basic_error(status, message, code \\ -32_600) do
     body = %{
       "jsonrpc" => "2.0",
       "id" => nil,
-      "error" => %{"code" => -32_600, "message" => message}
+      "error" => %{"code" => code, "message" => message}
     }
 
     headers = if status == 405, do: [{"allow", "POST"}], else: []

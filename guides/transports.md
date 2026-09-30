@@ -96,9 +96,38 @@ The listener also bounds what clients can hold open:
 - `:max_subscriptions` (default 256). A `subscriptions/listen` stream over the
   limit is closed at its source and the request gets 503. A slot returns when
   the connection serving a stream exits, including a client disconnect.
+- `:drain_timeout` (default 5,000 ms). How long a stopping listener waits for
+  open connections; see [Shutdown](#shutdown).
 
 `Snodo.Transport.StreamableHTTP.Server.url/1` returns the endpoint URL, which is
 useful with `port: 0` in tests.
+
+### Shutdown
+
+When the listener stops, including when its supervisor shuts it down, it
+drains before exiting:
+
+1. The listening socket closes. New connections are refused.
+2. A connection whose request head or body is still arriving gets 503 and
+   closes. A request read in full before the drain began runs to its response.
+3. Each open `subscriptions/listen` stream gets its successful completion
+   response, its source is closed with reason `:shutdown`, and the connection
+   closes.
+4. Connections still open after `:drain_timeout` (default 5,000 ms) are killed.
+   Their executor work is cancelled and their subscription sources are closed.
+5. An executor the listener started is stopped. An executor passed with
+   `:executor` keeps running.
+
+The default drain covers ordinary tool calls and fits, with the rest of an
+application's shutdown, inside common stop windows such as Docker's 10-second
+default. Raise it toward `:request_timeout` when requests run longer and the
+host allows a longer stop.
+
+The listener's child spec sets `:shutdown` to `:drain_timeout` plus 5,000 ms so
+the supervisor waits for the drain. A child spec that overrides `:shutdown`
+must keep it above `:drain_timeout`; a supervisor that kills the listener
+earlier skips the rest of the drain. The release or platform that stops the VM
+must allow for the drain as well.
 
 ## Plug and Bandit
 
