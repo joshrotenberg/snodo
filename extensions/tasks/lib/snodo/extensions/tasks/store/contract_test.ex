@@ -34,6 +34,11 @@ defmodule Snodo.Extensions.Tasks.Store.ContractTest do
   alias Snodo.Extensions.Tasks.Work
 
   @doc false
+  @spec retry(result, (result -> boolean()) | nil, (-> result)) :: result when result: term()
+  def retry(result, nil, _again), do: result
+  def retry(result, retryable, again), do: if(retryable.(result), do: again.(), else: result)
+
+  @doc false
   @spec create(Store.ref(), String.t(), String.t(), (String.t() -> Context.t()), keyword()) ::
           {:ok, Snodo.Extensions.Tasks.Snapshot.t()} | {:error, term()}
   def create(store, id, tenant, context_for, opts \\ []) do
@@ -75,7 +80,7 @@ defmodule Snodo.Extensions.Tasks.Store.ContractTest do
   @doc "Injects the shared store contract tests into an ExUnit case."
   defmacro __using__(opts) do
     starter = Keyword.fetch!(opts, :start_store)
-    retryable = Keyword.get(opts, :retryable?, quote(do: fn _result -> false end))
+    retryable = Keyword.get(opts, :retryable?)
 
     tests = [
       revision_test(starter),
@@ -236,9 +241,9 @@ defmodule Snodo.Extensions.Tasks.Store.ContractTest do
           |> Elixir.Task.await_many(15_000)
           |> Enum.zip(ids)
           |> Enum.map(fn {result, id} ->
-            if unquote(retryable).(result),
-              do: ContractTest.create(store, id, "tenant-a", context_for),
-              else: result
+            ContractTest.retry(result, unquote(retryable), fn ->
+              ContractTest.create(store, id, "tenant-a", context_for)
+            end)
           end)
 
         assert Enum.count(results, &match?({:ok, %Snapshot{}}, &1)) == 1
