@@ -1,0 +1,4112 @@
+{
+  "auth/authorization-server-migration": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "client-registration",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-837-application-type-present",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-verifier-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-verifier-matches-challenge",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "client-registration",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-837-application-type-present",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-verifier-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-verifier-matches-challenge",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "sep-2352-reregister-on-as-change",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2352-no-reuse-on-as-change",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2352-no-cross-as-credential-reuse",
+      "status": "SUCCESS"
+    }
+  ],
+  "auth/basic-cimd": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "cimd-client-id-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-verifier-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-verifier-matches-challenge",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    }
+  ],
+  "auth/client-credentials-basic": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "client-credentials-basic-auth",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    }
+  ],
+  "auth/client-credentials-jwt": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "client-credentials-jwt-verified",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    }
+  ],
+  "auth/dpop": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "sep-1932-client-token-request-proof",
+      "status": "FAILURE"
+    },
+    {
+      "id": "sep-1932-client-dpop-auth-scheme",
+      "status": "FAILURE"
+    },
+    {
+      "id": "sep-1932-client-fresh-proof",
+      "status": "FAILURE"
+    }
+  ],
+  "auth/dpop-nonce": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "sep-1932-client-token-request-proof",
+      "status": "FAILURE"
+    },
+    {
+      "id": "sep-1932-client-dpop-auth-scheme",
+      "status": "FAILURE"
+    },
+    {
+      "id": "sep-1932-client-fresh-proof",
+      "status": "FAILURE"
+    },
+    {
+      "id": "sep-1932-client-as-nonce",
+      "status": "FAILURE"
+    },
+    {
+      "id": "sep-1932-client-rs-nonce",
+      "status": "FAILURE"
+    }
+  ],
+  "auth/enterprise-managed-authorization": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-verifier-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-verifier-matches-challenge",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-verifier-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-verifier-matches-challenge",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "complete-flow-token-exchange",
+      "status": "FAILURE"
+    },
+    {
+      "id": "complete-flow-jwt-bearer",
+      "status": "FAILURE"
+    }
+  ],
+  "auth/iss-normalized": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "client-registration",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-837-application-type-present",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "sep-2468-client-no-normalization",
+      "status": "SUCCESS"
+    }
+  ],
+  "auth/iss-not-advertised": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "client-registration",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-837-application-type-present",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-verifier-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-verifier-matches-challenge",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "sep-2468-client-proceed-no-iss",
+      "status": "SUCCESS"
+    }
+  ],
+  "auth/iss-supported": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "client-registration",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-837-application-type-present",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-verifier-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-verifier-matches-challenge",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "sep-2468-client-compare-iss-supported",
+      "status": "SUCCESS"
+    }
+  ],
+  "auth/iss-supported-missing": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "client-registration",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-837-application-type-present",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "sep-2468-client-reject-missing-iss",
+      "status": "SUCCESS"
+    }
+  ],
+  "auth/iss-unexpected": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "client-registration",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-837-application-type-present",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "sep-2468-client-compare-iss-unadvertised",
+      "status": "SUCCESS"
+    }
+  ],
+  "auth/iss-wrong-issuer": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "client-registration",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-837-application-type-present",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "sep-2468-client-compare-iss-supported",
+      "status": "SUCCESS"
+    }
+  ],
+  "auth/metadata-default": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "client-registration",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-837-application-type-present",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-verifier-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-verifier-matches-challenge",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    }
+  ],
+  "auth/metadata-issuer-mismatch": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "sep-2468-client-validate-metadata-issuer",
+      "status": "SUCCESS"
+    }
+  ],
+  "auth/metadata-var1": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "client-registration",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-837-application-type-present",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-verifier-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-verifier-matches-challenge",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    }
+  ],
+  "auth/metadata-var2": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "client-registration",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-837-application-type-present",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-verifier-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-verifier-matches-challenge",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    }
+  ],
+  "auth/metadata-var3": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "client-registration",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-837-application-type-present",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-verifier-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-verifier-matches-challenge",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    }
+  ],
+  "auth/offline-access-not-supported": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "client-registration",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-837-application-type-present",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2207-offline-access-not-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-verifier-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-verifier-matches-challenge",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    }
+  ],
+  "auth/offline-access-scope": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2207-offline-access-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-verifier-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-verifier-matches-challenge",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "sep-2207-client-metadata-grant-types",
+      "status": "INFO"
+    }
+  ],
+  "auth/pre-registration": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-verifier-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-verifier-matches-challenge",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pre-registration-auth",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    }
+  ],
+  "auth/resource-mismatch": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "resource-mismatch-rejected",
+      "status": "SUCCESS"
+    }
+  ],
+  "auth/scope-from-scopes-supported": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "client-registration",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-837-application-type-present",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "scope-from-scopes-supported",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-verifier-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-verifier-matches-challenge",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    }
+  ],
+  "auth/scope-from-www-authenticate": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "client-registration",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-837-application-type-present",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "scope-from-www-authenticate",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-verifier-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-verifier-matches-challenge",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    }
+  ],
+  "auth/scope-omitted-when-undefined": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "client-registration",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-837-application-type-present",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "scope-omitted-when-undefined",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-verifier-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-verifier-matches-challenge",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    }
+  ],
+  "auth/scope-retry-limit": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "client-registration",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-837-application-type-present",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "scope-retry-auth-attempt",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-verifier-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-verifier-matches-challenge",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "scope-retry-limit",
+      "status": "SUCCESS"
+    }
+  ],
+  "auth/scope-step-up": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "client-registration",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-837-application-type-present",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "scope-step-up-initial",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-verifier-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-verifier-matches-challenge",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "scope-step-up-escalation",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2350-scope-union-on-reauth",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-verifier-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-verifier-matches-challenge",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    }
+  ],
+  "auth/token-endpoint-auth-basic": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "client-registration",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-837-application-type-present",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-verifier-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-verifier-matches-challenge",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "token-endpoint-auth-method",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "resource-parameter-in-authorization",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "resource-parameter-in-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "resource-parameter-valid-uri",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "resource-parameter-consistency",
+      "status": "SUCCESS"
+    }
+  ],
+  "auth/token-endpoint-auth-none": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "client-registration",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-837-application-type-present",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-verifier-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-verifier-matches-challenge",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "token-endpoint-auth-method",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "resource-parameter-in-authorization",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "resource-parameter-in-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "resource-parameter-valid-uri",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "resource-parameter-consistency",
+      "status": "SUCCESS"
+    }
+  ],
+  "auth/token-endpoint-auth-post": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "client-registration",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-837-application-type-present",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-verifier-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-verifier-matches-challenge",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "token-endpoint-auth-method",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "valid-bearer-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "resource-parameter-in-authorization",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "resource-parameter-in-token",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "resource-parameter-valid-uri",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "resource-parameter-consistency",
+      "status": "SUCCESS"
+    }
+  ],
+  "auth/wif-jwt-bearer": [
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-verifier-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-verifier-matches-challenge",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wif-grant-type",
+      "status": "FAILURE"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-request",
+      "status": "INFO"
+    },
+    {
+      "id": "prm-pathbased-requested",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-server-metadata",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "authorization-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-challenge-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-s256-method-used",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    },
+    {
+      "id": "incoming-auth-request",
+      "status": "INFO"
+    },
+    {
+      "id": "token-request",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-code-verifier-sent",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "pkce-verifier-matches-challenge",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wif-grant-fallback",
+      "status": "WARNING"
+    },
+    {
+      "id": "outgoing-auth-response",
+      "status": "INFO"
+    }
+  ],
+  "http-custom-headers": [
+    {
+      "id": "sep-2243-client-supports-custom-headers",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-mirrors-designated-params",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-encode-values",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-encode-values",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-encode-values",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-mirrors-designated-params",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-mirrors-designated-params",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-mirrors-designated-params",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-base64-unsafe",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-base64-unsafe",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-base64-unsafe",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-base64-unsafe",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-mirrors-designated-params",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-base64-unsafe",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-base64-unsafe",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-base64-unsafe",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-mirrors-designated-params",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-omit-null",
+      "status": "SUCCESS"
+    }
+  ],
+  "http-invalid-tool-headers": [
+    {
+      "id": "sep-2243-client-reject-invalid-tool",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-x-mcp-header-not-empty",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-x-mcp-header-primitive-only",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-x-mcp-header-primitive-only",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-x-mcp-header-primitive-only",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-x-mcp-header-unique",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-x-mcp-header-unique",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-x-mcp-header-charset",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-x-mcp-header-charset",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-x-mcp-header-charset",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-x-mcp-header-charset",
+      "status": "SUCCESS"
+    }
+  ],
+  "http-standard-headers": [
+    {
+      "id": "sep-2243-client-includes-standard-headers",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-includes-standard-headers",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-includes-standard-headers",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-includes-standard-headers",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-includes-standard-headers",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-includes-standard-headers",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-includes-standard-headers",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-includes-standard-headers",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-includes-standard-headers",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2243-client-includes-standard-headers",
+      "status": "SKIPPED"
+    },
+    {
+      "id": "sep-2243-client-includes-standard-headers",
+      "status": "SKIPPED"
+    }
+  ],
+  "json-schema-2020-12-preservation": [
+    {
+      "id": "json-schema-2020-12-client-tool-found",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "json-schema-2020-12-client-echo-completed",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "json-schema-2020-12-client-$schema-preserved",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "json-schema-2020-12-client-$defs-preserved",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "json-schema-2020-12-client-additionalProperties-preserved",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2106-client-composition-keywords-preserved",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2106-client-conditional-keywords-preserved",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2106-client-anchor-keyword-preserved",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ],
+  "json-schema-ref-no-deref": [
+    {
+      "id": "sep-2106-no-network-ref-deref",
+      "status": "SUCCESS"
+    }
+  ],
+  "request-metadata": [
+    {
+      "id": "sep-2575-http-client-sends-version-header",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-client-populates-meta",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-client-sends-client-info",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-http-version-header-matches-meta",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-client-declares-roots-capability",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-client-declares-sampling-capability",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-client-declares-elicitation-capability",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2575-client-retry-supported-version",
+      "status": "SUCCESS"
+    }
+  ],
+  "sep-2322-client-request-state": [
+    {
+      "id": "sep-2322-client-request-state-echoed",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2322-client-jsonrpc-id-different",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2322-client-no-state-omitted",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2322-client-parallel-isolation",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "sep-2322-default-result-type-complete",
+      "status": "SUCCESS"
+    }
+  ],
+  "tools_call": [
+    {
+      "id": "tool-add-numbers",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "wire-schema-valid",
+      "status": "SUCCESS"
+    }
+  ]
+}

@@ -23,11 +23,11 @@ defmodule Snodo.Client.HTTP do
   `:on_server_request` function in the calling process, and the response is
   sent as its own `POST` before the stream is read further; without that
   option such a request is dropped. The time the function takes counts
-  against the request's timeout, which is not extended. Other notifications are dropped. A
-  JSON-RPC error body is returned whatever the HTTP status, so `Snodo.Client`
-  decodes it as `{:error, %Snodo.Error{}}`. Anything else is a -32000 transport
-  error with the status and body in `cause`. A timeout closes the connection,
-  which the server treats as cancellation.
+  against the request's timeout, which is not extended. Other notifications
+  are dropped. A JSON-RPC error body is returned whatever the HTTP status, so
+  `Snodo.Client` decodes it as `{:error, %Snodo.Error{}}`. Anything else is a
+  -32000 transport error with the status and body in `cause`. A timeout closes
+  the connection, which the server treats as cancellation.
 
   On an initialize-era connection the client passes `MCP-Protocol-Version` and
   `Mcp-Session-Id` in `:headers`, reads `Mcp-Session-Id` from the `initialize`
@@ -61,7 +61,20 @@ defmodule Snodo.Client.HTTP do
     * `:headers` - extra request headers as `{name, value}` string pairs, for
       example `[{"authorization", "Bearer " <> token}]`. The transport owns
       `host`, `content-type`, `content-length`, `transfer-encoding`, and
-      `connection`, and refuses them here.
+      `connection`, and refuses them here; with `:token_provider` it owns
+      `authorization` too.
+    * `:token_provider` - `{module, state}`, a `Snodo.Client.TokenProvider`
+      that supplies the bearer token. The transport asks it for a token
+      before each request, notification, answer to a server request, and
+      session `DELETE`, and before opening each `subscriptions/listen` stream.
+      After a `401`, or a `403` whose `WWW-Authenticate` challenge is
+      `insufficient_scope`, it asks the provider to refresh with the parsed
+      `Snodo.Client.Challenge` and sends the request once more. A `401` or
+      `403` on that second attempt is a -32000 transport error with
+      `cause: {:unauthorized, status, challenge}`. Without a provider, those
+      statuses are returned as any other unexpected status. The request
+      timeout covers each HTTP attempt, not the provider calls before and
+      between them.
     * `:ssl` - `:ssl` client options for `https` URLs. The default verifies the
       peer against `:public_key.cacerts_get/0` and checks the host name.
     * `:connect_timeout` - milliseconds to establish the connection. Defaults
@@ -72,6 +85,7 @@ defmodule Snodo.Client.HTTP do
 
   @behaviour Snodo.Client.Transport
 
+  alias Snodo.Client.Challenge
   alias Snodo.Client.Deadline
   alias Snodo.Client.HTTP.Stream, as: SubscriptionStream
   alias Snodo.Client.Transport
@@ -81,6 +95,7 @@ defmodule Snodo.Client.HTTP do
   alias Snodo.Transport.Policy
 
   @type state :: %{
+          url: String.t(),
           scheme: String.t(),
           host: charlist(),
           port: :inet.port_number(),
@@ -90,7 +105,8 @@ defmodule Snodo.Client.HTTP do
           headers: [{String.t(), String.t()}],
           ssl: keyword(),
           connect_timeout: timeout() | nil,
-          max_response_bytes: pos_integer()
+          max_response_bytes: pos_integer(),
+          token_provider: {module(), term()} | nil
         }
 
   @sentinel_prefix "=?base64?"
@@ -110,13 +126,8 @@ defmodule Snodo.Client.HTTP do
       raise ArgumentError, ":max_response_bytes must be a positive integer"
     end
 
-    headers = Keyword.get(opts, :headers, [])
-
-    unless is_list(headers) and Enum.all?(headers, &valid_extra_header?/1) do
-      raise ArgumentError,
-            ":headers must be {name, value} string pairs without CR, LF, or NUL, " <>
-              "and without #{Enum.join(@owned_headers, ", ")}; got: #{inspect(headers)}"
-    end
+    provider = token_provider!(Keyword.get(opts, :token_provider))
+    headers = extra_headers!(Keyword.get(opts, :headers, []), provider)
 
     case URI.new(url) do
       {:ok, %URI{scheme: scheme, host: host} = uri}
@@ -125,6 +136,7 @@ defmodule Snodo.Client.HTTP do
 
         {:ok,
          %{
+           url: url,
            scheme: scheme,
            host: String.to_charlist(host),
            port: uri.port,
@@ -134,7 +146,8 @@ defmodule Snodo.Client.HTTP do
            headers: headers,
            ssl: Keyword.get_lazy(opts, :ssl, fn -> default_ssl(uri) end),
            connect_timeout: Keyword.get(opts, :connect_timeout),
-           max_response_bytes: max_response_bytes
+           max_response_bytes: max_response_bytes,
+           token_provider: provider
          }}
 
       _invalid ->
@@ -155,7 +168,8 @@ defmodule Snodo.Client.HTTP do
 
     with :ok <- check_headers(headers) do
       state
-      |> exchange("POST", headers ++ state.headers, message, opts)
+      |> authorized_exchange("POST", headers ++ state.headers, message, opts)
+      |> report_headers(Keyword.get(opts, :on_response_headers))
       |> response(timeout, state.max_response_bytes)
     end
   end
@@ -176,7 +190,7 @@ defmodule Snodo.Client.HTTP do
     headers = Keyword.get(opts, :headers, [])
 
     with :ok <- check_headers(headers) do
-      _outcome = exchange(state, "DELETE", headers ++ state.headers, nil, opts)
+      _outcome = authorized_exchange(state, "DELETE", headers ++ state.headers, nil, opts)
     end
 
     :ok
@@ -193,12 +207,8 @@ defmodule Snodo.Client.HTTP do
       | mirrored_headers(policy, message)
     ]
 
-    case Enum.reject(headers, &valid_header?/1) do
-      [] ->
-        SubscriptionStream.open(state, headers ++ state.headers, message, opts)
-
-      [{name, _value} | _others] ->
-        {:error, Transport.connection_error("Invalid HTTP request header", name)}
+    with :ok <- check_headers(headers) do
+      listen_authorized(state, headers ++ state.headers, message, opts)
     end
   end
 
@@ -234,7 +244,8 @@ defmodule Snodo.Client.HTTP do
 
         try do
           with :ok <- send_request(socket, state, "POST", headers, JSON.encode!(message)),
-               {:ok, status, response_headers, rest} <- read_head(conn, "", 0) do
+               {:ok, status, response_headers, rest} <- read_head(conn, "", 0),
+               :none <- challenge(state, status, response_headers) do
             conn = %{conn | body: body_state(response_headers)}
 
             case read_body(conn, status, response_headers, rest) do
@@ -250,6 +261,9 @@ defmodule Snodo.Client.HTTP do
     send(stream, {:mcp_stream_end, stream_outcome(outcome, timeout, state.max_response_bytes)})
     :ok
   end
+
+  defp stream_outcome({:challenge, _status, _challenge} = challenge, _timeout, _limit),
+    do: challenge
 
   defp stream_outcome({:ok, _status, {:unmatched, _sample}}, _timeout, _limit), do: :ended
 
@@ -314,11 +328,11 @@ defmodule Snodo.Client.HTTP do
     timeout = Keyword.fetch!(opts, :timeout)
 
     with :ok <- check_headers(headers) do
-      case exchange(state, "POST", headers ++ state.headers, message, opts) do
-        {:ok, status, _body} when status in 200..299 -> :ok
-        {:ok, status, {:body, body}} -> refused(status, body)
-        {:ok, status, {:unmatched, sample}} -> unexpected(status, sample)
-        {:ok, status, {:response, response}} -> refused(status, JSON.encode!(response))
+      case authorized_exchange(state, "POST", headers ++ state.headers, message, opts) do
+        {:ok, status, _headers, _body} when status in 200..299 -> :ok
+        {:ok, status, _headers, {:body, body}} -> refused(status, body)
+        {:ok, status, _headers, {:unmatched, sample}} -> unexpected(status, sample)
+        {:ok, status, _headers, {:response, response}} -> refused(status, JSON.encode!(response))
         {:error, _reason} = failure -> response(failure, timeout, state.max_response_bytes)
       end
     end
@@ -394,12 +408,43 @@ defmodule Snodo.Client.HTTP do
 
   defp valid_extra_header?(_header), do: false
 
+  defp extra_headers!(headers, provider) do
+    unless is_list(headers) and Enum.all?(headers, &valid_extra_header?/1) do
+      raise ArgumentError,
+            ":headers must be {name, value} string pairs without CR, LF, or NUL, " <>
+              "and without #{Enum.join(@owned_headers, ", ")}; got: #{inspect(headers)}"
+    end
+
+    if provider != nil and
+         Enum.any?(headers, fn {name, _value} -> String.downcase(name) == "authorization" end) do
+      raise ArgumentError, ":headers cannot set authorization when :token_provider is given"
+    end
+
+    headers
+  end
+
+  defp token_provider!(nil), do: nil
+
+  defp token_provider!({module, _state} = provider) when is_atom(module) do
+    if Code.ensure_loaded?(module) and function_exported?(module, :token, 2) and
+         function_exported?(module, :refresh, 3) do
+      provider
+    else
+      raise ArgumentError,
+            ":token_provider must be {module, state} with a Snodo.Client.TokenProvider " <>
+              "module, got: #{inspect(module)}"
+    end
+  end
+
+  defp token_provider!(other) do
+    raise ArgumentError, ":token_provider must be {module, state}, got: #{inspect(other)}"
+  end
+
   # The socket is closed when the exchange ends, whatever the outcome. A nil
   # message sends no body (DELETE).
   defp exchange(state, method, headers, message, opts) do
     timeout = Keyword.fetch!(opts, :timeout)
     on_progress = Keyword.get(opts, :on_progress)
-    on_headers = Keyword.get(opts, :on_response_headers)
 
     with {:ok, socket} <- open(state, state.connect_timeout || timeout, timeout) do
       conn = %{
@@ -419,12 +464,11 @@ defmodule Snodo.Client.HTTP do
       try do
         with :ok <- send_request(socket, state, method, headers, encode(message)),
              {:ok, status, response_headers, rest} <- read_head(conn, "", 0) do
-          if on_headers, do: on_headers.(response_headers)
           conn = %{conn | body: body_state(response_headers)}
 
           case read_body(conn, status, response_headers, rest) do
-            {:ok, conn} -> {:ok, status, finish(conn)}
-            {:done, response} -> {:ok, status, {:response, response}}
+            {:ok, conn} -> {:ok, status, response_headers, finish(conn)}
+            {:done, response} -> {:ok, status, response_headers, {:response, response}}
             {:error, reason} -> {:error, reason}
           end
         end
@@ -434,11 +478,26 @@ defmodule Snodo.Client.HTTP do
     end
   end
 
-  defp response({:ok, _status, {:response, response}}, _timeout, _limit), do: {:ok, response}
-  defp response({:ok, status, {:body, body}}, _timeout, _limit), do: decode_json(status, body)
+  # Only the attempt that answered the request is reported, not one that a
+  # challenge sent back to the token provider.
+  defp report_headers({:ok, _status, headers, _outcome} = result, on_headers)
+       when is_function(on_headers, 1) do
+    on_headers.(headers)
+    result
+  end
 
-  defp response({:ok, status, {:unmatched, sample}}, _timeout, _limit),
+  defp report_headers(result, _on_headers), do: result
+
+  defp response({:ok, _status, _headers, {:response, response}}, _timeout, _limit),
+    do: {:ok, response}
+
+  defp response({:ok, status, _headers, {:body, body}}, _timeout, _limit),
+    do: decode_json(status, body)
+
+  defp response({:ok, status, _headers, {:unmatched, sample}}, _timeout, _limit),
     do: unexpected(status, sample)
+
+  defp response({:error, %Snodo.Error{}} = error, _timeout, _limit), do: error
 
   defp response({:error, {:timeout, deadline}}, _timeout, _limit),
     do: {:error, Deadline.error(deadline)}
@@ -459,6 +518,105 @@ defmodule Snodo.Client.HTTP do
 
   defp response({:error, reason}, _timeout, _limit),
     do: {:error, Transport.connection_error("The HTTP request failed", reason)}
+
+  # One exchange, with the provider's token when there is one. Returns the
+  # exchange's outcome, or an error from the provider or from a second
+  # challenge.
+  defp authorized_exchange(%{token_provider: nil} = state, method, headers, message, opts),
+    do: exchange(state, method, headers, message, opts)
+
+  defp authorized_exchange(state, method, headers, message, opts) do
+    authorized(state, &attempt(state, method, headers, message, opts, &1))
+  end
+
+  defp listen_authorized(%{token_provider: nil} = state, headers, message, opts),
+    do: SubscriptionStream.open(state, headers, message, opts)
+
+  defp listen_authorized(state, headers, message, opts) do
+    authorized(state, &SubscriptionStream.open(state, bearer(&1) ++ headers, message, opts))
+  end
+
+  # One request or stream may need two attempts: the first learns that the
+  # token is missing, expired, or short of scope, and the second carries the
+  # token the provider obtained from that challenge. A third is never made,
+  # so a server that keeps refusing cannot loop a client through its
+  # authorization flow. `attempt` sends with a token and returns
+  # `{:challenge, status, challenge}` or the result.
+  defp authorized(%{token_provider: {module, provider}} = state, attempt) do
+    context = %{url: state.url}
+
+    with {:ok, token} <- provider_token(module, :token, module.token(provider, context)),
+         {:challenge, status, challenge} <- attempt.(token),
+         context = Map.merge(context, %{status: status, token: token}),
+         {:ok, token} <-
+           provider_token(module, :refresh, module.refresh(provider, challenge, context)),
+         {:challenge, status, challenge} <- attempt.(token) do
+      {:error, authorization_error(status, challenge)}
+    end
+  end
+
+  # One exchange with `token`: a challenge for the provider, or the
+  # exchange's outcome.
+  defp attempt(state, method, headers, message, opts, token) do
+    case exchange(state, method, bearer(token) ++ headers, message, opts) do
+      {:ok, status, response_headers, _outcome} = result ->
+        case challenge(state, status, response_headers) do
+          :none -> result
+          challenge -> challenge
+        end
+
+      other ->
+        other
+    end
+  end
+
+  # A 401, or a 403 that asks for more scope, goes back to the token
+  # provider. Without one, every status is the response.
+  defp challenge(%{token_provider: nil}, _status, _headers), do: :none
+
+  defp challenge(_state, status, headers) when status in [401, 403] do
+    challenge = Challenge.select(headers)
+    if refreshable?(status, challenge), do: {:challenge, status, challenge}, else: :none
+  end
+
+  defp challenge(_state, _status, _headers), do: :none
+
+  defp refreshable?(401, _challenge), do: true
+  defp refreshable?(403, %Challenge{error: "insufficient_scope"}), do: true
+  defp refreshable?(_status, _challenge), do: false
+
+  defp bearer(nil), do: []
+  defp bearer(token), do: [{"authorization", "Bearer " <> token}]
+
+  # The token is a credential, so neither error names it.
+  defp provider_token(_module, :token, {:ok, nil}), do: {:ok, nil}
+
+  defp provider_token(_module, _callback, {:ok, token}) when is_binary(token) do
+    if token != "" and valid_header?({"authorization", token}) and
+         not String.contains?(token, [" ", "\t"]) do
+      {:ok, token}
+    else
+      {:error,
+       Transport.connection_error("The token provider returned an invalid token", :invalid_token)}
+    end
+  end
+
+  defp provider_token(_module, _callback, {:error, %Snodo.Error{} = error}), do: {:error, error}
+
+  defp provider_token(module, callback, _other) do
+    arity = if callback == :token, do: 2, else: 3
+
+    raise ArgumentError,
+          "#{inspect(module)}.#{callback}/#{arity} must return {:ok, token} or " <>
+            "{:error, %Snodo.Error{}}" <> if(callback == :token, do: ", or {:ok, nil}", else: "")
+  end
+
+  defp authorization_error(status, challenge) do
+    Transport.connection_error(
+      "The server refused the request's authorization (HTTP #{status})",
+      {:unauthorized, status, challenge}
+    )
+  end
 
   defp open(%{scheme: "http"} = state, connect_timeout, timeout) do
     options = state.socket_options ++ send_timeout(timeout)

@@ -235,8 +235,9 @@ defmodule Snodo.Client do
       `:cd`, `:max_line_bytes`, and `:max_server_requests`. The connection
       closes when the calling process exits.
     * `{:http, url}` - posts each request to a Streamable HTTP endpoint. See
-      `Snodo.Client.HTTP` for `:headers`, `:ssl`, `:connect_timeout`, and
-      `:max_response_bytes`.
+      `Snodo.Client.HTTP` for `:headers`, `:token_provider` (a
+      `Snodo.Client.TokenProvider` that supplies and refreshes the bearer
+      token), `:ssl`, `:connect_timeout`, and `:max_response_bytes`.
     * `{module, init_arg}` - any `Snodo.Client.Transport`.
 
   Options for every target:

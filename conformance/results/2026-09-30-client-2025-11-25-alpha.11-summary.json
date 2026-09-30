@@ -1,0 +1,185 @@
+{
+  "schemaVersion": 2,
+  "leg": "client",
+  "lane": "client-2025-11-25",
+  "runDate": "2026-09-30",
+  "protocolVersion": "2025-11-25",
+  "runner": "@modelcontextprotocol/conformance@0.2.0-alpha.11",
+  "runnerExitCode": 1,
+  "requirements": {
+    "attemptedScenarios": 18,
+    "requiredScenarios": 18,
+    "requirementsAnchor": "@modelcontextprotocol/conformance@0.2.0-alpha.10 (reconstructed)",
+    "requirementsCommit": null,
+    "requirementsSha256": "f33a304dfa2cbd999c24026a3453a64f377bba0c8aa80addadaf05862d212371"
+  },
+  "score": {
+    "status": "partial",
+    "basis": "whole required scenarios with semantic success and no FAILURE, WARNING, or SKIPPED checks",
+    "passedScenarios": 16,
+    "requiredScenarios": 18,
+    "passedScenarioIds": [
+      "initialize",
+      "tools_call",
+      "auth/metadata-default",
+      "auth/metadata-var1",
+      "auth/metadata-var2",
+      "auth/metadata-var3",
+      "auth/basic-cimd",
+      "auth/scope-from-www-authenticate",
+      "auth/scope-from-scopes-supported",
+      "auth/scope-omitted-when-undefined",
+      "auth/scope-step-up",
+      "auth/scope-retry-limit",
+      "auth/token-endpoint-auth-basic",
+      "auth/token-endpoint-auth-post",
+      "auth/token-endpoint-auth-none",
+      "auth/pre-registration"
+    ]
+  },
+  "requiredCheckCounts": {
+    "success": 209,
+    "failure": 7,
+    "skipped": 0,
+    "warning": 0,
+    "info": 306
+  },
+  "rawRunnerNoFailure": {
+    "scenarios": 16,
+    "requiredScenarios": 18,
+    "scenarioIds": [
+      "initialize",
+      "tools_call",
+      "auth/metadata-default",
+      "auth/metadata-var1",
+      "auth/metadata-var2",
+      "auth/metadata-var3",
+      "auth/basic-cimd",
+      "auth/scope-from-www-authenticate",
+      "auth/scope-from-scopes-supported",
+      "auth/scope-omitted-when-undefined",
+      "auth/scope-step-up",
+      "auth/scope-retry-limit",
+      "auth/token-endpoint-auth-basic",
+      "auth/token-endpoint-auth-post",
+      "auth/token-endpoint-auth-none",
+      "auth/pre-registration"
+    ],
+    "excludedFromScore": []
+  },
+  "notScored": [
+    {
+      "scenario": "auth/client-credentials-jwt",
+      "leg": "client",
+      "reason": "extension",
+      "checks": {
+        "success": 8,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 14
+      }
+    },
+    {
+      "scenario": "auth/client-credentials-basic",
+      "leg": "client",
+      "reason": "extension",
+      "checks": {
+        "success": 8,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 14
+      }
+    },
+    {
+      "scenario": "auth/enterprise-managed-authorization",
+      "leg": "client",
+      "reason": "extension",
+      "checks": {
+        "success": 8,
+        "failure": 2,
+        "skipped": 0,
+        "warning": 0,
+        "info": 10
+      }
+    },
+    {
+      "scenario": "auth/dpop",
+      "leg": "client",
+      "reason": "extension",
+      "checks": {
+        "success": 0,
+        "failure": 3,
+        "skipped": 0,
+        "warning": 0,
+        "info": 2
+      }
+    },
+    {
+      "scenario": "auth/dpop-nonce",
+      "leg": "client",
+      "reason": "extension",
+      "checks": {
+        "success": 0,
+        "failure": 5,
+        "skipped": 0,
+        "warning": 0,
+        "info": 2
+      }
+    },
+    {
+      "scenario": "auth/wif-jwt-bearer",
+      "leg": "client",
+      "reason": "extension",
+      "checks": {
+        "success": 8,
+        "failure": 1,
+        "skipped": 0,
+        "warning": 0,
+        "info": 10
+      }
+    },
+    {
+      "scenario": "json-schema-2020-12-preservation",
+      "leg": "client",
+      "reason": "added-after-release",
+      "checks": {
+        "success": 9,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    }
+  ],
+  "failures": [
+    "elicitation-sep1034-client-defaults:client-elicitation-sep1034-general",
+    "elicitation-sep1034-client-defaults:client-elicitation-sep1034-string-default",
+    "elicitation-sep1034-client-defaults:client-elicitation-sep1034-integer-default",
+    "elicitation-sep1034-client-defaults:client-elicitation-sep1034-number-default",
+    "elicitation-sep1034-client-defaults:client-elicitation-sep1034-enum-default",
+    "elicitation-sep1034-client-defaults:client-elicitation-sep1034-boolean-default",
+    "sse-retry:client-sse-graceful-reconnect",
+    "auth/enterprise-managed-authorization:complete-flow-token-exchange",
+    "auth/enterprise-managed-authorization:complete-flow-jwt-bearer",
+    "auth/dpop:sep-1932-client-token-request-proof",
+    "auth/dpop:sep-1932-client-dpop-auth-scheme",
+    "auth/dpop:sep-1932-client-fresh-proof",
+    "auth/dpop-nonce:sep-1932-client-token-request-proof",
+    "auth/dpop-nonce:sep-1932-client-dpop-auth-scheme",
+    "auth/dpop-nonce:sep-1932-client-fresh-proof",
+    "auth/dpop-nonce:sep-1932-client-as-nonce",
+    "auth/dpop-nonce:sep-1932-client-rs-nonce",
+    "auth/wif-jwt-bearer:wif-grant-type"
+  ],
+  "regression": {
+    "passed": true,
+    "unexpectedFailures": [],
+    "staleFailures": [],
+    "unexpectedExclusions": [],
+    "staleExclusions": [],
+    "checkStatusDrift": [],
+    "note": "A passing regression gate does not convert expected failures into conformance passes."
+  }
+}

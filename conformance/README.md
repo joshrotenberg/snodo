@@ -195,37 +195,52 @@ Results: [Plug](results/2026-09-29-plug-alpha.11-summary.md),
 
 `npm run check:client` runs `client --requirements 2026-07-28`: 32 required
 scenarios and 7 unscored ones. For each scenario the runner starts a scenario
-server and runs [client.exs](client.exs) with `mix run` from the repository
-root, so the root project must be compiled in the dev environment. The harness
-drives `Snodo.Client` the way an application would and adds no protocol
-behavior: discover, list tools, call the tools the scenario context names (or
-every listed tool with arguments sampled from its schema), answer
-`input_required` results through the client's input handlers (form, URL,
-sampling, and roots), and list and read resources and prompts when the server
-advertises them. The runner scores the traffic its scenario server records.
+server and runs [client.exs](client.exs) with `mix run` from
+`conformance/fixture`, whose build puts `snodo_oauth` on the code path, so the
+fixture project must be compiled in the dev environment. The harness drives
+`Snodo.Client` the way an application would and adds no protocol behavior:
+discover, list tools, call the tools the scenario context names (or every
+listed tool with arguments sampled from its schema), answer `input_required`
+results through the client's input handlers (form, URL, sampling, and roots),
+and list and read resources and prompts when the server advertises them. For
+an `auth/*` scenario it installs a `Snodo.OAuth.Client` as the token provider,
+stands in for the browser by following the authorization redirect to the
+client's loopback listener, and takes pre-registered or client-credentials
+settings from the scenario context. The runner scores the traffic its scenario
+server records.
 
-The 2026-09-29 run passes **7/32** whole required scenarios: `tools_call`,
-`request-metadata`, `sep-2322-client-request-state`, `http-custom-headers`,
-`http-invalid-tool-headers`, `json-schema-ref-no-deref`, and
-`auth/resource-mismatch`. The last passes only because the harness never starts
-authorization; it is not evidence of OAuth support. The unscored
-`json-schema-2020-12-preservation` scenario passes. `request-metadata` is new
-since 2026-09-26: the harness now installs `Snodo.Client` input handlers for
-all four kinds, so the client declares the deprecated `sampling` and `roots`
-capabilities and the two checks that were skipped now pass. The first run on
-2026-09-26, before `Snodo.Client` sent `Mcp-Param-*` headers, passed 4/32.
+The 2026-09-30 run passes **31/32** whole required scenarios, up from 7/32 on
+2026-09-29: every required `auth/*` scenario (metadata discovery at each
+location, client ID metadata documents, dynamic client registration and
+pre-registration, each token endpoint authentication method, scope selection
+and step-up, the retry limit, resource indicators and the resource mismatch
+check, `offline_access`, authorization server migration, and the `iss` checks)
+and every non-auth scenario except `http-standard-headers`. Required checks:
+405 success, 0 failure, 2 skipped, 0 warning. The unscored
+`auth/client-credentials-basic`, `auth/client-credentials-jwt`, and
+`json-schema-2020-12-preservation` scenarios pass as well. The 2026-09-29 run,
+before `Snodo.OAuth.Client` existed, passed 7/32; `request-metadata` passes
+since that run because the harness installs input handlers for all four
+kinds, so the client declares the deprecated `sampling` and `roots`
+capabilities. The first run on 2026-09-26, before `Snodo.Client` sent
+`Mcp-Param-*` headers, passed 4/32.
 
-- [Client report](results/2026-09-29-client-alpha.11-summary.md)
-- [Client machine-readable report](results/2026-09-29-client-alpha.11-summary.json)
-- [Client per-check outcomes](results/2026-09-29-client-alpha.11-checks.json)
+- [Client report](results/2026-09-30-client-alpha.11-summary.md)
+- [Client machine-readable report](results/2026-09-30-client-alpha.11-summary.json)
+- [Client per-check outcomes](results/2026-09-30-client-alpha.11-checks.json)
+- [Historical September 29 client report](results/2026-09-29-client-alpha.11-summary.md)
 - [Historical September 26 client report](results/2026-09-26-client-alpha.11-summary.md)
 
 [expected-failures-client.json](expected-failures-client.json) follows the
 same policy as the server baseline, with every check of all 39 scenarios
 pinned. The remaining gaps:
 
-- The 25 required and 6 unscored `auth/*` scenarios: `Snodo.Client` has no
-  OAuth support, and the harness exits before sending a request.
+- The unscored `auth/dpop`, `auth/dpop-nonce`,
+  `auth/enterprise-managed-authorization`, and `auth/wif-jwt-bearer`
+  scenarios: `Snodo.OAuth.Client` sends bearer tokens only and runs the
+  authorization code or client credentials grant; DPoP (RFC 9449),
+  enterprise-managed authorization (SEP-990), and workload identity
+  federation are not implemented.
 - `http-standard-headers` is excluded from the score: its `initialize` and
   `notifications/initialized` checks are skipped because a 2026-07-28 client
   sends neither method. Every method the client does send carries the correct
@@ -241,13 +256,19 @@ which pins `Snodo.Client` to it, so the client opens every scenario with
 afterwards. The 2026-07-28 lane pins 2026-07-28 the same way and sends no
 probe, so its traffic is unchanged.
 
-The 2026-09-29 run passes **2/18** required scenarios: `initialize` and
-`tools_call`. Required checks: 3 success, 42 failure, 0 skipped, 0 warning,
-13 info. [expected-failures-client-2025-11-25.json](expected-failures-client-2025-11-25.json)
+The 2026-09-30 run passes **16/18** required scenarios: `initialize`,
+`tools_call`, and all 14 required `auth/*` scenarios, with `Snodo.OAuth.Client`
+as the token provider on the `initialize` request and every request after it.
+Required checks: 209 success, 7 failure, 0 skipped, 0 warning, 306 info. The
+unscored `auth/client-credentials-basic`, `auth/client-credentials-jwt`, and
+`json-schema-2020-12-preservation` scenarios pass as well. The 2026-09-29 run,
+before `Snodo.OAuth.Client` existed, passed 2/18.
+[expected-failures-client-2025-11-25.json](expected-failures-client-2025-11-25.json)
 pins every check of all 25 scenarios. The gaps:
 
-- The 14 required and 6 unscored `auth/*` scenarios: `Snodo.Client` has no
-  OAuth support, and the harness exits before sending a request.
+- The unscored `auth/dpop`, `auth/dpop-nonce`,
+  `auth/enterprise-managed-authorization`, and `auth/wif-jwt-bearer`
+  scenarios, for the reasons the 2026-07-28 lane gives.
 - `elicitation-sep1034-client-defaults`: the scenario server sends
   `elicitation/create` without a related request ID, which the TypeScript SDK
   server delivers only on the standalone `GET` event stream. `Snodo.Client`
@@ -259,8 +280,9 @@ pins every check of all 25 scenarios. The gaps:
   does not speak, so the client closes the connection. The scenario also needs
   reconnection on the standalone `GET` stream.
 
-- [2025-11-25 client report](results/2026-09-29-client-2025-11-25-alpha.11-summary.md)
-- [2025-11-25 client machine-readable report](results/2026-09-29-client-2025-11-25-alpha.11-summary.json)
+- [2025-11-25 client report](results/2026-09-30-client-2025-11-25-alpha.11-summary.md)
+- [2025-11-25 client machine-readable report](results/2026-09-30-client-2025-11-25-alpha.11-summary.json)
+- [Historical September 29 2025-11-25 client report](results/2026-09-29-client-2025-11-25-alpha.11-summary.md)
 
 See [protocol-compliance.md](../guides/protocol-compliance.md) for architecture and
 [MRTR documentation](../guides/interactive-operations.md) for semantics and remaining limits.

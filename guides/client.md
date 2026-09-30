@@ -397,6 +397,7 @@ transport failure; -32001 when the acknowledgement does not arrive within
 | `:max_line_bytes` | stdio | the largest response line to accept (16 MiB); the rest of a longer line is discarded and its request times out |
 | `:max_server_requests` | stdio | the most server-to-client requests whose handlers run at once (16); a request over the limit is answered -32603 |
 | `:headers`, `:ssl`, `:connect_timeout` | HTTP | extra headers, `:ssl` options (peers are verified against the OS trust store by default), connect timeout |
+| `:token_provider` | HTTP | a `Snodo.Client.TokenProvider` as `{module, state}` that supplies the bearer token (see [Authorization](#authorization)) |
 | `:max_response_bytes` | HTTP | the largest response to accept (16 MiB), checked as it arrives; a larger response closes the connection and returns -32000 |
 | `:max_buffer`, `:overflow` | `listen/3` | the subscription's buffer bound (100) and overflow policy (`:drop_oldest`) |
 
@@ -459,6 +460,54 @@ transport failure; -32001 when the acknowledgement does not arrive within
   search = Enum.find(tools, &(&1["name"] == "search"))
   {:ok, result} = Snodo.Client.call_tool(client, search, %{"region" => "eu", "query" => "json"})
   ```
+
+## Authorization
+
+A server over HTTP may require an OAuth 2.1 bearer token. A token the
+application already holds goes in `headers:`. A token that has to be obtained,
+refreshed, or extended comes from a `Snodo.Client.TokenProvider`, given as
+`token_provider: {module, state}`:
+
+- Before each request, including the one that opens a `listen/3` stream, the
+  transport asks the provider for a token and sends
+  `Authorization: Bearer <token>` when it gets one. `{:ok, nil}` sends the
+  request without one, which is how a client learns the server's challenge.
+  On an initialize-era connection the same applies to `initialize`, to
+  `notifications/initialized` and each answer to a server request, and to
+  the `DELETE` that ends the session.
+- After a `401`, or a `403` whose `WWW-Authenticate` challenge is
+  `insufficient_scope`, the transport parses the challenge into a
+  `Snodo.Client.Challenge` (`resource_metadata`, `scope`, `error`), asks the
+  provider to refresh with it, and sends the request once more with the new
+  token.
+- A second `401` or `403` returns -32000 with
+  `cause: {:unauthorized, status, challenge}`. A provider error is returned as
+  it is. No token appears in an error.
+- The request's `timeout:` covers each HTTP attempt, not the provider call
+  before or between them. A provider that runs an authorization flow can
+  hold a request for as long as the user takes to authorize, up to the
+  provider's own limit (`Snodo.OAuth.Client` waits 300 seconds by default).
+
+`snodo_oauth` supplies `Snodo.OAuth.Client`, which implements the MCP
+authorization flows on this behaviour: protected resource and authorization
+server metadata discovery with issuer validation, client ID metadata
+documents, dynamic client registration and pre-registered clients, PKCE,
+resource indicators, scope selection and step-up, refresh tokens, and the
+client credentials grant with `client_secret_basic`, `client_secret_post`, or
+`private_key_jwt`.
+
+```elixir
+{:ok, oauth} =
+  Snodo.OAuth.Client.start_link(
+    resource: "https://mcp.example.com/mcp",
+    authorize: fn url -> MyApp.open_browser(url) end
+  )
+
+{:ok, client} =
+  Snodo.Client.connect({:http, "https://mcp.example.com/mcp"},
+    token_provider: {Snodo.OAuth.Client, oauth}
+  )
+```
 
 ## Custom transports
 

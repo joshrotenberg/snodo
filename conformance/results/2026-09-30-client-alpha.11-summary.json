@@ -1,0 +1,214 @@
+{
+  "schemaVersion": 2,
+  "leg": "client",
+  "lane": "client",
+  "runDate": "2026-09-30",
+  "protocolVersion": "2026-07-28",
+  "runner": "@modelcontextprotocol/conformance@0.2.0-alpha.11",
+  "runnerExitCode": 0,
+  "requirements": {
+    "attemptedScenarios": 32,
+    "requiredScenarios": 32,
+    "requirementsAnchor": "@modelcontextprotocol/conformance@0.2.0-alpha.10",
+    "requirementsCommit": "c321dd32035556e6769d3724a8ee97d87c3faaac",
+    "requirementsSha256": "ae2f4f6210fd729e2e318edd5bbfa31a43cee0bc608e48052fa26dbf1d939b57"
+  },
+  "score": {
+    "status": "partial",
+    "basis": "whole required scenarios with semantic success and no FAILURE, WARNING, or SKIPPED checks",
+    "passedScenarios": 31,
+    "requiredScenarios": 32,
+    "passedScenarioIds": [
+      "tools_call",
+      "request-metadata",
+      "auth/metadata-default",
+      "auth/metadata-var1",
+      "auth/metadata-var2",
+      "auth/metadata-var3",
+      "auth/basic-cimd",
+      "auth/scope-from-www-authenticate",
+      "auth/scope-from-scopes-supported",
+      "auth/scope-omitted-when-undefined",
+      "auth/scope-step-up",
+      "auth/scope-retry-limit",
+      "auth/token-endpoint-auth-basic",
+      "auth/token-endpoint-auth-post",
+      "auth/token-endpoint-auth-none",
+      "auth/pre-registration",
+      "auth/resource-mismatch",
+      "auth/offline-access-scope",
+      "auth/offline-access-not-supported",
+      "auth/authorization-server-migration",
+      "auth/iss-supported",
+      "auth/iss-not-advertised",
+      "auth/iss-supported-missing",
+      "auth/iss-wrong-issuer",
+      "auth/iss-unexpected",
+      "auth/iss-normalized",
+      "auth/metadata-issuer-mismatch",
+      "sep-2322-client-request-state",
+      "http-custom-headers",
+      "http-invalid-tool-headers",
+      "json-schema-ref-no-deref"
+    ]
+  },
+  "requiredCheckCounts": {
+    "success": 405,
+    "failure": 0,
+    "skipped": 2,
+    "warning": 0,
+    "info": 462
+  },
+  "rawRunnerNoFailure": {
+    "scenarios": 32,
+    "requiredScenarios": 32,
+    "scenarioIds": [
+      "tools_call",
+      "request-metadata",
+      "auth/metadata-default",
+      "auth/metadata-var1",
+      "auth/metadata-var2",
+      "auth/metadata-var3",
+      "auth/basic-cimd",
+      "auth/scope-from-www-authenticate",
+      "auth/scope-from-scopes-supported",
+      "auth/scope-omitted-when-undefined",
+      "auth/scope-step-up",
+      "auth/scope-retry-limit",
+      "auth/token-endpoint-auth-basic",
+      "auth/token-endpoint-auth-post",
+      "auth/token-endpoint-auth-none",
+      "auth/pre-registration",
+      "auth/resource-mismatch",
+      "auth/offline-access-scope",
+      "auth/offline-access-not-supported",
+      "auth/authorization-server-migration",
+      "auth/iss-supported",
+      "auth/iss-not-advertised",
+      "auth/iss-supported-missing",
+      "auth/iss-wrong-issuer",
+      "auth/iss-unexpected",
+      "auth/iss-normalized",
+      "auth/metadata-issuer-mismatch",
+      "sep-2322-client-request-state",
+      "http-standard-headers",
+      "http-custom-headers",
+      "http-invalid-tool-headers",
+      "json-schema-ref-no-deref"
+    ],
+    "excludedFromScore": [
+      {
+        "scenario": "http-standard-headers",
+        "reason": "warning/skipped checks or no semantic success; not an exercised whole-scenario pass"
+      }
+    ]
+  },
+  "notScored": [
+    {
+      "scenario": "auth/client-credentials-jwt",
+      "leg": "client",
+      "reason": "extension",
+      "checks": {
+        "success": 7,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 12
+      }
+    },
+    {
+      "scenario": "auth/client-credentials-basic",
+      "leg": "client",
+      "reason": "extension",
+      "checks": {
+        "success": 7,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 12
+      }
+    },
+    {
+      "scenario": "auth/enterprise-managed-authorization",
+      "leg": "client",
+      "reason": "extension",
+      "checks": {
+        "success": 16,
+        "failure": 2,
+        "skipped": 0,
+        "warning": 0,
+        "info": 20
+      }
+    },
+    {
+      "scenario": "auth/dpop",
+      "leg": "client",
+      "reason": "extension",
+      "checks": {
+        "success": 0,
+        "failure": 3,
+        "skipped": 0,
+        "warning": 0,
+        "info": 4
+      }
+    },
+    {
+      "scenario": "auth/dpop-nonce",
+      "leg": "client",
+      "reason": "extension",
+      "checks": {
+        "success": 0,
+        "failure": 5,
+        "skipped": 0,
+        "warning": 0,
+        "info": 4
+      }
+    },
+    {
+      "scenario": "auth/wif-jwt-bearer",
+      "leg": "client",
+      "reason": "extension",
+      "checks": {
+        "success": 16,
+        "failure": 1,
+        "skipped": 0,
+        "warning": 1,
+        "info": 20
+      }
+    },
+    {
+      "scenario": "json-schema-2020-12-preservation",
+      "leg": "client",
+      "reason": "added-after-release",
+      "checks": {
+        "success": 9,
+        "failure": 0,
+        "skipped": 0,
+        "warning": 0,
+        "info": 0
+      }
+    }
+  ],
+  "failures": [
+    "auth/enterprise-managed-authorization:complete-flow-token-exchange",
+    "auth/enterprise-managed-authorization:complete-flow-jwt-bearer",
+    "auth/dpop:sep-1932-client-token-request-proof",
+    "auth/dpop:sep-1932-client-dpop-auth-scheme",
+    "auth/dpop:sep-1932-client-fresh-proof",
+    "auth/dpop-nonce:sep-1932-client-token-request-proof",
+    "auth/dpop-nonce:sep-1932-client-dpop-auth-scheme",
+    "auth/dpop-nonce:sep-1932-client-fresh-proof",
+    "auth/dpop-nonce:sep-1932-client-as-nonce",
+    "auth/dpop-nonce:sep-1932-client-rs-nonce",
+    "auth/wif-jwt-bearer:wif-grant-type"
+  ],
+  "regression": {
+    "passed": true,
+    "unexpectedFailures": [],
+    "staleFailures": [],
+    "unexpectedExclusions": [],
+    "staleExclusions": [],
+    "checkStatusDrift": [],
+    "note": "A passing regression gate does not convert expected failures into conformance passes."
+  }
+}

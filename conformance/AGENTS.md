@@ -20,7 +20,7 @@ npm run check:client      # Snodo.Client against the runner's scenario servers
 npm run check:client:2025-11-25  # Snodo.Client pinned to 2025-11-25
 ```
 
-`conformance/fixture` is an unpublished Mix project that puts the core, `snodo_tasks`, `snodo_plug`, and Bandit on one code path for `fixture_server.exs`.
+`conformance/fixture` is an unpublished Mix project that puts the core, `snodo_tasks`, `snodo_plug`, `snodo_oauth`, and Bandit on one code path for `fixture_server.exs` and for `client.exs`, which the client lane starts from that directory.
 
 ## Baselines
 

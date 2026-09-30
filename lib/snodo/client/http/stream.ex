@@ -15,15 +15,20 @@ defmodule Snodo.Client.HTTP.Stream do
 
   @acknowledgement "notifications/subscriptions/acknowledged"
 
+  # `{:challenge, status, challenge}` is a 401 or 403 for the transport's
+  # token provider; the process has stopped and the caller may open again.
   @doc false
   @spec open(map(), [{String.t(), String.t()}], map(), keyword()) ::
-          {:ok, map(), pid()} | {:error, Snodo.Error.t()}
+          {:ok, map(), pid()}
+          | {:error, Snodo.Error.t()}
+          | {:challenge, 401 | 403, Snodo.Client.Challenge.t() | nil}
   def open(http, headers, message, opts) do
     {:ok, pid} = GenServer.start(__MODULE__, {http, headers, message, opts})
 
     case GenServer.call(pid, :open, :infinity) do
       {:ok, accepted} -> {:ok, accepted, pid}
       {:error, error} -> {:error, error}
+      {:challenge, _status, _challenge} = challenge -> challenge
     end
   end
 
@@ -66,6 +71,13 @@ defmodule Snodo.Client.HTTP.Stream do
   def handle_info({:mcp_stream_socket, socket}, state), do: {:noreply, %{state | socket: socket}}
 
   def handle_info({:mcp_stream_message, message}, state), do: handle_message(state, message)
+
+  # A challenge is read from the response head, before any event, so the
+  # opener is still waiting for it.
+  def handle_info({:mcp_stream_end, {:challenge, _status, _challenge} = challenge}, state)
+      when state.caller != nil do
+    {:stop, :normal, reply(%{state | reader: nil, socket: nil}, challenge)}
+  end
 
   def handle_info({:mcp_stream_end, outcome}, state) do
     state = %{state | reader: nil, socket: nil}

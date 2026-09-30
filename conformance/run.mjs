@@ -24,11 +24,12 @@ const requirementSets = {
 // A lane runs one leg of the official runner against one requirement set and
 // keeps its own reviewed baseline. Server lanes start fixture_server.exs with
 // a runtime profile and a transport; the client lanes run Snodo.Client through
-// client.exs against the runner's own scenario servers, pinned to the lane's
-// revision through SNODO_CLIENT_PROTOCOL. 2025-06-18 has no frozen requirement
-// set, so its lane runs the runner's active suite for that version and every
-// scenario is unscored. The Plug lane shares the native server baseline, so
-// any difference between the two listeners fails a gate.
+// client.exs against the runner's own scenario servers, from the fixture
+// project so snodo_oauth is on the code path for the auth scenarios, pinned to
+// the lane's revision through SNODO_CLIENT_PROTOCOL. 2025-06-18 has no frozen
+// requirement set, so its lane runs the runner's active suite for that version
+// and every scenario is unscored. The Plug lane shares the native server
+// baseline, so any difference between the two listeners fails a gate.
 const lanes = {
   server: { leg: "server", revision: "2026-07-28", baseline: "expected-failures.json",
     fixture: { profile: "latest", transport: "native" } },
@@ -120,14 +121,14 @@ try {
     assert.equal(endpoint.hostname, "127.0.0.1");
     args = ["server", "--url", readiness.url];
   } else {
-    args = ["client", "--command", "mix run --no-compile --no-deps-check conformance/client.exs"];
+    args = ["client", "--command", "mix run --no-compile --no-deps-check ../client.exs"];
   }
   const selection = requirementSet
     ? ["--requirements", revision]
     : ["--spec-version", revision, "--suite", "active"];
   runner = spawn(process.execPath, [path.join(runnerPackage, "dist/index.js"), ...args,
     ...selection, "--output-dir", runDir],
-  { cwd: leg === "server" ? here : project, stdio: ["ignore", "pipe", "pipe"],
+  { cwd: path.join(here, "fixture"), stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, MIX_ENV: "dev", ERL_FLAGS: erlFlags, SNODO_CLIENT_PROTOCOL: revision } });
   runnerExit = once(runner, "exit");
   const capture = (chunk) => { runnerLog += chunk; process.stdout.write(chunk); };

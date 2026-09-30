@@ -32,16 +32,13 @@ defmodule SnodoTest.TestSubscriptionHub do
     {:reply, {:ok, filter, {self(), token}}, state}
   end
 
-  # The worker closes the handle when its owner exits while the puller may
-  # still be sending a pull, so a pull can arrive after the close.
+  # The server stops a subscription's puller and closes its handle from
+  # different processes, so a pull can arrive after the close. Like a real
+  # source, the hub answers it rather than crashing the server.
   def handle_call({:next, token}, from, state) do
-    case Map.fetch(state.subscriptions, token) do
-      :error ->
-        {:reply, :closed, state}
-
-      {:ok, subscription} ->
-        notify(state.owner, {:subscription_next, subscription.request_id})
-        next_value(state, token, subscription, from)
+    case get_in(state, [:subscriptions, token]) do
+      nil -> {:reply, :closed, state}
+      subscription -> next(subscription, token, from, state)
     end
   end
 
@@ -84,7 +81,9 @@ defmodule SnodoTest.TestSubscriptionHub do
     end
   end
 
-  defp next_value(state, token, subscription, from) do
+  defp next(subscription, token, from, state) do
+    notify(state.owner, {:subscription_next, subscription.request_id})
+
     case :queue.out(subscription.queue) do
       {{:value, value}, queue} ->
         {:reply, value, put_in(state, [:subscriptions, token, :queue], queue)}

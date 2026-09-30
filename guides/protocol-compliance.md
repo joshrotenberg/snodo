@@ -269,18 +269,23 @@ The September 26, September 14, and August 25 summaries are retained as
 historical evidence, not current scores.
 
 The runner's client leg measures `Snodo.Client` separately, through a harness
-that drives it against each scenario server. The 2026-09-29 run passes 7 of 32
-required client scenarios, one more than on 2026-09-26: the harness installs
-input handlers for all four kinds, so the client declares the deprecated
-`sampling` and `roots` capabilities and `request-metadata` passes whole. 25
-of the 32 cover OAuth, which the client does not implement, and one of the
-seven passes (`auth/resource-mismatch`) only because the harness never starts
-authorization. A second client lane pins `Snodo.Client` to 2025-11-25 and runs
-the frozen 2025-11-25 client set: the 2026-09-29 run passes 2 of 18 required
-scenarios, `initialize` and `tools_call`. 14 of the 18 cover OAuth; the
-elicitation scenario depends on the standalone `GET` event stream, which the
-client does not open, and the reconnection scenario negotiates 2025-03-26,
-which the client does not speak. See the
+that drives it against each scenario server, with `Snodo.OAuth.Client` from
+`snodo_oauth` as the token provider. The 2026-09-30 run passes 31 of 32
+required client scenarios, including all 25 that cover OAuth: metadata
+discovery, client identity, PKCE, scope selection and step-up, resource
+indicators, and the `iss` checks. The one other is excluded from the score
+because a 2026-07-28 client sends no `initialize`. The harness installs input
+handlers for all four kinds, so the client declares the deprecated `sampling`
+and `roots` capabilities and `request-metadata` passes whole, as it did on
+2026-09-29 when 7 of 32 passed. DPoP, enterprise-managed authorization, and
+workload identity federation are not implemented; their unscored scenarios
+stay in the baseline. A second client lane pins `Snodo.Client` to 2025-11-25
+and runs the frozen 2025-11-25 client set: the 2026-09-30 run passes 16 of 18
+required scenarios, `initialize`, `tools_call`, and all 14 that cover OAuth,
+up from 2 of 18 on 2026-09-29. The elicitation scenario depends on the
+standalone `GET` event stream, which the client does not open, and the
+reconnection scenario negotiates 2025-03-26, which the client does not speak.
+See the
 [client leg notes](https://github.com/joshrotenberg/snodo/blob/main/conformance/README.md#client-leg)
 for the remaining gaps.
 

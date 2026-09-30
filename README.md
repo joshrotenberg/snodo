@@ -31,7 +31,7 @@ The client speaks all three versions and negotiates one when it connects.
 | [`snodo`](https://hex.pm/packages/snodo) | Protocol core, router, server DSL, client, stdio and HTTP transports | [HexDocs](https://hexdocs.pm/snodo) |
 | [`snodo_plug`](https://hex.pm/packages/snodo_plug) | `Snodo.Transport.Plug` for Plug and Bandit applications | [HexDocs](https://hexdocs.pm/snodo_plug) |
 | [`snodo_jsv`](https://hex.pm/packages/snodo_jsv) | Full JSON Schema 2020-12 validation through JSV | [HexDocs](https://hexdocs.pm/snodo_jsv) |
-| [`snodo_oauth`](https://hex.pm/packages/snodo_oauth) | OAuth 2.1 resource server plugs: protected resource metadata, bearer token verification, scope policy | [HexDocs](https://hexdocs.pm/snodo_oauth) |
+| [`snodo_oauth`](https://hex.pm/packages/snodo_oauth) | OAuth 2.1 resource server plugs (protected resource metadata, bearer token verification, scope policy) and the client authorization flows for `Snodo.Client` | [HexDocs](https://hexdocs.pm/snodo_oauth) |
 | [`snodo_telemetry`](https://hex.pm/packages/snodo_telemetry) | `Snodo.Instrumentation.Telemetry`, an instrumentation sink that emits `:telemetry` events | [HexDocs](https://hexdocs.pm/snodo_telemetry) |
 | [`snodo_tasks`](https://hex.pm/packages/snodo_tasks) | The `io.modelcontextprotocol/tasks` extension with an application-owned store and runner | [HexDocs](https://hexdocs.pm/snodo_tasks) |
 | [`snodo_tasks_postgres`](https://hex.pm/packages/snodo_tasks_postgres) | PostgreSQL store for Tasks | [HexDocs](https://hexdocs.pm/snodo_tasks_postgres) |
@@ -147,9 +147,10 @@ without sessions and over stdio. They add no session storage.
 
 Against the frozen official conformance suite, all 37 `2026-07-28` server
 scenarios pass; that is the pinned runner's score, not a claim of full revision
-conformance. On the client side, 7 of 32 pass: 25 of the client scenarios
-cover OAuth, which `Snodo.Client` does not implement. Pinned to `2025-11-25`,
-the client passes 2 of 18, 14 of which cover OAuth. The [compliance guide](https://hexdocs.pm/snodo/protocol-compliance.html) lists
+conformance. On the client side, 31 of 32 pass, including the 25 that cover
+OAuth with `snodo_oauth` as the token provider; the other one is excluded from
+the score because a 2026-07-28 client sends no `initialize`. Pinned to
+`2025-11-25`, the client passes 16 of 18, including all 14 that cover OAuth. The [compliance guide](https://hexdocs.pm/snodo/protocol-compliance.html) lists
 what is measured and what is not. Design records from the project's history are
 in [docs/history](https://github.com/joshrotenberg/snodo/blob/main/docs/history/README.md).
 

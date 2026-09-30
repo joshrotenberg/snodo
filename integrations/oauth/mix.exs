@@ -13,7 +13,7 @@ defmodule Snodo.OAuth.MixProject do
       version: @version,
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
-      description: "OAuth 2.1 resource server plugs for snodo MCP servers",
+      description: "OAuth 2.1 resource server plugs and client authorization flows for snodo",
       source_url: @source_url,
       package: [
         licenses: ["MIT"],
@@ -28,7 +28,9 @@ defmodule Snodo.OAuth.MixProject do
       ],
       elixirc_paths: elixirc_paths(Mix.env()),
       dialyzer: [
-        plt_add_apps: [:inets, :mix],
+        # ex_unit for the fake servers under test/support, which the test
+        # environment compiles.
+        plt_add_apps: [:ex_unit, :inets, :mix],
         plt_local_path: "priv/plts",
         flags: [:unmatched_returns, :error_handling]
       ],
