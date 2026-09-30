@@ -194,6 +194,18 @@ defmodule Snodo.SubscriptionHubTest do
     assert :ok = Subscription.stop_worker(cancelled_worker, cancelled_monitor)
   end
 
+  # The worker closes the handle when its owner exits while the puller may
+  # still be sending a pull, so a pull can reach the hub after the close.
+  test "a pull after close reports the handle closed" do
+    {:ok, hub} = start_supervised(Hub)
+    subscription = listen(runtime(hub), "closed", %{"toolsListChanged" => true})
+
+    assert :ok = Subscription.close(subscription, :cancelled)
+    assert :closed = Hub.next(subscription.handle, hub)
+    assert :ok = Subscription.close(subscription, :cancelled)
+    assert %{subscriptions: 0, queued: 0} = Hub.stats(hub)
+  end
+
   test "a worker closes its source and exits when its owner exits" do
     subscription = listen(recording_runtime(), "orphaned", %{"toolsListChanged" => true})
     test = self()

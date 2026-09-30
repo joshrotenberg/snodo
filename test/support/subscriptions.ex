@@ -32,19 +32,16 @@ defmodule SnodoTest.TestSubscriptionHub do
     {:reply, {:ok, filter, {self(), token}}, state}
   end
 
+  # The worker closes the handle when its owner exits while the puller may
+  # still be sending a pull, so a pull can arrive after the close.
   def handle_call({:next, token}, from, state) do
-    subscription = get_in(state, [:subscriptions, token])
-    notify(state.owner, {:subscription_next, subscription.request_id})
-
-    case :queue.out(subscription.queue) do
-      {{:value, value}, queue} ->
-        {:reply, value, put_in(state, [:subscriptions, token, :queue], queue)}
-
-      {:empty, _queue} when subscription.closed? ->
+    case Map.fetch(state.subscriptions, token) do
+      :error ->
         {:reply, :closed, state}
 
-      {:empty, _queue} ->
-        {:noreply, put_in(state, [:subscriptions, token, :waiter], from)}
+      {:ok, subscription} ->
+        notify(state.owner, {:subscription_next, subscription.request_id})
+        next_value(state, token, subscription, from)
     end
   end
 
@@ -84,6 +81,19 @@ defmodule SnodoTest.TestSubscriptionHub do
         if subscription.waiter, do: GenServer.reply(subscription.waiter, :closed)
         notify(state.owner, {:subscription_closed, subscription.request_id, reason})
         {:reply, :ok, %{state | subscriptions: subscriptions}}
+    end
+  end
+
+  defp next_value(state, token, subscription, from) do
+    case :queue.out(subscription.queue) do
+      {{:value, value}, queue} ->
+        {:reply, value, put_in(state, [:subscriptions, token, :queue], queue)}
+
+      {:empty, _queue} when subscription.closed? ->
+        {:reply, :closed, state}
+
+      {:empty, _queue} ->
+        {:noreply, put_in(state, [:subscriptions, token, :waiter], from)}
     end
   end
 
