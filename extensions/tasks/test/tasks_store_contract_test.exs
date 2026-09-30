@@ -31,7 +31,7 @@ defmodule Snodo.TasksDetsStoreContractTest do
   @doc false
   def start_contract_store(_context, opts) do
     unique = System.unique_integer([:positive])
-    path = Path.join(System.tmp_dir!(), "snodo-contract-#{unique}.dets")
+    path = Path.join(System.tmp_dir!(), "snodo-contract-#{System.pid()}-#{unique}.dets")
     table = String.to_atom("snodo_contract_#{unique}")
 
     options =

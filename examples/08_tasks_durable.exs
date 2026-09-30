@@ -359,7 +359,7 @@ defmodule Examples.TasksDurable.Runner do
 
   defp unique_directory! do
     suffix = System.unique_integer([:positive, :monotonic])
-    directory = Path.join(System.tmp_dir!(), "snodo_tasks_durable_#{suffix}")
+    directory = Path.join(System.tmp_dir!(), "snodo_tasks_durable_#{System.pid()}_#{suffix}")
     File.mkdir!(directory)
     directory
   end

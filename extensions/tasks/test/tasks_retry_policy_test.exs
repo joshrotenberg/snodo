@@ -1025,7 +1025,7 @@ defmodule Snodo.TasksRetryPolicyTest do
     path =
       Path.join(
         System.tmp_dir!(),
-        "snodo-tasks-retry-#{System.unique_integer([:positive])}.dets"
+        "snodo-tasks-retry-#{System.pid()}-#{System.unique_integer([:positive])}.dets"
       )
 
     on_exit(fn -> File.rm(path) end)
