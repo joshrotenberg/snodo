@@ -30,11 +30,12 @@ defmodule Snodo.Client.Stdio do
   The connection process monitors the process that called `connect/2` and
   closes when it exits. When a request times out, the transport answers the
   caller with a -32001 error and sends the server `notifications/cancelled` for
-  that request ID. When the server exits, requests in flight and later requests
-  fail with -32000. `notify/3` writes a notification and returns once the
-  line is in the port. When the connection stops, through `close/1` or the
-  owner's exit, handlers still running for server-to-client requests are
-  killed and their answers are not sent.
+  that request ID. When the server exits, or closes its stdin so that a write
+  to it fails, requests in flight and later requests fail with -32000.
+  `notify/3` writes a notification and returns once the line is in the port.
+  When the connection stops, through `close/1` or the owner's exit, handlers
+  still running for server-to-client requests are killed and their answers
+  are not sent.
 
   A `notifications/progress` whose token belongs to a request made with
   `progress:` is forwarded to the process waiting on that request, which calls
@@ -50,8 +51,8 @@ defmodule Snodo.Client.Stdio do
   `_meta["io.modelcontextprotocol/subscriptionId"]`), delivers the events to
   the owner (see `Snodo.Client.Subscription`), and monitors the owner. Closing
   the subscription, or the owner's exit, sends `notifications/cancelled` for
-  the request. When the server exits, or `close/1` stops the connection, open
-  subscriptions end with a -32000 error.
+  the request. When the server exits or closes its stdin, or `close/1` stops
+  the connection, open subscriptions end with a -32000 error.
 
   `close/1` closes the server's stdin. An MCP stdio server exits at EOF after
   finishing admitted requests; this transport does not signal or kill it.
@@ -305,19 +306,18 @@ defmodule Snodo.Client.Stdio do
 
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
     error = Transport.connection_error("The stdio server exited", {:exit_status, status})
-
-    for {_id, entry} <- state.pending do
-      cancel_timer(entry)
-      deliver(entry, {:response, {:error, error}})
-    end
-
-    state =
-      Enum.reduce(Map.keys(state.subscriptions), state, fn id, state ->
-        end_subscription(state, id, {:error, error})
-      end)
-
-    {:noreply, %{state | pending: %{}, tokens: %{}, closed: error}}
+    {:noreply, server_gone(state, error)}
   end
+
+  # The port itself failed, for example with :epipe when the server closed its
+  # stdin, so no exit status follows. A port that closes after reporting the
+  # exit status also exits, with :normal, and changes nothing.
+  def handle_info({:EXIT, port, reason}, %{port: port, closed: nil} = state) do
+    error = Transport.connection_error("The stdio server connection failed", {:port_exit, reason})
+    {:noreply, server_gone(state, error)}
+  end
+
+  def handle_info({:EXIT, port, _reason}, %{port: port} = state), do: {:noreply, state}
 
   def handle_info({:request_timeout, {:listen, id}, tag}, state) do
     case state.subscriptions do
@@ -400,6 +400,22 @@ defmodule Snodo.Client.Stdio do
     end
 
     :ok
+  end
+
+  # Requests in flight and open subscriptions fail with `error`, and so does
+  # every later request.
+  defp server_gone(state, error) do
+    for {_id, entry} <- state.pending do
+      cancel_timer(entry)
+      deliver(entry, {:response, {:error, error}})
+    end
+
+    state =
+      Enum.reduce(Map.keys(state.subscriptions), state, fn id, state ->
+        end_subscription(state, id, {:error, error})
+      end)
+
+    %{state | pending: %{}, tokens: %{}, closed: error}
   end
 
   # Once a line passes the limit, its remaining chunks are dropped as they

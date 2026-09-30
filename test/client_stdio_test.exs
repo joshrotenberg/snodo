@@ -276,6 +276,45 @@ defmodule Snodo.ClientStdioTest do
     assert {:error, %Error{code: -32_000, cause: {:exit_status, 3}}} = Client.list_tools(client)
   end
 
+  # The server closes its stdin and then sends an elicitation, so once the
+  # handler runs, the next write fails with EPIPE and the port exits without
+  # an exit status. A write before stdin closes would sit in the pipe instead.
+  test "a server that closes its stdin fails the request in flight at once" do
+    elicitation =
+      JSON.encode!(%{
+        "jsonrpc" => "2.0",
+        "id" => "srv-1",
+        "method" => "elicitation/create",
+        "params" => %{
+          "mode" => "form",
+          "message" => "Your name?",
+          "requestedSchema" => %{"type" => "object", "properties" => %{}}
+        }
+      })
+
+    script = "exec 0<&-; printf '%s\\n' \"$1\"; sleep 5"
+
+    {:ok, client} =
+      Client.connect({:stdio, "/bin/sh", ["-c", script, "sh", elicitation]},
+        protocol: "2026-07-28",
+        timeout: 10_000,
+        input_handlers: %{form: blocking_form(self())}
+      )
+
+    on_exit(fn -> Client.close(client) end)
+    assert_receive {:handler, _handler}, 5_000
+
+    started = System.monotonic_time(:millisecond)
+
+    assert {:error, %Error{code: -32_000, kind: :transport, cause: {:port_exit, :epipe}}} =
+             Client.list_tools(client)
+
+    assert System.monotonic_time(:millisecond) - started < 2_000
+
+    assert {:error, %Error{code: -32_000, cause: {:port_exit, :epipe}}} =
+             Client.list_tools(client)
+  end
+
   test "close/1 ends the connection" do
     client = connect()
     assert {:ok, _tools} = Client.list_tools(client)
