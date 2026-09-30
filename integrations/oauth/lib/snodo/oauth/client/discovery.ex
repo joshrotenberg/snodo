@@ -11,6 +11,21 @@ defmodule Snodo.OAuth.Client.Discovery do
 
   alias Snodo.OAuth.Client.HTTP
 
+  @typedoc """
+  Settings for the requests: a keyword list or map with `:timeout_ms`
+  (default 10,000), `:max_body_bytes` (default 262,144), and `:ssl`, the
+  `:ssl` client options for `https` (default: peer verification against the
+  operating system's trust store). Every URL must be `https`, or `http` to a
+  loopback host.
+  """
+  @type http ::
+          keyword()
+          | %{
+              timeout_ms: pos_integer(),
+              max_body_bytes: pos_integer(),
+              ssl: keyword() | nil
+            }
+
   @prm_well_known "/.well-known/oauth-protected-resource"
   @as_well_known "/.well-known/oauth-authorization-server"
   @oidc_well_known "/.well-known/openid-configuration"
@@ -28,12 +43,12 @@ defmodule Snodo.OAuth.Client.Discovery do
   `{:error, {:resource_mismatch, requested, configured}}`, and no
   authorization starts.
   """
-  @spec protected_resource(HTTP.config(), String.t(), String.t() | nil) ::
+  @spec protected_resource(http(), String.t(), String.t() | nil) ::
           {:ok, map()} | {:error, term()}
-  def protected_resource(http, resource, metadata_url) do
+  def protected_resource(http, resource, metadata_url \\ nil) do
     urls = if metadata_url, do: [metadata_url], else: prm_urls(resource)
 
-    with {:ok, metadata} <- fetch_first(http, urls, :no_protected_resource_metadata),
+    with {:ok, metadata} <- fetch_first(settings(http), urls, :no_protected_resource_metadata),
          :ok <- check_resource(metadata, resource) do
       {:ok, metadata}
     end
@@ -50,10 +65,11 @@ defmodule Snodo.OAuth.Client.Discovery do
   document must equal `issuer` exactly (RFC 8414 section 3.3, no
   normalization); otherwise `{:error, {:issuer_mismatch, issuer, found}}`.
   """
-  @spec authorization_server(HTTP.config(), String.t()) :: {:ok, map()} | {:error, term()}
+  @spec authorization_server(http(), String.t()) :: {:ok, map()} | {:error, term()}
   def authorization_server(http, issuer) do
     with {:ok, urls} <- as_urls(issuer),
-         {:ok, metadata} <- fetch_first(http, urls, {:no_authorization_server_metadata, issuer}),
+         {:ok, metadata} <-
+           fetch_first(settings(http), urls, {:no_authorization_server_metadata, issuer}),
          :ok <- check_issuer(metadata, issuer),
          :ok <- check_endpoint(metadata, "token_endpoint") do
       {:ok, metadata}
@@ -86,6 +102,9 @@ defmodule Snodo.OAuth.Client.Discovery do
   end
 
   def resource_allowed?(_requested, _configured), do: false
+
+  defp settings(http) when is_list(http), do: HTTP.config(http)
+  defp settings(%{} = http), do: http
 
   defp prm_urls(resource) do
     %URI{path: path} = uri = URI.parse(resource)

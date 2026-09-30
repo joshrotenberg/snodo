@@ -820,6 +820,41 @@ defmodule Snodo.OAuth.ClientTest do
     end
   end
 
+  describe "Discovery on its own" do
+    alias Snodo.OAuth.Client.Discovery
+
+    test "fetches both documents with keyword settings" do
+      fake = Fake.start(prm_scopes_supported: ["mcp:read"])
+
+      assert {:ok, %{"resource" => resource, "scopes_supported" => ["mcp:read"]} = metadata} =
+               Discovery.protected_resource([timeout_ms: 2_000], fake.mcp_url)
+
+      assert resource == fake.mcp_url
+      assert Discovery.issuer(metadata) == fake.issuer
+
+      assert {:ok, %{"issuer" => issuer, "token_endpoint" => _endpoint}} =
+               Discovery.authorization_server([], fake.issuer)
+
+      assert issuer == fake.issuer
+    end
+
+    test "reports what it could not find" do
+      fake = Fake.start(prm_path: nil)
+
+      assert {:error, :no_protected_resource_metadata} =
+               Discovery.protected_resource([], fake.mcp_url)
+
+      assert {:error, {:no_authorization_server_metadata, _issuer}} =
+               Discovery.authorization_server([], fake.rs_url)
+
+      assert {:error, {:invalid_issuer, "not a url"}} =
+               Discovery.authorization_server([], "not a url")
+
+      assert {:error, {:insecure_url, _url}} =
+               Discovery.authorization_server([], "http://auth.example.com")
+    end
+  end
+
   test "options are checked" do
     fake = Fake.start()
 
