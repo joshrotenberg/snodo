@@ -91,7 +91,12 @@ defmodule Snodo.Transport.StdioEncodingTest do
   end
 
   test "UTF-8 input from a Latin-1 device is read as bytes" do
-    path = Path.join(System.tmp_dir!(), "snodo_latin1_#{System.unique_integer([:positive])}")
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "snodo_latin1_#{System.pid()}_#{System.unique_integer([:positive])}"
+      )
+
     on_exit(fn -> File.rm(path) end)
     File.write!(path, JSON.encode!(echo_request("latin1-input")) <> "\n")
 

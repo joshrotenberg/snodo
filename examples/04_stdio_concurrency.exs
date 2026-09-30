@@ -167,7 +167,7 @@ defmodule StdioConcurrency.Example do
     directory =
       Path.join(
         System.tmp_dir!(),
-        "snodo_stdio_example_#{System.unique_integer([:positive, :monotonic])}"
+        "snodo_stdio_example_#{System.pid()}_#{System.unique_integer([:positive, :monotonic])}"
       )
 
     fifo = Path.join(directory, "requests.fifo")

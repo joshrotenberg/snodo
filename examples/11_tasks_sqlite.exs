@@ -370,7 +370,7 @@ defmodule Examples.TasksSQLite.Runner do
   defp unique_database do
     Path.join(
       System.tmp_dir!(),
-      "snodo_tasks_sqlite_example_#{System.unique_integer([:positive, :monotonic])}.sqlite3"
+      "snodo_tasks_sqlite_example_#{System.pid()}_#{System.unique_integer([:positive, :monotonic])}.sqlite3"
     )
   end
 
