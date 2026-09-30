@@ -189,24 +189,38 @@ test("a sampling or roots check that fails again is a new failure, not a stale b
 });
 
 test("the frozen client check inventory passes without waiving its partial score", async () => {
-  const evidence = await frozenEvidence("2026-09-26-client-alpha.11-checks.json", "expected-failures-client.json");
+  const evidence = await frozenEvidence("2026-09-29-client-alpha.11-checks.json", "expected-failures-client.json");
   assert.equal(Object.keys(evidence.baseline.checkInventory).length, 39);
   const report = summarize(evidence.manifest, evidence.results, evidence.baseline, "client");
   assert.equal(report.regression.passed, true);
   assert.deepEqual(report.regression.checkStatusDrift, []);
-  assert.equal(report.score.passedScenarios, 6);
+  assert.deepEqual(report.regression.staleExclusions, []);
+  assert.equal(report.score.passedScenarios, 7);
   assert.equal(report.score.status, "partial");
+  assert.ok(report.score.passedScenarioIds.includes("request-metadata"));
 });
 
 test("a regression in the Mcp-Param checks fails the client gate", async () => {
-  const evidence = await frozenEvidence("2026-09-26-client-alpha.11-checks.json", "expected-failures-client.json");
+  const evidence = await frozenEvidence("2026-09-29-client-alpha.11-checks.json", "expected-failures-client.json");
   for (const check of evidence.results["http-custom-headers"]) {
     if (check.id !== "sep-2243-client-omit-null") check.status = "FAILURE";
   }
   const report = summarize(evidence.manifest, evidence.results, evidence.baseline, "client");
   assert.equal(report.regression.passed, false);
   assert.equal(report.regression.unexpectedFailures.length, 17);
-  assert.equal(report.score.passedScenarios, 5);
+  assert.equal(report.score.passedScenarios, 6);
+});
+
+test("a client that stops declaring sampling or roots is drift, not an allowed skip", async () => {
+  const evidence = await frozenEvidence("2026-09-29-client-alpha.11-checks.json", "expected-failures-client.json");
+  for (const check of evidence.results["request-metadata"]) {
+    if (check.id.startsWith("sep-2575-client-declares-")) check.status = "SKIPPED";
+  }
+  const report = summarize(evidence.manifest, evidence.results, evidence.baseline, "client");
+  assert.equal(report.regression.passed, false);
+  assert.equal(report.regression.checkStatusDrift.length, 3);
+  assert.deepEqual(report.regression.unexpectedFailures, []);
+  assert.equal(report.score.passedScenarios, 6);
 });
 
 test("the frozen 2025-11-25 lane inventory passes without waiving its partial score", async () => {

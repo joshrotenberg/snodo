@@ -238,8 +238,9 @@ placement; the last two carry the `deprecated` lifecycle from SEP-2577.
 Literal requests cover malformed and partial input, repeated retries, mixed
 request kinds in one result, the merged `-32021` `requiredCapabilities`
 object, and all three permitted core operations. An independent pinned
-TypeScript client exercises automatic elicitation round trips over stdio and
-native HTTP; it does not exercise sampling or roots.
+TypeScript client exercises automatic elicitation, sampling, and roots round
+trips over stdio and native HTTP, including one result that asks for all
+three kinds.
 
 The 2026-09-14 external run now exercises nine additional ordinary MRTR scenarios.
 See [the MRTR guide](interactive-operations.md) for supported schema limits, state
@@ -268,16 +269,18 @@ The September 26, September 14, and August 25 summaries are retained as
 historical evidence, not current scores.
 
 The runner's client leg measures `Snodo.Client` separately, through a harness
-that drives it against each scenario server. The 2026-09-26 run passes 6 of 32
-required client scenarios. 25 of the 32 cover OAuth, which the client does not
-implement, and one of the six passes (`auth/resource-mismatch`) only because
-the harness never starts authorization. A second client lane pins
-`Snodo.Client` to 2025-11-25 and runs the frozen 2025-11-25 client set: the
-2026-09-29 run passes 2 of 18 required scenarios, `initialize` and
-`tools_call`. 14 of the 18 cover OAuth; the elicitation scenario depends on
-the standalone `GET` event stream, which the client does not open, and the
-reconnection scenario negotiates 2025-03-26, which the client does not speak.
-See the
+that drives it against each scenario server. The 2026-09-29 run passes 7 of 32
+required client scenarios, one more than on 2026-09-26: the harness installs
+input handlers for all four kinds, so the client declares the deprecated
+`sampling` and `roots` capabilities and `request-metadata` passes whole. 25
+of the 32 cover OAuth, which the client does not implement, and one of the
+seven passes (`auth/resource-mismatch`) only because the harness never starts
+authorization. A second client lane pins `Snodo.Client` to 2025-11-25 and runs
+the frozen 2025-11-25 client set: the 2026-09-29 run passes 2 of 18 required
+scenarios, `initialize` and `tools_call`. 14 of the 18 cover OAuth; the
+elicitation scenario depends on the standalone `GET` event stream, which the
+client does not open, and the reconnection scenario negotiates 2025-03-26,
+which the client does not speak. See the
 [client leg notes](https://github.com/joshrotenberg/snodo/blob/main/conformance/README.md#client-leg)
 for the remaining gaps.
 

@@ -13,9 +13,12 @@
 #      capabilities come from the session initialize opened.
 #   2. Call the tools the context names in `toolCalls` with their arguments, or
 #      else every listed tool with arguments sampled from its input schema.
-#      Elicitations are accepted with content sampled from the requested
-#      schema, whether they arrive embedded in an `input_required` result
-#      (2026-07-28) or as the server's own request (2025-11-25).
+#      `input_required` results are answered by the client's input handlers:
+#      elicitations are accepted with content sampled from the requested
+#      schema, sampling requests with a fixed assistant message, and roots
+#      requests with one file root. The client retries with the returned
+#      `requestState`. On 2025-11-25 the server sends the same requests as
+#      its own requests, and the same handlers answer them.
 #   3. When the server advertises them, list and read every resource and list
 #      and get every prompt.
 #
@@ -82,8 +85,13 @@ defmodule Snodo.Conformance.ClientHarness do
   defp connect(scenario, url) do
     options = [
       protocol: System.get_env("SNODO_CLIENT_PROTOCOL", "2026-07-28"),
-      client_capabilities: %{"elicitation" => %{"form" => %{}}},
-      input_handlers: %{form: &accept_elicitation/1},
+      input_handlers: %{
+        form: &accept_form/1,
+        url: fn _params -> {:ok, %{"action" => "accept"}} end,
+        sampling: &sample_message/1,
+        roots: fn _params -> {:ok, %{"roots" => [%{"uri" => "file:///conformance"}]}} end
+      },
+      max_input_rounds: @max_rounds,
       timeout: 10_000
     ]
 
@@ -122,7 +130,7 @@ defmodule Snodo.Conformance.ClientHarness do
 
   defp call_tools(client, "json-schema-2020-12-preservation", tools, _context) do
     focal = Enum.find(tools, &(&1["name"] == "json_schema_2020_12_tool"))
-    call_tool(client, "json_schema_echo", %{"schema" => focal["inputSchema"]}, [], 1)
+    call_tool(client, "json_schema_echo", %{"schema" => focal["inputSchema"]})
   end
 
   # Calls pass the listed definition when there is one, so Snodo.Client can
@@ -130,51 +138,33 @@ defmodule Snodo.Conformance.ClientHarness do
   defp call_tools(client, _scenario, tools, %{"toolCalls" => calls}) do
     Enum.each(calls, fn call ->
       tool = Enum.find(tools, &(&1["name"] == call["name"])) || call["name"]
-      call_tool(client, tool, Map.get(call, "arguments", %{}), [], 1)
+      call_tool(client, tool, Map.get(call, "arguments", %{}))
     end)
   end
 
   defp call_tools(client, _scenario, tools, _context) do
     Enum.each(tools, fn tool ->
-      call_tool(client, tool, sample(Map.get(tool, "inputSchema", %{})), [], 1)
+      call_tool(client, tool, sample(Map.get(tool, "inputSchema", %{})))
     end)
   end
 
-  defp call_tool(client, tool, arguments, opts, round) do
+  defp call_tool(client, tool, arguments) do
     name = if is_map(tool), do: tool["name"], else: tool
-
-    case Client.call_tool(client, tool, arguments, opts) do
-      {:input_required, pending} when round < @max_rounds ->
-        log("tools/call #{name}", {:input_required, pending})
-
-        retry =
-          [input_responses: answer(Map.get(pending, "inputRequests", %{}))] ++
-            case Map.fetch(pending, "requestState") do
-              {:ok, state} -> [request_state: state]
-              :error -> []
-            end
-
-        call_tool(client, tool, arguments, retry, round + 1)
-
-      other ->
-        log("tools/call #{name}", other)
-    end
+    log("tools/call #{name}", Client.call_tool(client, tool, arguments))
   end
 
-  # Accept every elicitation with values sampled from its requested schema.
-  # Other input request methods are answered with an empty result.
-  defp answer(requests) do
-    Map.new(requests, fn
-      {key, %{"method" => "elicitation/create", "params" => params}} ->
-        {key, elem(accept_elicitation(params), 1)}
+  # Accept every form elicitation with values sampled from its schema.
+  defp accept_form(%{"requestedSchema" => schema}),
+    do: {:ok, %{"action" => "accept", "content" => sample(schema)}}
 
-      {key, _request} ->
-        {key, %{}}
-    end)
-  end
-
-  defp accept_elicitation(params) do
-    {:ok, %{"action" => "accept", "content" => sample(Map.get(params, "requestedSchema", %{}))}}
+  # No model runs here: a fixed assistant message stands in for sampling.
+  defp sample_message(_params) do
+    {:ok,
+     %{
+       "role" => "assistant",
+       "content" => %{"type" => "text", "text" => "conformance"},
+       "model" => "conformance"
+     }}
   end
 
   # A minimal value for a JSON Schema: every declared object property, the

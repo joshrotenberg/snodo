@@ -295,6 +295,55 @@ defmodule Snodo.ClientHTTPTest do
                Client.call_tool(client, "choice", %{}, answer_input: false)
     end
 
+    test "input handlers answer sampling and roots requests over HTTP" do
+      sampled = %{
+        "role" => "assistant",
+        "content" => %{"type" => "text", "text" => "http"},
+        "model" => "test-model"
+      }
+
+      roots = %{"roots" => [%{"uri" => "file:///http", "name" => "HTTP"}]}
+
+      handlers = %{
+        form: fn %{"mode" => "form"} ->
+          {:ok, %{"action" => "accept", "content" => %{"label" => "http"}}}
+        end,
+        sampling: fn %{"messages" => [_message], "maxTokens" => 64} -> {:ok, sampled} end,
+        roots: fn params when params == %{} -> {:ok, roots} end
+      }
+
+      url = serve(ChoiceServer.runtime())
+      client = connect(url, input_handlers: handlers)
+
+      assert {:ok, %{"structuredContent" => %{"summary" => "http", "model" => "test-model"}}} =
+               Client.call_tool(client, "sample")
+
+      assert {:ok, %{"structuredContent" => %{"uris" => ["file:///http"]}}} =
+               Client.call_tool(client, "roots")
+
+      # One round asks for all three kinds.
+      assert {:ok, %{"structuredContent" => answers}} = Client.call_tool(client, "mixed")
+
+      assert answers == %{
+               "choice" => %{"action" => "accept", "content" => %{"label" => "http"}},
+               "summary" => sampled,
+               "client_roots" => roots
+             }
+
+      # An invalid result is refused before anything is sent.
+      client =
+        connect(url,
+          input_handlers: %{roots: fn _params -> {:ok, %{"roots" => [%{"name" => "no uri"}]}} end}
+        )
+
+      assert {:error,
+              %Error{
+                code: -32_603,
+                kind: :execution,
+                cause: {:input_handler, "client_roots", {:invalid_response, _response}, _last}
+              }} = Client.call_tool(client, "roots")
+    end
+
     test "a timeout returns -32001 and the listener keeps serving" do
       client = connect(serve(TestFixtures.runtime()))
 

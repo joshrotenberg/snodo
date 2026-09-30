@@ -18,16 +18,37 @@ const elixir = process.env.SNODO_ELIXIR ?? "elixir";
 const protocol = "2026-07-28";
 const options = () => ({ signal: AbortSignal.timeout(30_000) });
 
+const sampled = { role: "assistant", content: { type: "text", text: "one-line preview" },
+  model: "acceptance-model", stopReason: "endTurn" };
+const roots = { roots: [{ uri: "file:///acceptance", name: "acceptance" }] };
+
 function newClient() {
   const callbacks = [];
+  const embedded = { sampling: [], roots: [] };
   const client = new Client(
     { name: "snodo-mrtr-acceptance", version: "1.0.0" },
     {
       versionNegotiation: { mode: { pin: protocol } },
-      capabilities: { elicitation: { form: {}, url: {} } },
+      capabilities: { elicitation: { form: {}, url: {} }, sampling: {}, roots: {} },
       inputRequired: { autoFulfill: true, maxRounds: 6 },
     },
   );
+  // SEP-2577 deprecates the embedded sampling and roots requests; the pinned
+  // client still validates them and dispatches them to these handlers. No
+  // model runs and no file system is read: both answers are fixed.
+  client.setRequestHandler("sampling/createMessage", async (request) => {
+    embedded.sampling.push(structuredClone(request.params));
+    assert.equal(request.params.maxTokens, 32);
+    assert.equal(request.params.systemPrompt, "Answer in one sentence");
+    assert.deepEqual(request.params.messages, [
+      { role: "user", content: { type: "text", text: "Summarize the preview in one line" } },
+    ]);
+    return structuredClone(sampled);
+  });
+  client.setRequestHandler("roots/list", async (request) => {
+    embedded.roots.push(structuredClone(request.params ?? {}));
+    return structuredClone(roots);
+  });
   client.setRequestHandler("elicitation/create", async (request) => {
     callbacks.push(structuredClone(request.params));
     if (request.params.mode === "url") {
@@ -41,7 +62,7 @@ function newClient() {
     assert.ok(Object.hasOwn(values, field));
     return { action: "accept", content: { [field]: values[field] } };
   });
-  return { client, callbacks };
+  return { client, callbacks, embedded };
 }
 
 function observe(transport) {
@@ -76,7 +97,11 @@ function assertPreferenceLegs(legs) {
   }
 }
 
-async function exercise(client, callbacks, sent, transportName) {
+function legsOf(sent, start, method) {
+  return sent.slice(start).filter((request) => request.method === method);
+}
+
+async function exercise(client, callbacks, embedded, sent, transportName) {
   assert.equal(client.getProtocolEra(), "modern");
   const expected = { color: "blue", style: "compact", status: "preview" };
 
@@ -121,19 +146,53 @@ async function exercise(client, callbacks, sent, transportName) {
   assert.equal(callbacks.filter((request) => request.mode === "url").length, 1);
   assert.equal(callbacks.filter((request) => request.mode !== "url").length, 7);
 
+  // The deprecated sampling and roots requests: one leg asks, the retry
+  // carries the handler's result as the named input response, and the client
+  // declares both capabilities on every leg.
+  start = sent.length;
+  const sampling = await client.callTool({ name: "sampling_preview", arguments: {} }, options());
+  assert.deepEqual(toolData(sampling), { summary: "one-line preview", model: "acceptance-model" });
+  const samplingLegs = legsOf(sent, start, "tools/call");
+  assert.equal(samplingLegs.length, 2);
+  assert.equal(Object.hasOwn(samplingLegs[1].params, "requestState"), false, "stateless workflow");
+  assert.deepEqual(samplingLegs[1].params.inputResponses, { summary: sampled });
+  const declared = samplingLegs[1].params._meta["io.modelcontextprotocol/clientCapabilities"];
+  assert.deepEqual(declared.sampling, {});
+  assert.deepEqual(declared.roots, {});
+
+  start = sent.length;
+  const listed = await client.callTool({ name: "roots_preview", arguments: {} }, options());
+  assert.deepEqual(toolData(listed), { roots: ["file:///acceptance"] });
+  const rootsLegs = legsOf(sent, start, "tools/call");
+  assert.equal(rootsLegs.length, 2);
+  assert.deepEqual(rootsLegs[1].params.inputResponses, { roots });
+
+  // All three kinds in one result are answered in one round.
+  start = sent.length;
+  const mixed = await client.callTool({ name: "mixed_preview", arguments: {} }, options());
+  assert.deepEqual(toolData(mixed),
+    { label: "fresh", summary: "one-line preview", model: "acceptance-model", roots: ["file:///acceptance"] });
+  const mixedLegs = legsOf(sent, start, "tools/call");
+  assert.equal(mixedLegs.length, 2);
+  assert.deepEqual(Object.keys(mixedLegs[1].params.inputResponses).sort(), ["label", "roots", "summary"]);
+  assert.equal(callbacks.filter((request) => request.mode !== "url").length, 8);
+  assert.equal(embedded.sampling.length, 2);
+  assert.equal(embedded.roots.length, 2);
+
   const operations = sent.filter((request) =>
     ["tools/call", "resources/read", "prompts/get"].includes(request.method));
   assert.equal(new Set(operations.map((request) => request.id)).size, operations.length);
   return {
-    transport: transportName, protocol, automaticWorkflows: 5,
-    elicitationCallbacks: callbacks.length, operationRequests: operations.length,
+    transport: transportName, protocol, automaticWorkflows: 8,
+    elicitationCallbacks: callbacks.length, samplingCallbacks: embedded.sampling.length,
+    rootsCallbacks: embedded.roots.length, operationRequests: operations.length,
     changedArgumentsRejected: true, freshIds: true,
     replacedState: true, discardedState: true, urlConsentIsNotCompletion: true,
   };
 }
 
 async function checkStdio() {
-  const { client, callbacks } = newClient();
+  const { client, callbacks, embedded } = newClient();
   const transport = new StdioClientTransport({
     command: elixir, args: [fixture, "--stdio"], cwd: project,
     env: { ...process.env, ERL_FLAGS: process.env.ERL_FLAGS ?? "+S 4:4" }, stderr: "pipe",
@@ -143,7 +202,7 @@ async function checkStdio() {
   transport.stderr?.on("data", (chunk) => { diagnostics += chunk; });
   try {
     await client.connect(transport, options());
-    return await exercise(client, callbacks, sent, "stdio");
+    return await exercise(client, callbacks, embedded, sent, "stdio");
   } catch (error) {
     if (diagnostics) process.stderr.write(diagnostics);
     throw error;
@@ -161,7 +220,7 @@ async function checkHTTP() {
   child.stderr.on("data", (chunk) => { diagnostics += chunk; });
   const exited = once(child, "exit");
   const lines = createInterface({ input: child.stdout });
-  const { client, callbacks } = newClient();
+  const { client, callbacks, embedded } = newClient();
   let forcedShutdown = false;
   try {
     const readiness = await Promise.race([
@@ -171,7 +230,7 @@ async function checkHTTP() {
     const transport = new StreamableHTTPClientTransport(new URL(readiness.url));
     const sent = observe(transport);
     await client.connect(transport, options());
-    const summary = await exercise(client, callbacks, sent, "http");
+    const summary = await exercise(client, callbacks, embedded, sent, "http");
     assert.equal(transport.sessionId, undefined);
     return summary;
   } catch (error) {

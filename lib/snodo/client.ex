@@ -54,12 +54,13 @@ defmodule Snodo.Client do
         IO.puts("\#{params["progress"]} of \#{params["total"]}")
       end)
 
-  Install `input_handlers:` to answer a server's form and URL elicitation
-  requests inside the call instead of receiving `{:input_required, result}`:
+  Install `input_handlers:` to answer a server's input requests inside the
+  call instead of receiving `{:input_required, result}`: form and URL
+  elicitation, and the deprecated sampling and roots requests:
 
       {:ok, client} =
         Snodo.Client.connect({:http, url},
-          input_handlers: %{form: &MyUI.form/1, url: &MyUI.url/1}
+          input_handlers: %{form: &MyUI.form/1, url: &MyUI.url/1, sampling: &MyModel.sample/1}
         )
 
   Open a `subscriptions/listen` stream with `listen/3` to receive change
@@ -97,8 +98,11 @@ defmodule Snodo.Client do
   @type response :: {:ok, map()} | {:input_required, map()} | {:error, Error.t()}
   @type list_kind :: :tools | :resources | :resource_templates | :prompts
 
-  @typedoc "A kind of input request a handler answers: one of the elicitation modes."
-  @type input_kind :: :form | :url
+  @typedoc """
+  A kind of input request a handler answers: one of the two elicitation modes,
+  or one of the sampling and roots requests SEP-2577 deprecates.
+  """
+  @type input_kind :: :form | :url | :sampling | :roots
 
   @typedoc """
   Answers one input request. Receives the request's `params` map and returns
@@ -178,14 +182,28 @@ defmodule Snodo.Client do
       capabilities the installed `:input_handlers` imply are added to it.
     * `:input_handlers` - functions that answer the input requests a server
       embeds in an `input_required` result, as a map from request kind to a
-      function of one argument. The kinds are `:form` and `:url`, the two
-      elicitation modes; each adds its capability under `"elicitation"`. A
-      handler receives the request's `params` map (`"mode"`, `"message"`,
-      and `"requestedSchema"` or `"url"`) and returns `{:ok, response}`,
-      where `response` is the elicitation result (`"action"` of `"accept"`,
-      `"decline"`, or `"cancel"`, with `"content"` for an accepted form), or
-      `{:error, reason}`. Defaults to `%{}`, which leaves `input_required`
-      results to the caller. See `request/4` for the retry loop.
+      function of one argument. A handler receives the request's `params`
+      map and returns `{:ok, response}`, where `response` is the result the
+      kind expects, or `{:error, reason}`. The kinds:
+        * `:form` and `:url`, the two elicitation modes. `params` carries
+          `"mode"`, `"message"`, and `"requestedSchema"` or `"url"`; the
+          response is the elicitation result (`"action"` of `"accept"`,
+          `"decline"`, or `"cancel"`, with `"content"` for an accepted
+          form). Each adds its mode under the `"elicitation"` capability.
+        * `:sampling`, the `sampling/createMessage` request SEP-2577
+          deprecates. `params` carries `"messages"` and `"maxTokens"` and
+          may carry the other `CreateMessageRequestParams` fields; the
+          response is a `CreateMessageResult`, checked with
+          `Snodo.Sampling.valid_response?/1`. Adds `"sampling" => %{}`; a
+          handler that accepts `"tools"` or an `"includeContext"` other
+          than `"none"` declares `"tools"` or `"context"` under it in
+          `:client_capabilities`.
+        * `:roots`, the `roots/list` request SEP-2577 deprecates. `params`
+          is `%{}` unless the server sent `"_meta"`; the response is a
+          `ListRootsResult`, checked with `Snodo.Roots.valid_response?/1`.
+          Adds `"roots" => %{"listChanged" => false}`.
+      Defaults to `%{}`, which leaves `input_required` results to the
+      caller. See `request/4` for the retry loop.
     * `:max_input_rounds` - the most `input_required` results the client
       answers for one call before failing it. Defaults to 10.
     * `:client_info` - the `Implementation` sent as
@@ -470,15 +488,19 @@ defmodule Snodo.Client do
     * -32603 (`kind: :execution`, `cause: {:input_handler, id, reason, result}`)
       when a handler returned `{:error, reason}`, a value other than
       `{:ok, response}` (`reason` is `{:invalid_return, value}`), or a
-      response without a valid `"action"` (`{:invalid_response, response}`).
-      An exception raised by a handler propagates to the caller.
+      response that is not valid for its kind (`{:invalid_response,
+      response}`): an elicitation result without a valid `"action"`, a
+      sampling result that is not a `CreateMessageResult`, or a roots
+      result that is not a `ListRootsResult`. An exception raised by a
+      handler propagates to the caller.
     * -32000 (`kind: :transport`, `data: %{"maxInputRounds" => limit}`,
       `cause: {:max_input_rounds, result}`) at the round limit.
     * -32000 (`kind: :transport`, `cause: result`) for a malformed result: one
       with nothing to answer and no `"requestState"`, or an input request
       whose `params` is not an object or lacks the keys of its kind
       (`"message"` and `"requestedSchema"` for a form, `"message"` and
-      `"url"` for a URL). No handler has run.
+      `"url"` for a URL, `"messages"` and `"maxTokens"` for sampling; a
+      roots request may leave `params` out). No handler has run.
 
   On an initialize-era connection a method the negotiated dialect's catalog
   does not define as a client request is refused with -32601 before anything

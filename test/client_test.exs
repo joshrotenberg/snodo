@@ -10,6 +10,7 @@ defmodule Snodo.ClientTest do
   alias Snodo.Protocol.V2025_11_25
   alias Snodo.Protocol.V2026_07_28
   alias SnodoTest.MRTR.Choice
+  alias SnodoTest.MRTR.Sample
   alias SnodoTest.MRTR.Server, as: ChoiceServer
   alias SnodoTest.MRTR.UrlTool
   alias SnodoTest.TestAuthorization.Policy
@@ -21,6 +22,7 @@ defmodule Snodo.ClientTest do
   alias SnodoTest.TestTools.Ticks
 
   @form_caps %{"elicitation" => %{"form" => %{}}}
+  @roots %{"roots" => [%{"uri" => "file:///work", "name" => "Work"}, %{"uri" => "file:///tmp"}]}
 
   defmodule CannedTransport do
     @moduledoc false
@@ -486,6 +488,198 @@ defmodule Snodo.ClientTest do
       assert url == "https://example.test/consent"
     end
 
+    test "sampling and roots handlers answer tool, resource, and prompt calls" do
+      test = self()
+
+      handlers = %{
+        sampling: fn params ->
+          send(test, {:sampling, params})
+          {:ok, sampled("summary of #{params["maxTokens"]}")}
+        end,
+        roots: fn params ->
+          send(test, {:roots, params})
+          {:ok, @roots}
+        end
+      }
+
+      {:ok, client} = Client.direct(ChoiceServer.runtime(), input_handlers: handlers)
+      summary = %{"summary" => "summary of 64", "model" => "test-model"}
+
+      assert {:ok, %{"structuredContent" => ^summary}} = Client.call_tool(client, "sample")
+
+      assert_receive {:sampling, %{"messages" => [message], "maxTokens" => 64} = params}, 1_000
+
+      assert message == %{
+               "role" => "user",
+               "content" => %{"type" => "text", "text" => "Summarize the label"}
+             }
+
+      refute Map.has_key?(params, "tools")
+
+      assert {:ok, %{"contents" => [%{"text" => text}]}} =
+               Client.read_resource(client, "sample://value")
+
+      assert JSON.decode!(text) == summary
+
+      assert {:ok, %{"messages" => [%{"content" => %{"text" => text}}]}} =
+               Client.get_prompt(client, "sample")
+
+      assert JSON.decode!(text) == summary
+
+      assert {:ok, %{"structuredContent" => %{"uris" => ["file:///work", "file:///tmp"]}}} =
+               Client.call_tool(client, "roots")
+
+      assert_receive {:roots, params}, 1_000
+      assert params == %{}
+    end
+
+    test "one round can mix a form, a sampling request, and a roots request" do
+      test = self()
+
+      handlers = %{
+        form: fn _params ->
+          send(test, {:asked, :form})
+          {:ok, accepted("mixed")}
+        end,
+        sampling: fn _params ->
+          send(test, {:asked, :sampling})
+          {:ok, sampled("mixed")}
+        end,
+        roots: fn _params ->
+          send(test, {:asked, :roots})
+          {:ok, @roots}
+        end
+      }
+
+      {:ok, client} = Client.direct(ChoiceServer.runtime(), input_handlers: handlers)
+
+      assert {:ok, %{"structuredContent" => answers}} = Client.call_tool(client, "mixed")
+
+      assert answers == %{
+               "choice" => accepted("mixed"),
+               "summary" => sampled("mixed"),
+               "client_roots" => @roots
+             }
+
+      # Handlers run in ID order: "choice", "client_roots", "summary".
+      assert drain(:asked) == [:form, :roots, :sampling]
+
+      # A round with one kind unhandled runs no handler at all.
+      {:ok, client} =
+        Client.direct(ChoiceServer.runtime(),
+          input_handlers: Map.delete(handlers, :roots),
+          client_capabilities: %{"roots" => %{}}
+        )
+
+      assert {:error,
+              %Error{
+                code: -32_602,
+                data: %{"inputRequest" => "client_roots"},
+                cause: {:no_input_handler, :roots, %{"inputRequests" => requests}}
+              }} = Client.call_tool(client, "mixed")
+
+      assert requests |> Map.keys() |> Enum.sort() == ["choice", "client_roots", "summary"]
+      assert drain(:asked) == []
+    end
+
+    test "a sampling or roots result that is invalid for its kind is a -32603 error" do
+      runtime = ChoiceServer.runtime()
+
+      invalid = [
+        {"sample", :sampling, "summary",
+         %{"role" => "assistant", "content" => %{"type" => "text"}, "model" => "m"}},
+        {"sample", :sampling, "summary", Map.delete(sampled("x"), "model")},
+        {"sample", :sampling, "summary", %{"action" => "accept"}},
+        {"roots", :roots, "client_roots", %{"roots" => [%{"uri" => "https://example.test/"}]}},
+        {"roots", :roots, "client_roots", %{"roots" => %{}}},
+        {"roots", :roots, "client_roots", %{"action" => "accept"}}
+      ]
+
+      for {tool, kind, id, response} <- invalid do
+        {:ok, client} =
+          Client.direct(runtime, input_handlers: %{kind => fn _params -> {:ok, response} end})
+
+        assert {:error,
+                %Error{
+                  code: -32_603,
+                  kind: :execution,
+                  cause: {:input_handler, ^id, {:invalid_response, ^response}, last}
+                }} = Client.call_tool(client, tool)
+
+        assert %{"inputRequests" => %{^id => _request}} = last
+      end
+
+      # An empty roots list is a complete answer.
+      {:ok, client} =
+        Client.direct(runtime,
+          input_handlers: %{roots: fn _params -> {:ok, %{"roots" => []}} end}
+        )
+
+      assert {:ok, %{"structuredContent" => %{"uris" => []}}} = Client.call_tool(client, "roots")
+    end
+
+    test "a server asks for sampling and roots only when the handlers declare them" do
+      form = fn _params -> {:ok, accepted("x")} end
+      sampling = fn params -> {:ok, sampled(Enum.join(Map.keys(params), " "))} end
+
+      {:ok, client} = Client.direct(ChoiceServer.runtime(), input_handlers: %{form: form})
+
+      assert {:error, %Error{code: -32_021, data: %{"requiredCapabilities" => required}}} =
+               Client.call_tool(client, "sample")
+
+      assert required == %{"sampling" => %{}}
+
+      assert {:error, %Error{code: -32_021, data: %{"requiredCapabilities" => required}}} =
+               Client.call_tool(client, "roots")
+
+      assert required == %{"roots" => %{}}
+
+      # The handler declares sampling alone; its settings are declared by hand.
+      {:ok, client} = Client.direct(ChoiceServer.runtime(), input_handlers: %{sampling: sampling})
+
+      assert {:error, %Error{code: -32_021, data: %{"requiredCapabilities" => required}}} =
+               Client.call_tool(client, "sample", %{"tools" => true})
+
+      assert required == %{"sampling" => %{"tools" => %{}}}
+
+      {:ok, client} =
+        Client.direct(ChoiceServer.runtime(),
+          input_handlers: %{sampling: sampling},
+          client_capabilities: %{"sampling" => %{"tools" => %{}}}
+        )
+
+      assert {:ok, %{"structuredContent" => %{"summary" => keys}}} =
+               Client.call_tool(client, "sample", %{"tools" => true})
+
+      assert keys == "maxTokens messages toolChoice tools"
+    end
+
+    test "a roots request may leave params out; the handler still gets a map" do
+      test = self()
+
+      roots = fn params ->
+        send(test, {:roots, params})
+        {:ok, @roots}
+      end
+
+      client = canned_client(input_handlers: %{roots: roots})
+
+      canned(%{"inputRequests" => %{"r" => %{"method" => "roots/list"}}})
+      assert {:ok, %{"canned" => true}} = Client.discover(client)
+      assert_receive {:roots, params}, 1_000
+      assert params == %{}
+
+      assert_receive {:canned_request, %{"params" => first}, _opts}, 1_000
+      refute Map.has_key?(first, "inputResponses")
+      assert_receive {:canned_request, %{"params" => retry}, _opts}, 1_000
+      assert retry["inputResponses"] == %{"r" => @roots}
+
+      meta = %{"_meta" => %{"trace" => "t1"}}
+      canned(%{"inputRequests" => %{"r" => %{"method" => "roots/list", "params" => meta}}})
+      assert {:ok, %{"canned" => true}} = Client.discover(client)
+      assert_receive {:roots, ^meta}, 1_000
+    end
+
     test "each round sends the responses and the request state unchanged" do
       test = self()
 
@@ -577,6 +771,39 @@ defmodule Snodo.ClientTest do
       assert declared(input_handlers: %{form: form}, client_capabilities: %{"elicitation" => %{}}) ==
                %{"elicitation" => %{"form" => %{}}}
 
+      sampling = fn _params -> {:ok, sampled("x")} end
+      roots = fn _params -> {:ok, @roots} end
+
+      assert declared(input_handlers: %{sampling: sampling}) == %{"sampling" => %{}}
+      assert declared(input_handlers: %{roots: roots}) == %{"roots" => %{"listChanged" => false}}
+
+      assert declared(input_handlers: %{form: form, sampling: sampling, roots: roots}) ==
+               %{
+                 "elicitation" => %{"form" => %{}},
+                 "sampling" => %{},
+                 "roots" => %{"listChanged" => false}
+               }
+
+      # Sampling settings and a roots listChanged are declared by hand and kept.
+      assert declared(
+               input_handlers: %{sampling: sampling, roots: roots},
+               client_capabilities: %{
+                 "sampling" => %{"tools" => %{}},
+                 "roots" => %{"listChanged" => true}
+               }
+             ) == %{"sampling" => %{"tools" => %{}}, "roots" => %{"listChanged" => true}}
+
+      # Only a handler declares sampling or roots.
+      assert declared(input_handlers: %{form: form, url: url}) ==
+               %{"elicitation" => %{"form" => %{}, "url" => %{}}}
+
+      assert_raise ArgumentError, ~r/declares "roots" as true/, fn ->
+        Client.direct(TestFixtures.runtime(),
+          input_handlers: %{roots: roots},
+          client_capabilities: %{"roots" => true}
+        )
+      end
+
       # Without handlers the declared capabilities go out as given.
       assert declared([]) == %{}
       assert declared(client_capabilities: %{"elicitation" => %{}}) == %{"elicitation" => %{}}
@@ -625,7 +852,17 @@ defmodule Snodo.ClientTest do
 
       canned(%{"inputRequests" => %{"r" => %{"method" => "roots/list"}}})
 
-      assert {:error, %Error{code: -32_602, cause: {:no_input_handler, "roots/list", _}}} =
+      assert {:error, %Error{code: -32_602, cause: {:no_input_handler, :roots, _}}} =
+               Client.discover(client)
+
+      canned(%{"inputRequests" => %{"r" => Sample.request()}})
+
+      assert {:error, %Error{code: -32_602, cause: {:no_input_handler, :sampling, _}}} =
+               Client.discover(client)
+
+      canned(%{"inputRequests" => %{"r" => %{"method" => "logging/setLevel", "params" => %{}}}})
+
+      assert {:error, %Error{code: -32_602, cause: {:no_input_handler, "logging/setLevel", _}}} =
                Client.discover(client)
 
       canned(%{"inputRequests" => %{"r" => %{"params" => %{}}}})
@@ -681,13 +918,16 @@ defmodule Snodo.ClientTest do
     end
 
     test "a malformed input request is a -32000 error and no handler runs" do
-      form = fn _params -> flunk("the form handler was called") end
-      url = fn _params -> flunk("the URL handler was called") end
+      handlers =
+        Map.new([:form, :url, :sampling, :roots], fn kind ->
+          {kind, fn _params -> flunk("the #{kind} handler was called") end}
+        end)
 
-      client = canned_client(input_handlers: %{form: form, url: url})
+      client = canned_client(input_handlers: handlers)
 
       form_params = Choice.request()["params"]
       url_params = UrlTool.request()["params"]
+      sampling_params = Sample.request()["params"]
 
       malformed = [
         "junk",
@@ -701,7 +941,19 @@ defmodule Snodo.ClientTest do
           "params" => Map.delete(form_params, "requestedSchema")
         },
         %{"method" => "elicitation/create", "params" => Map.delete(url_params, "url")},
-        %{"method" => "elicitation/create", "params" => Map.delete(url_params, "message")}
+        %{"method" => "elicitation/create", "params" => Map.delete(url_params, "message")},
+        %{"method" => "sampling/createMessage"},
+        %{"method" => "sampling/createMessage", "params" => []},
+        %{
+          "method" => "sampling/createMessage",
+          "params" => Map.delete(sampling_params, "messages")
+        },
+        %{
+          "method" => "sampling/createMessage",
+          "params" => Map.delete(sampling_params, "maxTokens")
+        },
+        %{"method" => "roots/list", "params" => "junk"},
+        %{"method" => "roots/list", "params" => nil}
       ]
 
       for request <- malformed do
@@ -778,8 +1030,8 @@ defmodule Snodo.ClientTest do
 
       for {opts, message} <- [
             {[input_handlers: [form: fn _params -> :ok end]], ~r/:input_handlers must be a map/},
-            {[input_handlers: %{sampling: fn _params -> :ok end}],
-             ~r/unknown input handler kind :sampling/},
+            {[input_handlers: %{logging: fn _params -> :ok end}],
+             ~r/unknown input handler kind :logging/},
             {[input_handlers: %{form: fn -> :ok end}],
              ~r/:input_handlers :form must be a function of one argument/},
             {[max_input_rounds: 0], ~r/:max_input_rounds must be a positive integer/}
@@ -1169,6 +1421,15 @@ defmodule Snodo.ClientTest do
   end
 
   defp accepted(label), do: %{"action" => "accept", "content" => %{"label" => label}}
+
+  defp sampled(text) do
+    %{
+      "role" => "assistant",
+      "content" => %{"type" => "text", "text" => text},
+      "model" => "test-model",
+      "stopReason" => "endTurn"
+    }
+  end
 
   defp declared(opts) do
     {:ok, client} = Client.direct(TestFixtures.runtime(), opts)
