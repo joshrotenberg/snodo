@@ -22,6 +22,14 @@ defmodule Snodo.Extensions.Tasks.SQLite.BusyRepo do
     adapter: Ecto.Adapters.SQLite3
 end
 
+defmodule Snodo.Extensions.Tasks.SQLite.GateRepo do
+  @moduledoc false
+
+  use Ecto.Repo,
+    otp_app: :snodo_tasks_sqlite,
+    adapter: Ecto.Adapters.SQLite3
+end
+
 defmodule Snodo.Extensions.Tasks.SQLite.LiveExecutor do
   @moduledoc false
 
@@ -58,6 +66,7 @@ defmodule Snodo.Extensions.Tasks.SQLite.IntegrationTest do
   alias Snodo.Extensions.Tasks.Runner
   alias Snodo.Extensions.Tasks.Snapshot
   alias Snodo.Extensions.Tasks.SQLite.BusyRepo
+  alias Snodo.Extensions.Tasks.SQLite.GateRepo
   alias Snodo.Extensions.Tasks.SQLite.LiveExecutor
   alias Snodo.Extensions.Tasks.SQLite.LiveRepo
   alias Snodo.Extensions.Tasks.SQLite.MigrationRepo
@@ -396,6 +405,32 @@ defmodule Snodo.Extensions.Tasks.SQLite.IntegrationTest do
       assert :ok = Store.release(store, lease)
     after
       release_writer(holder)
+    end
+  end
+
+  # With a 1ms busy timeout, any two Store writers that reached SQLite together
+  # would fail. They queue per Repo before checkout instead, so none waits on
+  # SQLite's busy handler.
+  @tag mcp_contract: ["tasks-sqlite-concurrency"]
+  test "Store writers sharing a Repo queue before SQLite instead of busy-waiting", %{
+    database: database
+  } do
+    {:ok, repo} = start_repo(GateRepo, database, 1, 4)
+    Process.unlink(repo)
+
+    try do
+      store = {SQLite, SQLite.new!(repo: GateRepo, scope: :shared)}
+
+      results =
+        1..16
+        |> Enum.map(fn _index ->
+          Task.async(fn -> create_task(store, unique_id("gate"), "tenant-a") end)
+        end)
+        |> Task.await_many(@race_await_ms)
+
+      assert Enum.all?(results, &match?({:ok, %Snapshot{}}, &1))
+    after
+      stop_process(repo)
     end
   end
 

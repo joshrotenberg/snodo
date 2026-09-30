@@ -11,8 +11,12 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite do
   SQLite has no row locks and permits only one writer. Every store mutation
   therefore uses an `IMMEDIATE` transaction, acquiring the database write
   reservation before it reads availability, lease, revision, or clock state.
-  Competing writers wait according to the application Repo's `:busy_timeout`.
-  Exhausted contention is normalized to `{:error, :database_busy}`.
+  Store mutations through the same Repo on one node queue for up to `:timeout`
+  before they check out a connection, so they never wait on each other inside
+  SQLite. Other writers, such as another OS process, another Repo, or
+  application SQL, are waited on according to the application Repo's
+  `:busy_timeout`. Exhausted contention is normalized to
+  `{:error, :database_busy}`.
 
   The supported deployment boundary is a file-backed WAL database on one
   host. Recovery remains at least once, so applications must deduplicate
@@ -951,7 +955,52 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite do
   defp transact_write(config, function) do
     if config.repo.in_transaction?(),
       do: {:error, :nested_write_transaction_unsupported},
-      else: transact(config, :immediate, function)
+      else: with_writer_gate(config, fn -> transact(config, :immediate, function) end)
+  end
+
+  # Exqlite waits out `:busy_timeout` inside a native call that holds the
+  # waiting connection's mutex, and finalizing a statement prepared on that
+  # connection needs the same mutex. Ecto's query cache hands prepared
+  # statements between pooled connections, so the writer that holds the
+  # database can block on the waiter's statement until the waiter gives up,
+  # and then both writers see the busy timeout. Store writers on one node
+  # therefore queue here, per Repo, before they reach SQLite.
+  defp with_writer_gate(config, function) do
+    lock = {{__MODULE__, :writer, config.repo}, self()}
+    deadline = System.monotonic_time(:millisecond) + config.timeout
+
+    case acquire_writer_gate(lock, deadline, 0) do
+      :ok ->
+        try do
+          function.()
+        after
+          :global.del_lock(lock, [node()])
+        end
+
+      :timeout ->
+        {:error, :database_busy}
+    end
+  end
+
+  # The same backoff schedule as SQLite's busy handler, without a native
+  # thread or connection mutex held while waiting.
+  @writer_gate_delays_ms [1, 2, 5, 10, 15, 20, 25, 25, 25, 50]
+
+  defp acquire_writer_gate(lock, deadline, attempt) do
+    remaining = deadline - System.monotonic_time(:millisecond)
+
+    cond do
+      :global.set_lock(lock, [node()], 0) ->
+        :ok
+
+      remaining <= 0 ->
+        :timeout
+
+      true ->
+        delay = Enum.at(@writer_gate_delays_ms, attempt, 50)
+        Process.sleep(min(delay, remaining))
+        acquire_writer_gate(lock, deadline, attempt + 1)
+    end
   end
 
   defp transact(config, mode, function) do

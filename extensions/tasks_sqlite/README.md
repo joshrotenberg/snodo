@@ -214,11 +214,19 @@ callback from reporting success before an outer transaction later rolls back.
 Read callbacks invoked inside an application transaction reuse its pinned
 connection and consistent snapshot without opening a nested transaction.
 
-When another writer holds the database, Exqlite waits up to the Repo's
-`:busy_timeout`. Exhaustion is normalized to `{:error, :database_busy}` and the
-transaction leaves the aggregate and ledger untouched. Keep Tasks
-transactions short, choose the Repo timeout above its busy timeout, and treat
-the error as bounded application backpressure.
+Store mutations through the same Repo on one node queue in the adapter before
+they check out a connection, and wait there for up to the store's `:timeout`
+(default 15,000 ms). They do not wait on each other inside SQLite: Exqlite holds
+the waiting connection's mutex for the whole busy wait, and Ecto's query cache
+can make the writer that holds the database finalize a statement prepared on
+that connection, so the holder would stall until the waiter gave up. When a
+writer outside this queue holds the database (another OS process, another Repo
+on the same file, or application SQL), Exqlite waits up to the Repo's
+`:busy_timeout`. Either kind of exhaustion is normalized to
+`{:error, :database_busy}` and the transaction leaves the aggregate and ledger
+untouched. Keep Tasks transactions short, use one Repo per database file for
+Tasks traffic on a node, choose the Repo timeout above its busy timeout, and
+treat the error as bounded application backpressure.
 
 `claim_next/3` cannot skip a row held by another writer: it waits for the one
 database writer, then chooses the oldest committed available Task. This is a
