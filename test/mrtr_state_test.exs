@@ -247,6 +247,192 @@ defmodule Snodo.MRTR.StateTest do
     end
   end
 
+  describe "keyring" do
+    @current :binary.copy("c", 32)
+    @retired :binary.copy("r", 32)
+
+    test "seals with the current key and names it in the token", %{context: context} do
+      opts = keyring([{"current", @current}, {"retired", @retired}])
+      token = State.seal(%{"step" => 1}, context, opts)
+
+      ["mrtr2", "current", encoded, _signature] = String.split(token, ".")
+      assert [2, @now, _expires, _scope, %{"step" => 1}] = decode(encoded)
+      assert State.open(token, context, opts) == {:ok, %{"step" => 1}}
+    end
+
+    test "opens tokens sealed with a retired key", %{context: context} do
+      token = State.seal(%{"step" => 1}, context, keyring([{"retired", @retired}]))
+
+      for keys <- [
+            [{"current", @current}, {"retired", @retired}],
+            [{"retired", @retired}, {"current", @current}]
+          ] do
+        assert State.open(token, context, keyring(keys)) == {:ok, %{"step" => 1}}
+      end
+
+      assert_invalid(State.open(token, context, keyring([{"current", @current}])))
+      assert_invalid(State.open(token, context, keyring([{"retired", @current}])))
+    end
+
+    test "follows the documented cluster rotation", %{context: context} do
+      start = keyring([{"a", @retired}])
+      accept_b = keyring([{"a", @retired}, {"b", @current}])
+      seal_b = keyring([{"b", @current}, {"a", @retired}])
+      finish = keyring([{"b", @current}])
+
+      # Each step overlaps with the previous one while nodes are redeployed.
+      for {old, new} <- [{start, accept_b}, {accept_b, seal_b}, {seal_b, finish}] do
+        for {sealer, opener} <- [{old, new}, {new, old}] do
+          token = State.seal(%{"step" => 1}, context, sealer)
+          assert State.open(token, context, opener) == {:ok, %{"step" => 1}}
+        end
+      end
+
+      assert_invalid(State.open(State.seal(%{}, context, start), context, finish))
+    end
+
+    test "the key identifier is covered by the signature", %{context: context} do
+      # Two identifiers for one secret: the MAC still differs by identifier.
+      opts = keyring([{"a", @current}, {"b", @current}])
+      token = State.seal(%{}, context, opts)
+      ["mrtr2", "a", encoded, signature] = String.split(token, ".")
+
+      for invalid <- [
+            "mrtr2.b.#{encoded}.#{signature}",
+            "mrtr2.unknown.#{encoded}.#{signature}",
+            "mrtr2..#{encoded}.#{signature}",
+            "mrtr2.#{:binary.copy("a", 33)}.#{encoded}.#{signature}",
+            "mrtr2.a.#{encoded}",
+            "mrtr2.a.#{encoded}.#{signature}.extra",
+            "mrtr1.#{encoded}.#{signature}"
+          ] do
+        assert_invalid(State.open(invalid, context, opts))
+      end
+    end
+
+    test "a token's key only verifies the binding it signed", %{context: context} do
+      # Payload and scope from key "a", re-signed under key "b".
+      token = State.seal(%{}, context, keyring([{"a", @retired}]))
+      ["mrtr2", "a", encoded, _signature] = String.split(token, ".")
+      forged = sign_identified("b", encoded, @current)
+
+      assert_invalid(State.open(forged, context, keyring([{"b", @current}, {"a", @retired}])))
+    end
+
+    test "a token re-signed under another key's identifier is rejected", %{context: context} do
+      opts = keyring([{"a", @current}, {"b", @retired}])
+      token = State.seal(%{}, context, opts)
+      ["mrtr2", "a", encoded, _signature] = String.split(token, ".")
+
+      assert {:ok, %{}} = State.open(sign_identified("a", encoded, @current), context, opts)
+      assert_invalid(State.open(sign_identified("b", encoded, @current), context, opts))
+    end
+
+    test ":secret rejects signed tokens with malformed identifiers", %{
+      context: context,
+      opts: opts
+    } do
+      token = State.seal(%{}, context, keyring([{"a", @secret}]))
+      ["mrtr2", "a", encoded, _signature] = String.split(token, ".")
+
+      assert {:ok, %{}} = State.open(sign_identified("a", encoded, @secret), context, opts)
+
+      for key_id <- ["", :binary.copy("a", 33), "a b", "é", "a+b"] do
+        assert_invalid(State.open(sign_identified(key_id, encoded, @secret), context, opts))
+      end
+    end
+
+    test "unidentified and identified tokens open across :secret and :keys", %{
+      context: context,
+      opts: opts
+    } do
+      unidentified = State.seal(%{"from" => "secret"}, context, opts)
+      identified = State.seal(%{"from" => "keys"}, context, keyring([{"a", @secret}]))
+
+      assert State.open(unidentified, context, keyring([{"b", @current}, {"a", @secret}])) ==
+               {:ok, %{"from" => "secret"}}
+
+      assert State.open(identified, context, opts) == {:ok, %{"from" => "keys"}}
+
+      assert_invalid(State.open(unidentified, context, keyring([{"b", @current}])))
+
+      assert_invalid(State.open(identified, context, Keyword.put(opts, :secret, @current)))
+    end
+
+    test "payload version must match the token format", %{context: context} do
+      opts = keyring([{"a", @secret}])
+      token = State.seal(%{}, context, opts)
+      ["mrtr2", "a", encoded, _signature] = String.split(token, ".")
+      [2 | rest] = decode(encoded)
+      downgraded = Base.url_encode64(JSON.encode!([1 | rest]), padding: false)
+
+      assert {:ok, %{}} = State.open(sign_identified("a", encoded, @secret), context, opts)
+      assert_invalid(State.open(sign_identified("a", downgraded, @secret), context, opts))
+      assert_invalid(State.open(sign_json(JSON.encode!([2 | rest])), context, opts))
+    end
+
+    test "validates the keyring", %{context: context} do
+      nine = for index <- 1..9, do: {"k#{index}", @current}
+      eight = Enum.take(nine, 8)
+
+      assert {:ok, %{}} =
+               State.open(State.seal(%{}, context, keyring(eight)), context, keyring(eight))
+
+      for {keys, message} <- [
+            {[], ~r/1 to 8/},
+            {nine, ~r/1 to 8/},
+            {nil, ~r/1 to 8/},
+            {%{"a" => @current}, ~r/1 to 8/},
+            {[@current], ~r/1 to 8/},
+            {[{"a", @current, :extra}], ~r/1 to 8/},
+            {[{"a", @current} | :tail], ~r/1 to 8/},
+            {[{"", @current}], ~r/identifiers must be 1 to 32/},
+            {[{:binary.copy("a", 33), @current}], ~r/identifiers must be 1 to 32/},
+            {[{"a.b", @current}], ~r/identifiers must be 1 to 32/},
+            {[{"a b", @current}], ~r/identifiers must be 1 to 32/},
+            {[{"é", @current}], ~r/identifiers must be 1 to 32/},
+            {[{:a, @current}], ~r/identifiers must be 1 to 32/},
+            {[{"a", :binary.copy("x", 31)}], ~r/at least 32 bytes/},
+            {[{"a", nil}], ~r/at least 32 bytes/},
+            {[{"a", @current}, {"a", @retired}], ~r/unique/}
+          ] do
+        opts = keyring(keys)
+        assert_raise ArgumentError, message, fn -> State.seal(%{}, context, opts) end
+        assert_raise ArgumentError, message, fn -> State.open("untrusted", context, opts) end
+      end
+
+      assert {:ok, %{}} =
+               State.open(
+                 State.seal(%{}, context, keyring([{:binary.copy("a", 32), @current}])),
+                 context,
+                 keyring([{:binary.copy("a", 32), @current}])
+               )
+
+      for invalid <- [
+            Keyword.put(keyring([{"a", @current}]), :secret, @secret),
+            Keyword.delete(options(), :secret)
+          ] do
+        assert_raise ArgumentError, ~r/exactly one of/, fn ->
+          State.seal(%{}, context, invalid)
+        end
+      end
+    end
+  end
+
+  defp keyring(keys) do
+    options() |> Keyword.delete(:secret) |> Keyword.put(:keys, keys)
+  end
+
+  defp decode(encoded), do: encoded |> Base.url_decode64!(padding: false) |> JSON.decode!()
+
+  defp sign_identified(key_id, encoded, secret) do
+    mac =
+      :crypto.mac(:hmac, :sha256, secret, ["snodo-mrtr-token-v2:", key_id, ".", encoded])
+      |> Base.url_encode64(padding: false)
+
+    "mrtr2.#{key_id}.#{encoded}.#{mac}"
+  end
+
   defp options(now \\ @now, ttl \\ 300) do
     [secret: @secret, principal: "principal-secret", ttl: ttl, clock: fn -> now end]
   end

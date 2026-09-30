@@ -91,6 +91,39 @@ The application must provide a cryptographically random secret of at least
 secret for anonymous loopback use; distributed deployments need shared secret
 management. The default TTL is 300 seconds, capped at 900 seconds.
 
+### Key rotation
+
+With `secret:`, replacing the secret rejects every token in flight, and every
+node behind a load balancer has to switch at the same moment. Pass a keyring
+instead:
+
+```elixir
+keys = [{"2026-10", current_secret}, {"2026-09", retired_secret}]
+Snodo.MRTR.State.seal(data, context, keys: keys, principal: principal)
+Snodo.MRTR.State.open(token, context, keys: keys, principal: principal)
+```
+
+`seal/3` signs with the first key and writes its identifier into the token.
+`open/3` verifies with the key the token names and rejects an unknown
+identifier with the same `-32602` error as any other invalid state. A keyring
+holds 1 to 8 keys; identifiers are unique, 1 to 32 characters from `A-Z`,
+`a-z`, `0-9`, `_`, and `-`, and readable in the token. Pass exactly one of
+`secret:` and `keys:`. Invalid options raise `ArgumentError`.
+
+To replace key `a` with key `b` in a cluster, deploy each step to every node
+before starting the next:
+
+1. `keys: [{"a", a}, {"b", b}]`: nodes seal with `a` and accept `b`.
+2. `keys: [{"b", b}, {"a", a}]`: nodes seal with `b` and accept `a`.
+3. Wait for the largest TTL in use (at most 900 seconds) after the last node
+   finishes step 2, then deploy `keys: [{"b", b}]`.
+
+At every step, a node on the previous configuration opens what a node on the
+new one seals, and the reverse. A token sealed with `secret: s` opens with any
+keyring that contains `s`, and a token sealed by a keyring opens with
+`secret: s` when its key is `s`, so moving from `secret: s` to
+`keys: [{"a", s}]` needs no coordinated switch either.
+
 Tokens are readable, not encrypted. Do not put secrets in them. They can be
 reused until expiry, so one-time operations need application-owned replay
 tracking and idempotency. Authorization must still be checked on every request.
