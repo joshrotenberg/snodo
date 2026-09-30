@@ -9,6 +9,13 @@ defmodule Snodo.Subscription.Source do
   `open/3` must acknowledge only a subset of its requested filter. `close/3`
   should return promptly and release any application resources associated with
   a blocked pull.
+
+  `next/2` may be called for a handle after `close/3` has closed it. The owner
+  stops the worker and closes the handle from different processes, so a worker
+  that is being stopped can still pull, and a source that serializes calls
+  through one process, such as a `GenServer`, can receive that pull after the
+  close. `next/2` should return `:closed` for a closed handle rather than raise
+  or crash the source process.
   """
 
   alias Snodo.Context

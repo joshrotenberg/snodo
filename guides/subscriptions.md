@@ -14,6 +14,12 @@ A `Snodo.Subscription.Source` opens a handle for one listen request, agrees to a
 subset of the requested filter, blocks in `next/2` until it has an event, and
 closes the handle on cancellation, disconnect, completion, or failure.
 
+`next/2` may be called for a handle after `close/3` has closed it. When a
+stream ends, the framework stops the worker that pulls events and closes the
+handle from a different process, so a pull from that worker can reach the
+source after the close. Return `:closed` for a closed handle rather than raise
+or crash the source process.
+
 The framework:
 
 - writes the required acknowledgement before pulling the first event;
