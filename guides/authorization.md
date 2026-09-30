@@ -48,7 +48,7 @@ task worker, `context.request_method` is still `"tools/call"`.
 
 - It does not authenticate. `context.auth` is whatever the transport or
   application put there: a Plug pipeline, or `auth:` on `Snodo.Client.direct/2`
-  in tests.
+  (`Snodo.Test.Assertions.client_as/3`) in tests.
 - It defines no roles, scopes, or refusal codes. The application chooses the
   code (JSON-RPC reserves -32000 to -32099 for implementation-defined errors).
   For OAuth scopes, [`snodo_oauth`](https://hexdocs.pm/snodo_oauth) ships

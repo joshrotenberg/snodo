@@ -18,7 +18,7 @@ defmodule Snodo.MixProject do
       # Scripts under test/fixtures are run as subprocesses, not loaded as tests.
       test_ignore_filters: [~r{^test/fixtures/}],
       dialyzer: [
-        plt_add_apps: [:mix],
+        plt_add_apps: [:ex_unit, :mix],
         plt_local_path: "priv/plts",
         flags: [:unmatched_returns, :error_handling]
       ],

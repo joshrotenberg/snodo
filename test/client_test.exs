@@ -1,6 +1,16 @@
 defmodule Snodo.ClientTest do
   use ExUnit.Case, async: true
 
+  import Snodo.Test.Assertions,
+    only: [
+      assert_listed: 2,
+      assert_refused: 2,
+      assert_tool_ok: 1,
+      client!: 1,
+      client_as: 2,
+      refute_listed: 2
+    ]
+
   alias Snodo.Client
   alias Snodo.Client.Input
   alias Snodo.Client.Page
@@ -1084,18 +1094,19 @@ defmodule Snodo.ClientTest do
     policy = {Policy, %{owner: self(), allowed: %{"ada" => MapSet.new([{:tool, "echo"}])}}}
     runtime = TestFixtures.runtime(tools: [Echo], authorization: policy)
 
-    {:ok, ada} = Client.direct(runtime, auth: %{"principal" => "ada"})
-    {:ok, anonymous} = Client.direct(runtime)
+    ada = client_as(runtime, %{"principal" => "ada"})
+    anonymous = client!(runtime)
 
-    assert {:ok, [%{"name" => "echo"}]} = Client.list_tools(ada)
-    assert {:ok, []} = Client.list_tools(anonymous)
+    assert_listed(Client.list_tools(ada), "echo")
+    assert [] = refute_listed(Client.list_tools(anonymous), "echo")
 
-    assert {:ok, _result} = Client.call_tool(ada, "echo", %{"text" => "hi"})
+    assert_tool_ok(Client.call_tool(ada, "echo", %{"text" => "hi"}))
 
-    assert {:error, %Error{code: code, kind: :protocol}} =
-             Client.call_tool(anonymous, "echo", %{"text" => "hi"})
-
-    assert code == Policy.refusal_code()
+    assert %Error{kind: :protocol} =
+             assert_refused(
+               Client.call_tool(anonymous, "echo", %{"text" => "hi"}),
+               Policy.refusal_code()
+             )
   end
 
   describe "custom transports" do

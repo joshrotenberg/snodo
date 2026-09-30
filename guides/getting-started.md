@@ -83,6 +83,58 @@ result["content"]
 
 See [The client](client.md) for errors, multi round-trip requests, and paging.
 
+## Test it
+
+`Snodo.Test.Assertions` wraps the direct client in ExUnit assertions. Each
+assertion returns the value it matched, and a failure shows the protocol
+error or the tool's `isError` content:
+
+```elixir
+defmodule GreeterTest do
+  use ExUnit.Case, async: true
+
+  import Snodo.Test.Assertions
+
+  alias Snodo.Client
+
+  test "greets by name" do
+    client = client!(Greeter.runtime())
+
+    assert_listed(Client.list_tools(client), "greet")
+
+    result = assert_tool_ok(Client.call_tool(client, "greet", %{"name" => "Ada"}))
+    assert [%{"text" => "Hello, Ada!"}] = result["content"]
+
+    assert_tool_error(Client.call_tool(client, "greet", %{}), "Missing required arguments")
+    assert_refused(Client.call_tool(client, "wave"), -32_602)
+  end
+end
+```
+
+`assert_tool_error/2` matches a result with `"isError" => true`, optionally
+by its text, and `assert_refused/2` matches a JSON-RPC error, optionally by
+its code. Had `greet` been called without a name under `assert_tool_ok/1`,
+the failure would read:
+
+```text
+Expected a successful tool result, got isError: true
+content:
+    Missing required arguments: name
+```
+
+The other helpers:
+
+- `assert_input_required/2` matches an `input_required` result, optionally of
+  one kind (`:form`, `:url`, `:sampling`, or `:roots`). `answer_input/2` turns
+  answers keyed by kind or request ID into the `input_responses:` and
+  `request_state:` options of the retry. `client!/2` with `answers:` answers
+  every input request inside the call instead.
+- `client_as/3` builds a client whose requests carry a principal as
+  `context.auth`, for testing an authorization policy, with
+  `assert_refused/2` and `refute_listed/2`.
+
+The assertions also accept what `Snodo.Test.dispatch/2` returns.
+
 ## Serve it
 
 Over stdio, for clients that launch the server as a subprocess:
