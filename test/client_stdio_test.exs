@@ -3,6 +3,7 @@ defmodule Snodo.ClientStdioTest do
 
   alias Snodo.Client
   alias Snodo.Client.Session
+  alias Snodo.Client.Subscription
   alias Snodo.Error
 
   @moduletag timeout: 30_000
@@ -36,7 +37,7 @@ defmodule Snodo.ClientStdioTest do
     assert {:ok, tools} = Client.list_tools(client)
 
     assert Enum.map(tools, & &1["name"]) |> Enum.sort() ==
-             ~w(choice consent echo halt large park parked ticks)
+             ~w(choice complete consent echo emit fail halt large park parked subscriptions ticks)
 
     assert {:ok, %{"content" => [%{"text" => "over stdio"}]}} =
              Client.call_tool(client, "echo", %{"text" => "over stdio"})
@@ -348,6 +349,175 @@ defmodule Snodo.ClientStdioTest do
 
     assert {:error, %Error{code: -32_000}} =
              Client.connect({:stdio, "snodo-no-such-command-#{System.unique_integer()}", []})
+  end
+
+  describe "subscriptions" do
+    @tools_filter %{"toolsListChanged" => true}
+
+    test "listen/3 returns the accepted filter and delivers events on demand" do
+      client = connect()
+
+      requested = %{
+        "toolsListChanged" => true,
+        "promptsListChanged" => true,
+        "resourceSubscriptions" => ["test://resource/one"]
+      }
+
+      assert {:ok, %Subscription{accepted: accepted, ref: ref} = subscription} =
+               Client.listen(client, requested)
+
+      assert accepted == Map.delete(requested, "promptsListChanged")
+      assert subscription.owner == self()
+
+      assert {:ok, %{"structuredContent" => %{"open" => 1}}} =
+               Client.call_tool(client, "subscriptions")
+
+      :ok = Subscription.demand(subscription, 2)
+      emit(client, %{"kind" => "resource", "uri" => "test://resource/one"})
+      emit(client, %{"kind" => "tools", "seq" => 1})
+      emit(client, %{"kind" => "tools", "seq" => 2})
+
+      assert_receive {:snodo_subscription, ^ref,
+                      {:notification, "notifications/resources/updated", updated}},
+                     5_000
+
+      assert updated["uri"] == "test://resource/one"
+      assert updated["_meta"]["io.modelcontextprotocol/subscriptionId"] == subscription.id
+
+      assert_receive {:snodo_subscription, ^ref,
+                      {:notification, "notifications/tools/list_changed", first}},
+                     5_000
+
+      assert first["_meta"]["seq"] == 1
+      refute_receive {:snodo_subscription, ^ref, _payload}, 100
+
+      assert {:notification, "notifications/tools/list_changed", %{"_meta" => %{"seq" => 2}}} =
+               Subscription.next(subscription, 5_000)
+
+      # Ordinary requests keep flowing on the shared connection.
+      assert {:ok, %{"content" => [%{"text" => "still serving"}]}} =
+               Client.call_tool(client, "echo", %{"text" => "still serving"})
+    end
+
+    test "a full buffer drops the oldest event and reports the count" do
+      client = connect()
+      {:ok, subscription} = Client.listen(client, @tools_filter, max_buffer: 2)
+      %{ref: ref, pid: connection, id: id} = subscription
+
+      for sequence <- 1..3, do: emit(client, %{"kind" => "tools", "seq" => sequence})
+
+      assert eventually(fn ->
+               entry = :sys.get_state(connection).subscriptions[id]
+               entry.buffer.size == 2 and entry.buffer.dropped == 1
+             end)
+
+      :ok = Subscription.demand(subscription, 10)
+      assert_receive {:snodo_subscription, ^ref, {:dropped, 1}}, 5_000
+      assert_receive {:snodo_subscription, ^ref, {:notification, _method, second}}, 5_000
+      assert second["_meta"]["seq"] == 2
+      assert_receive {:snodo_subscription, ^ref, {:notification, _method, third}}, 5_000
+      assert third["_meta"]["seq"] == 3
+      refute_received {:snodo_subscription, ^ref, _other}
+    end
+
+    test "close/1 cancels the stream on the server and drops the connection's entry" do
+      client = connect()
+      {:ok, subscription} = Client.listen(client, @tools_filter)
+      %{pid: connection, id: id} = subscription
+
+      assert Map.has_key?(:sys.get_state(connection).subscriptions, id)
+      assert :ok = Subscription.close(subscription)
+      assert :sys.get_state(connection).subscriptions == %{}
+      assert :sys.get_state(connection).subscription_refs == %{}
+      assert :sys.get_state(connection).subscription_owners == %{}
+      assert eventually(fn -> open_subscriptions(client) == 0 end)
+      assert :ok = Subscription.close(subscription)
+    end
+
+    test "the owner's exit cancels the stream" do
+      client = connect()
+      test = self()
+
+      owner =
+        spawn(fn ->
+          {:ok, subscription} = Client.listen(client, @tools_filter)
+          send(test, {:listening, subscription})
+          Process.sleep(:infinity)
+        end)
+
+      assert_receive {:listening, %Subscription{pid: connection}}, 10_000
+      Process.exit(owner, :kill)
+
+      assert eventually(fn -> :sys.get_state(connection).subscriptions == %{} end)
+      assert eventually(fn -> open_subscriptions(client) == 0 end)
+    end
+
+    test "the server's terminal result follows the queued events" do
+      client = connect()
+      {:ok, subscription} = Client.listen(client, @tools_filter)
+      %{ref: ref, pid: connection, id: id} = subscription
+
+      emit(client, %{"kind" => "tools", "seq" => 1})
+      emit(client, %{"kind" => "tools", "seq" => 2})
+      assert {:ok, _result} = Client.call_tool(client, "complete")
+      assert eventually(fn -> open_subscriptions(client) == 0 end)
+
+      assert {:notification, _method, %{"_meta" => %{"seq" => 1}}} =
+               Subscription.next(subscription, 5_000)
+
+      refute_receive {:snodo_subscription, ^ref, _payload}, 50
+
+      assert {:notification, _method, %{"_meta" => %{"seq" => 2}}} =
+               Subscription.next(subscription, 5_000)
+
+      assert_receive {:snodo_subscription, ^ref, {:closed, :complete}}, 5_000
+      refute Map.has_key?(:sys.get_state(connection).subscriptions, id)
+    end
+
+    test "a source failure ends the stream with the server's error" do
+      client = connect()
+      {:ok, subscription} = Client.listen(client, @tools_filter)
+
+      assert {:ok, _result} = Client.call_tool(client, "fail")
+
+      assert {:closed, {:error, %Error{code: -32_603, kind: :execution}}} =
+               Subscription.next(subscription, 5_000)
+    end
+
+    test "an error response is returned instead of a handle" do
+      client = connect()
+
+      assert {:error, %Error{code: -32_602, kind: :protocol}} =
+               Client.listen(client, %{"toolsListChanged" => "yes"})
+
+      assert :sys.get_state(elem(client.transport, 1)).subscriptions == %{}
+    end
+
+    test "the server's exit and close/1 end open streams with a transport error" do
+      client = connect()
+      {:ok, subscription} = Client.listen(client, @tools_filter)
+      assert {:error, %Error{code: -32_000}} = Client.call_tool(client, "halt")
+
+      assert {:closed, {:error, %Error{code: -32_000, cause: {:exit_status, 3}}}} =
+               Subscription.next(subscription, 5_000)
+
+      client = connect()
+      {:ok, subscription} = Client.listen(client, @tools_filter)
+      assert :ok = Client.close(client)
+
+      assert {:closed, {:error, %Error{code: -32_000, kind: :transport}}} =
+               Subscription.next(subscription, 5_000)
+    end
+  end
+
+  defp emit(client, arguments) do
+    assert {:ok, %{"content" => [%{"text" => "emitted"}]}} =
+             Client.call_tool(client, "emit", arguments)
+  end
+
+  defp open_subscriptions(client) do
+    {:ok, %{"structuredContent" => %{"open" => open}}} = Client.call_tool(client, "subscriptions")
+    open
   end
 
   defp drain_progress do

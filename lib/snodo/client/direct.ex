@@ -13,10 +13,19 @@ defmodule Snodo.Client.Direct do
   of the handler's `Snodo.Progress.report/3` calls after passing the
   notification to the progress function, as a server transport does after
   writing it.
+
+  A `subscriptions/listen` request opened with `Snodo.Client.listen/3` is
+  dispatched in a process of its own, which then serves the server-side
+  subscription as a server transport would: it owns the source worker, shapes
+  each event through `Snodo.Subscription`, and closes the source when the
+  stream ends. Closing the subscription closes the source with
+  `{:cancelled, "Closed by the client"}`; the owner's exit closes it with
+  `{:disconnected, {:owner_down, reason}}`.
   """
 
   @behaviour Snodo.Client.Transport
 
+  alias Snodo.Client.Direct.Stream, as: SubscriptionStream
   alias Snodo.Progress
   alias Snodo.Server
   alias Snodo.Server.Runtime
@@ -35,8 +44,8 @@ defmodule Snodo.Client.Direct do
 
     case Keyword.get(opts, :on_progress) do
       nil ->
-        # Snodo.Client sends only requests and refuses subscriptions/listen, so
-        # dispatch always returns a response map here.
+        # Snodo.Client sends subscriptions/listen through listen/3, so dispatch
+        # always returns a response map here.
         {:ok, response} = Server.dispatch(runtime, message, transport)
         {:ok, response}
 
@@ -51,6 +60,12 @@ defmodule Snodo.Client.Direct do
     transport = transport_context(state, Keyword.fetch!(opts, :dialect))
     {:ok, _no_response} = Server.dispatch(runtime, message, transport)
     :ok
+  end
+
+  @impl true
+  def listen(%{runtime: runtime} = state, message, opts) do
+    transport = transport_context(state, Keyword.fetch!(opts, :dialect))
+    SubscriptionStream.open(runtime, message, transport, opts)
   end
 
   @impl true

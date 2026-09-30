@@ -36,6 +36,14 @@ defmodule Snodo.Client.HTTP do
   outcome is not reported: a server that does not support client-initiated
   termination answers 405.
 
+  A `subscriptions/listen` request opened with `Snodo.Client.listen/3` keeps
+  its event-stream response open in a process of its own, which delivers the
+  events to the owner (see `Snodo.Client.Subscription`). The request timeout
+  bounds the wait for the acknowledgement only. Closing the subscription, or
+  the owner's exit, closes that connection, which the server treats as
+  cancellation. `:max_response_bytes` applies to each event of the stream
+  rather than to the stream as a whole.
+
   The response is read by this module rather than `:httpc`, which reads the
   body of any status other than 200 and 206 in full before returning it.
   `:max_response_bytes` is checked as the response arrives, whatever its
@@ -64,6 +72,7 @@ defmodule Snodo.Client.HTTP do
   @behaviour Snodo.Client.Transport
 
   alias Snodo.Client.Deadline
+  alias Snodo.Client.HTTP.Stream, as: SubscriptionStream
   alias Snodo.Client.Transport
   alias Snodo.Envelope
   alias Snodo.Transport.Context, as: TransportContext
@@ -173,7 +182,91 @@ defmodule Snodo.Client.HTTP do
   end
 
   @impl Transport
+  def listen(state, message, opts) when is_map(message) do
+    policy = policy(Keyword.fetch!(opts, :dialect), message)
+    [content_type | _other_types] = policy.request_content_types
+
+    headers = [
+      {"content-type", content_type},
+      {"accept", Enum.join(policy.required_accept_types, ", ")}
+      | mirrored_headers(policy, message)
+    ]
+
+    case Enum.reject(headers, &valid_header?/1) do
+      [] ->
+        SubscriptionStream.open(state, headers ++ state.headers, message, opts)
+
+      [{name, _value} | _others] ->
+        {:error, Transport.connection_error("Invalid HTTP request header", name)}
+    end
+  end
+
+  @impl Transport
   def close(_state), do: :ok
+
+  # Runs in a process linked to `stream`, a `Snodo.Client.HTTP.Stream`. Sends
+  # the request, then feeds every decoded event-stream message to `stream` as
+  # `{:mcp_stream_message, message}`, and ends with `{:mcp_stream_end,
+  # outcome}`. The ack deadline is `timeout`; once the first message has
+  # arrived the read waits without limit. `:max_response_bytes` applies to the
+  # head and to each event.
+  @doc false
+  @spec read_stream(pid(), state(), [{String.t(), String.t()}], map(), timeout()) :: :ok
+  def read_stream(stream, state, headers, message, timeout) do
+    outcome =
+      with {:ok, socket} <- open(state, state.connect_timeout || timeout, timeout) do
+        send(stream, {:mcp_stream_socket, socket})
+
+        conn = %{
+          socket: socket,
+          deadline: Deadline.new(timeout: timeout),
+          limit: state.max_response_bytes,
+          id: Map.get(message, "id"),
+          on_progress: nil,
+          token: nil,
+          on_server_request: nil,
+          reply: nil,
+          stream: stream,
+          read: 0,
+          body: nil
+        }
+
+        try do
+          with :ok <- send_request(socket, state, "POST", headers, JSON.encode!(message)),
+               {:ok, status, response_headers, rest} <- read_head(conn, "", 0) do
+            conn = %{conn | body: body_state(response_headers)}
+
+            case read_body(conn, status, response_headers, rest) do
+              {:ok, conn} -> {:ok, status, finish(conn)}
+              {:error, reason} -> {:error, reason}
+            end
+          end
+        after
+          close_socket(socket)
+        end
+      end
+
+    send(stream, {:mcp_stream_end, stream_outcome(outcome, timeout, state.max_response_bytes)})
+    :ok
+  end
+
+  defp stream_outcome({:ok, _status, {:unmatched, _sample}}, _timeout, _limit), do: :ended
+
+  defp stream_outcome({:ok, status, {:body, body}}, _timeout, _limit) do
+    case decode_json(status, body) do
+      {:ok, response} -> {:response, response}
+      {:error, error} -> {:error, error}
+    end
+  end
+
+  defp stream_outcome(failure, timeout, limit), do: response(failure, timeout, limit)
+
+  @doc false
+  @spec close_socket({:gen_tcp | :ssl, term()}) :: :ok
+  def close_socket({module, socket}) do
+    _closed = module.close(socket)
+    :ok
+  end
 
   @doc """
   Encodes a mirrored header value with the base64 sentinel when it is not
@@ -317,6 +410,7 @@ defmodule Snodo.Client.HTTP do
         token: if(on_progress, do: get_in(message, ["params", "_meta", "progressToken"])),
         on_server_request: Keyword.get(opts, :on_server_request),
         reply: {state, Keyword.get(opts, :headers, []), Keyword.take(opts, [:timeout])},
+        stream: nil,
         read: 0,
         body: nil
       }
@@ -580,11 +674,6 @@ defmodule Snodo.Client.HTTP do
     end
   end
 
-  defp close_socket({module, socket}) do
-    _closed = module.close(socket)
-    :ok
-  end
-
   # A JSON body is held until it ends. An event stream is split into events
   # as it arrives; `scanned` is how much of the partial event has already been
   # searched for a boundary, so each byte is searched about once, and `sample`
@@ -622,7 +711,7 @@ defmodule Snodo.Client.HTTP do
 
       {start, length} ->
         rest = binary_part(buffer, start + length, byte_size(buffer) - start - length)
-        conn = %{conn | body: {:events, rest, 0, sample}}
+        conn = %{conn | body: {:events, rest, 0, sample}, read: event_bytes_read(conn, rest)}
 
         case event(conn, binary_part(buffer, 0, start)) do
           {:response, response} -> {:done, response}
@@ -630,6 +719,10 @@ defmodule Snodo.Client.HTTP do
         end
     end
   end
+
+  # A subscription stream has no end, so its limit counts one event at a time.
+  defp event_bytes_read(%{stream: nil, read: read}, _rest), do: read
+  defp event_bytes_read(_conn, rest), do: byte_size(rest)
 
   # A stream may end without a blank line after its last event.
   defp finish(%{body: {:buffer, body}}), do: {:body, body}
@@ -642,34 +735,54 @@ defmodule Snodo.Client.HTTP do
   end
 
   defp event(conn, event) do
-    data =
-      event
-      |> String.split(["\r\n", "\n"])
-      |> Enum.flat_map(fn
-        "data:" <> value -> [String.trim_leading(value, " ")]
-        _other_field -> []
-      end)
-      |> Enum.join("\n")
-
-    case Snodo.JSONValue.decode(data) do
-      {:ok, %{"id" => id} = response} when id == conn.id and not is_map_key(response, "method") ->
-        {:response, response}
-
-      {:ok,
-       %{"method" => "notifications/progress", "params" => %{"progressToken" => token} = params}}
-      when not is_nil(token) and token == conn.token ->
-        conn.on_progress.(params)
-        {:ok, %{conn | deadline: Deadline.extend(conn.deadline)}}
-
-      {:ok, %{"id" => id, "method" => method} = request}
-      when not is_nil(id) and is_binary(method) and is_function(conn.on_server_request, 1) ->
-        answer_server_request(conn, request)
-        {:ok, conn}
-
-      _other ->
-        {:ok, conn}
-    end
+    event |> event_data() |> Snodo.JSONValue.decode() |> handle_event(conn)
   end
+
+  defp event_data(event) do
+    event
+    |> String.split(["\r\n", "\n"])
+    |> Enum.flat_map(fn
+      "data:" <> value -> [String.trim_leading(value, " ")]
+      _other_field -> []
+    end)
+    |> Enum.join("\n")
+  end
+
+  # A subscription stream hands every message to its process.
+  defp handle_event({:ok, message}, %{stream: stream} = conn)
+       when is_map(message) and is_pid(stream) do
+    send(stream, {:mcp_stream_message, message})
+    {:ok, %{conn | deadline: Deadline.new(timeout: :infinity)}}
+  end
+
+  defp handle_event({:ok, %{"id" => id} = response}, %{id: expected})
+       when id == expected and not is_map_key(response, "method") do
+    {:response, response}
+  end
+
+  defp handle_event(
+         {:ok,
+          %{
+            "method" => "notifications/progress",
+            "params" => %{"progressToken" => token} = params
+          }},
+         %{token: expected} = conn
+       )
+       when not is_nil(token) and token == expected do
+    conn.on_progress.(params)
+    {:ok, %{conn | deadline: Deadline.extend(conn.deadline)}}
+  end
+
+  defp handle_event(
+         {:ok, %{"id" => id, "method" => method} = request},
+         %{on_server_request: responder} = conn
+       )
+       when not is_nil(id) and is_binary(method) and is_function(responder, 1) do
+    answer_server_request(conn, request)
+    {:ok, conn}
+  end
+
+  defp handle_event(_other, conn), do: {:ok, conn}
 
   # The server waits for the answer before it finishes the request in flight,
   # so the answer goes out on its own connection before the stream is read

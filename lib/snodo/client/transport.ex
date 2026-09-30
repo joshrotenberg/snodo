@@ -40,7 +40,7 @@ defmodule Snodo.Client.Transport do
   A transport that ignores the progress options delivers no progress and keeps
   a fixed timeout.
 
-  Two callbacks are optional. `notify/3` sends a notification, a message
+  Three callbacks are optional. `notify/3` sends a notification, a message
   without an `id`, and returns once the transport has delivered it; it
   receives `:timeout`, `:dialect`, and `:headers`. The client needs it for
   `notifications/initialized`, so a transport without it cannot open an
@@ -49,6 +49,23 @@ defmodule Snodo.Client.Transport do
   id; it receives `:headers` (`Mcp-Session-Id` and `MCP-Protocol-Version`)
   and `:timeout`. Streamable HTTP sends a `DELETE`; a transport without it
   simply closes.
+
+  The optional `listen/3` opens a `subscriptions/listen` stream for
+  `Snodo.Client.listen/3`. It sends the request, waits `:timeout` milliseconds
+  for the server's `notifications/subscriptions/acknowledged`, and returns
+  `{:ok, accepted_filter, pid}`: the filter from the acknowledgement and the
+  process that receives the stream. That process keeps the subscription's
+  buffer (the internal module the built-in transports share, built from the
+  `:owner`, `:ref`, `:max_buffer`, and `:overflow` options), pushes each later
+  notification to it as `{:notification, method, params}`, closes it with
+  `:complete` or `{:error, %Snodo.Error{}}` at the terminal response or a
+  connection failure, and exits once the buffer is done. It handles
+  `{:mcp_client_demand, ref, n}` messages by adding demand, and a
+  `{:mcp_client_close, ref}` call by cancelling the stream on the server and
+  replying `:ok`. It monitors the owner and cancels the stream when the owner
+  exits. A JSON-RPC error response before the acknowledgement is returned as
+  `{:error, %Snodo.Error{}}`. `Snodo.Client.listen/3` raises `ArgumentError`
+  for a transport without `listen/3`.
 
   Failures of the connection itself are `%Snodo.Error{kind: :transport}`. Use
   `connection_error/2` (-32000) and `timeout_error/1` (-32001), the codes the
@@ -64,9 +81,11 @@ defmodule Snodo.Client.Transport do
               {:ok, map()} | {:error, Error.t()}
   @callback notify(state(), message :: map(), opts :: keyword()) :: :ok | {:error, Error.t()}
   @callback delete_session(state(), opts :: keyword()) :: :ok
+  @callback listen(state(), message :: map(), opts :: keyword()) ::
+              {:ok, accepted_filter :: map(), pid()} | {:error, Error.t()}
   @callback close(state()) :: :ok
 
-  @optional_callbacks notify: 3, delete_session: 2
+  @optional_callbacks notify: 3, delete_session: 2, listen: 3
 
   @connection_closed -32_000
   @request_timeout -32_001

@@ -200,6 +200,10 @@ defmodule Snodo.ClientTest do
 
       assert {:error, %Error{code: -32_601}} = Client.discover(client)
 
+      # The initialize-era catalogs have no subscriptions/listen either.
+      assert {:error, %Error{code: -32_601, data: %{"method" => "subscriptions/listen"}}} =
+               Client.listen(client, %{"toolsListChanged" => true})
+
       # A stateless connection sends what the catalog does not list, since
       # extensions add methods; the server answers.
       assert {:error, %Error{code: -32_601}} = Client.request(client(), "tasks/get")
@@ -1148,7 +1152,7 @@ defmodule Snodo.ClientTest do
   end
 
   test "request/4 refuses subscriptions/listen before dispatch" do
-    assert_raise ArgumentError, ~r/cannot stream subscriptions\/listen/, fn ->
+    assert_raise ArgumentError, ~r/open it with Snodo.Client.listen\/3/, fn ->
       Client.request(client(), "subscriptions/listen", %{})
     end
   end

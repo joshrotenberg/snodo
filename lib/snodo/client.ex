@@ -45,7 +45,7 @@ defmodule Snodo.Client do
   initialize-era connection `session` holds what `initialize` returned, and
   the requests the server sends to the client (`elicitation/create`) are
   answered by the same `:input_handlers` that answer 2026-07-28 input
-  requests. `subscriptions/listen` streams are not delivered.
+  requests.
 
   Pass `progress:` to a request to receive the server's progress
   notifications for it while it runs:
@@ -61,6 +61,19 @@ defmodule Snodo.Client do
         Snodo.Client.connect({:http, url},
           input_handlers: %{form: &MyUI.form/1, url: &MyUI.url/1}
         )
+
+  Open a `subscriptions/listen` stream with `listen/3` to receive change
+  notifications as messages, or as a stream:
+
+      {:ok, subscription} =
+        Snodo.Client.listen(client, %{"resourceSubscriptions" => ["file:///notes.md"]})
+
+      subscription
+      |> Snodo.Client.Subscription.stream()
+      |> Enum.each(fn
+        {:notification, "notifications/resources/updated", %{"uri" => uri}} -> IO.puts(uri)
+        other -> IO.inspect(other)
+      end)
   """
 
   alias Snodo.Client.Deadline
@@ -69,8 +82,10 @@ defmodule Snodo.Client do
   alias Snodo.Client.HTTP
   alias Snodo.Client.Input
   alias Snodo.Client.Page
+  alias Snodo.Client.Response
   alias Snodo.Client.Session
   alias Snodo.Client.Stdio
+  alias Snodo.Client.Subscription
   alias Snodo.Client.Transport
   alias Snodo.Error
   alias Snodo.Protocol.Profile
@@ -113,6 +128,8 @@ defmodule Snodo.Client do
 
   @default_max_input_rounds 10
   @default_probe_timeout 10_000
+  @default_max_buffer 100
+  @overflow_policies [:drop_oldest, :drop_newest]
 
   @enforce_keys [:transport, :protocol, :dialect]
   defstruct [
@@ -469,14 +486,14 @@ defmodule Snodo.Client do
   is, because negotiated extensions add methods the core catalog does not
   carry.
 
-  `subscriptions/listen` raises `ArgumentError`: it needs a stream to deliver
-  events on, and dispatching it would open the application's source.
+  `subscriptions/listen` raises `ArgumentError`: its response is a stream,
+  which `listen/3` opens.
   """
   @spec request(t(), String.t(), map(), keyword()) :: response()
   def request(%__MODULE__{} = client, method, params \\ %{}, opts \\ [])
       when is_binary(method) and is_map(params) and is_list(opts) do
     if method == "subscriptions/listen" do
-      raise ArgumentError, "Snodo.Client cannot stream subscriptions/listen"
+      raise ArgumentError, "subscriptions/listen is a stream; open it with Snodo.Client.listen/3"
     end
 
     with :ok <- check_method(client, method) do
@@ -500,6 +517,98 @@ defmodule Snodo.Client do
     module.notify(state, message, opts)
   end
 
+  @doc """
+  Opens a `subscriptions/listen` stream and returns its handle.
+
+  `notifications` is the requested filter, sent as `params["notifications"]`
+  as given: the core keys `"toolsListChanged"`, `"promptsListChanged"`,
+  `"resourcesListChanged"`, and `"resourceSubscriptions"` (a list of URIs),
+  and any key a negotiated extension defines, such as the Tasks extension's
+  `"taskIds"`. The server validates it and answers -32602 for an invalid one.
+
+  Returns `{:ok, subscription}` once the server's
+  `notifications/subscriptions/acknowledged` arrives; `subscription.accepted`
+  is the filter the server agreed to, which may be a subset of the request.
+  Returns `{:error, %Snodo.Error{}}` for a JSON-RPC error response (for
+  example -32601 from a server without a subscription source), for a stream
+  the server ends before acknowledging it, and for a transport failure; -32001
+  when no acknowledgement arrives within `:timeout`.
+
+  The calling process owns the subscription: events reach it as
+  `{:snodo_subscription, ref, payload}` messages once it asks for them with
+  `Snodo.Client.Subscription.demand/2`, `next/2`, or `stream/1`, and the
+  stream is cancelled when it exits. See `Snodo.Client.Subscription` for the
+  payloads and the buffer.
+
+  Options:
+
+    * `:max_buffer` - the most events held for the owner before the overflow
+      policy applies. Defaults to 100.
+    * `:overflow` - `:drop_oldest` (the default) or `:drop_newest`.
+    * `:timeout` - overrides the client's request timeout for the wait for
+      the acknowledgement. A direct client has no timeout.
+    * `:meta` - extra `_meta` entries, as for `request/4`.
+
+  Raises `ArgumentError` for a custom transport without `listen/3`.
+  """
+  @spec listen(t(), map(), keyword()) :: {:ok, Subscription.t()} | {:error, Error.t()}
+  def listen(%__MODULE__{transport: {module, _state}} = client, notifications, opts \\ [])
+      when is_map(notifications) and is_list(opts) do
+    unless function_exported?(module, :listen, 3) do
+      raise ArgumentError, "#{inspect(module)} does not implement listen/3"
+    end
+
+    max_buffer = Keyword.get(opts, :max_buffer, @default_max_buffer)
+    overflow = Keyword.get(opts, :overflow, :drop_oldest)
+
+    unless is_integer(max_buffer) and max_buffer > 0 do
+      raise ArgumentError, ":max_buffer must be a positive integer, got: #{inspect(max_buffer)}"
+    end
+
+    unless overflow in @overflow_policies do
+      raise ArgumentError,
+            ":overflow must be one of #{inspect(@overflow_policies)}, got: #{inspect(overflow)}"
+    end
+
+    # The initialize-era catalogs do not define subscriptions/listen.
+    with :ok <- check_method(client, "subscriptions/listen") do
+      open_subscription(
+        client,
+        notifications,
+        [max_buffer: max_buffer, overflow: overflow] ++ opts
+      )
+    end
+  end
+
+  defp open_subscription(%__MODULE__{transport: {module, state}} = client, notifications, opts) do
+    id = System.unique_integer([:positive, :monotonic])
+    ref = make_ref()
+
+    raw = %{
+      "jsonrpc" => "2.0",
+      "id" => id,
+      "method" => "subscriptions/listen",
+      "params" => build_params(client, %{"notifications" => notifications}, opts)
+    }
+
+    transport_opts = [
+      dialect: client.dialect,
+      timeout: Keyword.get(opts, :timeout, client.timeout),
+      owner: self(),
+      ref: ref,
+      max_buffer: Keyword.fetch!(opts, :max_buffer),
+      overflow: Keyword.fetch!(opts, :overflow)
+    ]
+
+    case module.listen(state, raw, transport_opts) do
+      {:ok, accepted, pid} when is_map(accepted) and is_pid(pid) ->
+        {:ok, %Subscription{ref: ref, id: id, accepted: accepted, owner: self(), pid: pid}}
+
+      {:error, %Error{}} = error ->
+        error
+    end
+  end
+
   defp send_request(client, method, params, opts, plan, round) do
     id = System.unique_integer([:positive, :monotonic])
     progress = progress_callback(Keyword.get(opts, :progress))
@@ -521,7 +630,7 @@ defmodule Snodo.Client do
     case module.request(state, raw, transport_opts) do
       {:ok, response} ->
         response
-        |> decode_response()
+        |> Response.decode()
         |> answer_input(client, method, params, opts, plan, round)
 
       {:error, %Error{}} = error ->
@@ -576,10 +685,33 @@ defmodule Snodo.Client do
   defp put_present_option(opts, _key, empty) when empty == %{}, do: opts
   defp put_present_option(opts, key, value), do: Keyword.put(opts, key, value)
 
-  defp open(module, init_arg, opts, dialects) do
+  defp open(module, init_arg, opts, [first | _others] = dialects) do
+    settings = settings!(opts)
+    handlers = settings.input_handlers
+
+    # A transport whose connection outlives one request (stdio) answers the
+    # server's requests through the same handlers as the client itself.
+    connect_opts = Keyword.put(opts, :on_server_request, &Input.answer_request(handlers, &1))
+    reopen = fn -> module.connect(init_arg, connect_opts) end
+
+    with {:ok, state} <- reopen.() do
+      client =
+        struct!(
+          __MODULE__,
+          Map.merge(settings, %{
+            transport: {module, state},
+            protocol: first.version(),
+            dialect: first
+          })
+        )
+
+      Handshake.run(client, dialects, reopen, probe_timeout: settings.probe_timeout)
+    end
+  end
+
+  # The options every client takes, validated before anything connects.
+  defp settings!(opts) do
     capabilities = Keyword.get(opts, :client_capabilities, %{})
-    timeout = Keyword.get(opts, :timeout, 30_000)
-    probe_timeout = Keyword.get(opts, :probe_timeout, @default_probe_timeout)
     max_pages = Keyword.get(opts, :max_pages, 1_000)
     handlers = opts |> Keyword.get(:input_handlers, %{}) |> Input.validate_handlers!()
 
@@ -590,16 +722,6 @@ defmodule Snodo.Client do
       raise ArgumentError, ":client_capabilities must be a map, got: #{inspect(capabilities)}"
     end
 
-    unless timeout == :infinity or (is_integer(timeout) and timeout > 0) do
-      raise ArgumentError,
-            ":timeout must be a positive integer or :infinity, got: #{inspect(timeout)}"
-    end
-
-    unless probe_timeout == :infinity or (is_integer(probe_timeout) and probe_timeout > 0) do
-      raise ArgumentError,
-            ":probe_timeout must be a positive integer or :infinity, got: #{inspect(probe_timeout)}"
-    end
-
     unless is_integer(max_pages) and max_pages > 0 do
       raise ArgumentError, ":max_pages must be a positive integer, got: #{inspect(max_pages)}"
     end
@@ -607,28 +729,24 @@ defmodule Snodo.Client do
     client_info = Keyword.get_lazy(opts, :client_info, &default_client_info/0)
     validate_client_info!(client_info)
 
-    # A transport whose connection outlives one request (stdio) answers the
-    # server's requests through the same handlers as the client itself.
-    connect_opts = Keyword.put(opts, :on_server_request, &Input.answer_request(handlers, &1))
-    reopen = fn -> module.connect(init_arg, connect_opts) end
-    [first | _others] = dialects
+    %{
+      client_capabilities: Input.merge_capabilities(Input.capabilities(handlers), capabilities),
+      client_info: client_info,
+      timeout: timeout!(:timeout, Keyword.get(opts, :timeout, 30_000)),
+      probe_timeout:
+        timeout!(:probe_timeout, Keyword.get(opts, :probe_timeout, @default_probe_timeout)),
+      max_pages: max_pages,
+      input_handlers: handlers,
+      max_input_rounds: max_input_rounds
+    }
+  end
 
-    with {:ok, state} <- reopen.() do
-      client = %__MODULE__{
-        transport: {module, state},
-        protocol: first.version(),
-        dialect: first,
-        client_capabilities: Input.merge_capabilities(Input.capabilities(handlers), capabilities),
-        client_info: client_info,
-        timeout: timeout,
-        probe_timeout: probe_timeout,
-        max_pages: max_pages,
-        input_handlers: handlers,
-        max_input_rounds: max_input_rounds
-      }
+  defp timeout!(_option, :infinity), do: :infinity
+  defp timeout!(_option, timeout) when is_integer(timeout) and timeout > 0, do: timeout
 
-      Handshake.run(client, dialects, reopen, probe_timeout: probe_timeout)
-    end
+  defp timeout!(option, timeout) do
+    raise ArgumentError,
+          "#{inspect(option)} must be a positive integer or :infinity, got: #{inspect(timeout)}"
   end
 
   # The dialect's catalog decides which requests the negotiated version
@@ -753,30 +871,6 @@ defmodule Snodo.Client do
 
   defp put_present(params, _key, nil), do: params
   defp put_present(params, key, value), do: Map.put(params, key, value)
-
-  defp decode_response(%{"result" => _result, "error" => _error} = response) do
-    {:error, Transport.connection_error("The server sent both a result and an error", response)}
-  end
-
-  defp decode_response(%{"result" => %{"resultType" => "input_required"} = result}),
-    do: {:input_required, result}
-
-  defp decode_response(%{"result" => result}) when is_map(result), do: {:ok, result}
-
-  defp decode_response(%{"error" => %{"code" => code, "message" => message} = error})
-       when is_integer(code) and is_binary(message) do
-    {:error,
-     %Error{code: code, message: message, data: Map.get(error, "data"), kind: error_kind(code)}}
-  end
-
-  defp decode_response(response) do
-    {:error, Transport.connection_error("The server sent an invalid JSON-RPC response", response)}
-  end
-
-  defp error_kind(code) when code in [-32_700, -32_600], do: :json_rpc
-  defp error_kind(code) when code in [-32_601, -32_602], do: :protocol
-  defp error_kind(-32_603), do: :execution
-  defp error_kind(_code), do: :protocol
 
   defp retry_with_definition(
          %__MODULE__{transport: {HTTP, _state}} = client,
