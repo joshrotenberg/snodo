@@ -214,8 +214,9 @@ defmodule Snodo.Client do
       JSON-RPC over its stdin and stdout. See `Snodo.Client.Stdio` for `:env`
       and `:cd`. The connection closes when the calling process exits.
     * `{:http, url}` - posts each request to a Streamable HTTP endpoint. See
-      `Snodo.Client.HTTP` for `:headers`, `:ssl`, `:connect_timeout`, and
-      `:max_response_bytes`.
+      `Snodo.Client.HTTP` for `:headers`, `:token_provider` (a
+      `Snodo.Client.TokenProvider` that supplies and refreshes the bearer
+      token), `:ssl`, `:connect_timeout`, and `:max_response_bytes`.
     * `{module, init_arg}` - any `Snodo.Client.Transport`.
 
   Options for every target:

@@ -269,13 +269,17 @@ The September 26, September 14, and August 25 summaries are retained as
 historical evidence, not current scores.
 
 The runner's client leg measures `Snodo.Client` separately, through a harness
-that drives it against each scenario server. The 2026-09-29 run passes 7 of 32
-required client scenarios, one more than on 2026-09-26: the harness installs
-input handlers for all four kinds, so the client declares the deprecated
-`sampling` and `roots` capabilities and `request-metadata` passes whole. 25
-of the 32 cover OAuth, which the client does not implement, and one of the
-seven passes (`auth/resource-mismatch`) only because the harness never starts
-authorization. See the
+that drives it against each scenario server, with `Snodo.OAuth.Client` from
+`snodo_oauth` as the token provider. The 2026-09-30 run passes 31 of 32
+required client scenarios, including all 25 that cover OAuth: metadata
+discovery, client identity, PKCE, scope selection and step-up, resource
+indicators, and the `iss` checks. The one other is excluded from the score
+because a 2026-07-28 client sends no `initialize`. The harness installs input
+handlers for all four kinds, so the client declares the deprecated `sampling`
+and `roots` capabilities and `request-metadata` passes whole, as it did on
+2026-09-29 when 7 of 32 passed. DPoP, enterprise-managed authorization, and
+workload identity federation are not implemented; their unscored scenarios
+stay in the baseline. See the
 [client leg notes](https://github.com/joshrotenberg/snodo/blob/main/conformance/README.md#client-leg)
 for the remaining gaps.
 

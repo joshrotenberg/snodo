@@ -1,240 +1,48 @@
 {
   "failures": [
     {
-      "key": "auth/metadata-default:prm-pathbased-requested",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/metadata-default:authorization-server-metadata",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/metadata-default:client-registration",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/metadata-default:authorization-request",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/metadata-default:token-request",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/metadata-var1:prm-pathbased-requested",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/metadata-var1:authorization-server-metadata",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/metadata-var1:client-registration",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/metadata-var1:authorization-request",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/metadata-var1:token-request",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/metadata-var2:authorization-server-metadata",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/metadata-var2:client-registration",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/metadata-var2:authorization-request",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/metadata-var2:token-request",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/metadata-var3:authorization-server-metadata",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/metadata-var3:client-registration",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/metadata-var3:authorization-request",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/metadata-var3:token-request",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/basic-cimd:cimd-client-id-used",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/scope-from-www-authenticate:scope-from-www-authenticate",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/scope-from-scopes-supported:scope-from-scopes-supported",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/scope-omitted-when-undefined:scope-omitted-when-undefined",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/scope-step-up:scope-step-up-initial",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/scope-step-up:scope-step-up-escalation",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/scope-step-up:sep-2350-scope-union-on-reauth",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/scope-retry-limit:scope-retry-limit",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/token-endpoint-auth-basic:token-endpoint-auth-method",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/token-endpoint-auth-basic:resource-parameter-in-authorization",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/token-endpoint-auth-basic:resource-parameter-in-token",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/token-endpoint-auth-post:token-endpoint-auth-method",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/token-endpoint-auth-post:resource-parameter-in-authorization",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/token-endpoint-auth-post:resource-parameter-in-token",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/token-endpoint-auth-none:token-endpoint-auth-method",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/token-endpoint-auth-none:resource-parameter-in-authorization",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/token-endpoint-auth-none:resource-parameter-in-token",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/pre-registration:pre-registration-auth",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/offline-access-scope:sep-2207-offline-access-requested",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/offline-access-not-supported:sep-2207-offline-access-not-requested",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/authorization-server-migration:sep-2352-reregister-on-as-change",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/iss-supported:sep-2468-client-compare-iss-supported",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/iss-not-advertised:sep-2468-client-proceed-no-iss",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/iss-supported-missing:sep-2468-client-reject-missing-iss",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/iss-wrong-issuer:sep-2468-client-compare-iss-supported",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/iss-unexpected:sep-2468-client-compare-iss-unadvertised",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/iss-normalized:sep-2468-client-no-normalization",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/metadata-issuer-mismatch:sep-2468-client-validate-metadata-issuer",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/client-credentials-jwt:client-credentials-jwt-verified",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/client-credentials-basic:client-credentials-basic-auth",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/enterprise-managed-authorization:complete-flow-token-exchange",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
-      "key": "auth/enterprise-managed-authorization:complete-flow-jwt-bearer",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
-    },
-    {
       "key": "auth/dpop:sep-1932-client-token-request-proof",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+      "reason": "Snodo.OAuth.Client sends bearer tokens only; DPoP proofs and the DPoP scheme (RFC 9449) are not implemented."
     },
     {
       "key": "auth/dpop:sep-1932-client-dpop-auth-scheme",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+      "reason": "Snodo.OAuth.Client sends bearer tokens only; DPoP proofs and the DPoP scheme (RFC 9449) are not implemented."
     },
     {
       "key": "auth/dpop:sep-1932-client-fresh-proof",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+      "reason": "Snodo.OAuth.Client sends bearer tokens only; DPoP proofs and the DPoP scheme (RFC 9449) are not implemented."
     },
     {
       "key": "auth/dpop-nonce:sep-1932-client-token-request-proof",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+      "reason": "Snodo.OAuth.Client sends bearer tokens only; DPoP proofs, the DPoP scheme, and nonce challenges (RFC 9449) are not implemented."
     },
     {
       "key": "auth/dpop-nonce:sep-1932-client-dpop-auth-scheme",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+      "reason": "Snodo.OAuth.Client sends bearer tokens only; DPoP proofs, the DPoP scheme, and nonce challenges (RFC 9449) are not implemented."
     },
     {
       "key": "auth/dpop-nonce:sep-1932-client-fresh-proof",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+      "reason": "Snodo.OAuth.Client sends bearer tokens only; DPoP proofs, the DPoP scheme, and nonce challenges (RFC 9449) are not implemented."
     },
     {
       "key": "auth/dpop-nonce:sep-1932-client-as-nonce",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+      "reason": "Snodo.OAuth.Client sends bearer tokens only; DPoP proofs, the DPoP scheme, and nonce challenges (RFC 9449) are not implemented."
     },
     {
       "key": "auth/dpop-nonce:sep-1932-client-rs-nonce",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+      "reason": "Snodo.OAuth.Client sends bearer tokens only; DPoP proofs, the DPoP scheme, and nonce challenges (RFC 9449) are not implemented."
     },
     {
-      "key": "auth/wif-jwt-bearer:wif-assertion-verified",
-      "reason": "Snodo.Client has no OAuth support; the harness exits before sending a request."
+      "key": "auth/enterprise-managed-authorization:complete-flow-token-exchange",
+      "reason": "Enterprise-managed authorization (SEP-990 token exchange and JWT bearer grant) is not implemented; the client runs the authorization code flow instead."
+    },
+    {
+      "key": "auth/enterprise-managed-authorization:complete-flow-jwt-bearer",
+      "reason": "Enterprise-managed authorization (SEP-990 token exchange and JWT bearer grant) is not implemented; the client runs the authorization code flow instead."
+    },
+    {
+      "key": "auth/wif-jwt-bearer:wif-grant-type",
+      "reason": "Workload identity federation (the JWT bearer grant with a federated assertion) is not implemented; the client runs the authorization code flow instead."
     }
   ],
   "exclusions": [
@@ -245,8 +53,92 @@
   ],
   "checkInventory": {
     "auth/authorization-server-migration": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-server-metadata": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "client-registration": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "sep-837-application-type-present": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "authorization-request": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "pkce-code-challenge-sent": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "pkce-s256-method-used": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "token-request": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "pkce-code-verifier-sent": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "pkce-verifier-matches-challenge": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "valid-bearer-token": [
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS"
+      ],
       "sep-2352-reregister-on-as-change": [
-        "FAILURE"
+        "SUCCESS"
       ],
       "sep-2352-no-reuse-on-as-change": [
         "SUCCESS"
@@ -256,21 +148,150 @@
       ]
     },
     "auth/basic-cimd": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-server-metadata": [
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-challenge-sent": [
+        "SUCCESS"
+      ],
+      "pkce-s256-method-used": [
+        "SUCCESS"
+      ],
       "cimd-client-id-used": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "token-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-verifier-sent": [
+        "SUCCESS"
+      ],
+      "pkce-verifier-matches-challenge": [
+        "SUCCESS"
+      ],
+      "valid-bearer-token": [
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS"
       ]
     },
     "auth/client-credentials-basic": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO"
+      ],
+      "authorization-server-metadata": [
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO"
+      ],
+      "token-request": [
+        "SUCCESS"
+      ],
       "client-credentials-basic-auth": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "valid-bearer-token": [
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS"
       ]
     },
     "auth/client-credentials-jwt": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO"
+      ],
+      "authorization-server-metadata": [
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO"
+      ],
+      "token-request": [
+        "SUCCESS"
+      ],
       "client-credentials-jwt-verified": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "valid-bearer-token": [
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS"
       ]
     },
     "auth/dpop": {
+      "incoming-request": [
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO"
+      ],
       "sep-1932-client-token-request-proof": [
         "FAILURE"
       ],
@@ -282,6 +303,14 @@
       ]
     },
     "auth/dpop-nonce": {
+      "incoming-request": [
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO"
+      ],
       "sep-1932-client-token-request-proof": [
         "FAILURE"
       ],
@@ -299,6 +328,66 @@
       ]
     },
     "auth/enterprise-managed-authorization": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-server-metadata": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-request": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "pkce-code-challenge-sent": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "pkce-s256-method-used": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "token-request": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "pkce-code-verifier-sent": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "pkce-verifier-matches-challenge": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
       "complete-flow-token-exchange": [
         "FAILURE"
       ],
@@ -307,192 +396,1521 @@
       ]
     },
     "auth/iss-normalized": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-server-metadata": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "client-registration": [
+        "SUCCESS"
+      ],
+      "sep-837-application-type-present": [
+        "SUCCESS"
+      ],
+      "authorization-request": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "pkce-code-challenge-sent": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "pkce-s256-method-used": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
       "sep-2468-client-no-normalization": [
-        "FAILURE"
+        "SUCCESS"
       ]
     },
     "auth/iss-not-advertised": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-server-metadata": [
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "client-registration": [
+        "SUCCESS"
+      ],
+      "sep-837-application-type-present": [
+        "SUCCESS"
+      ],
+      "authorization-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-challenge-sent": [
+        "SUCCESS"
+      ],
+      "pkce-s256-method-used": [
+        "SUCCESS"
+      ],
+      "token-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-verifier-sent": [
+        "SUCCESS"
+      ],
+      "pkce-verifier-matches-challenge": [
+        "SUCCESS"
+      ],
+      "valid-bearer-token": [
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS"
+      ],
       "sep-2468-client-proceed-no-iss": [
-        "FAILURE"
+        "SUCCESS"
       ]
     },
     "auth/iss-supported": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-server-metadata": [
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "client-registration": [
+        "SUCCESS"
+      ],
+      "sep-837-application-type-present": [
+        "SUCCESS"
+      ],
+      "authorization-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-challenge-sent": [
+        "SUCCESS"
+      ],
+      "pkce-s256-method-used": [
+        "SUCCESS"
+      ],
+      "token-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-verifier-sent": [
+        "SUCCESS"
+      ],
+      "pkce-verifier-matches-challenge": [
+        "SUCCESS"
+      ],
+      "valid-bearer-token": [
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS"
+      ],
       "sep-2468-client-compare-iss-supported": [
-        "FAILURE"
+        "SUCCESS"
       ]
     },
     "auth/iss-supported-missing": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-server-metadata": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "client-registration": [
+        "SUCCESS"
+      ],
+      "sep-837-application-type-present": [
+        "SUCCESS"
+      ],
+      "authorization-request": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "pkce-code-challenge-sent": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "pkce-s256-method-used": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
       "sep-2468-client-reject-missing-iss": [
-        "FAILURE"
+        "SUCCESS"
       ]
     },
     "auth/iss-unexpected": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-server-metadata": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "client-registration": [
+        "SUCCESS"
+      ],
+      "sep-837-application-type-present": [
+        "SUCCESS"
+      ],
+      "authorization-request": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "pkce-code-challenge-sent": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "pkce-s256-method-used": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
       "sep-2468-client-compare-iss-unadvertised": [
-        "FAILURE"
+        "SUCCESS"
       ]
     },
     "auth/iss-wrong-issuer": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-server-metadata": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "client-registration": [
+        "SUCCESS"
+      ],
+      "sep-837-application-type-present": [
+        "SUCCESS"
+      ],
+      "authorization-request": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "pkce-code-challenge-sent": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "pkce-s256-method-used": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
       "sep-2468-client-compare-iss-supported": [
-        "FAILURE"
+        "SUCCESS"
       ]
     },
     "auth/metadata-default": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
       "prm-pathbased-requested": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
       ],
       "authorization-server-metadata": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
       ],
       "client-registration": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "sep-837-application-type-present": [
+        "SUCCESS"
       ],
       "authorization-request": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "pkce-code-challenge-sent": [
+        "SUCCESS"
+      ],
+      "pkce-s256-method-used": [
+        "SUCCESS"
       ],
       "token-request": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "pkce-code-verifier-sent": [
+        "SUCCESS"
+      ],
+      "pkce-verifier-matches-challenge": [
+        "SUCCESS"
+      ],
+      "valid-bearer-token": [
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS"
       ]
     },
     "auth/metadata-issuer-mismatch": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO"
+      ],
+      "authorization-server-metadata": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO"
+      ],
       "sep-2468-client-validate-metadata-issuer": [
-        "FAILURE"
+        "SUCCESS"
       ]
     },
     "auth/metadata-var1": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
       "prm-pathbased-requested": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
       ],
       "authorization-server-metadata": [
-        "FAILURE"
+        "SUCCESS"
       ],
       "client-registration": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "sep-837-application-type-present": [
+        "SUCCESS"
       ],
       "authorization-request": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "pkce-code-challenge-sent": [
+        "SUCCESS"
+      ],
+      "pkce-s256-method-used": [
+        "SUCCESS"
       ],
       "token-request": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "pkce-code-verifier-sent": [
+        "SUCCESS"
+      ],
+      "pkce-verifier-matches-challenge": [
+        "SUCCESS"
+      ],
+      "valid-bearer-token": [
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS"
       ]
     },
     "auth/metadata-var2": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
       "authorization-server-metadata": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
       ],
       "client-registration": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "sep-837-application-type-present": [
+        "SUCCESS"
       ],
       "authorization-request": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "pkce-code-challenge-sent": [
+        "SUCCESS"
+      ],
+      "pkce-s256-method-used": [
+        "SUCCESS"
       ],
       "token-request": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "pkce-code-verifier-sent": [
+        "SUCCESS"
+      ],
+      "pkce-verifier-matches-challenge": [
+        "SUCCESS"
+      ],
+      "valid-bearer-token": [
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS"
       ]
     },
     "auth/metadata-var3": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
       "authorization-server-metadata": [
-        "FAILURE"
+        "SUCCESS"
       ],
       "client-registration": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "sep-837-application-type-present": [
+        "SUCCESS"
       ],
       "authorization-request": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "pkce-code-challenge-sent": [
+        "SUCCESS"
+      ],
+      "pkce-s256-method-used": [
+        "SUCCESS"
       ],
       "token-request": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "pkce-code-verifier-sent": [
+        "SUCCESS"
+      ],
+      "pkce-verifier-matches-challenge": [
+        "SUCCESS"
+      ],
+      "valid-bearer-token": [
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS"
       ]
     },
     "auth/offline-access-not-supported": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-server-metadata": [
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "client-registration": [
+        "SUCCESS"
+      ],
+      "sep-837-application-type-present": [
+        "SUCCESS"
+      ],
+      "authorization-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-challenge-sent": [
+        "SUCCESS"
+      ],
+      "pkce-s256-method-used": [
+        "SUCCESS"
+      ],
       "sep-2207-offline-access-not-requested": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "token-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-verifier-sent": [
+        "SUCCESS"
+      ],
+      "pkce-verifier-matches-challenge": [
+        "SUCCESS"
+      ],
+      "valid-bearer-token": [
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS"
       ]
     },
     "auth/offline-access-scope": {
-      "sep-2207-client-metadata-grant-types": [
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
         "INFO"
       ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-server-metadata": [
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-challenge-sent": [
+        "SUCCESS"
+      ],
+      "pkce-s256-method-used": [
+        "SUCCESS"
+      ],
       "sep-2207-offline-access-requested": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "token-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-verifier-sent": [
+        "SUCCESS"
+      ],
+      "pkce-verifier-matches-challenge": [
+        "SUCCESS"
+      ],
+      "valid-bearer-token": [
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "sep-2207-client-metadata-grant-types": [
+        "INFO"
       ]
     },
     "auth/pre-registration": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-server-metadata": [
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-challenge-sent": [
+        "SUCCESS"
+      ],
+      "pkce-s256-method-used": [
+        "SUCCESS"
+      ],
+      "token-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-verifier-sent": [
+        "SUCCESS"
+      ],
+      "pkce-verifier-matches-challenge": [
+        "SUCCESS"
+      ],
       "pre-registration-auth": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "valid-bearer-token": [
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS"
       ]
     },
     "auth/resource-mismatch": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
       "resource-mismatch-rejected": [
         "SUCCESS"
       ]
     },
     "auth/scope-from-scopes-supported": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-server-metadata": [
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "client-registration": [
+        "SUCCESS"
+      ],
+      "sep-837-application-type-present": [
+        "SUCCESS"
+      ],
+      "authorization-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-challenge-sent": [
+        "SUCCESS"
+      ],
+      "pkce-s256-method-used": [
+        "SUCCESS"
+      ],
       "scope-from-scopes-supported": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "token-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-verifier-sent": [
+        "SUCCESS"
+      ],
+      "pkce-verifier-matches-challenge": [
+        "SUCCESS"
+      ],
+      "valid-bearer-token": [
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS"
       ]
     },
     "auth/scope-from-www-authenticate": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-server-metadata": [
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "client-registration": [
+        "SUCCESS"
+      ],
+      "sep-837-application-type-present": [
+        "SUCCESS"
+      ],
+      "authorization-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-challenge-sent": [
+        "SUCCESS"
+      ],
+      "pkce-s256-method-used": [
+        "SUCCESS"
+      ],
       "scope-from-www-authenticate": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "token-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-verifier-sent": [
+        "SUCCESS"
+      ],
+      "pkce-verifier-matches-challenge": [
+        "SUCCESS"
+      ],
+      "valid-bearer-token": [
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS"
       ]
     },
     "auth/scope-omitted-when-undefined": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-server-metadata": [
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "client-registration": [
+        "SUCCESS"
+      ],
+      "sep-837-application-type-present": [
+        "SUCCESS"
+      ],
+      "authorization-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-challenge-sent": [
+        "SUCCESS"
+      ],
+      "pkce-s256-method-used": [
+        "SUCCESS"
+      ],
       "scope-omitted-when-undefined": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "token-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-verifier-sent": [
+        "SUCCESS"
+      ],
+      "pkce-verifier-matches-challenge": [
+        "SUCCESS"
+      ],
+      "valid-bearer-token": [
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS"
       ]
     },
     "auth/scope-retry-limit": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-server-metadata": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "client-registration": [
+        "SUCCESS"
+      ],
+      "sep-837-application-type-present": [
+        "SUCCESS"
+      ],
+      "authorization-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-challenge-sent": [
+        "SUCCESS"
+      ],
+      "pkce-s256-method-used": [
+        "SUCCESS"
+      ],
+      "scope-retry-auth-attempt": [
+        "INFO"
+      ],
+      "token-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-verifier-sent": [
+        "SUCCESS"
+      ],
+      "pkce-verifier-matches-challenge": [
+        "SUCCESS"
+      ],
       "scope-retry-limit": [
-        "FAILURE"
+        "SUCCESS"
       ]
     },
     "auth/scope-step-up": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-server-metadata": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "client-registration": [
+        "SUCCESS"
+      ],
+      "sep-837-application-type-present": [
+        "SUCCESS"
+      ],
+      "authorization-request": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "pkce-code-challenge-sent": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "pkce-s256-method-used": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
       "scope-step-up-initial": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "token-request": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "pkce-code-verifier-sent": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "pkce-verifier-matches-challenge": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "valid-bearer-token": [
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS"
       ],
       "scope-step-up-escalation": [
-        "FAILURE"
+        "SUCCESS"
       ],
       "sep-2350-scope-union-on-reauth": [
-        "FAILURE"
+        "SUCCESS"
       ]
     },
     "auth/token-endpoint-auth-basic": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-server-metadata": [
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "client-registration": [
+        "SUCCESS"
+      ],
+      "sep-837-application-type-present": [
+        "SUCCESS"
+      ],
+      "authorization-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-challenge-sent": [
+        "SUCCESS"
+      ],
+      "pkce-s256-method-used": [
+        "SUCCESS"
+      ],
+      "token-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-verifier-sent": [
+        "SUCCESS"
+      ],
+      "pkce-verifier-matches-challenge": [
+        "SUCCESS"
+      ],
       "token-endpoint-auth-method": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "valid-bearer-token": [
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS"
       ],
       "resource-parameter-in-authorization": [
-        "FAILURE"
+        "SUCCESS"
       ],
       "resource-parameter-in-token": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "resource-parameter-valid-uri": [
+        "SUCCESS"
+      ],
+      "resource-parameter-consistency": [
+        "SUCCESS"
       ]
     },
     "auth/token-endpoint-auth-none": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-server-metadata": [
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "client-registration": [
+        "SUCCESS"
+      ],
+      "sep-837-application-type-present": [
+        "SUCCESS"
+      ],
+      "authorization-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-challenge-sent": [
+        "SUCCESS"
+      ],
+      "pkce-s256-method-used": [
+        "SUCCESS"
+      ],
+      "token-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-verifier-sent": [
+        "SUCCESS"
+      ],
+      "pkce-verifier-matches-challenge": [
+        "SUCCESS"
+      ],
       "token-endpoint-auth-method": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "valid-bearer-token": [
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS"
       ],
       "resource-parameter-in-authorization": [
-        "FAILURE"
+        "SUCCESS"
       ],
       "resource-parameter-in-token": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "resource-parameter-valid-uri": [
+        "SUCCESS"
+      ],
+      "resource-parameter-consistency": [
+        "SUCCESS"
       ]
     },
     "auth/token-endpoint-auth-post": {
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-server-metadata": [
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "client-registration": [
+        "SUCCESS"
+      ],
+      "sep-837-application-type-present": [
+        "SUCCESS"
+      ],
+      "authorization-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-challenge-sent": [
+        "SUCCESS"
+      ],
+      "pkce-s256-method-used": [
+        "SUCCESS"
+      ],
+      "token-request": [
+        "SUCCESS"
+      ],
+      "pkce-code-verifier-sent": [
+        "SUCCESS"
+      ],
+      "pkce-verifier-matches-challenge": [
+        "SUCCESS"
+      ],
       "token-endpoint-auth-method": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "valid-bearer-token": [
+        "SUCCESS",
+        "SUCCESS",
+        "SUCCESS"
       ],
       "resource-parameter-in-authorization": [
-        "FAILURE"
+        "SUCCESS"
       ],
       "resource-parameter-in-token": [
-        "FAILURE"
+        "SUCCESS"
+      ],
+      "resource-parameter-valid-uri": [
+        "SUCCESS"
+      ],
+      "resource-parameter-consistency": [
+        "SUCCESS"
       ]
     },
     "auth/wif-jwt-bearer": {
-      "wif-assertion-verified": [
+      "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "prm-pathbased-requested": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "incoming-auth-request": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-server-metadata": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "outgoing-auth-response": [
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO",
+        "INFO"
+      ],
+      "authorization-request": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "pkce-code-challenge-sent": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "pkce-s256-method-used": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "token-request": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "pkce-code-verifier-sent": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "pkce-verifier-matches-challenge": [
+        "SUCCESS",
+        "SUCCESS"
+      ],
+      "wif-grant-type": [
         "FAILURE"
+      ],
+      "wif-grant-fallback": [
+        "WARNING"
       ]
     },
     "http-custom-headers": {

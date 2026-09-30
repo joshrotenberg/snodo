@@ -11,7 +11,7 @@ snodo is an Elixir library for Model Context Protocol (MCP) servers and clients.
 | `snodo` | `.` | Router, server DSL, protocol dialects, client, stdio and HTTP transports, executor |
 | `snodo_plug` | `integrations/plug` | Plug transport |
 | `snodo_jsv` | `integrations/schema_jsv` | JSON Schema validator backed by JSV |
-| `snodo_oauth` | `integrations/oauth` | OAuth 2.1 resource server plugs, JWT verification, scope policy |
+| `snodo_oauth` | `integrations/oauth` | OAuth 2.1 resource server plugs, JWT verification, scope policy, and the client authorization flows (`Snodo.OAuth.Client`) |
 | `snodo_telemetry` | `integrations/telemetry` | Instrumentation sink that emits `:telemetry` events |
 | `snodo_tasks` | `extensions/tasks` | Tasks extension, store contract, memory and DETS stores |
 | `snodo_tasks_postgres` | `extensions/tasks_postgres` | PostgreSQL task store |

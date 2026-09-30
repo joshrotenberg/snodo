@@ -1,17 +1,24 @@
-# OAuth 2.1 resource server for snodo
+# OAuth 2.1 for snodo
 
-`snodo_oauth` implements the resource-server side of the
-[MCP authorization specification](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization)
-for servers that run behind `snodo_plug`: the protected resource metadata
-document (RFC 9728), bearer token extraction and validation with audience
-binding (RFC 8707), the `WWW-Authenticate` challenges that point a client
-at the metadata, and a `Snodo.Authorization` policy that requires scopes per
-tool, prompt, or resource. It depends on `plug` and `jose`; the `snodo` core
-stays free of Hex dependencies.
+`snodo_oauth` implements both sides of the
+[MCP authorization specification](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization).
 
-It does not implement the authorization server, the client side of OAuth,
-token introspection (RFC 7662), or CORS. The native HTTP listener in the
-core sets no identity and is not covered by this package.
+For servers that run behind `snodo_plug`, the resource-server side: the
+protected resource metadata document (RFC 9728), bearer token extraction and
+validation with audience binding (RFC 8707), the `WWW-Authenticate` challenges
+that point a client at the metadata, and a `Snodo.Authorization` policy that
+requires scopes per tool, prompt, or resource.
+
+For `Snodo.Client`, the [client side](#client): `Snodo.OAuth.Client` obtains,
+refreshes, and steps up the bearer token the HTTP transport sends, through
+metadata discovery, client ID metadata documents or dynamic client
+registration, the authorization code flow with PKCE, and the client
+credentials grant.
+
+It depends on `plug` and `jose`; the `snodo` core stays free of Hex
+dependencies. It does not implement the authorization server, token
+introspection (RFC 7662), DPoP (RFC 9449), or CORS. The native HTTP listener
+in the core sets no identity and is not covered by this package.
 
 ## Install
 
@@ -228,6 +235,97 @@ function, `verify(token, options)`, returning `{:ok, claims}` with string
 keys or `{:error, reason}`. The lifetime, audience, and scope checks stay in
 the plug, so they apply to every verifier.
 
+## Client
+
+`Snodo.OAuth.Client` is a `Snodo.Client.TokenProvider`. Start one per MCP
+server and pass it to `Snodo.Client.connect/2`:
+
+```elixir
+{:ok, oauth} =
+  Snodo.OAuth.Client.start_link(
+    resource: "https://mcp.example.com/mcp",
+    authorize: fn url ->
+      {_output, 0} = System.cmd("open", [url])
+      :ok
+    end
+  )
+
+{:ok, client} =
+  Snodo.Client.connect({:http, "https://mcp.example.com/mcp"},
+    token_provider: {Snodo.OAuth.Client, oauth}
+  )
+
+{:ok, tools} = Snodo.Client.list_tools(client)
+```
+
+The first request goes out without a token. The server's `401` carries a
+`WWW-Authenticate` challenge, the transport hands it to the client process,
+and the flow runs:
+
+1. The protected resource metadata (RFC 9728) from the challenge's
+   `resource_metadata` URL or the well-known locations, checked to be for
+   this server. A document for another resource stops the flow.
+2. The authorization server metadata (RFC 8414, then OpenID Connect
+   Discovery, with the well-known segment inserted before an issuer path)
+   for the first `authorization_servers` entry. The document's `issuer` must
+   equal the issuer used to build the URL, and for the authorization code
+   flow its `code_challenge_methods_supported` must list `S256`; otherwise
+   the flow stops before registering or authorizing.
+3. A client ID: the `:client_metadata_url` when the server supports client
+   ID metadata documents, else the configured `:client_id`, else the
+   registration stored for this issuer, else dynamic client registration
+   (RFC 7591) with `application_type`, `redirect_uris`, and
+   `grant_types` including `refresh_token`.
+4. The scope: the challenge's `scope`, else the resource's
+   `scopes_supported`, plus scopes granted before, the configured `:scopes`,
+   and `offline_access` when the server lists it (SEP-2207).
+5. The authorization request with PKCE `S256`, a random `state`, and the
+   `resource` (RFC 8707), handed to the `:authorize` function. The redirect
+   lands on a loopback listener bound before the URL exists (RFC 8252), or
+   the function returns it, or the application delivers it with
+   `Snodo.OAuth.Client.callback/2` for a `{:external, uri}` redirect. `state`
+   is compared in constant time; `iss` is compared exactly when present and
+   required when the server advertises it (RFC 9207).
+6. The token request, authenticated as the registration or the server
+   requires: `none`, `client_secret_basic`, `client_secret_post`, or
+   `private_key_jwt`. Only bearer tokens are accepted.
+
+The transport retries the request with the token. Later requests carry it.
+An expired token is refreshed with its refresh token before the request; a
+refused one starts the flow again after the `401`, with a new registration
+when the resource now names another authorization server (SEP-2352); a
+`403` `insufficient_scope` starts a step-up for the union of the granted and
+the challenged scopes, and is refused when the challenge names nothing the
+token lacks, which bounds a server that answers every request with `403`.
+Every caller that needs a token while a flow is under way waits for it.
+
+For machine-to-machine clients, `grant: :client_credentials` with
+`client_id:` and `client_secret:` (sent as `client_secret_basic` or
+`client_secret_post`, whichever the server lists) or `private_key:` (a PEM
+string, JWK map, or `JOSE.JWK`, sent as a `private_key_jwt` assertion signed
+with the algorithm the key implies) obtains the token before the first
+request.
+
+| Module | Role |
+|---|---|
+| `Snodo.OAuth.Client` | The token provider: one process per server, which runs each flow in a process of its own and holds the stores |
+| `Snodo.OAuth.Client.Discovery` | Protected resource and authorization server metadata with the resource and issuer checks |
+| `Snodo.OAuth.Client.PKCE` | `S256` verifiers and challenges (RFC 7636) |
+| `Snodo.OAuth.Client.TokenStore`, `Snodo.OAuth.Client.RegistrationStore`, `Snodo.OAuth.Client.PendingAuthorizationStore` | Store behaviours; each has an in-memory default under `.Memory` |
+
+Every URL the flow fetches or posts to must be `https`, or `http` to a
+loopback host. A document or token response larger than `max_body_bytes`
+(256 KiB) is refused; `:httpc` reads the body before its size is checked, so
+the request timeout (`timeout_ms`, 10 seconds) bounds the transfer. Tokens
+are kept in the token store and never logged or placed in an error.
+`Snodo.OAuth.Client` documents every option.
+
+Against the official conformance runner's client scenarios, every required
+`auth/*` scenario passes with this client as the token provider; see the
+[conformance workspace](../../conformance/README.md#client-leg). DPoP,
+enterprise-managed authorization, and workload identity federation are not
+implemented.
+
 ## Verification
 
 ```sh
@@ -246,3 +344,12 @@ listener, the scope policy through `Snodo.Client.direct/2`, and a full
 request path through `snodo_plug` on Bandit: 401 with the metadata URL,
 403 `insufficient_scope`, `tools/list` filtered by scope, and a refused
 `tools/call`.
+
+The client is tested through `Snodo.Client` against fake authorization and
+resource servers on loopback Bandit listeners shaped like the conformance
+runner's: discovery at every metadata location, the resource and issuer
+checks, each way of establishing a client ID, each token endpoint
+authentication method including a verified `private_key_jwt` assertion,
+scope selection, step-up and its bound, refresh, re-registration after an
+authorization server change, the `iss` cases, the loopback listener and an
+external redirect, `state` mismatch, and concurrent callers sharing one flow.

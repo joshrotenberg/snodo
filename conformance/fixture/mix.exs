@@ -2,8 +2,9 @@ defmodule SnodoConformanceFixture.MixProject do
   use Mix.Project
 
   # The official runner's server legs start ../fixture_server.exs from here,
-  # so the core, Tasks, and the Plug adapter with Bandit share one build.
-  # This project is never published.
+  # so the core, Tasks, and the Plug adapter with Bandit share one build, and
+  # the client leg starts ../client.exs from here for snodo_oauth. This
+  # project is never published.
   def project do
     [
       app: :snodo_conformance_fixture,
@@ -13,6 +14,7 @@ defmodule SnodoConformanceFixture.MixProject do
         {:snodo, path: "../..", override: true},
         {:snodo_tasks, path: "../../extensions/tasks"},
         {:snodo_plug, path: "../../integrations/plug"},
+        {:snodo_oauth, path: "../../integrations/oauth"},
         {:bandit, "~> 1.12.5"}
       ]
     ]
