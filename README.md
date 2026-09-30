@@ -10,6 +10,7 @@
 An Elixir library for building [Model Context Protocol](https://modelcontextprotocol.io)
 servers and clients. It speaks MCP `2026-07-28`, with opt-in support for
 initialize-era clients (`2025-11-25` and `2025-06-18`) over HTTP and stdio.
+The client speaks all three versions and negotiates one when it connects.
 
 `snodo` is at 0.x: the API may change between minor versions until 1.0.
 
@@ -147,7 +148,8 @@ without sessions and over stdio. They add no session storage.
 Against the frozen official conformance suite, all 37 `2026-07-28` server
 scenarios pass; that is the pinned runner's score, not a claim of full revision
 conformance. On the client side, 6 of 32 pass: 25 of the client scenarios
-cover OAuth, which `Snodo.Client` does not implement. The [compliance guide](https://hexdocs.pm/snodo/protocol-compliance.html) lists
+cover OAuth, which `Snodo.Client` does not implement. Pinned to `2025-11-25`,
+the client passes 2 of 18, 14 of which cover OAuth. The [compliance guide](https://hexdocs.pm/snodo/protocol-compliance.html) lists
 what is measured and what is not. Design records from the project's history are
 in [docs/history](https://github.com/joshrotenberg/snodo/blob/main/docs/history/README.md).
 

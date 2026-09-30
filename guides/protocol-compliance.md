@@ -271,7 +271,13 @@ The runner's client leg measures `Snodo.Client` separately, through a harness
 that drives it against each scenario server. The 2026-09-26 run passes 6 of 32
 required client scenarios. 25 of the 32 cover OAuth, which the client does not
 implement, and one of the six passes (`auth/resource-mismatch`) only because
-the harness never starts authorization. See the
+the harness never starts authorization. A second client lane pins
+`Snodo.Client` to 2025-11-25 and runs the frozen 2025-11-25 client set: the
+2026-09-29 run passes 2 of 18 required scenarios, `initialize` and
+`tools_call`. 14 of the 18 cover OAuth; the elicitation scenario depends on
+the standalone `GET` event stream, which the client does not open, and the
+reconnection scenario negotiates 2025-03-26, which the client does not speak.
+See the
 [client leg notes](https://github.com/joshrotenberg/snodo/blob/main/conformance/README.md#client-leg)
 for the remaining gaps.
 
