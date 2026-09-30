@@ -2,27 +2,55 @@ defmodule Snodo.ClientStdioTest do
   use ExUnit.Case, async: true
 
   alias Snodo.Client
+  alias Snodo.Client.Session
   alias Snodo.Client.Subscription
   alias Snodo.Error
 
   @moduletag timeout: 30_000
 
   @fixture Path.expand("fixtures/client_stdio_server.exs", __DIR__)
+  @initialize_era_fixture Path.expand("fixtures/client_initialize_era_server.exs", __DIR__)
+  @server_requests_fixture Path.expand("fixtures/client_server_requests.exs", __DIR__)
 
-  defp connect(opts \\ []) do
-    {:ok, client} = start_client(opts)
+  defp connect(opts \\ [], args \\ []) do
+    {:ok, client} = start_client(opts, args)
     on_exit(fn -> Client.close(client) end)
     client
   end
 
-  defp start_client(opts) do
+  defp start_client(opts, args \\ []) do
     elixir = System.find_executable("elixir")
     ebin = Path.expand(Mix.Project.compile_path())
-    Client.connect({:stdio, elixir, ["-pa", ebin, @fixture]}, opts)
+    Client.connect({:stdio, elixir, ["-pa", ebin, @fixture | args]}, opts)
+  end
+
+  # The hand-written servers need nothing from snodo's build.
+  defp initialize_era(opts, args \\ []) do
+    elixir = System.find_executable("elixir")
+    Client.connect({:stdio, elixir, [@initialize_era_fixture | args]}, opts)
+  end
+
+  # Pinned to 2026-07-28, so nothing is sent at connect time.
+  defp server_requests(opts, args) do
+    elixir = System.find_executable("elixir")
+    opts = Keyword.put(opts, :protocol, "2026-07-28")
+    Client.connect({:stdio, elixir, [@server_requests_fixture | args]}, opts)
+  end
+
+  # A form handler that reports its pid and waits to be released.
+  defp blocking_form(test) do
+    fn _params ->
+      send(test, {:handler, self()})
+
+      receive do
+        :release -> {:ok, %{"action" => "accept", "content" => %{"name" => "Ada"}}}
+      end
+    end
   end
 
   test "lists and calls tools over a subprocess's stdin and stdout" do
     client = connect()
+    assert %Client{protocol: "2026-07-28", session: nil} = client
 
     assert {:ok, %{"supportedVersions" => ["2026-07-28"]}} = Client.discover(client)
     assert {:ok, tools} = Client.list_tools(client)
@@ -248,6 +276,45 @@ defmodule Snodo.ClientStdioTest do
     assert {:error, %Error{code: -32_000, cause: {:exit_status, 3}}} = Client.list_tools(client)
   end
 
+  # The server closes its stdin and then sends an elicitation, so once the
+  # handler runs, the next write fails with EPIPE and the port exits without
+  # an exit status. A write before stdin closes would sit in the pipe instead.
+  test "a server that closes its stdin fails the request in flight at once" do
+    elicitation =
+      JSON.encode!(%{
+        "jsonrpc" => "2.0",
+        "id" => "srv-1",
+        "method" => "elicitation/create",
+        "params" => %{
+          "mode" => "form",
+          "message" => "Your name?",
+          "requestedSchema" => %{"type" => "object", "properties" => %{}}
+        }
+      })
+
+    script = "exec 0<&-; printf '%s\\n' \"$1\"; sleep 5"
+
+    {:ok, client} =
+      Client.connect({:stdio, "/bin/sh", ["-c", script, "sh", elicitation]},
+        protocol: "2026-07-28",
+        timeout: 10_000,
+        input_handlers: %{form: blocking_form(self())}
+      )
+
+    on_exit(fn -> Client.close(client) end)
+    assert_receive {:handler, _handler}, 5_000
+
+    started = System.monotonic_time(:millisecond)
+
+    assert {:error, %Error{code: -32_000, kind: :transport, cause: {:port_exit, :epipe}}} =
+             Client.list_tools(client)
+
+    assert System.monotonic_time(:millisecond) - started < 2_000
+
+    assert {:error, %Error{code: -32_000, cause: {:port_exit, :epipe}}} =
+             Client.list_tools(client)
+  end
+
   test "close/1 ends the connection" do
     client = connect()
     assert {:ok, _tools} = Client.list_tools(client)
@@ -268,6 +335,221 @@ defmodule Snodo.ClientStdioTest do
     assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
     connection_ref = Process.monitor(connection)
     assert_receive {:DOWN, ^connection_ref, :process, ^connection, _reason}, 5_000
+  end
+
+  describe "initialize-era servers" do
+    test "a snodo server with only the legacy dialects is initialized after the probe fails" do
+      client = connect([], ["--initialize-era"])
+
+      assert %Client{protocol: "2025-11-25", session: %Session{id: nil} = session} = client
+      assert session.server_info == %{"name" => "client-stdio-fixture", "version" => "0.1.0"}
+      assert session.server_capabilities == %{"tools" => %{}}
+
+      assert {:ok, tools} = Client.list_tools(client)
+      assert Enum.any?(tools, &(&1["name"] == "echo"))
+
+      assert {:ok, %{"content" => [%{"text" => "legacy stdio"}]} = result} =
+               Client.call_tool(client, "echo", %{"text" => "legacy stdio"})
+
+      refute Map.has_key?(result, "resultType")
+      assert {:ok, %{}} = Client.ping(client)
+      assert {:error, %Error{code: -32_601}} = Client.discover(client)
+
+      assert {:ok, %{"content" => [%{"text" => "ticked 2"}]}} =
+               Client.call_tool(client, "ticks", %{"count" => 2}, progress: self())
+
+      assert [%{"progress" => 1}, %{"progress" => 2}] = drain_progress()
+
+      # A pin sends initialize without a probe.
+      client = connect([protocol: "2025-06-18"], ["--initialize-era"])
+      assert %Client{protocol: "2025-06-18", session: %Session{version: "2025-06-18"}} = client
+      assert {:ok, _tools} = Client.list_tools(client)
+    end
+
+    test "the server is started again before initialize, because the probe reached it" do
+      {:ok, client} = initialize_era([])
+      on_exit(fn -> Client.close(client) end)
+
+      assert %Client{protocol: "2025-11-25", session: %Session{} = session} = client
+      assert session.instructions == "A hand-written 2025-11-25 server."
+
+      # This process saw initialize and this call: the probe went to the one
+      # before it.
+      assert {:ok, %{"content" => [%{"text" => "2"}]}} = Client.call_tool(client, "requests_seen")
+
+      for discover <- ["garbage", "silent"] do
+        {:ok, client} = initialize_era([probe_timeout: 500], ["--discover", discover])
+        assert %Client{protocol: "2025-11-25"} = client
+
+        assert {:ok, %{"content" => [%{"text" => "2"}]}} =
+                 Client.call_tool(client, "requests_seen")
+
+        assert :ok = Client.close(client)
+      end
+
+      # A pinned version needs no probe, so the first process serves.
+      {:ok, client} = initialize_era(protocol: "2025-06-18")
+      assert %Client{protocol: "2025-06-18"} = client
+      assert {:ok, %{"content" => [%{"text" => "2"}]}} = Client.call_tool(client, "requests_seen")
+      assert :ok = Client.close(client)
+    end
+
+    test "a version the server picks outside the allowed list ends the connection" do
+      assert {:error,
+              %Error{
+                code: -32_602,
+                data: %{"negotiated" => "2025-06-18", "requested" => ["2025-11-25"]}
+              }} = initialize_era([protocol: "2025-11-25"], ["--serve", "2025-06-18"])
+
+      assert {:ok, %Client{protocol: "2025-06-18"} = client} =
+               initialize_era([protocol: ["2025-11-25", "2025-06-18"]], ["--serve", "2025-06-18"])
+
+      assert :ok = Client.close(client)
+    end
+
+    test "the server's own requests are answered by the installed handlers" do
+      test = self()
+
+      form = fn params ->
+        send(test, {:asked, params})
+        {:ok, %{"action" => "accept", "content" => %{"name" => "Ada"}}}
+      end
+
+      for version <- ["2025-11-25", "2025-06-18"] do
+        {:ok, client} = initialize_era(input_handlers: %{form: form}, protocol: version)
+
+        assert {:ok, %{"content" => [%{"text" => "hello Ada"}]}} = Client.call_tool(client, "ask")
+        assert_receive {:asked, %{"message" => "Your name?"} = params}, 1_000
+        assert Map.has_key?(params, "mode") == (version == "2025-11-25")
+
+        # A server ping needs no handler.
+        assert {:ok, %{"content" => [%{"text" => "pong"}]}} = Client.call_tool(client, "ping_me")
+        assert :ok = Client.close(client)
+      end
+
+      # Without a handler the server is told -32601 and the connection keeps
+      # serving; a handler that raises is told -32603.
+      {:ok, client} = initialize_era(protocol: "2025-11-25")
+
+      assert {:ok, %{"isError" => true, "content" => [%{"text" => text}]}} =
+               Client.call_tool(client, "ask")
+
+      assert text =~ "elicitation failed: -32601"
+      assert {:ok, %{"content" => [%{"text" => "pong"}]}} = Client.call_tool(client, "ping_me")
+      assert :ok = Client.close(client)
+
+      raising = fn _params -> raise "no answer" end
+      {:ok, client} = initialize_era(input_handlers: %{form: raising}, protocol: "2025-11-25")
+
+      assert {:ok, %{"isError" => true, "content" => [%{"text" => text}]}} =
+               Client.call_tool(client, "ask")
+
+      assert text =~ "elicitation failed: -32603"
+
+      assert {:ok, %{"content" => [%{"text" => "still here"}]}} =
+               Client.call_tool(client, "echo", %{"text" => "still here"})
+
+      assert :ok = Client.close(client)
+    end
+  end
+
+  describe "server-to-client requests" do
+    test "a 2026-07-28 connection answers them through the installed handlers too" do
+      form = fn _params -> {:ok, %{"action" => "accept", "content" => %{"name" => "Ada"}}} end
+      {:ok, client} = server_requests([input_handlers: %{form: form}], [])
+      on_exit(fn -> Client.close(client) end)
+
+      assert %Client{protocol: "2026-07-28", session: nil} = client
+      assert {:ok, %{"answers" => answers}} = Client.request(client, "tools/list")
+      assert %{"result" => %{}} = answers["srv-ping"]
+      assert %{"result" => %{"action" => "accept"}} = answers["srv-1"]
+    end
+
+    test "handlers still running when the client closes are stopped" do
+      test = self()
+
+      {:ok, client} =
+        server_requests([input_handlers: %{form: blocking_form(test)}], ["--elicit", "2"])
+
+      assert_receive {:handler, first}, 10_000
+      assert_receive {:handler, second}, 5_000
+      refs = Enum.map([first, second], &Process.monitor/1)
+
+      assert :ok = Client.close(client)
+
+      for ref <- refs do
+        assert_receive {:DOWN, ^ref, :process, _pid, :killed}, 5_000
+      end
+    end
+
+    test "handlers still running when the owner exits are stopped" do
+      test = self()
+
+      {owner, owner_ref} =
+        spawn_monitor(fn ->
+          {:ok, client} = server_requests([input_handlers: %{form: blocking_form(test)}], [])
+          send(test, {:client, client})
+          receive do: (:exit -> :ok)
+        end)
+
+      assert_receive {:client, %Client{transport: {Snodo.Client.Stdio, connection}}}, 10_000
+      assert_receive {:handler, handler}, 10_000
+      handler_ref = Process.monitor(handler)
+      connection_ref = Process.monitor(connection)
+
+      send(owner, :exit)
+      assert_receive {:DOWN, ^owner_ref, :process, ^owner, :normal}, 5_000
+      assert_receive {:DOWN, ^connection_ref, :process, ^connection, :normal}, 5_000
+      assert_receive {:DOWN, ^handler_ref, :process, ^handler, :killed}, 5_000
+    end
+
+    test "a handler killed from outside is answered -32603" do
+      {:ok, client} = server_requests([input_handlers: %{form: blocking_form(self())}], [])
+      on_exit(fn -> Client.close(client) end)
+
+      assert_receive {:handler, handler}, 10_000
+      Process.exit(handler, :kill)
+
+      assert {:ok, %{"answers" => answers}} = Client.request(client, "tools/list")
+      assert %{"error" => %{"code" => -32_603, "message" => message}} = answers["srv-1"]
+      assert message =~ "exited: :killed"
+    end
+
+    test "a request over :max_server_requests is answered -32603 without a handler" do
+      test = self()
+      handlers = %{form: blocking_form(test)}
+
+      {:ok, client} =
+        server_requests(
+          [input_handlers: handlers, max_server_requests: 2],
+          ["--elicit", "3", "--no-ping"]
+        )
+
+      on_exit(fn -> Client.close(client) end)
+
+      # The first two block, so the only answer the server can get is the
+      # refusal of the third.
+      assert_receive {:handler, first}, 10_000
+      assert_receive {:handler, second}, 5_000
+
+      assert {:ok, %{"answers" => answers}} =
+               Client.request(client, "tools/list", %{"waitFor" => 1})
+
+      assert [{"srv-3", %{"error" => error}}] = Map.to_list(answers)
+      assert %{"code" => -32_603, "message" => "Too many server requests in flight (2)"} = error
+      refute_received {:handler, _third}
+
+      send(first, :release)
+      send(second, :release)
+
+      assert {:ok, %{"answers" => answers}} = Client.request(client, "tools/list")
+      assert %{"result" => %{"action" => "accept"}} = answers["srv-1"]
+      assert %{"result" => %{"action" => "accept"}} = answers["srv-2"]
+
+      assert_raise ArgumentError, ~r/:max_server_requests/, fn ->
+        server_requests([max_server_requests: 0], [])
+      end
+    end
   end
 
   test "an executable that does not exist is a transport error" do

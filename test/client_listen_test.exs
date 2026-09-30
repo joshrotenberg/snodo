@@ -325,7 +325,7 @@ defmodule Snodo.ClientListenTest do
         Client.listen(client, filter, overflow: :block)
       end
 
-      {:ok, plain} = Client.connect({NoListenTransport, nil})
+      {:ok, plain} = Client.connect({NoListenTransport, nil}, protocol: "2026-07-28")
 
       assert_raise ArgumentError, ~r/does not implement listen\/3/, fn ->
         Client.listen(plain, filter)

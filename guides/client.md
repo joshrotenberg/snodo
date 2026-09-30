@@ -14,7 +14,9 @@ connections:
 {:ok, client} = Snodo.Client.connect({:http, "https://example.test/mcp"}, headers: [{"authorization", "Bearer " <> token}])
 ```
 
-The client speaks MCP `2026-07-28`. Initialize-era servers are not supported.
+The client speaks the protocol versions the server serves: `2026-07-28`,
+and the initialize-era `2025-11-25` and `2025-06-18`. `connect/2` settles the
+version before it returns; see [Protocol versions](#protocol-versions).
 
 ## Calls
 
@@ -43,6 +45,92 @@ TypeScript SDK uses. Each request can set `timeout:` (the default is 30 seconds,
 or the client's `:timeout` option).
 
 Request IDs are fresh integers, so one client can be shared by many processes.
+
+## Protocol versions
+
+`:protocol` names one version, or lists the versions to allow. Without it the
+client allows every version it speaks, newest first:
+
+```elixir
+{:ok, client} = Snodo.Client.connect({:http, url})                              # negotiate
+{:ok, client} = Snodo.Client.connect({:http, url}, protocol: "2025-11-25")      # pin
+{:ok, client} = Snodo.Client.connect({:http, url}, protocol: ["2026-07-28", "2025-06-18"])
+```
+
+When the allowed versions span both eras, `connect/2` probes with
+`server/discover` under `:probe_timeout` (10 seconds by default). A result
+with `supportedVersions` is a 2026-07-28 server's answer, and the highest
+allowed version the server lists wins. Any other answer, whatever the error
+code or shape, and a timeout, mean the server does not speak a stateless
+version: the client closes and reopens the transport, then sends `initialize`
+with the highest allowed initialize-era version. On stdio, reopening starts
+the server again, because the probe may already have been processed under the
+older lifecycle rules, which some servers apply to the first request they
+see. A pin, or a list from one era, skips the probe: a stateless pin sends
+nothing at connect time and an initialize-era pin sends `initialize` at once.
+
+`initialize` carries `:client_capabilities` and `:client_info`, and the
+server's `protocolVersion` must be one the client allows; otherwise the client
+closes the connection and returns -32602 with `negotiated` and `requested` in
+`data`. `notifications/initialized` follows, and the client's `session` is
+then a `Snodo.Client.Session` with the negotiated version, the `Mcp-Session-Id`
+the server issued (if any), and the `serverInfo`, `capabilities`, and
+`instructions` from the result. A server that supports none of the allowed
+versions is a -32602 error with `requested` and `supported` in `data`, and a
+version the client does not speak at all is refused before connecting.
+
+`direct/2` needs no probe: the runtime's enabled versions are known, so the
+highest allowed one among them is used, and an initialize-era version is
+negotiated through the runtime the same way. A runtime that enables only the
+legacy dialects gets a working direct client.
+
+On an initialize-era connection:
+
+- Requests carry no `_meta` metadata and no client info; those belong to
+  2026-07-28. Over HTTP every later request carries `MCP-Protocol-Version`
+  and, when issued, `Mcp-Session-Id`, and `close/1` sends a `DELETE` for the
+  session before closing.
+- `ping/1` works; `discover/1` is refused, because those versions do not
+  define `server/discover`. The capabilities are in `session`.
+- `request/4` refuses a method the negotiated dialect's catalog does not
+  define as a client request, with -32601 before anything is sent. The
+  catalogs are the protocol dialect modules' profiles, the same ones the
+  server admits requests against, so the client and the server stay in
+  step. On 2026-07-28 a method the catalog lists only as a server request or
+  a notification is refused the same way, and an unlisted method is sent as
+  it is, because negotiated extensions add methods the core catalog does not
+  carry.
+- The requests the server sends to the client (`elicitation/create`,
+  `sampling/createMessage`, and `roots/list`) are answered by the same
+  `:input_handlers` that answer 2026-07-28 input requests, keyed by method
+  and mode: a form elicitation goes to `:form`, a URL elicitation to `:url`,
+  a sampling request to `:sampling`, and a roots request to `:roots`. A
+  server `ping` is answered without a handler. A request of a kind with no
+  handler is answered -32601, one whose `params` lack the kind's keys -32602,
+  and a handler that fails -32603. Over HTTP such a request arrives on the
+  event stream of the request in flight, the handler runs in the calling
+  process, and the answer goes back as its own `POST`. The time the handler
+  takes counts against that request's timeout, which is not extended. Over
+  stdio the connection process runs each handler in a linked process of its
+  own and writes the answer, with at most `:max_server_requests` (16)
+  handlers running at once; a request over the limit is answered -32603
+  without running a handler, and handlers still running when the connection
+  closes are killed. A handler that raises is answered -32603 on stdio, and
+  on HTTP the exception propagates to the caller as it does for an embedded
+  request.
+- The catalog check applies to the requests the client sends. The server
+  requests above are answered on any connection, whatever the negotiated
+  version. The initialize-era catalogs do not list them, and 2026-07-28
+  replaces them with input requests, but a 2026-07-28 connection over stdio,
+  or over HTTP with input handlers installed, answers a server `ping` with
+  `{}` and passes an elicitation, sampling, or roots request to the handlers.
+  Such a request is outside the multi round-trip flow, so
+  `:max_input_rounds` does not count it.
+- Versions before 2025-06-18 are not spoken. The client does not open the
+  standalone `GET` event stream, so a request a server sends only there (the
+  TypeScript SDK does this for requests made without a related request ID)
+  is not received; and a session the server expires is reported as the
+  server's error rather than re-initialized.
 
 ## Lists and paging
 
@@ -302,10 +390,12 @@ transport failure; -32001 when the acknowledgement does not arrive within
 | `:client_info` | all | the `Implementation` sent as `io.modelcontextprotocol/clientInfo`; defaults to `%{"name" => "snodo", "version" => ...}` with this library's version |
 | `:timeout` | all | default request timeout in milliseconds |
 | `:auth` | `direct/2` | the value handlers and policies read as `context.auth` |
-| `:protocol` | all | the protocol version; defaults to `2026-07-28` |
+| `:protocol` | all | a version to pin, or a list to allow; defaults to every version the client speaks (see above) |
+| `:probe_timeout` | `connect/2` | milliseconds to wait for the answer to the `server/discover` probe (10,000) |
 | `:max_pages` | all | the most pages a list function requests (1,000) |
 | `:env`, `:cd` | stdio | environment and working directory for the command |
 | `:max_line_bytes` | stdio | the largest response line to accept (16 MiB); the rest of a longer line is discarded and its request times out |
+| `:max_server_requests` | stdio | the most server-to-client requests whose handlers run at once (16); a request over the limit is answered -32603 |
 | `:headers`, `:ssl`, `:connect_timeout` | HTTP | extra headers, `:ssl` options (peers are verified against the OS trust store by default), connect timeout |
 | `:token_provider` | HTTP | a `Snodo.Client.TokenProvider` as `{module, state}` that supplies the bearer token (see [Authorization](#authorization)) |
 | `:max_response_bytes` | HTTP | the largest response to accept (16 MiB), checked as it arrives; a larger response closes the connection and returns -32000 |
@@ -319,7 +409,10 @@ transport failure; -32001 when the acknowledgement does not arrive within
   progress notifications by token. A timeout, or a progress function that
   raises, sends `notifications/cancelled` for that request. When the server exits,
   pending and later requests fail with -32000. The connection closes when the
-  process that opened it exits. `close/1` closes the server's stdin.
+  process that opened it exits. `close/1` closes the server's stdin. A request
+  the server sends to the client is answered through the input handlers in a
+  process linked to the connection, at most `:max_server_requests` at once,
+  and those processes are killed when the connection closes.
 
   Subscriptions share the connection. The connection process correlates the
   acknowledgement, the events, and the terminal response by the subscription
@@ -351,6 +444,11 @@ transport failure; -32001 when the acknowledgement does not arrive within
   the source when the stream ends. `close/1` on the client does not affect
   open subscriptions.
 
+  On an initialize-era session the requests carry `MCP-Protocol-Version` and
+  `Mcp-Session-Id` instead of the 2026-07-28 headers, `notifications/initialized`
+  is a `POST` answered with 202, a request the server sends on the event
+  stream is answered on its own `POST`, and `close/1` sends `DELETE`.
+
   `Mcp-Param-*` headers need the tool's input schema, so pass the definition
   from `list_tools/1` to `call_tool/4` in place of the name. Called by name, a
   tool that needs them is refused with -32020; the client then lists the tools
@@ -374,6 +472,9 @@ refreshed, or extended comes from a `Snodo.Client.TokenProvider`, given as
   transport asks the provider for a token and sends
   `Authorization: Bearer <token>` when it gets one. `{:ok, nil}` sends the
   request without one, which is how a client learns the server's challenge.
+  On an initialize-era connection the same applies to `initialize`, to
+  `notifications/initialized` and each answer to a server request, and to
+  the `DELETE` that ends the session.
 - After a `401`, or a `403` whose `WWW-Authenticate` challenge is
   `insufficient_scope`, the transport parses the challenge into a
   `Snodo.Client.Challenge` (`resource_metadata`, `scope`, `error`), asks the
@@ -414,7 +515,11 @@ Any module implementing `Snodo.Client.Transport` (`connect/2`, `request/3`,
 `close/1`) can be passed as `{module, init_arg}` to `connect/2`. A transport
 that ignores the `:on_progress` option delivers no progress. `listen/3` is
 optional; `Snodo.Client.listen/3` raises `ArgumentError` for a transport
-without it.
+without it. The optional `notify/3` sends `notifications/initialized`, so a
+transport without it can open 2026-07-28 connections only; the optional
+`delete_session/2` ends a session the server identified. The `:headers`,
+`:on_response_headers`, and `:on_server_request` options carry the
+initialize-era session, as the behaviour documents.
 
 ## Examples
 

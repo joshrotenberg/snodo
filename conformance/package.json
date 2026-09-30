@@ -4,6 +4,7 @@
   "scripts": {
     "check": "node run.mjs server",
     "check:client": "node run.mjs client",
+    "check:client:2025-11-25": "node run.mjs client-2025-11-25",
     "check:plug": "node run.mjs server-plug",
     "check:2025-11-25": "node run.mjs server-2025-11-25",
     "check:2025-06-18": "node run.mjs server-2025-06-18",

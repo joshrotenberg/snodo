@@ -47,14 +47,22 @@ defmodule Snodo.Protocol do
                       shape_subscription_event: 3,
                       shape_subscription_result: 2
 
+  @builtin_dialects [
+    Snodo.Protocol.V2026_07_28,
+    Snodo.Protocol.V2025_11_25,
+    Snodo.Protocol.V2025_06_18
+  ]
+
+  @doc """
+  Returns the dialect modules bundled in-tree, in preference order, independent
+  of a runtime allowlist. `Snodo.Client` speaks every one of them.
+  """
+  @spec builtin_dialects() :: [module()]
+  def builtin_dialects, do: @builtin_dialects
+
   @doc "Returns the exact profiles bundled in-tree, independent of a runtime allowlist."
   @spec builtin_profiles() :: [Profile.t()]
-  def builtin_profiles,
-    do: [
-      Snodo.Protocol.V2026_07_28.profile(),
-      Snodo.Protocol.V2025_11_25.profile(),
-      Snodo.Protocol.V2025_06_18.profile()
-    ]
+  def builtin_profiles, do: Enum.map(@builtin_dialects, & &1.profile())
 
   @doc "Returns the bundled profile versions in preference order."
   @spec builtin_versions() :: [String.t()]

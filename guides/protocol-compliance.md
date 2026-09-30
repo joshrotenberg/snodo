@@ -279,7 +279,13 @@ handlers for all four kinds, so the client declares the deprecated `sampling`
 and `roots` capabilities and `request-metadata` passes whole, as it did on
 2026-09-29 when 7 of 32 passed. DPoP, enterprise-managed authorization, and
 workload identity federation are not implemented; their unscored scenarios
-stay in the baseline. See the
+stay in the baseline. A second client lane pins `Snodo.Client` to 2025-11-25
+and runs the frozen 2025-11-25 client set: the 2026-09-30 run passes 16 of 18
+required scenarios, `initialize`, `tools_call`, and all 14 that cover OAuth,
+up from 2 of 18 on 2026-09-29. The elicitation scenario depends on the
+standalone `GET` event stream, which the client does not open, and the
+reconnection scenario negotiates 2025-03-26, which the client does not speak.
+See the
 [client leg notes](https://github.com/joshrotenberg/snodo/blob/main/conformance/README.md#client-leg)
 for the remaining gaps.
 

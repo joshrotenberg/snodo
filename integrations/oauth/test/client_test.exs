@@ -18,9 +18,14 @@ defmodule Snodo.OAuth.ClientTest do
     start_supervised!({OAuth, opts}, id: make_ref())
   end
 
+  # Pinned to 2026-07-28, so nothing is sent at connect time.
   defp connect(fake, oauth) do
     {:ok, client} =
-      Client.connect({:http, fake.mcp_url}, token_provider: {OAuth, oauth}, timeout: 5_000)
+      Client.connect({:http, fake.mcp_url},
+        protocol: "2026-07-28",
+        token_provider: {OAuth, oauth},
+        timeout: 5_000
+      )
 
     client
   end

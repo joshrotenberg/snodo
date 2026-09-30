@@ -48,6 +48,7 @@ defmodule Snodo.ClientTokenProviderTest do
     @moduledoc false
     # Answers each request with `respond.(headers, message)`, a
     # `{status, headers, body}` triple, and reports the request to `owner`.
+    # A request without a body, such as a DELETE, has a nil message.
 
     def start(owner, respond) do
       {:ok, listen} =
@@ -64,8 +65,7 @@ defmodule Snodo.ClientTokenProviderTest do
       :ok = :inet.setopts(socket, packet: :http_bin, send_timeout: 5_000)
       headers = read_headers(socket, %{})
       :ok = :inet.setopts(socket, packet: :raw)
-      {:ok, body} = :gen_tcp.recv(socket, String.to_integer(headers["content-length"]))
-      message = JSON.decode!(body)
+      message = read_body(socket, String.to_integer(headers["content-length"]))
       send(owner, {:fake_http, headers, message})
       {status, response_headers, response_body} = respond.(headers, message)
       length = {"content-length", Integer.to_string(byte_size(response_body))}
@@ -82,6 +82,14 @@ defmodule Snodo.ClientTokenProviderTest do
 
       :ok = :gen_tcp.close(socket)
       accept(listen, owner, respond)
+    end
+
+    # A request without a body (DELETE) is reported with a nil message.
+    defp read_body(_socket, 0), do: nil
+
+    defp read_body(socket, length) do
+      {:ok, body} = :gen_tcp.recv(socket, length)
+      JSON.decode!(body)
     end
 
     defp read_headers(socket, headers) do
@@ -126,7 +134,9 @@ defmodule Snodo.ClientTokenProviderTest do
     end
   end
 
-  defp connect(url, provider), do: Client.connect({:http, url}, token_provider: provider)
+  # Pinned to 2026-07-28, so nothing is sent at connect time.
+  defp connect(url, provider),
+    do: Client.connect({:http, url}, protocol: "2026-07-28", token_provider: provider)
 
   test "a request without a token carries no authorization header" do
     url = FakeHTTP.start(self(), fn _headers, message -> ok(message) end)
@@ -146,6 +156,65 @@ defmodule Snodo.ClientTokenProviderTest do
     assert {:ok, []} = Client.list_tools(client)
     assert_receive {:fake_http, %{"authorization" => "Bearer t1"}, _message}, 1_000
     refute_received {:provider, :refresh, _challenge, _context}
+  end
+
+  test "an initialize-era connection sends the token on every request, the DELETE included" do
+    respond = fn
+      %{"authorization" => "Bearer t2"}, nil ->
+        {200, [], ""}
+
+      %{"authorization" => "Bearer t2"}, %{"method" => "initialize", "id" => id} ->
+        result = %{
+          "protocolVersion" => "2025-11-25",
+          "capabilities" => %{"tools" => %{}},
+          "serverInfo" => %{"name" => "fake", "version" => "1.0.0"}
+        }
+
+        {200, [{"content-type", "application/json"}, {"mcp-session-id", "s1"}],
+         JSON.encode!(%{"jsonrpc" => "2.0", "id" => id, "result" => result})}
+
+      %{"authorization" => "Bearer t2"}, %{"method" => "notifications/initialized"} ->
+        {202, [], ""}
+
+      %{"authorization" => "Bearer t2"}, message ->
+        ok(message)
+
+      _headers, _message ->
+        unauthorized(~s(Bearer resource_metadata="#{@metadata}"))
+    end
+
+    url = FakeHTTP.start(self(), respond)
+
+    {:ok, client} =
+      Client.connect({:http, url},
+        protocol: "2025-11-25",
+        token_provider: Provider.start(self(), {:ok, "t1"}, {:ok, "t2"})
+      )
+
+    assert %Client{protocol: "2025-11-25"} = client
+    assert {:ok, []} = Client.list_tools(client)
+    assert :ok = Client.close(client)
+
+    assert_receive {:fake_http, %{"authorization" => "Bearer t1"}, %{"method" => "initialize"}},
+                   1_000
+
+    assert_receive {:provider, :refresh, %Challenge{resource_metadata: @metadata},
+                    %{status: 401, token: "t1"}},
+                   1_000
+
+    assert_receive {:fake_http, %{"authorization" => "Bearer t2"}, %{"method" => "initialize"}},
+                   1_000
+
+    assert_receive {:fake_http, %{"authorization" => "Bearer t2", "mcp-session-id" => "s1"},
+                    %{"method" => "notifications/initialized"}},
+                   1_000
+
+    assert_receive {:fake_http, %{"authorization" => "Bearer t2", "mcp-session-id" => "s1"},
+                    %{"method" => "tools/list"}},
+                   1_000
+
+    assert_receive {:fake_http, %{"authorization" => "Bearer t2", "mcp-session-id" => "s1"}, nil},
+                   1_000
   end
 
   test "a 401 asks the provider to refresh with the challenge and retries once" do
@@ -322,7 +391,7 @@ defmodule Snodo.ClientTokenProviderTest do
 
   test "without a provider a 401 is an unexpected status" do
     url = FakeHTTP.start(self(), fn _headers, _message -> unauthorized("Bearer") end)
-    {:ok, client} = Client.connect({:http, url})
+    {:ok, client} = Client.connect({:http, url}, protocol: "2026-07-28")
 
     assert {:error, %Error{cause: {:http_status, 401, @unauthorized_body}}} =
              Client.list_tools(client)

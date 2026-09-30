@@ -17,13 +17,14 @@ npm run check:plug        # 2026-07-28 server, snodo_plug on Bandit
 npm run check:2025-11-25  # initialize-era server lane
 npm run check:2025-06-18  # initialize-era server lane
 npm run check:client      # Snodo.Client against the runner's scenario servers
+npm run check:client:2025-11-25  # Snodo.Client pinned to 2025-11-25
 ```
 
 `conformance/fixture` is an unpublished Mix project that puts the core, `snodo_tasks`, `snodo_plug`, `snodo_oauth`, and Bandit on one code path for `fixture_server.exs` and for `client.exs`, which the client lane starts from that directory.
 
 ## Baselines
 
-- `expected-failures.json` (also used by the Plug lane), `expected-failures-2025-11-25.json`, `expected-failures-2025-06-18.json`, and `expected-failures-client.json` are reviewed regression baselines, keyed by `scenario:check-id`. They are not waivers.
+- `expected-failures.json` (also used by the Plug lane), `expected-failures-2025-11-25.json`, `expected-failures-2025-06-18.json`, `expected-failures-client.json`, and `expected-failures-client-2025-11-25.json` are reviewed regression baselines, keyed by `scenario:check-id`. They are not waivers.
 - A lane fails on a new failure, and also on a stale expected failure, a newly passing check, or any changed check status. When a change makes a check pass, update the baseline in the same pull request and say which check changed and why.
 - The runner never writes the baselines or the `checkInventory`. Edit them by hand from the raw results the lane writes under `tmp/conformance/`.
 - A green lane means "matches the reviewed baseline", not full conformance. Do not describe it as full conformance in docs or pull requests.

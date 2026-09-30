@@ -3,7 +3,10 @@ defmodule Snodo.Client.Direct do
   In-process transport for `Snodo.Client.direct/2`.
 
   Each request runs `Snodo.Server.dispatch/3` in the calling process with a
-  `:direct` transport context, so `:timeout` does not apply.
+  `:direct` transport context, so `:timeout` does not apply. The context
+  carries the dialect's version as the `mcp-protocol-version` request header,
+  which is how the initialize-era dialects select themselves after
+  `initialize`.
 
   A request with `progress:` runs the dispatch in a linked task instead, with
   a progress sink owned by the calling process. The caller acknowledges each
@@ -48,6 +51,22 @@ defmodule Snodo.Client.Direct do
 
       on_progress ->
         dispatch_with_progress(runtime, message, transport, on_progress)
+    end
+  end
+
+  # A notification has no response; the initialize-era handshake sends one.
+  # Anything else from the dispatch is reported rather than raised.
+  @impl true
+  def notify(%{runtime: runtime} = state, message, opts) do
+    transport = transport_context(state, Keyword.fetch!(opts, :dialect))
+
+    case Server.dispatch(runtime, message, transport) do
+      {:ok, nil} ->
+        :ok
+
+      other ->
+        {:error,
+         Snodo.Client.Transport.connection_error("The server answered a notification", other)}
     end
   end
 

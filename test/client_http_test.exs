@@ -5,8 +5,12 @@ defmodule Snodo.ClientHTTPTest do
 
   alias Snodo.Client
   alias Snodo.Client.HTTP
+  alias Snodo.Client.Session
   alias Snodo.Client.Subscription
   alias Snodo.Error
+  alias Snodo.Protocol.V2025_06_18
+  alias Snodo.Protocol.V2025_11_25
+  alias Snodo.Protocol.V2026_07_28
   alias Snodo.Subscription.Event
   alias Snodo.Transport.StreamableHTTP.Server, as: HTTPServer
   alias SnodoTest.MRTR.Server, as: ChoiceServer
@@ -32,6 +36,8 @@ defmodule Snodo.ClientHTTPTest do
     @moduledoc false
     # Answers each request with `respond.(headers, message)` and forwards what
     # it received to `owner`, so tests can assert on the exact wire request.
+    # The HTTP method is in `headers` under `":method"`; a request without a
+    # body (DELETE) arrives with `nil` as the message.
     #
     # `respond` returns `{status, headers, body}`, sent with a Content-Length;
     # `{status, headers, {:stream, chunks}}`, sent without one until a send
@@ -54,8 +60,7 @@ defmodule Snodo.ClientHTTPTest do
       :ok = :inet.setopts(socket, packet: :http_bin, send_timeout: 5_000)
       headers = read_headers(socket, %{})
       :ok = :inet.setopts(socket, packet: :raw)
-      {:ok, body} = :gen_tcp.recv(socket, String.to_integer(headers["content-length"]))
-      message = JSON.decode!(body)
+      message = read_body(socket, headers)
       send(owner, {:fake_http, headers, message})
       _result = reply(socket, owner, respond.(headers, message))
       :ok = :gen_tcp.close(socket)
@@ -91,10 +96,18 @@ defmodule Snodo.ClientHTTPTest do
       ]
     end
 
+    defp read_body(_socket, %{"content-length" => "0"}), do: nil
+    defp read_body(_socket, headers) when not is_map_key(headers, "content-length"), do: nil
+
+    defp read_body(socket, headers) do
+      {:ok, body} = :gen_tcp.recv(socket, String.to_integer(headers["content-length"]))
+      JSON.decode!(body)
+    end
+
     defp read_headers(socket, headers) do
       case :gen_tcp.recv(socket, 0, 5_000) do
-        {:ok, {:http_request, _method, _uri, _version}} ->
-          read_headers(socket, headers)
+        {:ok, {:http_request, method, _uri, _version}} ->
+          read_headers(socket, Map.put(headers, ":method", to_string(method)))
 
         {:ok, {:http_header, _field, name, _reserved, value}} ->
           read_headers(socket, Map.put(headers, String.downcase(to_string(name)), value))
@@ -110,9 +123,39 @@ defmodule Snodo.ClientHTTPTest do
     HTTPServer.url(server)
   end
 
+  # Pinned to 2026-07-28 unless the test negotiates: a fake server answers
+  # every request the same way, so a probe would take its answer for a
+  # legacy one.
   defp connect(url, opts \\ []) do
-    {:ok, client} = Client.connect({:http, url}, opts)
+    {:ok, client} = Client.connect({:http, url}, Keyword.put_new(opts, :protocol, "2026-07-28"))
     client
+  end
+
+  defp negotiate(url, opts \\ []), do: Client.connect({:http, url}, opts)
+
+  @initialized %{
+    "protocolVersion" => "2025-11-25",
+    "capabilities" => %{"tools" => %{}},
+    "serverInfo" => %{"name" => "fake", "version" => "1"}
+  }
+
+  # A fake initialize-era server: initialize issues a session id, a
+  # notification or a response object gets 202, and `answer` handles the rest.
+  defp legacy_server(answer, session_id \\ "s-1") do
+    FakeHTTP.start(self(), fn
+      _headers, %{"method" => "initialize"} = message ->
+        {200, [{"content-type", "application/json"}, {"mcp-session-id", session_id}],
+         JSON.encode!(%{"jsonrpc" => "2.0", "id" => message["id"], "result" => @initialized})}
+
+      _headers, %{"method" => "server/discover"} ->
+        {404, [{"content-type", "text/plain"}], "Not Found"}
+
+      _headers, %{"method" => _method, "id" => _id} = message ->
+        answer.(message)
+
+      _headers, _notification_or_response ->
+        {202, [], ""}
+    end)
   end
 
   defp json(message, result) do
@@ -686,8 +729,307 @@ defmodule Snodo.ClientHTTPTest do
     end
 
     test "a protocol the client does not implement is refused at connect" do
-      assert {:error, %Error{code: -32_602, data: %{"supported" => ["2026-07-28"]}}} =
-               Client.connect({:http, "http://127.0.0.1:1/mcp"}, protocol: "2025-11-25")
+      assert {:error, %Error{code: -32_602, data: %{"requested" => "2024-11-05"} = data}} =
+               Client.connect({:http, "http://127.0.0.1:1/mcp"}, protocol: "2024-11-05")
+
+      assert data["supported"] == ["2026-07-28", "2025-11-25", "2025-06-18"]
+    end
+
+    test "with probing, an unreachable endpoint fails at connect" do
+      {:ok, listen} = :gen_tcp.listen(0, ip: {127, 0, 0, 1})
+      {:ok, port} = :inet.port(listen)
+      :ok = :gen_tcp.close(listen)
+
+      assert {:error, %Error{code: -32_000, kind: :transport, cause: {:failed_connect, _}}} =
+               negotiate("http://127.0.0.1:#{port}/mcp")
+    end
+  end
+
+  describe "version negotiation against the native listener" do
+    test "a 2026-07-28 server answers the probe and no handshake follows" do
+      url = serve(TestFixtures.runtime(protocols: [V2026_07_28, V2025_11_25]))
+
+      assert {:ok, %Client{protocol: "2026-07-28", session: nil} = client} = negotiate(url)
+
+      assert {:ok, %{"supportedVersions" => ["2026-07-28", "2025-11-25"]}} =
+               Client.discover(client)
+
+      assert {:ok, [_tool | _rest]} = Client.list_tools(client)
+    end
+
+    test "a server with only initialize-era dialects is initialized after the probe fails" do
+      url =
+        serve(
+          TestFixtures.runtime(
+            resources: [StaticText],
+            prompts: [PackageAnalysis],
+            protocols: [V2025_11_25, V2025_06_18],
+            instructions: "Legacy only."
+          )
+        )
+
+      assert {:ok, %Client{protocol: "2025-11-25", dialect: V2025_11_25} = client} =
+               negotiate(url)
+
+      assert %Session{
+               version: "2025-11-25",
+               id: nil,
+               server_info: %{"name" => "snodo-spike", "version" => "0.1.0"},
+               server_capabilities: %{"tools" => %{}, "resources" => %{}, "prompts" => %{}},
+               instructions: "Legacy only."
+             } = client.session
+
+      assert {:ok, tools} = Client.list_tools(client)
+      assert Enum.any?(tools, &(&1["name"] == "echo"))
+      refute Enum.any?(tools, &(&1["name"] == "complex_schema"))
+
+      assert {:ok, %{"content" => [%{"text" => "over HTTP"}]} = result} =
+               Client.call_tool(client, "echo", %{"text" => "over HTTP"})
+
+      refute Map.has_key?(result, "resultType")
+
+      assert {:ok, %{"contents" => [%{"uri" => "test://static/readme"}]}} =
+               Client.read_resource(client, "test://static/readme")
+
+      assert {:ok, %{"messages" => [_message | _rest]}} =
+               Client.get_prompt(client, "package_analysis", %{"name" => "plug"})
+
+      assert {:ok, %{}} = Client.ping(client)
+
+      assert {:error, %Error{code: -32_602, kind: :protocol}} =
+               Client.call_tool(client, "missing")
+
+      assert {:error, %Error{code: -32_601}} = Client.discover(client)
+      assert :ok = Client.close(client)
+    end
+
+    test "a pin or a list from one era skips the probe" do
+      url = serve(TestFixtures.runtime(protocols: [V2026_07_28, V2025_11_25, V2025_06_18]))
+
+      assert {:ok,
+              %Client{protocol: "2025-06-18", session: %Session{version: "2025-06-18"}} = client} =
+               negotiate(url, protocol: "2025-06-18")
+
+      assert {:ok, [tool | _rest]} = Client.list_tools(client)
+      refute Map.has_key?(tool, "icons")
+
+      assert {:ok, %Client{protocol: "2025-11-25"}} =
+               negotiate(url, protocol: ["2025-06-18", "2025-11-25"])
+
+      assert {:ok, %Client{protocol: "2026-07-28", session: nil}} =
+               negotiate(url, protocol: ["2025-11-25", "2026-07-28"])
+    end
+
+    test "a version the server negotiates outside the allowed list ends the connection" do
+      url = serve(TestFixtures.runtime(protocols: [V2025_11_25]))
+
+      assert {:error,
+              %Error{
+                code: -32_602,
+                data: %{"negotiated" => "2025-11-25", "requested" => ["2025-06-18"]}
+              }} = negotiate(url, protocol: ["2026-07-28", "2025-06-18"])
+    end
+
+    test "progress reaches the caller on an initialize-era connection" do
+      url = serve(TestFixtures.runtime(tools: [Ticks], protocols: [V2025_06_18]))
+      {:ok, client} = negotiate(url)
+
+      assert {:ok, %{"content" => [%{"text" => "ticked 2"}]}} =
+               Client.call_tool(client, "ticks", %{"count" => 2}, progress: self())
+
+      assert [%{"progress" => 1}, %{"progress" => 2}] = drain_progress()
+    end
+  end
+
+  describe "initialize-era sessions against a fake server" do
+    test "the session id and the protocol version travel on every later request and the DELETE" do
+      url = legacy_server(&json(&1, %{"tools" => []}))
+
+      assert {:ok, %Client{session: %Session{id: "s-1", version: "2025-11-25"}} = client} =
+               negotiate(url, client_capabilities: %{"elicitation" => %{}})
+
+      assert_receive {:fake_http, probe_headers, %{"method" => "server/discover"}}, 1_000
+      assert probe_headers["mcp-protocol-version"] == "2026-07-28"
+
+      assert_receive {:fake_http, headers, %{"method" => "initialize"} = initialize}, 1_000
+      refute Map.has_key?(headers, "mcp-protocol-version")
+      refute Map.has_key?(headers, "mcp-session-id")
+      refute Map.has_key?(headers, "mcp-method")
+      assert headers["content-type"] == "application/json"
+      assert headers["accept"] == "application/json, text/event-stream"
+      assert initialize["params"]["protocolVersion"] == "2025-11-25"
+      assert initialize["params"]["capabilities"] == %{"elicitation" => %{}}
+      assert initialize["params"]["clientInfo"]["name"] == "snodo"
+      refute Map.has_key?(initialize["params"], "_meta")
+
+      assert_receive {:fake_http, headers, %{"method" => "notifications/initialized"} = note},
+                     1_000
+
+      refute Map.has_key?(note, "id")
+      assert headers["mcp-protocol-version"] == "2025-11-25"
+      assert headers["mcp-session-id"] == "s-1"
+
+      assert {:ok, []} = Client.list_tools(client)
+      assert_receive {:fake_http, headers, %{"method" => "tools/list"}}, 1_000
+      assert headers["mcp-protocol-version"] == "2025-11-25"
+      assert headers["mcp-session-id"] == "s-1"
+      refute Map.has_key?(headers, "mcp-method")
+
+      assert :ok = Client.close(client)
+      assert_receive {:fake_http, %{":method" => "DELETE"} = headers, nil}, 1_000
+      assert headers["mcp-protocol-version"] == "2025-11-25"
+      assert headers["mcp-session-id"] == "s-1"
+    end
+
+    test "a server request on the event stream is answered on its own POST with the session headers" do
+      form = fn %{"message" => "Name?"} ->
+        {:ok, %{"action" => "accept", "content" => %{"name" => "Ada"}}}
+      end
+
+      url =
+        legacy_server(fn %{"method" => "tools/call"} = message ->
+          request = %{
+            "jsonrpc" => "2.0",
+            "id" => "srv-1",
+            "method" => "elicitation/create",
+            "params" => %{
+              "mode" => "form",
+              "message" => "Name?",
+              "requestedSchema" => %{"type" => "object"}
+            }
+          }
+
+          ping = %{"jsonrpc" => "2.0", "id" => "srv-2", "method" => "ping"}
+
+          result = %{
+            "jsonrpc" => "2.0",
+            "id" => message["id"],
+            "result" => %{"content" => [%{"type" => "text", "text" => "asked"}]}
+          }
+
+          body =
+            Enum.map_join([request, ping, result], fn event ->
+              "data: #{JSON.encode!(event)}\n\n"
+            end)
+
+          {200, [{"content-type", "text/event-stream"}], body}
+        end)
+
+      {:ok, client} = negotiate(url, input_handlers: %{form: form})
+
+      assert {:ok, %{"content" => [%{"text" => "asked"}]}} = Client.call_tool(client, "ask")
+
+      assert_receive {:fake_http, headers, %{"id" => "srv-1", "result" => answer} = response},
+                     1_000
+
+      assert answer == %{"action" => "accept", "content" => %{"name" => "Ada"}}
+      refute Map.has_key?(response, "method")
+      assert headers["mcp-session-id"] == "s-1"
+      assert headers["mcp-protocol-version"] == "2025-11-25"
+      assert headers["content-type"] == "application/json"
+      assert_receive {:fake_http, _headers, %{"id" => "srv-2", "result" => %{}}}, 1_000
+
+      # Without a handler for the kind, the server gets -32601 and the call
+      # still completes with what the server then sends.
+      {:ok, client} = negotiate(url)
+      assert {:ok, %{"content" => [%{"text" => "asked"}]}} = Client.call_tool(client, "ask")
+
+      assert_receive {:fake_http, _headers, %{"id" => "srv-1", "error" => %{"code" => -32_601}}},
+                     1_000
+    end
+
+    test "sampling and roots requests on the event stream reach their handlers" do
+      message = %{
+        "role" => "assistant",
+        "content" => %{"type" => "text", "text" => "hi"},
+        "model" => "m"
+      }
+
+      roots = %{"roots" => [%{"uri" => "file:///work"}]}
+
+      url =
+        legacy_server(fn %{"method" => "tools/call"} = call ->
+          events = [
+            %{
+              "jsonrpc" => "2.0",
+              "id" => "srv-1",
+              "method" => "sampling/createMessage",
+              "params" => %{"messages" => [], "maxTokens" => 5}
+            },
+            %{"jsonrpc" => "2.0", "id" => "srv-2", "method" => "roots/list"},
+            %{
+              "jsonrpc" => "2.0",
+              "id" => call["id"],
+              "result" => %{"content" => [%{"type" => "text", "text" => "done"}]}
+            }
+          ]
+
+          body = Enum.map_join(events, &"data: #{JSON.encode!(&1)}\n\n")
+          {200, [{"content-type", "text/event-stream"}], body}
+        end)
+
+      {:ok, client} =
+        negotiate(url,
+          input_handlers: %{
+            sampling: fn %{"maxTokens" => 5} -> {:ok, message} end,
+            roots: fn %{} -> {:ok, roots} end
+          }
+        )
+
+      assert client.client_capabilities["sampling"] == %{}
+      assert {:ok, %{"content" => [%{"text" => "done"}]}} = Client.call_tool(client, "ask")
+
+      assert_receive {:fake_http, headers, %{"id" => "srv-1", "result" => ^message}}, 1_000
+      assert headers["mcp-session-id"] == "s-1"
+      assert_receive {:fake_http, _headers, %{"id" => "srv-2", "result" => ^roots}}, 1_000
+    end
+
+    test "a probe that times out, or gets a body that is not JSON-RPC, falls back to initialize" do
+      keepalive = Stream.repeatedly(fn -> Process.sleep(50) && ": keepalive\n\n" end)
+
+      url =
+        FakeHTTP.start(self(), fn
+          _headers, %{"method" => "server/discover"} ->
+            {200, [{"content-type", "text/event-stream"}], {:stream, keepalive}}
+
+          _headers, %{"method" => "initialize"} = message ->
+            json(message, @initialized)
+
+          _headers, _other ->
+            {202, [], ""}
+        end)
+
+      assert {:ok, %Client{protocol: "2025-11-25"}} = negotiate(url, probe_timeout: 200)
+      assert_receive {:fake_http_sent, _bytes}, 5_000
+
+      url = legacy_server(&json(&1, %{}), "")
+      assert {:ok, %Client{session: %Session{id: nil}} = client} = negotiate(url)
+      assert :ok = Client.close(client)
+      refute_received {:fake_http, %{":method" => "DELETE"}, nil}
+    end
+
+    test "an initialized notification the server refuses ends the connection" do
+      url =
+        FakeHTTP.start(self(), fn
+          _headers, %{"method" => "initialize"} = message ->
+            json(message, @initialized)
+
+          _headers, %{"method" => "notifications/initialized"} ->
+            body = ~s({"jsonrpc":"2.0","id":null,"error":{"code":-32000,"message":"No session"}})
+            {400, [{"content-type", "application/json"}], body}
+        end)
+
+      assert {:error, %Error{code: -32_000, message: "No session", kind: :protocol}} =
+               negotiate(url, protocol: "2025-11-25")
+
+      url =
+        FakeHTTP.start(self(), fn
+          _headers, %{"method" => "initialize"} = message -> json(message, @initialized)
+          _headers, _other -> {500, [], "boom"}
+        end)
+
+      assert {:error, %Error{code: -32_000, kind: :transport, cause: {:http_status, 500, "boom"}}} =
+               negotiate(url, protocol: "2025-11-25")
     end
   end
 

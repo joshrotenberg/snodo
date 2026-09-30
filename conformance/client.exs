@@ -3,19 +3,23 @@
 # The runner starts one scenario server per scenario and runs this script with
 # the server URL as the last argument. The scenario name arrives in
 # MCP_CONFORMANCE_SCENARIO and optional scenario input in
-# MCP_CONFORMANCE_CONTEXT. The runner scores the traffic its server records, so
-# this script drives Snodo.Client the way an application would and adds no
-# protocol behavior of its own:
+# MCP_CONFORMANCE_CONTEXT. The lane's protocol version arrives in
+# SNODO_CLIENT_PROTOCOL from run.mjs and pins the client, so a 2026-07-28 lane
+# sends no probe and a 2025-11-25 lane sends initialize. The runner scores the
+# traffic its server records, so this script drives Snodo.Client the way an
+# application would and adds no protocol behavior of its own:
 #
-#   1. `server/discover`, then `tools/list`.
+#   1. `server/discover` on 2026-07-28, then `tools/list`. On 2025-11-25 the
+#      capabilities come from the session initialize opened.
 #   2. Call the tools the context names in `toolCalls` with their arguments, or
 #      else every listed tool with arguments sampled from its input schema.
 #      `input_required` results are answered by the client's input handlers:
 #      elicitations are accepted with content sampled from the requested
 #      schema, sampling requests with a fixed assistant message, and roots
 #      requests with one file root. The client retries with the returned
-#      `requestState`.
-#   3. When discovery advertises them, list and read every resource and list
+#      `requestState`. On 2025-11-25 the server sends the same requests as
+#      its own requests, and the same handlers answer them.
+#   3. When the server advertises them, list and read every resource and list
 #      and get every prompt.
 #
 # json-schema-2020-12-preservation instead echoes one tool's input schema, as
@@ -38,7 +42,10 @@ defmodule Snodo.Conformance.ClientHarness do
   @client_metadata_url "https://conformance-test.local/client-metadata.json"
   @client_credentials ["auth/client-credentials-jwt", "auth/client-credentials-basic"]
   @scenarios [
+    "initialize",
     "tools_call",
+    "elicitation-sep1034-client-defaults",
+    "sse-retry",
     "request-metadata",
     "sep-2322-client-request-state",
     "http-standard-headers",
@@ -65,27 +72,8 @@ defmodule Snodo.Conformance.ClientHarness do
 
   defp flow(scenario, url, transport_opts) do
     context = context()
-
-    {:ok, client} =
-      Client.connect(
-        {:http, url},
-        [
-          input_handlers: %{
-            form: &accept_form/1,
-            url: fn _params -> {:ok, %{"action" => "accept"}} end,
-            sampling: &sample_message/1,
-            roots: fn _params -> {:ok, %{"roots" => [%{"uri" => "file:///conformance"}]}} end
-          },
-          max_input_rounds: @max_rounds,
-          timeout: 10_000
-        ] ++ transport_opts
-      )
-
-    capabilities =
-      case log("server/discover", Client.discover(client)) do
-        {:ok, %{"capabilities" => capabilities}} -> capabilities
-        _other -> %{}
-      end
+    client = connect(scenario, url, transport_opts)
+    capabilities = capabilities(client)
 
     tools =
       case log("tools/list", Client.list_tools(client)) do
@@ -141,6 +129,37 @@ defmodule Snodo.Conformance.ClientHarness do
       {:ok, {{_version, 200, _reason}, _headers, _body}} -> :ok
       other -> {:error, other}
     end
+  end
+
+  defp connect(scenario, url, transport_opts) do
+    options = [
+      protocol: System.get_env("SNODO_CLIENT_PROTOCOL", "2026-07-28"),
+      input_handlers: %{
+        form: &accept_form/1,
+        url: fn _params -> {:ok, %{"action" => "accept"}} end,
+        sampling: &sample_message/1,
+        roots: fn _params -> {:ok, %{"roots" => [%{"uri" => "file:///conformance"}]}} end
+      },
+      max_input_rounds: @max_rounds,
+      timeout: 10_000
+    ]
+
+    case log("connect", Client.connect({:http, url}, options ++ transport_opts)) do
+      {:ok, client} -> client
+      {:error, _error} -> fail("#{scenario}: the client could not connect")
+    end
+  end
+
+  defp capabilities(%Client{session: nil} = client) do
+    case log("server/discover", Client.discover(client)) do
+      {:ok, %{"capabilities" => capabilities}} -> capabilities
+      _other -> %{}
+    end
+  end
+
+  defp capabilities(%Client{session: session}) do
+    log("initialize", session)
+    session.server_capabilities
   end
 
   defp read_resources(client) do
