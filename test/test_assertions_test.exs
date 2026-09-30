@@ -89,7 +89,10 @@ defmodule Snodo.TestAssertionsTest do
 
       assert message =~ "Expected a direct client for the runtime, got an error"
       assert message =~ "code: -32602"
-      assert message =~ ~s(message: "Protocol version is not enabled")
+      # The runtime's own wording and data are shown; the test does not pin
+      # how the client phrases the refusal.
+      assert message =~ "message: "
+      assert message =~ ~s("requested" => ["2025-06-18"])
     end
 
     test ":answers answers input requests inside the call" do
