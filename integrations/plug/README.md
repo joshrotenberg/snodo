@@ -16,7 +16,7 @@ Add `snodo_plug` and an HTTP server such as Bandit to your application:
 
 <!-- x-release-please-start-version -->
 ```elixir
-{:snodo_plug, "~> 0.3.1"},
+{:snodo_plug, "~> 0.3.2"},
 {:bandit, "~> 1.12"}
 ```
 <!-- x-release-please-end -->
