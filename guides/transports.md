@@ -120,8 +120,10 @@ drains before exiting:
 
 The default drain covers ordinary tool calls and fits, with the rest of an
 application's shutdown, inside common stop windows such as Docker's 10-second
-default. Raise it toward `:request_timeout` when requests run longer and the
-host allows a longer stop.
+default. A platform with a shorter stop window, such as Fly's default 5-second
+`kill_timeout`, needs a smaller `:drain_timeout` or a longer platform timeout.
+Raise it toward `:request_timeout` when requests run longer and the host allows
+a longer stop.
 
 The listener's child spec sets `:shutdown` to `:drain_timeout` plus 5,000 ms so
 the supervisor waits for the drain. A child spec that overrides `:shutdown`

@@ -152,6 +152,11 @@ defmodule Snodo.Transport.StreamableHTTP.ServerDrainTest do
 
       {:error, :econnrefused} ->
         true
+
+      # A connect that races the listening socket's close can be reset
+      # instead (macOS), so keep checking until a connect is refused.
+      {:error, _reset_or_other} ->
+        false
     end
   end
 
