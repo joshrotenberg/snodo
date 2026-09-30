@@ -31,8 +31,8 @@ defmodule Snodo.Tool.Simple do
 
   An `:object` or `{:array, :object}` argument may take a `do` block of
   further `argument` declarations, which become the properties of that object
-  or of each array item. `output/2` builds the output schema from the same
-  declarations:
+  or of each array item. `output_schema/1` with a `do` block builds the output
+  schema from the same declarations:
 
       defmodule Order do
         use Snodo.Tool.Simple, name: "order", description: "Place an order"
@@ -47,7 +47,7 @@ defmodule Snodo.Tool.Simple do
           argument "quantity", :integer, required: true, minimum: 1
         end
 
-        output do
+        output_schema do
           argument "order_id", :string, required: true
           argument "total", :number, required: true
         end
@@ -58,8 +58,8 @@ defmodule Snodo.Tool.Simple do
         end
       end
 
-  Both compile to plain JSON Schema maps, the same ones `input_schema/1` and
-  `output_schema/1` accept.
+  Both compile to plain JSON Schema maps, the same ones `Snodo.Tool.input_schema/1`
+  and `Snodo.Tool.output_schema/1` accept.
 
   The `:title`, `:icons`, and `:metadata` options set the corresponding
   `Snodo.Tool` definition fields. They are validated when the module compiles.
@@ -121,8 +121,12 @@ defmodule Snodo.Tool.Simple do
         icons: unquote(icons),
         metadata: unquote(metadata)
 
-      import Snodo.Tool.Simple,
-        only: [argument: 2, argument: 3, argument: 4, output: 1, output: 2]
+      # Snodo.Tool.Simple.output_schema/1 accepts a do block as well as a map,
+      # so it replaces the import of Snodo.Tool.output_schema/1.
+      import Snodo.Tool,
+        only: [title: 1, description: 1, input_schema: 1, annotations: 1, icons: 1, metadata: 1]
+
+      import Snodo.Tool.Simple, only: [argument: 2, argument: 3, argument: 4, output_schema: 1]
 
       @mcp_tool_input_schema Snodo.Tool.Simple.new_schema!(
                                unquote(root_options),
@@ -169,6 +173,10 @@ defmodule Snodo.Tool.Simple do
         argument "value", :string
       end
 
+  A block argument's `:schema` cannot set the keys the block generates:
+  `"properties"` and `"required"` for `:object`, and `"items"` for
+  `{:array, :object}`.
+
   An empty or repeated name, an unknown or repeated option, an option value
   of the wrong type, or a block on any other type is a compile error.
   """
@@ -188,35 +196,52 @@ defmodule Snodo.Tool.Simple do
   end
 
   @doc """
-  Declares the tool's output schema from `argument` declarations.
+  Sets the tool's output schema, either from a JSON Schema map or from a
+  `do` block of `argument` declarations.
 
-  The block holds the same `argument` forms as the input schema, including
-  nested blocks, and produces an object schema that `c:Snodo.Tool.output_schema/0`
-  returns. `opts` takes `:additional_properties` and `:schema`, which apply to
-  the output root as the matching `use Snodo.Tool.Simple` options apply to the
-  input root.
+  With a map, this is `Snodo.Tool.output_schema/1`:
 
-      output additional_properties: false do
+      output_schema(%{"type" => "object", "properties" => %{"version" => %{"type" => "string"}}})
+
+  With a block, the declarations take the same forms as the input schema,
+  including nested blocks, and produce an object schema:
+
+      output_schema do
         argument "version", :string, required: true
         argument "published_at", :string
       end
 
+  `:additional_properties` and `:schema` apply to the output root as the
+  matching `use Snodo.Tool.Simple` options apply to the input root. They go in
+  the same keyword list as the block:
+
+      output_schema(
+        additional_properties: false,
+        do:
+          (
+            argument("version", :string, required: true)
+            argument("published_at", :string)
+          )
+      )
+
   With an output schema, `call/2` must return structured content; see
-  `Snodo.Tool.output_schema/1`. A second `output`, an `output` after
-  `output_schema/1`, or an `output` inside an argument block is a compile
-  error.
+  `Snodo.Tool.output_schema/1`. Declaring the output schema a second time
+  when either declaration is a block, or declaring it inside an argument
+  block, is a compile error.
   """
-  defmacro output(opts \\ [], block) do
-    case block_options(block) do
-      {:block, [], block} ->
+  defmacro output_schema(value) do
+    case block_options(value) do
+      {:block, opts, block} ->
         quote do
           unquote(__MODULE__).__open_output__(__MODULE__, unquote(opts), __ENV__)
           unquote(block)
           unquote(__MODULE__).__close_scope__(__MODULE__, __ENV__)
         end
 
-      _other ->
-        compile_error!(__CALLER__, "Snodo.Tool.Simple output expects a do block")
+      :flat ->
+        quote do
+          unquote(__MODULE__).__output_schema__(__MODULE__, unquote(value), __ENV__)
+        end
     end
   end
 
@@ -287,6 +312,7 @@ defmodule Snodo.Tool.Simple do
     end
 
     validate_additional_properties!(opts, env, subject)
+    validate_block_schema!(type, opts, env, subject)
 
     object =
       %{"type" => "object", "properties" => %{}}
@@ -303,17 +329,53 @@ defmodule Snodo.Tool.Simple do
   end
 
   @doc false
+  @spec __output_schema__(module(), term(), Macro.Env.t()) :: :ok
+  def __output_schema__(module, schema, env) do
+    unless scopes(module) == [] do
+      compile_error!(env, "Snodo.Tool.Simple output_schema cannot be declared inside a block")
+    end
+
+    if Module.get_attribute(module, :mcp_tool_simple_output_block) do
+      compile_error!(env, "Snodo.Tool.Simple output schema is already declared by a block")
+    end
+
+    Module.put_attribute(module, :mcp_tool_output_schema, schema)
+  end
+
+  defp validate_block_schema!(type, opts, env, subject) do
+    generated = if type == :object, do: ["properties", "required"], else: ["items"]
+
+    case Keyword.get(opts, :schema) do
+      schema when is_map(schema) ->
+        case Enum.filter(generated, &Map.has_key?(schema, &1)) do
+          [] ->
+            :ok
+
+          keys ->
+            compile_error!(
+              env,
+              "#{subject} :schema cannot set #{inspect(keys)}; its do block declares them"
+            )
+        end
+
+      _other ->
+        :ok
+    end
+  end
+
+  @doc false
   @spec __open_output__(module(), term(), Macro.Env.t()) :: :ok
   def __open_output__(module, opts, env) do
     unless scopes(module) == [] do
-      compile_error!(env, "Snodo.Tool.Simple output cannot be declared inside a block")
+      compile_error!(env, "Snodo.Tool.Simple output_schema cannot be declared inside a block")
     end
 
     unless is_nil(Module.get_attribute(module, :mcp_tool_output_schema)) do
       compile_error!(env, "Snodo.Tool.Simple output schema is already declared")
     end
 
-    object = new_schema!(opts, env, "Snodo.Tool.Simple output")
+    object = new_schema!(opts, env, "Snodo.Tool.Simple output_schema")
+    Module.put_attribute(module, :mcp_tool_simple_output_block, true)
     push_scope(module, %{kind: :output, object: object})
   end
 
@@ -415,11 +477,6 @@ defmodule Snodo.Tool.Simple do
     compile_error!(env, "#{subject} options must be a keyword list")
   end
 
-  @doc false
-  @spec add_argument!(map(), String.t(), term(), keyword(), Macro.Env.t()) :: map()
-  def add_argument!(root, name, type, opts, env),
-    do: add_argument!(root, name, type, opts, env, {:argument, []})
-
   defp add_argument!(root, name, type, opts, env, label) do
     validate_argument!(root, name, opts, @property_options, env, label)
 
@@ -433,7 +490,9 @@ defmodule Snodo.Tool.Simple do
 
   defp validate_argument!(root, name, opts, allowed, env, label)
        when is_map(root) and is_binary(name) and is_list(opts) do
-    if name == "", do: compile_error!(env, "Snodo.Tool.Simple argument names cannot be empty")
+    if name == "" do
+      compile_error!(env, "Snodo.Tool.Simple argument names cannot be empty" <> within(label))
+    end
 
     validate_options!(opts, allowed, env, subject(label, name))
     validate_property_options!(opts, env, display(label, name))
@@ -443,12 +502,18 @@ defmodule Snodo.Tool.Simple do
     end
   end
 
-  defp validate_argument!(_root, name, _opts, _allowed, env, _label) do
+  defp validate_argument!(_root, name, _opts, _allowed, env, label) do
     compile_error!(
       env,
-      "Snodo.Tool.Simple argument expects a string name and keyword options, got #{inspect(name)}"
+      "Snodo.Tool.Simple argument expects a string name and keyword options, got " <>
+        inspect(name) <> within(label)
     )
   end
+
+  # Where a declaration sits, for errors that cannot name the declaration.
+  defp within({:argument, []}), do: ""
+  defp within({:output, []}), do: " (in output_schema)"
+  defp within({kind, path}), do: " (in #{display({kind, Enum.drop(path, -1)}, List.last(path))})"
 
   defp build_property!(base, opts, env, label, name) do
     property =

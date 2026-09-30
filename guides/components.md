@@ -62,8 +62,8 @@ Schema keywords.
 
 An `:object` or `{:array, :object}` argument can take a `do` block of further
 `argument` declarations. They become the properties of the object, or of each
-array item, and blocks can nest. `output` builds the output schema from the
-same declarations:
+array item, and blocks can nest. `output_schema` with a `do` block builds the
+output schema from the same declarations:
 
 ```elixir
 defmodule MyServer.Order do
@@ -82,7 +82,7 @@ defmodule MyServer.Order do
     argument "quantity", :integer, required: true, minimum: 1
   end
 
-  output do
+  output_schema do
     argument "order_id", :string, required: true
     argument "total", :number, required: true
   end
@@ -97,16 +97,26 @@ end
 `required: true` inside a block adds the name to that object's `"required"`
 list, so here `"customer"` requires `"id"` and each line requires `"sku"` and
 `"quantity"`. The router enforces only the top-level `"required"` list on its
-own; nested lists are enforced by an installed validator. A block argument also takes `additional_properties:`, which is
-set on the nested object; for an array that is the object in `"items"`, while
-the other options, such as `min_items:`, stay on the array. `output` takes
-`additional_properties:` and `schema:` for the output root. The result is the
-plain JSON Schema that `input_schema/1` and `output_schema/1` accept, checked
-when the module compiles. A block on another type, a repeated name inside a
-block, and a second `output` are compile errors, and the messages name the
-nested path, such as `argument "lines.sku"`. With an output schema, `call/2`
-must return structured content, which the runtime's schema validator checks
-(see [Validation](#validation)).
+own; nested lists are enforced by an installed validator.
+
+A block argument also takes `additional_properties:`, which is set on the
+nested object. For an array that is the object in `"items"`, while the other
+options, such as `min_items:`, stay on the array. A block argument's `schema:`
+cannot set the keys the block generates (`"properties"` and `"required"`, or
+`"items"`).
+
+`output_schema` still accepts a map, as in `use Snodo.Tool`. The block form
+takes `additional_properties:` and `schema:` for the output root in the same
+keyword list as the block, as in
+`output_schema(additional_properties: false, do: (...))`.
+
+The result is the plain JSON Schema that `input_schema/1` and
+`output_schema/1` accept, checked when the module compiles. A block on another
+type, a repeated name inside a block, and a second output schema when either
+one is a block are compile errors, and the messages name the nested path, such
+as `argument "lines.sku"`. With an output schema, `call/2` must return
+structured content, which the runtime's schema validator checks (see
+[Validation](#validation)).
 
 Tools can set `title:`, `icons:`, and `metadata:` on `use Snodo.Tool`,
 `use Snodo.Tool.Simple`, or an inline `tool` block. Raw tools can also set

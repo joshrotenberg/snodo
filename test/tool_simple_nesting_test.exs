@@ -25,14 +25,18 @@ defmodule Snodo.Tool.SimpleNestingTest do
 
     argument("note", :string)
 
-    output additional_properties: false do
-      argument("order_id", :string, required: true)
+    output_schema(
+      additional_properties: false,
+      do:
+        (
+          argument("order_id", :string, required: true)
 
-      argument "lines", {:array, :object}, required: true do
-        argument("sku", :string, required: true)
-        argument("price", :number)
-      end
-    end
+          argument "lines", {:array, :object}, required: true do
+            argument("sku", :string, required: true)
+            argument("price", :number)
+          end
+        )
+    )
 
     @impl true
     def call(%{"lines" => lines} = arguments, _context) do
@@ -130,13 +134,15 @@ defmodule Snodo.Tool.SimpleNestingTest do
         argument("sku", :string, required: true)
       end
 
-      output do
+      output_schema do
         argument("count", :integer, required: true)
       end
 
       @impl true
       def call(%{"items" => items}, _context),
-        do: {:ok, Snodo.Result.structured(%{"count" => length(items)})}
+        do: {:ok, Snodo.Result.structured(%{"count" => output(items)})}
+
+      defp output(items), do: length(items)
     end
   end
 
@@ -149,6 +155,34 @@ defmodule Snodo.Tool.SimpleNestingTest do
 
     @impl true
     def call(_arguments, _context), do: {:ok, "ok"}
+  end
+
+  # Helpers named like the DSL, as a tool written before nested blocks
+  # existed might have. None of these names or arities are imported.
+  defmodule LocalHelpers do
+    use Snodo.Tool.Simple, name: "local_helpers"
+
+    argument("value", :string, required: true)
+
+    @impl true
+    def call(%{"value" => value}, _context), do: {:ok, output(value) <> output(value, "!")}
+
+    defp output(value), do: String.upcase(value)
+    defp output(value, suffix), do: value <> suffix
+    defp output_schema(value, _context), do: value
+    defp argument(value, _a, _b, _c, _d), do: value
+
+    def helpers(value), do: {output_schema(value, nil), argument(value, 1, 2, 3, 4)}
+  end
+
+  defmodule MapOutput do
+    use Snodo.Tool.Simple, name: "map_output"
+
+    output_schema(%{"type" => "string"})
+    output_schema(%{"type" => "object", "properties" => %{"a" => %{"type" => "string"}}})
+
+    @impl true
+    def call(_arguments, _context), do: {:ok, %{"a" => "b"}}
   end
 
   defmodule NoOutput do
@@ -295,6 +329,25 @@ defmodule Snodo.Tool.SimpleNestingTest do
     assert Flat.output_schema() == nil
   end
 
+  test "output_schema still accepts a map, and a map may replace an earlier map" do
+    assert MapOutput.output_schema() ==
+             %{"type" => "object", "properties" => %{"a" => %{"type" => "string"}}}
+  end
+
+  test "local helpers named output, output_schema/2, and argument/5 are not captured" do
+    assert LocalHelpers.call(%{"value" => "abc"}, nil) == {:ok, "ABCabc!"}
+    assert LocalHelpers.helpers("v") == {"v", "v"}
+    assert LocalHelpers.output_schema() == nil
+
+    inline =
+      dispatch("tools/call", %{
+        "name" => "inline_order",
+        "arguments" => %{"items" => [%{"sku" => "a"}]}
+      })
+
+    assert inline["result"]["structuredContent"] == %{"count" => 1}
+  end
+
   describe "compile errors" do
     test "a block on a type that is not an object or array of objects" do
       for type <- [":string", "{:array, :string}", "%{\"type\" => \"object\"}"] do
@@ -333,7 +386,7 @@ defmodule Snodo.Tool.SimpleNestingTest do
 
       assert_compile_error(
         """
-        output do
+        output_schema do
           argument "lines", {:array, :object} do
             argument "sku", :string, required: :yes
           end
@@ -371,36 +424,76 @@ defmodule Snodo.Tool.SimpleNestingTest do
       )
     end
 
-    test "output cannot be nested, repeated, or follow output_schema/1" do
+    test "empty and non-string nested names name the enclosing argument" do
+      assert_compile_error(
+        """
+        argument "customer", :object do
+          argument "address", :object do
+            argument "", :string
+          end
+        end
+        """,
+        ~r/argument names cannot be empty \(in argument "customer.address"\)/
+      )
+
+      assert_compile_error(
+        """
+        output_schema do
+          argument :id, :string
+        end
+        """,
+        ~r/expects a string name and keyword options, got :id \(in output_schema\)/
+      )
+    end
+
+    test "schema on a block argument cannot replace what the block declares" do
+      assert_compile_error(
+        """
+        argument "lines", {:array, :object}, schema: %{"items" => %{"type" => "string"}} do
+          argument "sku", :string
+        end
+        """,
+        ~r/argument "lines" :schema cannot set \["items"\]; its do block declares them/
+      )
+
+      assert_compile_error(
+        """
+        argument "customer", :object, schema: %{"properties" => %{}, "required" => []} do
+          argument "id", :string
+        end
+        """,
+        ~r/argument "customer" :schema cannot set \["properties", "required"\]/
+      )
+    end
+
+    test "an output schema block cannot be nested or combined with another output schema" do
       assert_compile_error(
         """
         argument "x", :object do
-          output do
+          output_schema do
             argument "y", :string
           end
         end
         """,
-        ~r/output cannot be declared inside a block/
+        ~r/output_schema cannot be declared inside a block/
       )
 
       assert_compile_error(
         """
-        output do
-          output do
-            argument "y", :string
-          end
+        output_schema do
+          output_schema(%{"type" => "object"})
         end
         """,
-        ~r/output cannot be declared inside a block/
+        ~r/output_schema cannot be declared inside a block/
       )
 
       assert_compile_error(
         """
-        output do
+        output_schema do
           argument "y", :string
         end
 
-        output do
+        output_schema do
           argument "z", :string
         end
         """,
@@ -411,36 +504,39 @@ defmodule Snodo.Tool.SimpleNestingTest do
         """
         output_schema(%{"type" => "object"})
 
-        output do
+        output_schema do
           argument "z", :string
         end
         """,
         ~r/output schema is already declared/
       )
+
+      assert_compile_error(
+        """
+        output_schema do
+          argument "z", :string
+        end
+
+        output_schema(%{"type" => "object"})
+        """,
+        ~r/output schema is already declared by a block/
+      )
     end
 
-    test "output options are validated like the root options" do
+    test "output schema block options are validated like the root options" do
       assert_compile_error(
-        """
-        output magic: true do
-          argument "y", :string
-        end
-        """,
-        ~r/Snodo.Tool.Simple output received unknown options: \[:magic\]/
+        ~s|output_schema(magic: true, do: argument("y", :string))|,
+        ~r/Snodo.Tool.Simple output_schema received unknown options: \[:magic\]/
       )
 
       assert_compile_error(
-        """
-        output schema: %{"type" => "array"} do
-          argument "y", :string
-        end
-        """,
-        ~r/Snodo.Tool.Simple output must produce an object schema with properties/
+        ~s|output_schema(schema: %{"type" => "array"}, do: argument("y", :string))|,
+        ~r/Snodo.Tool.Simple output_schema must produce an object schema with properties/
       )
 
       assert_compile_error(
-        ~s|output(additional_properties: false)|,
-        ~r/output expects a do block/
+        ~s|output_schema(additional_properties: false)|,
+        ~r/output_schema must evaluate to nil or a JSON Schema map/
       )
     end
   end
