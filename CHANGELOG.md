@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.2](https://github.com/joshrotenberg/snodo/compare/v0.3.1...v0.3.2) (2026-09-30)
+
+
+### Features
+
+* add snodo_oauth resource server package ([#181](https://github.com/joshrotenberg/snodo/issues/181)) ([5d44db2](https://github.com/joshrotenberg/snodo/commit/5d44db23519c93e07b539b787c8165652fb56624))
+* answer input requests automatically in Snodo.Client ([#179](https://github.com/joshrotenberg/snodo/issues/179)) ([6d758d1](https://github.com/joshrotenberg/snodo/commit/6d758d15226adc551502b9fdcff355be07eba639))
+* drain the native HTTP listener on shutdown ([#190](https://github.com/joshrotenberg/snodo/issues/190)) ([e25800c](https://github.com/joshrotenberg/snodo/commit/e25800c592be5106df5cc0811d11e4be6e004505))
+* ExUnit assertions for testing servers ([#191](https://github.com/joshrotenberg/snodo/issues/191)) ([6452f1e](https://github.com/joshrotenberg/snodo/commit/6452f1e0b06d39bcc8facd84f148e4b54870f624))
+* forward instrumentation events to :telemetry ([#182](https://github.com/joshrotenberg/snodo/issues/182)) ([0e783ad](https://github.com/joshrotenberg/snodo/commit/0e783ad4530fb121daf4d1f11cc5db6bb14b7f60))
+* key identifiers for sealed MRTR request state ([#192](https://github.com/joshrotenberg/snodo/issues/192)) ([ecd5e14](https://github.com/joshrotenberg/snodo/commit/ecd5e142da4841ede611a3f726782fabc8ccf28d))
+* nested arguments and output schemas in the tool DSL ([#193](https://github.com/joshrotenberg/snodo/issues/193)) ([24f890a](https://github.com/joshrotenberg/snodo/commit/24f890a5efa676bbe0b3c8f13a43bda9bcabcd8b))
+* OAuth client support for Snodo.Client ([#186](https://github.com/joshrotenberg/snodo/issues/186)) ([af79ddb](https://github.com/joshrotenberg/snodo/commit/af79ddbd47c2f6c931702afc3ded662f54004104))
+* open subscriptions/listen streams in Snodo.Client ([#184](https://github.com/joshrotenberg/snodo/issues/184)) ([fa10710](https://github.com/joshrotenberg/snodo/commit/fa1071038bfbda9defef9ad5f6b55195c89e2762))
+* sampling and roots as MRTR input requests ([#180](https://github.com/joshrotenberg/snodo/issues/180)) ([1cf6cf1](https://github.com/joshrotenberg/snodo/commit/1cf6cf14bf0020408d50452f434d253aa7a0c8a3))
+* sampling and roots handler kinds in Snodo.Client ([#185](https://github.com/joshrotenberg/snodo/issues/185)) ([451165a](https://github.com/joshrotenberg/snodo/commit/451165ab48c32f0f484e207d8d559a52a57f0a9d))
+* Snodo.Client speaks the initialize-era protocol versions ([#187](https://github.com/joshrotenberg/snodo/issues/187)) ([ebc3504](https://github.com/joshrotenberg/snodo/commit/ebc35042213064126ccf6614a4a648e443cf5a25))
+
 ## [0.3.1](https://github.com/joshrotenberg/snodo/compare/v0.3.0...v0.3.1) (2026-09-29)
 
 

@@ -15,7 +15,7 @@ Add this package and a PostgreSQL driver to the host application:
 
 <!-- x-release-please-start-version -->
 ```elixir
-{:snodo_tasks_postgres, "~> 0.3.1"},
+{:snodo_tasks_postgres, "~> 0.3.2"},
 {:postgrex, "~> 0.22"}
 ```
 <!-- x-release-please-end -->

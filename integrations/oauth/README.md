@@ -24,8 +24,8 @@ in the core sets no identity and is not covered by this package.
 
 <!-- x-release-please-start-version -->
 ```elixir
-{:snodo_plug, "~> 0.3.1"},
-{:snodo_oauth, "~> 0.3.1"},
+{:snodo_plug, "~> 0.3.2"},
+{:snodo_oauth, "~> 0.3.2"},
 {:bandit, "~> 1.12"}
 ```
 <!-- x-release-please-end -->

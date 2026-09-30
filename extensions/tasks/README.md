@@ -5,7 +5,7 @@ This independent `:snodo_tasks` Mix package implements the released SEP-2663
 Tasks extension for MCP `2026-07-28` without adding task methods or capabilities
 to the core protocol catalog. Its only runtime dependency is the `snodo` core;
 the core does not compile or depend on Tasks. Add it with
-`{:snodo_tasks, "~> 0.3.1"}`, or with one of the durable stores, which bring it
+`{:snodo_tasks, "~> 0.3.2"}`, or with one of the durable stores, which bring it
 with them.
 <!-- x-release-please-end -->
 
