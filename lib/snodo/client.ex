@@ -504,9 +504,10 @@ defmodule Snodo.Client do
 
   On an initialize-era connection a method the negotiated dialect's catalog
   does not define as a client request is refused with -32601 before anything
-  is sent. On 2026-07-28 a method the catalog does not list is sent as it
-  is, because negotiated extensions add methods the core catalog does not
-  carry.
+  is sent. On 2026-07-28 a method the catalog lists only as a server request
+  or a notification is refused the same way, and a method the catalog does
+  not list is sent as it is, because negotiated extensions add methods the
+  core catalog does not carry.
 
   `subscriptions/listen` raises `ArgumentError`: its response is a stream,
   which `listen/3` opens.
@@ -773,11 +774,13 @@ defmodule Snodo.Client do
 
   # The dialect's catalog decides which requests the negotiated version
   # defines. Extensions add methods the 2026-07-28 catalog does not list, so a
-  # stateless-era client sends an unlisted method as it is. The initialize-era
-  # dialects implement a fixed slice with no extensions, so there an unlisted
-  # method is refused before anything is sent.
+  # stateless-era client sends an unlisted method as it is, and refuses only a
+  # method the catalog lists as something other than a client request. The
+  # initialize-era dialects implement a fixed slice with no extensions, so
+  # there an unlisted method is refused too. Nothing is sent either way.
   defp check_method(%__MODULE__{dialect: dialect}, method) do
-    if dialect.era() == :stateless or defined?(dialect, method) do
+    if defined?(dialect, method) or
+         (dialect.era() == :stateless and not listed?(dialect, method)) do
       :ok
     else
       {:error,
@@ -796,6 +799,8 @@ defmodule Snodo.Client do
       Profile.fetch_method(dialect.profile(), method, :client_to_server)
     )
   end
+
+  defp listed?(dialect, method), do: Profile.fetch_method(dialect.profile(), method) != :error
 
   # Once a session exists, every message carries its headers and the server's
   # own requests are answered. Before that, on a stateless connection, only a

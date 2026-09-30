@@ -208,8 +208,21 @@ defmodule Snodo.ClientTest do
 
       # A stateless connection sends what the catalog does not list, since
       # extensions add methods; the server answers.
-      assert {:error, %Error{code: -32_601}} = Client.request(client(), "tasks/get")
-      assert {:error, %Error{code: -32_601}} = Client.ping(client())
+      assert {:error, %Error{code: -32_601, message: "Method not found: tasks/get", data: nil}} =
+               Client.request(client(), "tasks/get")
+
+      assert {:error, %Error{code: -32_601, message: "Method not found: ping"}} =
+               Client.ping(client())
+
+      # It refuses what the catalog lists as a server request or a
+      # notification, before anything is sent.
+      for method <- ["elicitation/create", "roots/list", "notifications/cancelled"] do
+        assert {:error,
+                %Error{
+                  code: -32_601,
+                  data: %{"method" => ^method, "protocolVersion" => "2026-07-28"}
+                }} = Client.request(client(), method)
+      end
     end
 
     test "the server receives and accepts the client's clientInfo" do

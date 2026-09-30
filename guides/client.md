@@ -96,8 +96,10 @@ On an initialize-era connection:
   define as a client request, with -32601 before anything is sent. The
   catalogs are the protocol dialect modules' profiles, the same ones the
   server admits requests against, so the client and the server stay in
-  step. On 2026-07-28 an unlisted method is sent as it is, because
-  negotiated extensions add methods the core catalog does not carry.
+  step. On 2026-07-28 a method the catalog lists only as a server request or
+  a notification is refused the same way, and an unlisted method is sent as
+  it is, because negotiated extensions add methods the core catalog does not
+  carry.
 - The requests the server sends to the client (`elicitation/create`,
   `sampling/createMessage`, and `roots/list`) are answered by the same
   `:input_handlers` that answer 2026-07-28 input requests, keyed by method
