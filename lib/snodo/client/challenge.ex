@@ -21,7 +21,10 @@ defmodule Snodo.Client.Challenge do
       `"invalid_token"` or `"insufficient_scope"`.
 
   A header longer than 8 KiB, or one that does not follow the grammar, parses
-  as no challenges. A parameter that appears twice keeps its first value.
+  as no challenges. A parameter that appears twice keeps its first value. A
+  challenge that carries a token68 credential instead of parameters, such as
+  `Negotiate abc==`, has empty `params`, and the challenges after it are
+  still read.
   """
 
   @type t :: %__MODULE__{
@@ -93,18 +96,37 @@ defmodule Snodo.Client.Challenge do
 
   # A token followed by `=` starts a parameter; any other token starts a
   # challenge. Commas between parameters and challenges are optional here,
-  # which accepts every well-formed header and some sloppy ones.
+  # which accepts every well-formed header and some sloppy ones. Tokens also
+  # take `/`, so that a base64 token68 credential lexes as one token.
   defp challenges([], acc), do: Enum.reverse(acc)
   defp challenges([:comma | rest], acc), do: challenges(rest, acc)
   defp challenges([{:token, _name}, :eq | _rest], acc), do: Enum.reverse(acc)
 
   defp challenges([{:token, scheme} | rest], acc) do
-    {params, rest} = params(rest, %{})
+    {params, rest} =
+      case token68(rest) do
+        {:ok, rest} -> {%{}, rest}
+        :error -> params(rest, %{})
+      end
+
     challenges(rest, [{String.downcase(scheme), params} | acc])
   end
 
   # Anything else is a grammar error; what was parsed so far stands.
   defp challenges(_lexemes, acc), do: Enum.reverse(acc)
+
+  # A token68 credential (RFC 9110 section 11.3), such as `Negotiate abc==`,
+  # is one token and its trailing `=` padding, ending the challenge. It is
+  # skipped so that a challenge after it is still read.
+  defp token68([{:token, _value} | rest]) do
+    case Enum.drop_while(rest, &(&1 == :eq)) do
+      [] -> {:ok, []}
+      [:comma | _rest] = rest -> {:ok, rest}
+      _other -> :error
+    end
+  end
+
+  defp token68(_lexemes), do: :error
 
   defp params([{:token, name}, :eq, {kind, value} | rest], acc) when kind in [:token, :quoted] do
     name = String.downcase(name)
@@ -132,7 +154,7 @@ defmodule Snodo.Client.Challenge do
     lex(rest, [{:token, token} | acc])
   end
 
-  defp lex(<<c, _rest::binary>> = input, acc) when c in ~c"!#$%&'*+-.^_`|~" do
+  defp lex(<<c, _rest::binary>> = input, acc) when c in ~c"!#$%&'*+-./^_`|~" do
     {token, rest} = token(input, [])
     lex(rest, [{:token, token} | acc])
   end
@@ -140,7 +162,7 @@ defmodule Snodo.Client.Challenge do
   defp lex(_input, _acc), do: :error
 
   defp token(<<c, rest::binary>>, acc)
-       when c in ?a..?z or c in ?A..?Z or c in ?0..?9 or c in ~c"!#$%&'*+-.^_`|~",
+       when c in ?a..?z or c in ?A..?Z or c in ?0..?9 or c in ~c"!#$%&'*+-./^_`|~",
        do: token(rest, [c | acc])
 
   defp token(rest, acc), do: {acc |> Enum.reverse() |> List.to_string(), rest}

@@ -67,6 +67,18 @@ defmodule Snodo.ClientChallengeTest do
                Challenge.parse("Bearer, Basic")
     end
 
+    test "reads past a token68 credential to the challenges after it" do
+      assert [
+               %Challenge{scheme: "negotiate", params: %{}},
+               %Challenge{scheme: "bearer", scope: ["x"]}
+             ] = Challenge.parse(~s(Negotiate YII+/abc==, Bearer scope="x"))
+
+      assert [%Challenge{scheme: "basic", params: %{}}, %Challenge{scheme: "bearer"}] =
+               Challenge.parse("Basic dXNlcjpwYXNz, Bearer")
+
+      assert [%Challenge{scheme: "negotiate", params: %{}}] = Challenge.parse("Negotiate abc")
+    end
+
     test "an empty scope parameter is no scope" do
       assert [%Challenge{scope: []}] = Challenge.parse(~s(Bearer scope=""))
     end
