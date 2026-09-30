@@ -4,6 +4,11 @@ defmodule Snodo.OAuth.Client.Flow do
   # stays responsive while the user is in the browser. The stores live in
   # the owner and are reached through it. A run ends with `{:ok, token}` or
   # `{:error, %Snodo.Error{}}`; it never raises into the owner.
+  #
+  # The run monitors the owner and gives up when it stops, so a flow does
+  # not outlive the client that started it. Waiting for the redirect, the
+  # only unbounded step, returns at once; an HTTP request under way ends
+  # within its `timeout_ms`, and the next store call finds the owner gone.
 
   alias Snodo.Error
   alias Snodo.OAuth.Client.ClientAuth
@@ -18,6 +23,8 @@ defmodule Snodo.OAuth.Client.Flow do
 
   @spec run(map()) :: {:ok, String.t()} | {:error, Error.t()}
   def run(ctx) do
+    ctx = Map.put(ctx, :owner_monitor, Process.monitor(ctx.owner))
+
     with :ok <- check_scheme(ctx.trigger),
          {:ok, prm, resource} <- discover_resource(ctx),
          {:ok, issuer} <- issuer(prm, ctx),
@@ -324,9 +331,22 @@ defmodule Snodo.OAuth.Client.Flow do
 
       url = with_query(endpoint, query)
 
-      with {:ok, params} <- redirect(ctx, url),
-           do: validate_redirect(ctx, as_metadata, params, state)
+      result =
+        with {:ok, params} <- redirect(ctx, url),
+             do: validate_redirect(ctx, as_metadata, params, state)
+
+      drop_pending(result, ctx, state)
     end
+  end
+
+  # A completed redirect removes its entry in `fetch_pending/2`; any other
+  # ending removes it here, so failed authorizations leave nothing behind.
+  defp drop_pending({:ok, _code, _pending} = result, _ctx, _state), do: result
+  defp drop_pending({:error, :owner_down} = result, _ctx, _state), do: result
+
+  defp drop_pending({:error, _reason} = result, ctx, state) do
+    _deleted = store(ctx, :pending, {:delete, state})
+    result
   end
 
   defp redirect(ctx, url) do
@@ -367,10 +387,14 @@ defmodule Snodo.OAuth.Client.Flow do
   # `callback/2`, or the authorize function returns the redirect URL itself.
   defp await_redirect(ctx, tag, monitor, deadline) do
     ref = ctx.ref
+    owner_monitor = ctx.owner_monitor
 
     receive do
       {:redirect, ^ref, %{} = params} ->
         {:ok, params}
+
+      {:DOWN, ^owner_monitor, :process, _pid, _reason} ->
+        {:error, :owner_down}
 
       {^tag, {:ok, url}} when is_binary(url) ->
         {:ok, URI.decode_query(URI.parse(url).query || "", %{}, :www_form)}
@@ -399,14 +423,15 @@ defmodule Snodo.OAuth.Client.Flow do
   end
 
   # `state` is compared in constant time against the value this run issued,
-  # and only then used to look the pending authorization up.
+  # and only then used to look the pending authorization up. RFC 9207 checks
+  # `iss` on error responses too, so it comes before the error.
   defp validate_redirect(ctx, as_metadata, params, expected) do
     with {:ok, state} <- param(params, "state", :missing_state),
          :ok <- check_state(state, expected),
          {:ok, pending} <- fetch_pending(ctx, expected),
+         :ok <- check_iss(as_metadata, params["iss"]),
          :ok <- check_error(params),
-         {:ok, code} <- param(params, "code", :missing_code),
-         :ok <- check_iss(as_metadata, params["iss"]) do
+         {:ok, code} <- param(params, "code", :missing_code) do
       {:ok, code, pending}
     end
   end
@@ -638,6 +663,10 @@ defmodule Snodo.OAuth.Client.Flow do
 
   defp message(:step_up_without_scope), do: "The server asks for more scope without naming it"
   defp message(:authorization_timeout), do: "The authorization was not completed in time"
+  defp message(:owner_down), do: "The OAuth client stopped during the authorization"
+
+  defp message({:provider_unavailable, reason}),
+    do: "The OAuth client is not running: #{inspect(reason)}"
 
   defp message({:authorize_failed, reason}),
     do: "The authorize function failed: #{inspect(reason)}"

@@ -21,7 +21,12 @@ defmodule Snodo.OAuth.Client.TokenStore do
   @doc "Prepares the store from the `{module, arg}` given to the client."
   @callback init(arg :: term()) :: {:ok, state()}
 
+  @doc "Returns the token stored under `key`, or `:error` when there is none."
   @callback fetch(state(), key()) :: {:ok, value()} | :error
+
+  @doc "Stores `value` under `key`, replacing any earlier value."
   @callback put(state(), key(), value()) :: {:ok, state()}
+
+  @doc "Removes `key`. Removing a key that is not there succeeds."
   @callback delete(state(), key()) :: {:ok, state()}
 end

@@ -32,6 +32,11 @@ defmodule Snodo.OAuth.ClientTest do
 
   defp tokens(fake), do: for(%{token: token} <- Fake.events(fake.world, :mcp), do: token)
 
+  defp pending(oauth) do
+    %{stores: %{pending: {_module, pending}}} = :sys.get_state(oauth)
+    pending
+  end
+
   describe "the authorization code flow" do
     test "authorizes with registration, PKCE, and the resource indicator" do
       fake = Fake.start()
@@ -550,10 +555,11 @@ defmodule Snodo.OAuth.ClientTest do
         {:ok, URI.to_string(%{uri | query: URI.encode_query(query)})}
       end
 
-      assert {_oauth, {:error, %Error{cause: :state_mismatch}}} =
+      assert {oauth, {:error, %Error{cause: :state_mismatch}}} =
                list_tools(fake, authorize: authorize)
 
       assert Fake.events(fake.world, :token) == []
+      assert pending(oauth) == %{}
     end
 
     test "a refusal by the authorization server is reported" do
@@ -563,6 +569,15 @@ defmodule Snodo.OAuth.ClientTest do
                list_tools(fake)
 
       assert Fake.events(fake.world, :token) == []
+    end
+
+    test "a refusal naming another issuer is refused as a mix-up (RFC 9207)" do
+      fake = Fake.start(deny: true, iss_in_redirect: :wrong)
+
+      assert {_oauth,
+              {:error,
+               %Error{cause: {:issuer_mismatch_in_response, _issuer, "https://evil.example.com"}}}} =
+               list_tools(fake)
     end
 
     test "the authorize function may return the redirect URL" do
@@ -610,15 +625,57 @@ defmodule Snodo.OAuth.ClientTest do
       fake = Fake.start()
       authorize = fn _url -> :ok end
 
-      assert {_oauth, {:error, %Error{cause: :authorization_timeout}}} =
+      assert {oauth, {:error, %Error{cause: :authorization_timeout}}} =
                list_tools(fake, authorize: authorize, authorization_timeout: 200)
+
+      assert pending(oauth) == %{}
+    end
+
+    test "the flow stops with the client, and a waiting request fails" do
+      fake = Fake.start()
+      test = self()
+
+      authorize = fn _url ->
+        send(test, {:authorize, self()})
+
+        receive do
+          :never -> :ok
+        end
+      end
+
+      for stop <- [:kill, :stop] do
+        {:ok, oauth} =
+          GenServer.start(OAuth,
+            resource: fake.mcp_url,
+            authorize: authorize,
+            authorization_timeout: :infinity
+          )
+
+        spawn(fn -> send(test, {:result, Client.list_tools(connect(fake, oauth))}) end)
+        assert_receive {:authorize, authorize_pid}, 5_000
+        %{flow: %{pid: flow}} = :sys.get_state(oauth)
+        monitors = Enum.map([flow, authorize_pid], &Process.monitor/1)
+
+        case stop do
+          :kill -> Process.exit(oauth, :kill)
+          :stop -> GenServer.stop(oauth)
+        end
+
+        for monitor <- monitors,
+            do: assert_receive({:DOWN, ^monitor, :process, _pid, _reason}, 5_000)
+
+        assert_receive {:result, {:error, %Error{cause: {:provider_unavailable, reason}}}}, 5_000
+        assert reason in [:killed, :normal]
+      end
     end
 
     test "a failing authorize function fails the request" do
       fake = Fake.start()
 
-      assert {_oauth, {:error, %Error{cause: {:authorize_failed, :no_browser}}}} =
+      assert {oauth, {:error, %Error{cause: {:authorize_failed, :no_browser}}}} =
                list_tools(fake, authorize: fn _url -> {:error, :no_browser} end)
+
+      assert pending(oauth) == %{}
 
       assert {_oauth, {:error, %Error{cause: {:authorize_raised, %RuntimeError{}}}}} =
                list_tools(fake, authorize: fn _url -> raise "boom" end)
@@ -777,6 +834,30 @@ defmodule Snodo.OAuth.ClientTest do
       refute Map.has_key?(body, "scope")
     end
 
+    test "binds no listener and keeps credentials out of the process status" do
+      fake =
+        Fake.start(
+          registration: false,
+          grant_types_supported: ["client_credentials"],
+          token_endpoint_auth_methods_supported: ["client_secret_basic"]
+        )
+
+      assert {oauth, {:ok, _tools}} =
+               list_tools(fake,
+                 grant: :client_credentials,
+                 client_id: "cc-client",
+                 client_secret: "cc-secret-value"
+               )
+
+      assert OAuth.redirect_uri(oauth) == nil
+      assert %{listener: nil} = :sys.get_state(oauth)
+      assert inspect(:sys.get_state(oauth), limit: :infinity) =~ "tok-"
+
+      status = inspect(:sys.get_status(oauth), limit: :infinity, printable_limit: :infinity)
+      refute status =~ "cc-secret-value"
+      refute status =~ "tok-"
+    end
+
     test "sends the secret in the body with client_secret_post and the scope the resource lists" do
       fake =
         Fake.start(
@@ -887,6 +968,24 @@ defmodule Snodo.OAuth.ClientTest do
       assert {:error, {:insecure_url, _url}} =
                Discovery.authorization_server([], "http://auth.example.com")
     end
+  end
+
+  test "a provider that is not running fails the request instead of exiting the caller" do
+    dead = spawn(fn -> :ok end)
+    monitor = Process.monitor(dead)
+    assert_receive {:DOWN, ^monitor, :process, ^dead, _reason}, 5_000
+
+    assert {:error, %Error{kind: :authorization, cause: {:provider_unavailable, :noproc}}} =
+             OAuth.token(dead, %{url: "https://mcp.example.com/mcp"})
+
+    assert {:error, %Error{cause: {:provider_unavailable, :noproc}} = error} =
+             OAuth.refresh(dead, nil, %{
+               url: "https://mcp.example.com/mcp",
+               status: 401,
+               token: "refused-token"
+             })
+
+    refute inspect(error, limit: :infinity) =~ "refused-token"
   end
 
   test "options are checked" do

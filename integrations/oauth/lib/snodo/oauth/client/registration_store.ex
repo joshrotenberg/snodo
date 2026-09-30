@@ -16,7 +16,9 @@ defmodule Snodo.OAuth.Client.RegistrationStore do
   default, `Snodo.OAuth.Client.RegistrationStore.Memory`, keeps entries in the client's
   state. A persistent store lets a client reuse its registration across
   restarts; the client registers again when the stored redirect URI no
-  longer matches its own.
+  longer matches its own. The loopback listener takes an OS-assigned port by
+  default, so reuse across restarts needs a fixed `:port` in the
+  `:redirect` option.
   """
 
   @type state :: term()
@@ -26,7 +28,12 @@ defmodule Snodo.OAuth.Client.RegistrationStore do
   @doc "Prepares the store from the `{module, arg}` given to the client."
   @callback init(arg :: term()) :: {:ok, state()}
 
+  @doc "Returns the registration stored under `key`, or `:error` when there is none."
   @callback fetch(state(), key()) :: {:ok, value()} | :error
+
+  @doc "Stores `value` under `key`, replacing any earlier value."
   @callback put(state(), key(), value()) :: {:ok, state()}
+
+  @doc "Removes `key`. Removing a key that is not there succeeds."
   @callback delete(state(), key()) :: {:ok, state()}
 end

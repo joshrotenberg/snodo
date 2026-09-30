@@ -26,6 +26,12 @@ defmodule Snodo.Client.TokenProvider do
   must be a string without CR, LF, or NUL; the transport refuses one that is
   not, without including it in the error.
 
+  The transport's `:timeout` applies to each HTTP attempt. A provider call
+  runs before an attempt and is not bounded by it, so a provider that
+  blocks, for example while a user authorizes in a browser, lengthens the
+  request by that long. A provider that talks to another process returns
+  an error, rather than exiting, when that process is not running.
+
   The context is a map with `:url`, the endpoint the client connected to,
   and, for `refresh/3`, `:status` and `:token`. A provider that keeps state
   (a token cache, a refresh token, a pending authorization) typically hands
@@ -55,7 +61,20 @@ defmodule Snodo.Client.TokenProvider do
           optional(:token) => String.t() | nil
         }
 
+  @doc """
+  Returns the token for the next request, `{:ok, nil}` to send it without
+  one, or `{:error, error}` to fail it. Called before every request and
+  before opening a `subscriptions/listen` stream.
+  """
   @callback token(state(), context()) :: {:ok, String.t() | nil} | {:error, Error.t()}
+
+  @doc """
+  Returns a new token after the server refused the request with a `401`,
+  or with a `403` `insufficient_scope` challenge. `challenge` is the parsed
+  challenge, or `nil` when the response had none; `context` carries the
+  status and the refused token. The transport sends the request once more
+  with the token returned.
+  """
   @callback refresh(state(), Challenge.t() | nil, context()) ::
               {:ok, String.t()} | {:error, Error.t()}
 end

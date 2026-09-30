@@ -58,7 +58,9 @@ defmodule Snodo.Client.HTTP do
       `Snodo.Client.Challenge` and sends the request once more. A `401` or
       `403` on that second attempt is a -32000 transport error with
       `cause: {:unauthorized, status, challenge}`. Without a provider, those
-      statuses are returned as any other unexpected status.
+      statuses are returned as any other unexpected status. The request
+      timeout covers each HTTP attempt, not the provider calls before and
+      between them.
     * `:ssl` - `:ssl` client options for `https` URLs. The default verifies the
       peer against `:public_key.cacerts_get/0` and checks the host name.
     * `:connect_timeout` - milliseconds to establish the connection. Defaults

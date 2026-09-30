@@ -382,6 +382,10 @@ refreshed, or extended comes from a `Snodo.Client.TokenProvider`, given as
 - A second `401` or `403` returns -32000 with
   `cause: {:unauthorized, status, challenge}`. A provider error is returned as
   it is. No token appears in an error.
+- The request's `timeout:` covers each HTTP attempt, not the provider call
+  before or between them. A provider that runs an authorization flow can
+  hold a request for as long as the user takes to authorize, up to the
+  provider's own limit (`Snodo.OAuth.Client` waits 300 seconds by default).
 
 `snodo_oauth` supplies `Snodo.OAuth.Client`, which implements the MCP
 authorization flows on this behaviour: protected resource and authorization

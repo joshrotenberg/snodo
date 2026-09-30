@@ -24,7 +24,15 @@ defmodule Snodo.OAuth.Client do
   a `403` `insufficient_scope` starts a step-up for the union of the scopes
   granted and the scopes challenged. The flow runs in a process of its own,
   so this process answers other callers meanwhile, and every caller that
-  needs a token while a flow is under way waits for that flow.
+  needs a token while a flow is under way waits for that flow. The flow
+  monitors this process and stops when it does. A caller whose provider is
+  not running, or stops while it waits, gets an error with
+  `cause: {:provider_unavailable, reason}`.
+
+  A request waits for the flow without a limit of its own: the transport's
+  `:timeout` covers each HTTP attempt, not the provider call before or
+  between them, so a request that starts an authorization can take up to
+  `:authorization_timeout` longer.
 
   ## The authorization code flow
 
@@ -63,7 +71,7 @@ defmodule Snodo.OAuth.Client do
   | `:resource` | required | The MCP server URL; see `Snodo.OAuth.ResourceServer.resource!/1` |
   | `:authorize` | required for the code flow | A function of the authorization URL; see below |
   | `:grant` | `:authorization_code` | `:authorization_code` or `:client_credentials` |
-  | `:redirect` | `{:loopback, []}` | `{:loopback, port: 0, path: "/callback"}`, or `{:external, uri}` for an endpoint of the application's own |
+  | `:redirect` | `{:loopback, []}` | `{:loopback, port: 0, path: "/callback"}`, or `{:external, uri}` for an endpoint of the application's own; the client credentials grant binds no listener |
   | `:client_metadata_url` | none | The `https` URL of this client's ID metadata document |
   | `:client_id`, `:client_secret` | none | A pre-registered client |
   | `:token_endpoint_auth_method` | derived | Forces one of `none`, `client_secret_basic`, `client_secret_post`, `private_key_jwt` |
@@ -87,11 +95,18 @@ defmodule Snodo.OAuth.Client do
   headless client; or `{:error, reason}`. It runs in a process of its own
   and may block.
 
+  A stored registration is reused only while its redirect URI matches, and
+  the loopback listener takes an OS-assigned port by default, so a client
+  that keeps its registration across restarts sets a fixed `:port`.
+
   Every URL the flow uses must be `https`, or `http` to a loopback host. A
   document or token response larger than `max_body_bytes` is refused, with
   `:body_too_large` in the error's `cause`; `:httpc` reads the body before
   its size is checked, so `timeout_ms` bounds the transfer. Tokens are kept
-  in the token store and never logged or placed in an error.
+  in the token store and never logged or placed in an error. The process's
+  status, as `:sys.get_status/1` and crash reports show it, leaves out the
+  stores, the client secret, the private key, and tokens in the last
+  message; `:sys.get_state/1` returns the state as it is.
 
   Errors have `kind: :authorization`, code -32000, and a `cause` naming the
   step that failed, such as `{:resource_mismatch, requested, configured}`,
@@ -123,11 +138,26 @@ defmodule Snodo.OAuth.Client do
   end
 
   @impl Snodo.Client.TokenProvider
-  def token(client, context), do: GenServer.call(client, {:token, context}, :infinity)
+  def token(client, context), do: call(client, {:token, context})
 
   @impl Snodo.Client.TokenProvider
-  def refresh(client, challenge, context),
-    do: GenServer.call(client, {:refresh, challenge, context}, :infinity)
+  def refresh(client, challenge, context), do: call(client, {:refresh, challenge, context})
+
+  # The exit reason of a failed call holds the request, and a refresh
+  # request holds the refused token, so only the server's own reason is
+  # kept, and only when it is an atom.
+  defp call(client, request) do
+    GenServer.call(client, request, :infinity)
+  catch
+    :exit, reason ->
+      reason =
+        case reason do
+          {reason, {GenServer, :call, _args}} when is_atom(reason) -> reason
+          _other -> :exited
+        end
+
+      {:error, Flow.error({:provider_unavailable, reason})}
+  end
 
   @doc """
   Delivers the authorization server's redirect to a flow that waits for it,
@@ -143,8 +173,12 @@ defmodule Snodo.OAuth.Client do
 
   def callback(client, %{} = params), do: GenServer.call(client, {:callback, params})
 
-  @doc "The redirect URI this client registers and expects the redirect on."
-  @spec redirect_uri(GenServer.server()) :: String.t()
+  @doc """
+  The redirect URI this client registers and expects the redirect on, or
+  `nil` for the client credentials grant with a loopback redirect, which
+  binds no listener.
+  """
+  @spec redirect_uri(GenServer.server()) :: String.t() | nil
   def redirect_uri(client), do: GenServer.call(client, :redirect_uri)
 
   @doc "Forgets the token held for the resource. The next request authorizes again."
@@ -155,11 +189,12 @@ defmodule Snodo.OAuth.Client do
   def init(opts) do
     resource = ResourceServer.resource!(required!(opts, :resource))
     config = config!(opts)
-    listener = listener!(config.redirect)
+    # The client credentials grant has no redirect, so it binds no port.
+    listener = if config.grant == :authorization_code, do: listener!(config.redirect)
 
     redirect =
       case config.redirect do
-        {:loopback, _opts} -> listener.uri
+        {:loopback, _opts} -> listener && listener.uri
         {:external, uri} -> uri
       end
 
@@ -237,6 +272,37 @@ defmodule Snodo.OAuth.Client do
     do: {:noreply, finish(state, {:error, Flow.error({:flow_crashed, reason})})}
 
   def handle_info(_message, state), do: {:noreply, state}
+
+  # Tokens, the client secret, and the private key stay out of crash
+  # reports and `:sys.get_status/1`.
+  @impl GenServer
+  def format_status(status) do
+    status
+    |> Map.replace_lazy(:state, &redact_state/1)
+    |> Map.replace_lazy(:message, &redact_message/1)
+  end
+
+  defp redact_state(%{config: config, stores: stores} = state) do
+    config =
+      config
+      |> Map.replace_lazy(:client_secret, &(&1 && :redacted))
+      |> Map.replace_lazy(:private_key, &(&1 && :redacted))
+
+    stores = Map.new(stores, fn {kind, {module, _store}} -> {kind, {module, :redacted}} end)
+    %{state | config: config, stores: stores}
+  end
+
+  defp redact_state(state), do: state
+
+  defp redact_message({:store, kind, {:put, key, _value}}),
+    do: {:store, kind, {:put, key, :redacted}}
+
+  defp redact_message({:refresh, challenge, %{} = context}),
+    do: {:refresh, challenge, Map.replace(context, :token, :redacted)}
+
+  defp redact_message({:callback, _params}), do: {:callback, :redacted}
+  defp redact_message({tag, {:ok, _token}}) when is_reference(tag), do: {tag, {:ok, :redacted}}
+  defp redact_message(message), do: message
 
   # Without a token, the code flow waits for the server's challenge, which
   # names the metadata and the scope; client credentials need neither.
