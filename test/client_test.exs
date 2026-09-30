@@ -225,6 +225,21 @@ defmodule Snodo.ClientTest do
       end
     end
 
+    test "the direct transport's notify/3 reports a dispatch that answers" do
+      {:ok, %Client{transport: {Snodo.Client.Direct, state}} = client} =
+        Client.direct(TestFixtures.runtime(@legacy_fixture))
+
+      opts = [dialect: client.dialect]
+      initialized = %{"jsonrpc" => "2.0", "method" => "notifications/initialized"}
+      assert :ok = Snodo.Client.Direct.notify(state, initialized, opts)
+
+      # A message with an id is a request, which the server answers.
+      request = %{"jsonrpc" => "2.0", "id" => 1, "method" => "ping"}
+
+      assert {:error, %Error{code: -32_000, kind: :transport, cause: {:ok, %{"id" => 1}}}} =
+               Snodo.Client.Direct.notify(state, request, opts)
+    end
+
     test "the server receives and accepts the client's clientInfo" do
       info = %{"name" => "my-app", "version" => "2.1.0"}
       {:ok, client} = Client.direct(TestFixtures.runtime(), client_info: info)

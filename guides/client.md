@@ -109,10 +109,23 @@ On an initialize-era connection:
   handler is answered -32601, one whose `params` lack the kind's keys -32602,
   and a handler that fails -32603. Over HTTP such a request arrives on the
   event stream of the request in flight, the handler runs in the calling
-  process, and the answer goes back as its own `POST`. Over stdio the
-  connection process runs the handler in a process it owns and writes the
-  answer; a handler that raises is answered -32603 there, and on HTTP the
-  exception propagates to the caller as it does for an embedded request.
+  process, and the answer goes back as its own `POST`. The time the handler
+  takes counts against that request's timeout, which is not extended. Over
+  stdio the connection process runs each handler in a linked process of its
+  own and writes the answer, with at most `:max_server_requests` (16)
+  handlers running at once; a request over the limit is answered -32603
+  without running a handler, and handlers still running when the connection
+  closes are killed. A handler that raises is answered -32603 on stdio, and
+  on HTTP the exception propagates to the caller as it does for an embedded
+  request.
+- The catalog check applies to the requests the client sends. The server
+  requests above are answered on any connection, whatever the negotiated
+  version. The initialize-era catalogs do not list them, and 2026-07-28
+  replaces them with input requests, but a 2026-07-28 connection over stdio,
+  or over HTTP with input handlers installed, answers a server `ping` with
+  `{}` and passes an elicitation, sampling, or roots request to the handlers.
+  Such a request is outside the multi round-trip flow, so
+  `:max_input_rounds` does not count it.
 - Versions before 2025-06-18 are not spoken. The client does not open the
   standalone `GET` event stream, so a request a server sends only there (the
   TypeScript SDK does this for requests made without a related request ID)
@@ -382,6 +395,7 @@ transport failure; -32001 when the acknowledgement does not arrive within
 | `:max_pages` | all | the most pages a list function requests (1,000) |
 | `:env`, `:cd` | stdio | environment and working directory for the command |
 | `:max_line_bytes` | stdio | the largest response line to accept (16 MiB); the rest of a longer line is discarded and its request times out |
+| `:max_server_requests` | stdio | the most server-to-client requests whose handlers run at once (16); a request over the limit is answered -32603 |
 | `:headers`, `:ssl`, `:connect_timeout` | HTTP | extra headers, `:ssl` options (peers are verified against the OS trust store by default), connect timeout |
 | `:max_response_bytes` | HTTP | the largest response to accept (16 MiB), checked as it arrives; a larger response closes the connection and returns -32000 |
 | `:max_buffer`, `:overflow` | `listen/3` | the subscription's buffer bound (100) and overflow policy (`:drop_oldest`) |
@@ -395,8 +409,9 @@ transport failure; -32001 when the acknowledgement does not arrive within
   raises, sends `notifications/cancelled` for that request. When the server exits,
   pending and later requests fail with -32000. The connection closes when the
   process that opened it exits. `close/1` closes the server's stdin. A request
-  the server sends to the client is answered in a process the connection
-  owns, through the input handlers.
+  the server sends to the client is answered through the input handlers in a
+  process linked to the connection, at most `:max_server_requests` at once,
+  and those processes are killed when the connection closes.
 
   Subscriptions share the connection. The connection process correlates the
   acknowledgement, the events, and the terminal response by the subscription

@@ -55,11 +55,19 @@ defmodule Snodo.Client.Direct do
   end
 
   # A notification has no response; the initialize-era handshake sends one.
+  # Anything else from the dispatch is reported rather than raised.
   @impl true
   def notify(%{runtime: runtime} = state, message, opts) do
     transport = transport_context(state, Keyword.fetch!(opts, :dialect))
-    {:ok, _no_response} = Server.dispatch(runtime, message, transport)
-    :ok
+
+    case Server.dispatch(runtime, message, transport) do
+      {:ok, nil} ->
+        :ok
+
+      other ->
+        {:error,
+         Snodo.Client.Transport.connection_error("The server answered a notification", other)}
+    end
   end
 
   @impl true

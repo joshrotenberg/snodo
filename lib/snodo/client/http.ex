@@ -22,7 +22,8 @@ defmodule Snodo.Client.HTTP do
   `elicitation/create` on an initialize-era connection, is answered by the
   `:on_server_request` function in the calling process, and the response is
   sent as its own `POST` before the stream is read further; without that
-  option such a request is dropped. Other notifications are dropped. A
+  option such a request is dropped. The time the function takes counts
+  against the request's timeout, which is not extended. Other notifications are dropped. A
   JSON-RPC error body is returned whatever the HTTP status, so `Snodo.Client`
   decodes it as `{:error, %Snodo.Error{}}`. Anything else is a -32000 transport
   error with the status and body in `cause`. A timeout closes the connection,

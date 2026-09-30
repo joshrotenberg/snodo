@@ -10,6 +10,7 @@ defmodule Snodo.ClientStdioTest do
 
   @fixture Path.expand("fixtures/client_stdio_server.exs", __DIR__)
   @initialize_era_fixture Path.expand("fixtures/client_initialize_era_server.exs", __DIR__)
+  @server_requests_fixture Path.expand("fixtures/client_server_requests.exs", __DIR__)
 
   defp connect(opts \\ [], args \\ []) do
     {:ok, client} = start_client(opts, args)
@@ -23,10 +24,28 @@ defmodule Snodo.ClientStdioTest do
     Client.connect({:stdio, elixir, ["-pa", ebin, @fixture | args]}, opts)
   end
 
-  # The hand-written server needs nothing from snodo's build.
+  # The hand-written servers need nothing from snodo's build.
   defp initialize_era(opts, args \\ []) do
     elixir = System.find_executable("elixir")
     Client.connect({:stdio, elixir, [@initialize_era_fixture | args]}, opts)
+  end
+
+  # Pinned to 2026-07-28, so nothing is sent at connect time.
+  defp server_requests(opts, args) do
+    elixir = System.find_executable("elixir")
+    opts = Keyword.put(opts, :protocol, "2026-07-28")
+    Client.connect({:stdio, elixir, [@server_requests_fixture | args]}, opts)
+  end
+
+  # A form handler that reports its pid and waits to be released.
+  defp blocking_form(test) do
+    fn _params ->
+      send(test, {:handler, self()})
+
+      receive do
+        :release -> {:ok, %{"action" => "accept", "content" => %{"name" => "Ada"}}}
+      end
+    end
   end
 
   test "lists and calls tools over a subprocess's stdin and stdout" do
@@ -392,6 +411,105 @@ defmodule Snodo.ClientStdioTest do
                Client.call_tool(client, "echo", %{"text" => "still here"})
 
       assert :ok = Client.close(client)
+    end
+  end
+
+  describe "server-to-client requests" do
+    test "a 2026-07-28 connection answers them through the installed handlers too" do
+      form = fn _params -> {:ok, %{"action" => "accept", "content" => %{"name" => "Ada"}}} end
+      {:ok, client} = server_requests([input_handlers: %{form: form}], [])
+      on_exit(fn -> Client.close(client) end)
+
+      assert %Client{protocol: "2026-07-28", session: nil} = client
+      assert {:ok, %{"answers" => answers}} = Client.request(client, "tools/list")
+      assert %{"result" => %{}} = answers["srv-ping"]
+      assert %{"result" => %{"action" => "accept"}} = answers["srv-1"]
+    end
+
+    test "handlers still running when the client closes are stopped" do
+      test = self()
+
+      {:ok, client} =
+        server_requests([input_handlers: %{form: blocking_form(test)}], ["--elicit", "2"])
+
+      assert_receive {:handler, first}, 10_000
+      assert_receive {:handler, second}, 5_000
+      refs = Enum.map([first, second], &Process.monitor/1)
+
+      assert :ok = Client.close(client)
+
+      for ref <- refs do
+        assert_receive {:DOWN, ^ref, :process, _pid, :killed}, 5_000
+      end
+    end
+
+    test "handlers still running when the owner exits are stopped" do
+      test = self()
+
+      {owner, owner_ref} =
+        spawn_monitor(fn ->
+          {:ok, client} = server_requests([input_handlers: %{form: blocking_form(test)}], [])
+          send(test, {:client, client})
+          receive do: (:exit -> :ok)
+        end)
+
+      assert_receive {:client, %Client{transport: {Snodo.Client.Stdio, connection}}}, 10_000
+      assert_receive {:handler, handler}, 10_000
+      handler_ref = Process.monitor(handler)
+      connection_ref = Process.monitor(connection)
+
+      send(owner, :exit)
+      assert_receive {:DOWN, ^owner_ref, :process, ^owner, :normal}, 5_000
+      assert_receive {:DOWN, ^connection_ref, :process, ^connection, :normal}, 5_000
+      assert_receive {:DOWN, ^handler_ref, :process, ^handler, :killed}, 5_000
+    end
+
+    test "a handler killed from outside is answered -32603" do
+      {:ok, client} = server_requests([input_handlers: %{form: blocking_form(self())}], [])
+      on_exit(fn -> Client.close(client) end)
+
+      assert_receive {:handler, handler}, 10_000
+      Process.exit(handler, :kill)
+
+      assert {:ok, %{"answers" => answers}} = Client.request(client, "tools/list")
+      assert %{"error" => %{"code" => -32_603, "message" => message}} = answers["srv-1"]
+      assert message =~ "exited: :killed"
+    end
+
+    test "a request over :max_server_requests is answered -32603 without a handler" do
+      test = self()
+      handlers = %{form: blocking_form(test)}
+
+      {:ok, client} =
+        server_requests(
+          [input_handlers: handlers, max_server_requests: 2],
+          ["--elicit", "3", "--no-ping"]
+        )
+
+      on_exit(fn -> Client.close(client) end)
+
+      # The first two block, so the only answer the server can get is the
+      # refusal of the third.
+      assert_receive {:handler, first}, 10_000
+      assert_receive {:handler, second}, 5_000
+
+      assert {:ok, %{"answers" => answers}} =
+               Client.request(client, "tools/list", %{"waitFor" => 1})
+
+      assert [{"srv-3", %{"error" => error}}] = Map.to_list(answers)
+      assert %{"code" => -32_603, "message" => "Too many server requests in flight (2)"} = error
+      refute_received {:handler, _third}
+
+      send(first, :release)
+      send(second, :release)
+
+      assert {:ok, %{"answers" => answers}} = Client.request(client, "tools/list")
+      assert %{"result" => %{"action" => "accept"}} = answers["srv-1"]
+      assert %{"result" => %{"action" => "accept"}} = answers["srv-2"]
+
+      assert_raise ArgumentError, ~r/:max_server_requests/, fn ->
+        server_requests([max_server_requests: 0], [])
+      end
     end
   end
 

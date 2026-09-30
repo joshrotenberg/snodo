@@ -18,17 +18,23 @@ defmodule Snodo.Client.Stdio do
       answered times out; later responses are unaffected.
     * `:on_server_request` - a function of one argument that answers a
       request the server sends to the client, as `Snodo.Client.Transport`
-      describes. The connection process runs it in a process it owns, one per
+      describes. The connection process runs it in a linked process, one per
       request, and writes the response it returns; a function that raises is
-      answered with -32603. Without it, server-to-client requests are
-      answered with -32601.
+      answered with -32603. `Snodo.Client` always supplies it, whatever the
+      negotiated version. A caller that uses this transport directly without
+      it gets -32601 for every server-to-client request.
+    * `:max_server_requests` - the most server-to-client requests whose
+      handlers run at once, default 16. A request over the limit is answered
+      with -32603 without running the handler.
 
   The connection process monitors the process that called `connect/2` and
   closes when it exits. When a request times out, the transport answers the
   caller with a -32001 error and sends the server `notifications/cancelled` for
   that request ID. When the server exits, requests in flight and later requests
   fail with -32000. `notify/3` writes a notification and returns once the
-  line is in the port.
+  line is in the port. When the connection stops, through `close/1` or the
+  owner's exit, handlers still running for server-to-client requests are
+  killed and their answers are not sent.
 
   A `notifications/progress` whose token belongs to a request made with
   `progress:` is forwarded to the process waiting on that request, which calls
@@ -63,17 +69,18 @@ defmodule Snodo.Client.Stdio do
 
   @line_bytes 65_536
   @default_max_line_bytes 16 * 1024 * 1024
+  @default_max_server_requests 16
   @subscription_id_key "io.modelcontextprotocol/subscriptionId"
   @acknowledgement "notifications/subscriptions/acknowledged"
   @closed_by_client "Closed by the client"
 
   @impl Transport
   def connect({command, args}, opts) when is_binary(command) and is_list(args) do
-    max_line_bytes = Keyword.get(opts, :max_line_bytes, @default_max_line_bytes)
+    max_line_bytes =
+      positive_integer!(opts, :max_line_bytes, @default_max_line_bytes)
 
-    unless is_integer(max_line_bytes) and max_line_bytes > 0 do
-      raise ArgumentError, ":max_line_bytes must be a positive integer"
-    end
+    max_server_requests =
+      positive_integer!(opts, :max_server_requests, @default_max_server_requests)
 
     responder = Keyword.get(opts, :on_server_request)
 
@@ -83,12 +90,20 @@ defmodule Snodo.Client.Stdio do
 
     with {:ok, executable} <- find_executable(command) do
       port_options = port_options(args, opts)
+      responder = responder && {responder, max_server_requests}
       init_arg = {executable, port_options, self(), max_line_bytes, responder}
 
       case GenServer.start(__MODULE__, init_arg) do
         {:ok, pid} -> {:ok, pid}
         {:error, %Error{} = error} -> {:error, error}
       end
+    end
+  end
+
+  defp positive_integer!(opts, option, default) do
+    case Keyword.get(opts, option, default) do
+      value when is_integer(value) and value > 0 -> value
+      _other -> raise ArgumentError, "#{inspect(option)} must be a positive integer"
     end
   end
 
@@ -160,6 +175,11 @@ defmodule Snodo.Client.Stdio do
 
   @impl GenServer
   def init({executable, port_options, owner, max_line_bytes, responder}) do
+    # Handlers for server-to-client requests are linked, so a connection that
+    # is killed takes them with it. A connection that stops with :normal would
+    # not, so it traps exits, tracks the handlers, and kills them in
+    # terminate/2.
+    Process.flag(:trap_exit, true)
     port = Port.open({:spawn_executable, executable}, port_options)
 
     {:ok,
@@ -176,6 +196,7 @@ defmodule Snodo.Client.Stdio do
        discarding?: false,
        max_line_bytes: max_line_bytes,
        responder: responder,
+       handlers: %{},
        closed: nil
      }}
   rescue
@@ -353,10 +374,23 @@ defmodule Snodo.Client.Stdio do
     {:noreply, cancel_subscription(state, Map.fetch!(state.subscription_owners, monitor))}
   end
 
+  # A handler has finished, after sending its answer. One that was killed
+  # from outside sent none, so the server is told it failed.
+  def handle_info({:EXIT, pid, reason}, state) when is_map_key(state.handlers, pid) do
+    {id, handlers} = Map.pop!(state.handlers, pid)
+
+    _result =
+      if reason != :normal and is_nil(state.closed),
+        do: write(state.port, handler_failed(id, "exited: " <> inspect(reason)))
+
+    {:noreply, %{state | handlers: handlers}}
+  end
+
   def handle_info(_message, state), do: {:noreply, state}
 
   @impl GenServer
   def terminate(_reason, state) do
+    for {pid, _id} <- state.handlers, do: Process.exit(pid, :kill)
     if is_nil(state.closed), do: close_port(state.port)
     error = Transport.connection_error("The stdio connection is closed", :closed)
 
@@ -409,17 +443,24 @@ defmodule Snodo.Client.Stdio do
 
   # The responder runs a handler the application installed, so it runs in its
   # own process: a slow handler must not stall the reader, and one that raises
-  # must not take the connection down. The process is linked to the
-  # connection, so it does not outlive it.
+  # must not take the connection down. The server decides how many requests
+  # it sends, so the number of handlers running at once is bounded.
   defp answer_server_request(%{responder: nil} = state, id, %{"method" => method}) do
     _result = write(state.port, method_not_found(id, method))
     state
   end
 
-  defp answer_server_request(%{responder: responder} = state, id, request) do
+  defp answer_server_request(%{responder: {_responder, max}} = state, id, _request)
+       when map_size(state.handlers) >= max do
+    error = Error.internal("Too many server requests in flight (#{max})")
+    _result = write(state.port, error_response(id, error))
+    state
+  end
+
+  defp answer_server_request(%{responder: {responder, _max}} = state, id, request) do
     connection = self()
 
-    _pid =
+    pid =
       spawn_link(fn ->
         response =
           try do
@@ -433,16 +474,14 @@ defmodule Snodo.Client.Stdio do
         send(connection, {:server_response, response})
       end)
 
-    state
+    put_in(state, [:handlers, pid], id)
   end
 
-  defp handler_failed(id, detail) do
-    %{
-      "jsonrpc" => "2.0",
-      "id" => id,
-      "error" => Error.to_json_rpc(Error.internal("Input handler failed: " <> detail))
-    }
-  end
+  defp handler_failed(id, detail),
+    do: error_response(id, Error.internal("Input handler failed: " <> detail))
+
+  defp error_response(id, %Error{} = error),
+    do: %{"jsonrpc" => "2.0", "id" => id, "error" => Error.to_json_rpc(error)}
 
   # The acknowledgement answers the waiting listen/3 call; anything else on
   # the stream after it is an event. An event before the acknowledgement is
@@ -639,13 +678,7 @@ defmodule Snodo.Client.Stdio do
     }
   end
 
-  defp method_not_found(id, method) do
-    %{
-      "jsonrpc" => "2.0",
-      "id" => id,
-      "error" => Error.to_json_rpc(Error.method_not_found(method))
-    }
-  end
+  defp method_not_found(id, method), do: error_response(id, Error.method_not_found(method))
 
   defp start_timer(entry, id) do
     case Deadline.remaining(entry.deadline) do

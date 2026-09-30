@@ -131,6 +131,7 @@ defmodule Snodo.Client do
         }
 
   @default_max_input_rounds 10
+  @delete_session_timeout 5_000
   @default_probe_timeout 10_000
   @default_max_buffer 100
   @overflow_policies [:drop_oldest, :drop_newest]
@@ -230,8 +231,9 @@ defmodule Snodo.Client do
   Targets:
 
     * `{:stdio, command, args}` - runs `command` and speaks newline-delimited
-      JSON-RPC over its stdin and stdout. See `Snodo.Client.Stdio` for `:env`
-      and `:cd`. The connection closes when the calling process exits.
+      JSON-RPC over its stdin and stdout. See `Snodo.Client.Stdio` for `:env`,
+      `:cd`, `:max_line_bytes`, and `:max_server_requests`. The connection
+      closes when the calling process exits.
     * `{:http, url}` - posts each request to a Streamable HTTP endpoint. See
       `Snodo.Client.HTTP` for `:headers`, `:ssl`, `:connect_timeout`, and
       `:max_response_bytes`.
@@ -295,14 +297,16 @@ defmodule Snodo.Client do
   Closes the client's connection. Closing an in-process client does nothing.
 
   When the server issued a session id, the transport is told to end the
-  session first: over HTTP that is a `DELETE` with `Mcp-Session-Id`.
+  session first: over HTTP that is a `DELETE` with `Mcp-Session-Id`. Its
+  outcome is not reported, so `close/1` waits for it for at most 5,000 ms,
+  or the client's `:timeout` when that is shorter.
   """
   @spec close(t()) :: :ok
   def close(%__MODULE__{transport: {module, state}, session: %Session{id: id}} = client)
       when is_binary(id) do
     if function_exported?(module, :delete_session, 2) do
-      :ok =
-        module.delete_session(state, headers: session_headers(client), timeout: client.timeout)
+      timeout = min(client.timeout, @delete_session_timeout)
+      :ok = module.delete_session(state, headers: session_headers(client), timeout: timeout)
     end
 
     module.close(state)
