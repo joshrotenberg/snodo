@@ -170,10 +170,14 @@ defmodule SnodoTest.FakeOAuth do
         "response_types_supported" => ["code"],
         "grant_types_supported" =>
           Map.get(config, :grant_types_supported, ["authorization_code", "refresh_token"]),
-        "code_challenge_methods_supported" => ["S256"],
         "token_endpoint_auth_methods_supported" =>
           Map.get(config, :token_endpoint_auth_methods_supported, ["none"])
       }
+      |> put_if(
+        Map.get(config, :code_challenge_methods_supported, ["S256"]) != nil,
+        "code_challenge_methods_supported",
+        Map.get(config, :code_challenge_methods_supported, ["S256"])
+      )
       |> put_if(
         Map.get(config, :registration, true),
         "registration_endpoint",

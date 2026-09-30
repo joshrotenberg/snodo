@@ -268,7 +268,9 @@ and the flow runs:
 2. The authorization server metadata (RFC 8414, then OpenID Connect
    Discovery, with the well-known segment inserted before an issuer path)
    for the first `authorization_servers` entry. The document's `issuer` must
-   equal the issuer used to build the URL.
+   equal the issuer used to build the URL, and for the authorization code
+   flow its `code_challenge_methods_supported` must list `S256`; otherwise
+   the flow stops before registering or authorizing.
 3. A client ID: the `:client_metadata_url` when the server supports client
    ID metadata documents, else the configured `:client_id`, else the
    registration stored for this issuer, else dynamic client registration
@@ -312,9 +314,11 @@ request.
 | `Snodo.OAuth.Client.TokenStore`, `Snodo.OAuth.Client.RegistrationStore`, `Snodo.OAuth.Client.PendingAuthorizationStore` | Store behaviours; each has an in-memory default under `.Memory` |
 
 Every URL the flow fetches or posts to must be `https`, or `http` to a
-loopback host. Documents and token responses are read up to
-`max_body_bytes` (256 KiB). Tokens are kept in the token store and never
-logged or placed in an error. `Snodo.OAuth.Client` documents every option.
+loopback host. A document or token response larger than `max_body_bytes`
+(256 KiB) is refused; `:httpc` reads the body before its size is checked, so
+the request timeout (`timeout_ms`, 10 seconds) bounds the transfer. Tokens
+are kept in the token store and never logged or placed in an error.
+`Snodo.OAuth.Client` documents every option.
 
 Against the official conformance runner's client scenarios, every required
 `auth/*` scenario passes with this client as the token provider; see the

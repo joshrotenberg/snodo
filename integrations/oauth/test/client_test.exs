@@ -467,6 +467,40 @@ defmodule Snodo.OAuth.ClientTest do
       assert Fake.events(fake.world, :authorize) == []
     end
 
+    for {name, methods} <- [
+          {"refuses a server whose metadata does not list PKCE methods", nil},
+          {"refuses a server that does not list S256", ["plain"]}
+        ] do
+      test name do
+        fake = Fake.start(code_challenge_methods_supported: unquote(methods))
+        issuer = fake.as_url
+
+        assert {_oauth, {:error, %Error{cause: {:pkce_unsupported, ^issuer}} = error}} =
+                 list_tools(fake)
+
+        assert error.message =~ "S256"
+        assert Fake.events(fake.world, :register) == []
+        assert Fake.events(fake.world, :authorize) == []
+        assert Fake.events(fake.world, :token) == []
+      end
+    end
+
+    test "client credentials do not need PKCE" do
+      fake =
+        Fake.start(
+          registration: false,
+          code_challenge_methods_supported: nil,
+          token_endpoint_auth_methods_supported: ["client_secret_basic"]
+        )
+
+      assert {_oauth, {:ok, _tools}} =
+               list_tools(fake,
+                 grant: :client_credentials,
+                 client_id: "cc-client",
+                 client_secret: "cc-secret"
+               )
+    end
+
     for {name, advertised, redirect, expected} <- [
           {"accepts a matching iss the server advertised", true, :correct, :ok},
           {"proceeds without iss when the server does not advertise it", nil, :omit, :ok},

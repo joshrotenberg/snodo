@@ -32,7 +32,9 @@ defmodule Snodo.OAuth.Client do
        `resource_metadata` URL or the well-known locations, and checked to
        be for this server (`Snodo.OAuth.Client.Discovery`).
     2. Authorization server metadata (RFC 8414, OpenID configuration) for
-       the first `authorization_servers` entry, with the issuer checked.
+       the first `authorization_servers` entry, with the issuer checked. The
+       code flow also requires `S256` in `code_challenge_methods_supported`
+       and stops without it, before registering or authorizing.
     3. A client ID: the `:client_metadata_url` when the server supports
        client ID metadata documents, else the configured `:client_id`, else
        the registration stored for this issuer, else dynamic client
@@ -85,14 +87,17 @@ defmodule Snodo.OAuth.Client do
   headless client; or `{:error, reason}`. It runs in a process of its own
   and may block.
 
-  Every URL the flow uses must be `https`, or `http` to a loopback host.
-  Documents and token responses are read up to `max_body_bytes`. Tokens are
-  kept in the token store and never logged or placed in an error.
+  Every URL the flow uses must be `https`, or `http` to a loopback host. A
+  document or token response larger than `max_body_bytes` is refused, with
+  `:body_too_large` in the error's `cause`; `:httpc` reads the body before
+  its size is checked, so `timeout_ms` bounds the transfer. Tokens are kept
+  in the token store and never logged or placed in an error.
 
   Errors have `kind: :authorization`, code -32000, and a `cause` naming the
   step that failed, such as `{:resource_mismatch, requested, configured}`,
-  `{:issuer_mismatch, expected, found}`, `{:token_endpoint, status, body}`
-  with only the error fields of the body, or `{:step_up_refused, scopes}`.
+  `{:issuer_mismatch, expected, found}`, `{:pkce_unsupported, issuer}`,
+  `{:token_endpoint, status, body}` with only the error fields of the body,
+  or `{:step_up_refused, scopes}`.
   """
 
   use GenServer

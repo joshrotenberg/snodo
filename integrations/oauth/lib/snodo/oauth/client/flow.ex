@@ -126,7 +126,8 @@ defmodule Snodo.OAuth.Client.Flow do
   end
 
   defp grant(%{config: %{grant: :authorization_code}} = ctx, as_metadata, target, current, extra) do
-    with {:ok, identity} <- identity(ctx, as_metadata),
+    with :ok <- check_pkce(as_metadata),
+         {:ok, identity} <- identity(ctx, as_metadata),
          scopes = scopes(ctx, as_metadata, target, current, extra),
          {:ok, code, pending} <- authorize(ctx, as_metadata, target, identity, scopes),
          {:ok, token} <- exchange_code(ctx, as_metadata, target, identity, code, pending) do
@@ -146,6 +147,19 @@ defmodule Snodo.OAuth.Client.Flow do
       with {:ok, token} <- token_request(ctx, as_metadata, target, identity, fields, scopes) do
         store_token(ctx, token)
       end
+    end
+  end
+
+  # The MCP authorization specification has the client verify PKCE support
+  # from the metadata and refuse to proceed without it, before registering
+  # or sending the user anywhere.
+  defp check_pkce(as_metadata) do
+    case as_metadata["code_challenge_methods_supported"] do
+      methods when is_list(methods) ->
+        if "S256" in methods, do: :ok, else: {:error, {:pkce_unsupported, as_metadata["issuer"]}}
+
+      _absent ->
+        {:error, {:pkce_unsupported, as_metadata["issuer"]}}
     end
   end
 
@@ -597,6 +611,10 @@ defmodule Snodo.OAuth.Client.Flow do
 
   defp message(:missing_iss),
     do: "The authorization response lacks the iss parameter the server advertised"
+
+  defp message({:pkce_unsupported, issuer}),
+    do:
+      "The authorization server #{issuer} does not list S256 in code_challenge_methods_supported"
 
   defp message({:insecure_url, url}), do: "Refusing to use #{inspect(url)}: not https or loopback"
   defp message({:unsupported_scheme, scheme}), do: "Unsupported authentication scheme #{scheme}"
