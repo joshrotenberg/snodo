@@ -52,13 +52,13 @@ defmodule Snodo.Client.HTTP do
       `authorization` too.
     * `:token_provider` - `{module, state}`, a `Snodo.Client.TokenProvider`
       that supplies the bearer token. The transport asks it for a token
-      before each request, and after a `401`, or a `403` whose
-      `WWW-Authenticate` challenge is `insufficient_scope`, asks it to
-      refresh with the parsed `Snodo.Client.Challenge` and sends the request
-      once more. A `401` or `403` on that second attempt is a -32000
-      transport error with `cause: {:unauthorized, status, challenge}`.
-      Without a provider, those statuses are returned as any other
-      unexpected status.
+      before each request and before opening each `subscriptions/listen`
+      stream, and after a `401`, or a `403` whose `WWW-Authenticate`
+      challenge is `insufficient_scope`, asks it to refresh with the parsed
+      `Snodo.Client.Challenge` and sends the request once more. A `401` or
+      `403` on that second attempt is a -32000 transport error with
+      `cause: {:unauthorized, status, challenge}`. Without a provider, those
+      statuses are returned as any other unexpected status.
     * `:ssl` - `:ssl` client options for `https` URLs. The default verifies the
       peer against `:public_key.cacerts_get/0` and checks the host name.
     * `:connect_timeout` - milliseconds to establish the connection. Defaults
@@ -174,7 +174,7 @@ defmodule Snodo.Client.HTTP do
 
     case Enum.reject(headers, &valid_header?/1) do
       [] ->
-        SubscriptionStream.open(state, headers ++ state.headers, message, opts)
+        listen_authorized(state, headers ++ state.headers, message, opts)
 
       [{name, _value} | _others] ->
         {:error, Transport.connection_error("Invalid HTTP request header", name)}
@@ -211,7 +211,8 @@ defmodule Snodo.Client.HTTP do
 
         try do
           with :ok <- send_request(socket, state, headers, JSON.encode!(message)),
-               {:ok, status, response_headers, rest} <- read_head(conn, "", 0) do
+               {:ok, status, response_headers, rest} <- read_head(conn, "", 0),
+               :none <- challenge(state, status, response_headers) do
             conn = %{conn | body: body_state(response_headers)}
 
             case read_body(conn, status, response_headers, rest) do
@@ -227,6 +228,9 @@ defmodule Snodo.Client.HTTP do
     send(stream, {:mcp_stream_end, stream_outcome(outcome, timeout, state.max_response_bytes)})
     :ok
   end
+
+  defp stream_outcome({:challenge, _status, _challenge} = challenge, _timeout, _limit),
+    do: challenge
 
   defp stream_outcome({:ok, _status, {:unmatched, _sample}}, _timeout, _limit), do: :ended
 
@@ -424,47 +428,61 @@ defmodule Snodo.Client.HTTP do
     |> response(timeout, state.max_response_bytes)
   end
 
-  # One request may need two exchanges: the first learns that the token is
-  # missing, expired, or short of scope, and the second carries the token the
-  # provider obtained from that challenge. A third is never made, so a server
-  # that keeps refusing cannot loop a client through its authorization flow.
-  defp send_authorized(
-         %{token_provider: {module, provider}} = state,
-         headers,
-         message,
-         opts,
-         timeout
-       ) do
+  defp send_authorized(state, headers, message, opts, timeout) do
+    authorized(state, &attempt(state, headers, message, opts, timeout, &1))
+  end
+
+  defp listen_authorized(%{token_provider: nil} = state, headers, message, opts),
+    do: SubscriptionStream.open(state, headers, message, opts)
+
+  defp listen_authorized(state, headers, message, opts) do
+    authorized(state, &SubscriptionStream.open(state, bearer(&1) ++ headers, message, opts))
+  end
+
+  # One request or stream may need two attempts: the first learns that the
+  # token is missing, expired, or short of scope, and the second carries the
+  # token the provider obtained from that challenge. A third is never made,
+  # so a server that keeps refusing cannot loop a client through its
+  # authorization flow. `attempt` sends with a token and returns
+  # `{:challenge, status, challenge}` or the result.
+  defp authorized(%{token_provider: {module, provider}} = state, attempt) do
     context = %{url: state.url}
 
     with {:ok, token} <- provider_token(module, :token, module.token(provider, context)),
-         {:challenge, status, challenge} <-
-           attempt(state, headers, message, opts, timeout, token),
+         {:challenge, status, challenge} <- attempt.(token),
          context = Map.merge(context, %{status: status, token: token}),
          {:ok, token} <-
            provider_token(module, :refresh, module.refresh(provider, challenge, context)),
-         {:challenge, status, challenge} <-
-           attempt(state, headers, message, opts, timeout, token) do
+         {:challenge, status, challenge} <- attempt.(token) do
       {:error, authorization_error(status, challenge)}
     end
   end
 
-  # One exchange with `token`. A 401, or a 403 that asks for more scope, is
-  # returned as `{:challenge, status, challenge}` for the provider; any other
-  # response is the request's result.
+  # One exchange with `token`: a challenge for the provider, or the
+  # request's result.
   defp attempt(state, headers, message, opts, timeout, token) do
     case exchange(state, bearer(token) ++ headers, message, opts) do
-      {:ok, status, response_headers, _outcome} = result when status in [401, 403] ->
-        challenge = Challenge.select(response_headers)
-
-        if refreshable?(status, challenge),
-          do: {:challenge, status, challenge},
-          else: response(result, timeout, state.max_response_bytes)
+      {:ok, status, response_headers, _outcome} = result ->
+        case challenge(state, status, response_headers) do
+          :none -> response(result, timeout, state.max_response_bytes)
+          challenge -> challenge
+        end
 
       other ->
         response(other, timeout, state.max_response_bytes)
     end
   end
+
+  # A 401, or a 403 that asks for more scope, goes back to the token
+  # provider. Without one, every status is the response.
+  defp challenge(%{token_provider: nil}, _status, _headers), do: :none
+
+  defp challenge(_state, status, headers) when status in [401, 403] do
+    challenge = Challenge.select(headers)
+    if refreshable?(status, challenge), do: {:challenge, status, challenge}, else: :none
+  end
+
+  defp challenge(_state, _status, _headers), do: :none
 
   defp refreshable?(401, _challenge), do: true
   defp refreshable?(403, %Challenge{error: "insufficient_scope"}), do: true

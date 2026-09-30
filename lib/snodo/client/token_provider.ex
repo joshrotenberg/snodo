@@ -6,7 +6,8 @@ defmodule Snodo.Client.TokenProvider do
   `token_provider: {module, state}`. The transport calls it in the process
   that makes the request:
 
-    * `token/2` before every request. `{:ok, token}` sends
+    * `token/2` before every request, including the request that opens a
+      `Snodo.Client.listen/3` stream. `{:ok, token}` sends
       `Authorization: Bearer <token>`; `{:ok, nil}` sends the request without
       one, which is how a client learns the server's challenge on its first
       request.

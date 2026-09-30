@@ -3,6 +3,7 @@ defmodule Snodo.ClientTokenProviderTest do
 
   alias Snodo.Client
   alias Snodo.Client.Challenge
+  alias Snodo.Client.Subscription
   alias Snodo.Error
 
   @metadata "http://127.0.0.1/.well-known/oauth-protected-resource/mcp"
@@ -104,6 +105,18 @@ defmodule Snodo.ClientTokenProviderTest do
     {200, [{"content-type", "application/json"}], body}
   end
 
+  # An event stream that acknowledges a subscriptions/listen request and ends.
+  defp acknowledge do
+    event = %{
+      "jsonrpc" => "2.0",
+      "method" => "notifications/subscriptions/acknowledged",
+      "params" => %{"notifications" => %{"toolsListChanged" => true}}
+    }
+
+    {200, [{"content-type", "text/event-stream"}],
+     "event: message\ndata: " <> JSON.encode!(event) <> "\n\n"}
+  end
+
   defp unauthorized(challenge), do: {401, [{"www-authenticate", challenge}], @unauthorized_body}
 
   # Accepts the request when it carries `token`, else answers `refusal`.
@@ -200,6 +213,61 @@ defmodule Snodo.ClientTokenProviderTest do
     assert {:unauthorized, 401, %Challenge{error: "invalid_token"}} = error.cause
     assert error.message =~ "HTTP 401"
     refute inspect(error) =~ "secret"
+
+    assert_receive {:fake_http, %{"authorization" => "Bearer secret-one"}, _first}, 1_000
+    assert_receive {:fake_http, %{"authorization" => "Bearer secret-two"}, _second}, 1_000
+    refute_received {:fake_http, _headers, _third}
+  end
+
+  test "a listen stream carries the token and is opened once more after a 401" do
+    challenge = ~s(Bearer resource_metadata="#{@metadata}")
+
+    url =
+      FakeHTTP.start(self(), fn headers, _message ->
+        if headers["authorization"] == "Bearer t2",
+          do: acknowledge(),
+          else: unauthorized(challenge)
+      end)
+
+    {:ok, client} = connect(url, Provider.start(self(), {:ok, "t1"}, {:ok, "t2"}))
+
+    assert {:ok, %Subscription{accepted: %{"toolsListChanged" => true}}} =
+             Client.listen(client, %{"toolsListChanged" => true})
+
+    assert_receive {:provider, :token, %{url: ^url}}, 1_000
+
+    assert_receive {:provider, :refresh, %Challenge{resource_metadata: @metadata},
+                    %{url: ^url, status: 401, token: "t1"}},
+                   1_000
+
+    assert_receive {:fake_http, %{"authorization" => "Bearer t1"},
+                    %{"method" => "subscriptions/listen"}},
+                   1_000
+
+    assert_receive {:fake_http, %{"authorization" => "Bearer t2"},
+                    %{"method" => "subscriptions/listen"}},
+                   1_000
+  end
+
+  test "a listen stream refused twice is an authorization error" do
+    challenge = ~s(Bearer error="insufficient_scope", scope="mcp:write")
+
+    url =
+      FakeHTTP.start(self(), fn _headers, _message ->
+        {403, [{"www-authenticate", challenge}], "{}"}
+      end)
+
+    {:ok, client} = connect(url, Provider.start(self(), {:ok, "secret-one"}, {:ok, "secret-two"}))
+
+    assert {:error, %Error{code: -32_000, kind: :transport} = error} =
+             Client.listen(client, %{"toolsListChanged" => true})
+
+    assert {:unauthorized, 403, %Challenge{error: "insufficient_scope"}} = error.cause
+    refute inspect(error) =~ "secret"
+
+    assert_receive {:provider, :refresh, %Challenge{scope: ["mcp:write"]},
+                    %{status: 403, token: "secret-one"}},
+                   1_000
 
     assert_receive {:fake_http, %{"authorization" => "Bearer secret-one"}, _first}, 1_000
     assert_receive {:fake_http, %{"authorization" => "Bearer secret-two"}, _second}, 1_000

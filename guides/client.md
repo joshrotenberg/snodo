@@ -370,7 +370,8 @@ application already holds goes in `headers:`. A token that has to be obtained,
 refreshed, or extended comes from a `Snodo.Client.TokenProvider`, given as
 `token_provider: {module, state}`:
 
-- Before each request the transport asks the provider for a token and sends
+- Before each request, including the one that opens a `listen/3` stream, the
+  transport asks the provider for a token and sends
   `Authorization: Bearer <token>` when it gets one. `{:ok, nil}` sends the
   request without one, which is how a client learns the server's challenge.
 - After a `401`, or a `403` whose `WWW-Authenticate` challenge is
