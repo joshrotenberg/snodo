@@ -8,6 +8,8 @@ defmodule Snodo.SubscriptionHubTest do
   alias SnodoTest.SubscriptionWorker
   alias SnodoTest.TestFixtures
   alias SnodoTest.TestInstrumentationSink
+  alias SnodoTest.TestSubscriptionHub
+  alias SnodoTest.TestSubscriptionSource
 
   defmodule RefuseData do
     @behaviour Snodo.Authorization
@@ -252,6 +254,35 @@ defmodule Snodo.SubscriptionHubTest do
 
     # A close by the worker would reach this process before the worker's DOWN.
     refute_received {:source_closed, _reason}
+  end
+
+  # The owner stops a worker and closes its handle from different processes, so
+  # the puller's next/2 can reach a source after close/3. This drives that order
+  # directly.
+  test "a pull after the owner closed the handle answers :closed" do
+    {:ok, hub} = start_supervised(Hub)
+    {:ok, test_hub} = start_supervised(TestSubscriptionHub)
+
+    runtimes = [
+      runtime(hub),
+      TestFixtures.runtime(
+        capabilities: %{"tools" => %{"listChanged" => true}},
+        subscription_source: {TestSubscriptionSource, test_hub}
+      )
+    ]
+
+    for runtime <- runtimes do
+      subscription = listen(runtime, "closed-first", %{"toolsListChanged" => true})
+      assert :ok = Subscription.close(subscription, :cancelled)
+
+      {worker, monitor} = Subscription.start_worker(subscription, self())
+      :ok = Subscription.continue(worker)
+      assert_receive {:mcp_subscription, ^worker, :closed}, 1_000
+      assert :ok = Subscription.stop_worker(worker, monitor)
+    end
+
+    assert Process.alive?(hub)
+    assert Process.alive?(test_hub)
   end
 
   test "validates publications and startup policy" do
