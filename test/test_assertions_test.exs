@@ -111,17 +111,78 @@ defmodule Snodo.TestAssertionsTest do
       assert_receive {:asked, "Choose a label"}, 1_000
     end
 
-    test ":answers rejects an unknown kind or a bad answer" do
-      assert_raise ArgumentError, ~r/:answers takes a kind/, fn ->
-        client!(runtime(), answers: %{email: %{}})
-      end
+    test ":answers answers URL, sampling, and roots requests, alone or mixed in one round" do
+      sampled = %{
+        "role" => "assistant",
+        "content" => %{"type" => "text", "text" => "a summary"},
+        "model" => "test-model"
+      }
 
-      assert_raise ArgumentError, ~r/:answers takes a kind/, fn ->
-        client!(runtime(), answers: %{form: "yes"})
-      end
+      roots = %{"roots" => [%{"uri" => "file:///work"}]}
 
-      assert_raise ArgumentError, ~r/:answers must be a map/, fn ->
-        client!(runtime(), answers: "yes")
+      client =
+        client!(ChoiceServer.runtime(),
+          answers: [
+            form: @form_answer,
+            url: %{"action" => "accept"},
+            sampling: fn %{"maxTokens" => 64} -> sampled end,
+            roots: roots
+          ]
+        )
+
+      assert assert_tool_ok(Client.call_tool(client, "consent"))["structuredContent"] ==
+               %{"action" => "accept"}
+
+      assert assert_tool_ok(Client.call_tool(client, "sample"))["structuredContent"] ==
+               %{"summary" => "a summary", "model" => "test-model"}
+
+      assert assert_tool_ok(Client.call_tool(client, "roots"))["structuredContent"] ==
+               %{"uris" => ["file:///work"]}
+
+      assert assert_tool_ok(Client.call_tool(client, "mixed"))["structuredContent"] == %{
+               "choice" => @form_answer,
+               "summary" => sampled,
+               "client_roots" => roots
+             }
+    end
+
+    test ":answers merges with :input_handlers, and an answer replaces a handler" do
+      handlers = %{form: fn _params -> {:ok, %{"action" => "decline"}} end}
+
+      client = client!(ChoiceServer.runtime(), input_handlers: handlers)
+
+      assert assert_tool_ok(Client.call_tool(client, "choice"))["structuredContent"] ==
+               %{"label" => "decline"}
+
+      client =
+        client!(ChoiceServer.runtime(), input_handlers: handlers, answers: [form: @form_answer])
+
+      assert assert_tool_ok(Client.call_tool(client, "choice"))["structuredContent"] ==
+               %{"label" => "canned"}
+    end
+
+    test "bad arguments raise ArgumentError" do
+      cases = [
+        {~r/:answers takes a kind/, fn -> client!(runtime(), answers: %{email: %{}}) end},
+        {~r/each answer to be a map or a function/,
+         fn -> client!(runtime(), answers: %{form: "yes"}) end},
+        {~r/:answers expects answers as a map or a keyword list/,
+         fn -> client!(runtime(), answers: "yes") end},
+        {~r/:answers expects answers as a map or a keyword list/,
+         fn -> client!(runtime(), answers: [1, 2]) end},
+        {~r/:input_handlers must be a map/,
+         fn ->
+           client!(runtime(),
+             input_handlers: [url: fn _params -> {:ok, %{}} end],
+             answers: [form: @form_answer]
+           )
+         end},
+        {~r/expected a Snodo.Server.Runtime/, fn -> client!(opaque(:runtime)) end},
+        {~r/expected options as a keyword list/, fn -> client_as(runtime(), nil, opaque(:x)) end}
+      ]
+
+      for {message, fun} <- cases do
+        assert_raise ArgumentError, message, fun
       end
     end
   end
@@ -184,6 +245,17 @@ defmodule Snodo.TestAssertionsTest do
       assert message =~ "Choose a label"
     end
 
+    test "fails for a struct in place of a result map" do
+      {:ok, page} = Client.list_page(client!(runtime()), :tools)
+
+      message = failure(fn -> assert_tool_ok(opaque({:ok, page})) end)
+
+      assert message =~
+               "Expected a successful tool result, got a Snodo.Client.Page rather than a result map\n"
+
+      assert message =~ "value: %Snodo.Client.Page{"
+    end
+
     test "fails for a value that is not a response, and for a stream" do
       assert failure(fn -> assert_tool_ok(opaque(:nope)) end) ==
                "Expected a successful tool result, got a value that is not a response\n" <>
@@ -201,6 +273,14 @@ defmodule Snodo.TestAssertionsTest do
       assert %{"isError" => true} = assert_tool_error(response)
       assert %{"isError" => true} = assert_tool_error(response, "by zero")
       assert %{"isError" => true} = assert_tool_error(response, ~r/^Division/)
+    end
+
+    test "text that is not a string or a regex raises ArgumentError" do
+      response = Client.call_tool(client!(runtime()), "divide", %{"by" => 0})
+
+      assert_raise ArgumentError, ~r/expects the text as a string or a regex, got: :zero/, fn ->
+        assert_tool_error(response, opaque(:zero))
+      end
     end
 
     test "fails when the text does not match" do
@@ -282,8 +362,52 @@ defmodule Snodo.TestAssertionsTest do
       result = assert_input_required(Client.call_tool(client, "choice"))
       message = failure(fn -> answer_input(result, url: %{"action" => "accept"}) end)
 
-      assert message =~ ~s(No answer for input request "choice", a form elicitation\nrequest: )
+      assert message =~ ~s(No answer for input request "choice" \(form elicitation\)\nrequest: )
       assert message =~ "elicitation/create"
+    end
+
+    test "an elicitation with an unknown mode is no kind, as Snodo.Client classifies it" do
+      voice = %{
+        "method" => "elicitation/create",
+        "params" => %{"mode" => "voice", "message" => "m"}
+      }
+
+      bare = %{"method" => "elicitation/create", "params" => %{"message" => "m"}}
+      result = %{"resultType" => "input_required", "inputRequests" => %{"v" => voice}}
+
+      message = failure(fn -> assert_input_required({:input_required, result}, :form) end)
+      assert message =~ ~s("v": elicitation/create request)
+
+      message = failure(fn -> answer_input(result, form: @form_answer) end)
+      assert message =~ ~s(No answer for input request "v" \(elicitation/create request\))
+
+      assert answer_input(result, %{"v" => %{"action" => "cancel"}}) ==
+               [input_responses: %{"v" => %{"action" => "cancel"}}]
+
+      # Without a mode, an elicitation is a form.
+      result = %{"inputRequests" => %{"b" => bare}}
+      assert assert_input_required({:input_required, result}, :form) == result
+      assert answer_input(result, form: @form_answer) == [input_responses: %{"b" => @form_answer}]
+    end
+
+    test "bad arguments raise ArgumentError", %{client: client} do
+      result = assert_input_required(Client.call_tool(client, "choice"))
+
+      cases = [
+        {~r/expects a kind in \[:form, :url, :sampling, :roots\], got: :bogus/,
+         fn -> assert_input_required({:input_required, result}, opaque(:bogus)) end},
+        {~r/expects each answer to be a map or a function of one argument/,
+         fn -> answer_input(result, form: "yes") end},
+        {~r/answer_input\/2 expects answers as a map or a keyword list/,
+         fn -> answer_input(result, opaque(:yes)) end},
+        {~r/expects an input_required result/, fn -> answer_input(opaque(:nope), []) end},
+        {~r/an answer function must return a map, got: :ok/,
+         fn -> answer_input(result, form: fn _params -> :ok end) end}
+      ]
+
+      for {message, fun} <- cases do
+        assert_raise ArgumentError, message, fun
+      end
     end
 
     test "fails when no input request is of the kind", %{client: client} do
@@ -338,6 +462,28 @@ defmodule Snodo.TestAssertionsTest do
              """
     end
 
+    test "fails for a transport error from a malformed response" do
+      malformed = [
+        %{"jsonrpc" => "2.0", "id" => 1},
+        %{"jsonrpc" => "2.0", "id" => 1, "result" => [1]},
+        %{"jsonrpc" => "2.0", "id" => 1, "error" => %{"code" => "1", "message" => "m"}}
+      ]
+
+      for response <- malformed do
+        message = failure(fn -> assert_refused(response) end)
+        assert message =~ "Expected an error response, got a transport error\ncode: -32000\n"
+
+        message = failure(fn -> assert_refused({:ok, response}, -32_000) end)
+        assert message =~ "Expected an error response with code -32000, got a transport error\n"
+      end
+    end
+
+    test "a non-integer code raises ArgumentError" do
+      assert_raise ArgumentError, ~r/expects the code as an integer, got: "1"/, fn ->
+        assert_refused(Client.call_tool(client!(runtime()), "reject"), opaque("1"))
+      end
+    end
+
     test "fails for a result or an input_required result" do
       message =
         failure(fn ->
@@ -365,6 +511,8 @@ defmodule Snodo.TestAssertionsTest do
 
       assert %{"name" => "review"} = assert_listed(Client.list_prompts(client), "review")
 
+      assert %{"name" => "divide"} = assert_listed(Client.list_page(client, :tools), "divide")
+      assert [_divide, _greet, _reject] = refute_listed(Client.list_page(client, :tools), "echo")
       {:ok, page} = Client.list_page(client, :tools)
       assert %{"name" => "divide"} = assert_listed(page, "divide")
       assert %{"name" => "divide"} = assert_listed(Client.request(client, "tools/list"), "divide")
@@ -390,6 +538,14 @@ defmodule Snodo.TestAssertionsTest do
 
       assert failure(fn -> refute_listed(Client.list_tools(reader), "greet") end) ==
                ~s(Expected a list without "greet"\nlisted: ["greet"])
+    end
+
+    test "a name that is not a string raises ArgumentError" do
+      for fun <- [&assert_listed/2, &refute_listed/2] do
+        assert_raise ArgumentError, ~r/expects a name, URI, or URI template as a string/, fn ->
+          fun.([%{"name" => "x"}], opaque(:x))
+        end
+      end
     end
 
     test "fail for an error response or a result that is not a list" do

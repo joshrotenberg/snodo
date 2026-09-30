@@ -21,7 +21,9 @@ defmodule Snodo.Test.Assertions do
   Every assertion returns the value it matched, so a test can go on to match
   its fields. A failed assertion raises `ExUnit.AssertionError` with the
   protocol error's code, message, and data, or the `isError` result's
-  content, in its message.
+  content, in its message. An argument of the wrong type, such as a kind
+  other than `:form`, `:url`, `:sampling`, or `:roots`, raises
+  `ArgumentError`.
 
   ## Responses
 
@@ -93,7 +95,9 @@ defmodule Snodo.Test.Assertions do
   ```
   """
   @spec client!(Runtime.t(), keyword()) :: Client.t()
-  def client!(%Runtime{} = runtime, opts \\ []) when is_list(opts) do
+  def client!(runtime, opts \\ []) do
+    check_runtime!(runtime)
+    check_opts!(opts)
     {answers, opts} = Keyword.pop(opts, :answers)
     opts = put_answer_handlers(opts, answers)
 
@@ -119,7 +123,8 @@ defmodule Snodo.Test.Assertions do
   ```
   """
   @spec client_as(Runtime.t(), term(), keyword()) :: Client.t()
-  def client_as(%Runtime{} = runtime, principal, opts \\ []) when is_list(opts) do
+  def client_as(runtime, principal, opts \\ []) do
+    check_opts!(opts)
     client!(runtime, Keyword.put(opts, :auth, principal))
   end
 
@@ -160,6 +165,11 @@ defmodule Snodo.Test.Assertions do
   """
   @spec assert_tool_error(response(), String.t() | Regex.t() | nil) :: map()
   def assert_tool_error(response, text \\ nil) do
+    unless is_nil(text) or is_binary(text) or is_struct(text, Regex) do
+      raise ArgumentError,
+            "assert_tool_error/2 expects the text as a string or a regex, got: #{inspect(text)}"
+    end
+
     expected = "Expected a tool result with isError: true"
 
     case decode(response, expected) do
@@ -187,7 +197,12 @@ defmodule Snodo.Test.Assertions do
   that kind.
   """
   @spec assert_input_required(response(), Client.input_kind() | nil) :: map()
-  def assert_input_required(response, kind \\ nil) when is_nil(kind) or kind in @kinds do
+  def assert_input_required(response, kind \\ nil) do
+    unless is_nil(kind) or kind in @kinds do
+      raise ArgumentError,
+            "assert_input_required/2 expects a kind in #{inspect(@kinds)}, got: #{inspect(kind)}"
+    end
+
     expected = "Expected an input_required result"
 
     case decode(response, expected) do
@@ -224,8 +239,8 @@ defmodule Snodo.Test.Assertions do
   @spec answer_input({:input_required, map()} | map(), answers()) :: keyword()
   def answer_input({:input_required, result}, answers), do: answer_input(result, answers)
 
-  def answer_input(%{} = result, answers) when is_map(answers) or is_list(answers) do
-    answers = Map.new(answers)
+  def answer_input(result, answers) when is_map(result) and not is_struct(result) do
+    answers = answers!(answers, "answer_input/2")
 
     responses =
       result
@@ -238,6 +253,12 @@ defmodule Snodo.Test.Assertions do
     end
   end
 
+  def answer_input(result, _answers) do
+    raise ArgumentError,
+          "answer_input/2 expects an input_required result or {:input_required, result}, " <>
+            "got: #{inspect(result)}"
+  end
+
   ## Errors
 
   @doc """
@@ -245,15 +266,19 @@ defmodule Snodo.Test.Assertions do
   refusal or a protocol error.
 
   Returns the `Snodo.Error`. When `code` is given, the error must carry it.
+
+  A transport error (`kind: :transport`) fails the assertion: the client
+  reports one when the server's response was malformed or the connection
+  failed, and neither is the server refusing the request.
   """
   @spec assert_refused(response(), integer() | nil) :: Error.t()
-  def assert_refused(response, code \\ nil) when is_nil(code) or is_integer(code) do
-    expected =
-      if code,
-        do: "Expected an error response with code #{code}",
-        else: "Expected an error response"
+  def assert_refused(response, code \\ nil) do
+    expected = expected_refusal(code)
 
     case decode(response, expected) do
+      {:error, %Error{kind: :transport} = error} ->
+        fail!("#{expected}, got a transport error\n" <> describe_error(error))
+
       {:error, %Error{code: actual} = error} when is_nil(code) or actual == code ->
         error
 
@@ -268,6 +293,15 @@ defmodule Snodo.Test.Assertions do
     end
   end
 
+  defp expected_refusal(nil), do: "Expected an error response"
+
+  defp expected_refusal(code) when is_integer(code),
+    do: "Expected an error response with code #{code}"
+
+  defp expected_refusal(code) do
+    raise ArgumentError, "assert_refused/2 expects the code as an integer, got: #{inspect(code)}"
+  end
+
   ## Lists
 
   @doc """
@@ -280,7 +314,8 @@ defmodule Snodo.Test.Assertions do
   Returns the entry.
   """
   @spec assert_listed(response() | Page.t() | [map()], String.t()) :: map()
-  def assert_listed(list, name) when is_binary(name) do
+  def assert_listed(list, name) do
+    check_name!(name, "assert_listed/2")
     entries = entries(list, "Expected a list including #{inspect(name)}")
 
     case Enum.find(entries, &(name in identifiers(&1))) do
@@ -299,7 +334,8 @@ defmodule Snodo.Test.Assertions do
   Takes the lists `assert_listed/2` takes. Returns the list's entries.
   """
   @spec refute_listed(response() | Page.t() | [map()], String.t()) :: [map()]
-  def refute_listed(list, name) when is_binary(name) do
+  def refute_listed(list, name) do
+    check_name!(name, "refute_listed/2")
     entries = entries(list, "Expected a list without #{inspect(name)}")
 
     if Enum.any?(entries, &(name in identifiers(&1))) do
@@ -314,9 +350,15 @@ defmodule Snodo.Test.Assertions do
   defp decode({:ok, %{"jsonrpc" => _version} = response}, expected),
     do: decode(response, expected)
 
+  defp decode({:ok, %module{} = value}, expected) do
+    fail!(
+      "#{expected}, got a #{inspect(module)} rather than a result map\nvalue: #{inspect(value)}"
+    )
+  end
+
   defp decode({:ok, result}, _expected) when is_map(result), do: {:ok, result}
 
-  defp decode({:input_required, result}, _expected) when is_map(result),
+  defp decode({:input_required, result}, _expected) when is_map(result) and not is_struct(result),
     do: {:input_required, result}
 
   defp decode({:error, %Error{} = error}, _expected), do: {:error, error}
@@ -331,6 +373,7 @@ defmodule Snodo.Test.Assertions do
 
   defp entries(list, _expected) when is_list(list), do: list
   defp entries({:ok, list}, _expected) when is_list(list), do: list
+  defp entries({:ok, %Page{items: items}}, _expected), do: items
   defp entries(%Page{items: items}, _expected), do: items
 
   defp entries(response, expected) do
@@ -404,12 +447,24 @@ defmodule Snodo.Test.Assertions do
     end
   end
 
-  defp kind(%{"method" => "elicitation/create", "params" => %{"mode" => "url"}}), do: :url
-  defp kind(%{"method" => "elicitation/create"}), do: :form
+  # The same classification as Snodo.Client.Input: an elicitation without a
+  # mode is a form, and one with a mode other than "form" or "url" is not a
+  # kind any handler answers.
+  defp kind(%{"method" => "elicitation/create" = method} = request) do
+    case elicitation_mode(Map.get(request, "params")) do
+      "form" -> :form
+      "url" -> :url
+      _other -> method
+    end
+  end
+
   defp kind(%{"method" => "sampling/createMessage"}), do: :sampling
   defp kind(%{"method" => "roots/list"}), do: :roots
-  defp kind(%{"method" => method}), do: method
+  defp kind(%{"method" => method}) when is_binary(method), do: method
   defp kind(_request), do: nil
+
+  defp elicitation_mode(%{"mode" => mode}), do: mode
+  defp elicitation_mode(_params), do: "form"
 
   defp answer_one(id, request, answers) do
     kind = kind(request)
@@ -426,7 +481,7 @@ defmodule Snodo.Test.Assertions do
 
           :error ->
             fail!(
-              "No answer for input request #{inspect(id)}, a #{describe_kind(kind)}\n" <>
+              "No answer for input request #{inspect(id)} (#{describe_kind(kind)})\n" <>
                 "request: #{inspect(request, pretty: true)}"
             )
         end
@@ -436,28 +491,87 @@ defmodule Snodo.Test.Assertions do
   defp params(%{"params" => params}) when is_map(params), do: params
   defp params(_request), do: %{}
 
-  defp resolve_answer(answer, params) when is_function(answer, 1), do: answer.(params)
-  defp resolve_answer(%{} = answer, _params), do: answer
+  defp resolve_answer(answer, params) when is_function(answer, 1) do
+    case answer.(params) do
+      response when is_map(response) and not is_struct(response) ->
+        response
+
+      other ->
+        raise ArgumentError, "an answer function must return a map, got: #{inspect(other)}"
+    end
+  end
+
+  defp resolve_answer(answer, _params), do: answer
+
+  # Answers are a map or a list of pairs, each answer a map or a function of
+  # one argument. Keys are checked by the caller.
+  defp answers!(answers, caller) do
+    pairs =
+      cond do
+        is_map(answers) and not is_struct(answers) ->
+          Map.to_list(answers)
+
+        is_list(answers) and Enum.all?(answers, &match?({_key, _answer}, &1)) ->
+          answers
+
+        true ->
+          raise ArgumentError,
+                "#{caller} expects answers as a map or a keyword list, got: #{inspect(answers)}"
+      end
+
+    Enum.each(pairs, fn {key, answer} ->
+      unless (is_map(answer) and not is_struct(answer)) or is_function(answer, 1) do
+        raise ArgumentError,
+              "#{caller} expects each answer to be a map or a function of one argument, " <>
+                "got: #{inspect({key, answer})}"
+      end
+    end)
+
+    Map.new(pairs)
+  end
 
   defp put_answer_handlers(opts, nil), do: opts
 
-  defp put_answer_handlers(opts, answers) when is_map(answers) or is_list(answers) do
+  defp put_answer_handlers(opts, answers) do
     handlers =
-      Map.new(answers, fn
-        {kind, answer} when kind in @kinds and (is_map(answer) or is_function(answer, 1)) ->
+      answers
+      |> answers!(":answers")
+      |> Map.new(fn
+        {kind, answer} when kind in @kinds ->
           {kind, fn params -> {:ok, resolve_answer(answer, params)} end}
 
-        {kind, answer} ->
+        {kind, _answer} ->
           raise ArgumentError,
-                ":answers takes a kind in #{inspect(@kinds)} and a map or a function " <>
-                  "of one argument, got: #{inspect({kind, answer})}"
+                ":answers takes a kind in #{inspect(@kinds)}, got: #{inspect(kind)}"
       end)
 
-    Keyword.update(opts, :input_handlers, handlers, &Map.merge(&1, handlers))
+    case Keyword.get(opts, :input_handlers, %{}) do
+      existing when is_map(existing) and not is_struct(existing) ->
+        Keyword.put(opts, :input_handlers, Map.merge(existing, handlers))
+
+      existing ->
+        raise ArgumentError,
+              ":input_handlers must be a map from kind to function, got: #{inspect(existing)}"
+    end
   end
 
-  defp put_answer_handlers(_opts, answers) do
-    raise ArgumentError, ":answers must be a map or a keyword list, got: #{inspect(answers)}"
+  defp check_runtime!(%Runtime{}), do: :ok
+
+  defp check_runtime!(runtime) do
+    raise ArgumentError, "expected a Snodo.Server.Runtime, got: #{inspect(runtime)}"
+  end
+
+  defp check_opts!(opts) do
+    unless Keyword.keyword?(opts) do
+      raise ArgumentError, "expected options as a keyword list, got: #{inspect(opts)}"
+    end
+  end
+
+  defp check_name!(name, _caller) when is_binary(name), do: :ok
+
+  defp check_name!(name, caller) do
+    raise ArgumentError,
+          "#{caller} expects a name, URI, or URI template as a string, got: #{inspect(name)}"
   end
 
   ## Failure messages
