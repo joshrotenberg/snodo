@@ -156,6 +156,23 @@ defmodule Snodo.Sampling do
 
   def response(_context, _id, _request), do: invalid_response()
 
+  @doc """
+  Checks that `response` is a `CreateMessageResult`.
+
+  That is a `"role"` of `"user"` or `"assistant"`, one sampling content block
+  or a non-empty list of them as `"content"`, a `"model"` string, and an
+  optional `"stopReason"` string. Additional JSON fields are allowed.
+  `Snodo.Client` applies it to what a sampling handler returns.
+  """
+  @spec valid_response?(term()) :: boolean()
+  def valid_response?(%{"role" => role, "content" => content, "model" => model} = response)
+      when role in @roles and is_binary(model) do
+    JSONValue.valid?(response) and message_content?(content) and
+      optional?(response, "stopReason", &is_binary/1) and meta?(response)
+  end
+
+  def valid_response?(_response), do: false
+
   defp validate_params(params) do
     with :ok <-
            check(
@@ -209,14 +226,6 @@ defmodule Snodo.Sampling do
   end
 
   defp required_settings(_params), do: []
-
-  defp valid_response?(%{"role" => role, "content" => content, "model" => model} = response)
-       when role in @roles and is_binary(model) do
-    JSONValue.valid?(response) and message_content?(content) and
-      optional?(response, "stopReason", &is_binary/1) and meta?(response)
-  end
-
-  defp valid_response?(_response), do: false
 
   defp messages?(messages) when is_list(messages) and messages != [],
     do: Enum.all?(messages, &message?/1)

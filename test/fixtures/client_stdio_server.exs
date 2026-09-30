@@ -126,7 +126,10 @@ router =
       SnodoTest.ClientStdioFixture.Subscriptions,
       SnodoTest.TestTools.Ticks,
       SnodoTest.MRTR.Tool,
-      SnodoTest.MRTR.UrlTool
+      SnodoTest.MRTR.UrlTool,
+      SnodoTest.MRTR.SamplingTool,
+      SnodoTest.MRTR.RootsTool,
+      SnodoTest.MRTR.MixedTool
     ],
     Snodo.Router.new(),
     &Snodo.Router.register_tool(&2, &1)

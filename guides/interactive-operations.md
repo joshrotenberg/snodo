@@ -71,7 +71,10 @@ instruction. A root is a client claim about its file system, not an access
 grant; check every derived path against the application's own authorization.
 The conformance fixture in `conformance/support/mrtr.ex` shows a sampling
 tool, a roots tool, a three-kind result with signed partial progress, and a
-tool that requests only the kinds the client declared.
+tool that requests only the kinds the client declared. On the client side,
+`Snodo.Client` answers both kinds through its `:sampling` and `:roots` input
+handlers and declares the matching capabilities only when a handler is
+installed; see [the client guide](client.md#input-handlers).
 
 ## State and effects
 
@@ -126,9 +129,9 @@ is a returned user choice, separate from cancelling an active protocol request.
 
 - This slice supports elicitation, the deprecated sampling and roots input
   requests, and state-only continuation. Extension-owned embedded request
-  registration remains unsupported. `Snodo.Client` answers elicitation
-  automatically but has no sampling or roots handlers yet, and the pinned
-  official client check exercises elicitation only.
+  registration remains unsupported. `Snodo.Client` answers all three kinds
+  through its input handlers (see [the client guide](client.md)), and the
+  pinned official client check exercises all three.
 - Sampling requests are validated structurally (message roles, content block
   shapes, model preferences, tools, and tool choice), not semantically: the
   server does not check that a tool result answers an earlier tool use.
