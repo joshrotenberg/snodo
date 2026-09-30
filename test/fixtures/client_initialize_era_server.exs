@@ -56,7 +56,13 @@ defmodule InitializeEraFixture do
     end
   end
 
-  defp write(message), do: IO.binwrite(:stdio, JSON.encode!(message) <> "\n")
+  # A client whose probe timed out closes the pipe before this process
+  # answers it; the answer then has nowhere to go.
+  defp write(message) do
+    IO.binwrite(:stdio, JSON.encode!(message) <> "\n")
+  catch
+    :error, :terminated -> System.halt(0)
+  end
 
   defp result(id, result), do: write(%{"jsonrpc" => "2.0", "id" => id, "result" => result})
 
