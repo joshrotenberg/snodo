@@ -99,19 +99,27 @@ defmodule Snodo.Client.Handshake do
            answer_input: false
          ) do
       {:ok, %{"supportedVersions" => versions}} when is_list(versions) ->
-        case Enum.find(dialects, &(&1.version() in versions)) do
-          nil ->
-            close_with(probe_client, no_common_version(dialects, versions))
-
-          dialect ->
-            if dialect.era() == :stateless,
-              do: {:ok, speak(client, dialect)},
-              else: initialize(client, Enum.drop_while(session, &(&1 != dialect)))
-        end
+        settle(client, dialects, session, versions)
 
       _non_modern ->
         with {:ok, client} <- reopen_transport(client, reopen), do: initialize(client, session)
     end
+  end
+
+  # The highest allowed version a modern server lists. An initialize-era one
+  # is initialized on the same connection: a stateless server kept nothing
+  # from the probe.
+  defp settle(client, dialects, session, versions) do
+    case Enum.find(dialects, &(&1.version() in versions)) do
+      nil -> close_with(client, no_common_version(dialects, versions))
+      dialect -> adopt(client, dialect, session)
+    end
+  end
+
+  defp adopt(client, dialect, session) do
+    if dialect.era() == :stateless,
+      do: {:ok, speak(client, dialect)},
+      else: initialize(client, Enum.drop_while(session, &(&1 != dialect)))
   end
 
   defp reopen_transport(%Client{transport: {module, state}} = client, reopen) do

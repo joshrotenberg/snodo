@@ -62,29 +62,8 @@ defmodule Snodo.Conformance.ClientHarness do
         json -> JSON.decode!(json)
       end
 
-    {:ok, client} =
-      log(
-        "connect",
-        Client.connect({:http, url},
-          protocol: System.get_env("SNODO_CLIENT_PROTOCOL", "2026-07-28"),
-          client_capabilities: %{"elicitation" => %{"form" => %{}}},
-          input_handlers: %{form: &accept_elicitation/1},
-          timeout: 10_000
-        )
-      )
-
-    capabilities =
-      case client.session do
-        nil ->
-          case log("server/discover", Client.discover(client)) do
-            {:ok, %{"capabilities" => capabilities}} -> capabilities
-            _other -> %{}
-          end
-
-        session ->
-          log("initialize", session)
-          session.server_capabilities
-      end
+    client = connect(scenario, url)
+    capabilities = capabilities(client)
 
     tools =
       case log("tools/list", Client.list_tools(client)) do
@@ -99,6 +78,32 @@ defmodule Snodo.Conformance.ClientHarness do
   end
 
   defp run(scenario, _url), do: fail("#{scenario}: no harness flow for this scenario")
+
+  defp connect(scenario, url) do
+    options = [
+      protocol: System.get_env("SNODO_CLIENT_PROTOCOL", "2026-07-28"),
+      client_capabilities: %{"elicitation" => %{"form" => %{}}},
+      input_handlers: %{form: &accept_elicitation/1},
+      timeout: 10_000
+    ]
+
+    case log("connect", Client.connect({:http, url}, options)) do
+      {:ok, client} -> client
+      {:error, _error} -> fail("#{scenario}: the client could not connect")
+    end
+  end
+
+  defp capabilities(%Client{session: nil} = client) do
+    case log("server/discover", Client.discover(client)) do
+      {:ok, %{"capabilities" => capabilities}} -> capabilities
+      _other -> %{}
+    end
+  end
+
+  defp capabilities(%Client{session: session}) do
+    log("initialize", session)
+    session.server_capabilities
+  end
 
   defp read_resources(client) do
     with {:ok, resources} <- log("resources/list", Client.list_resources(client)) do
