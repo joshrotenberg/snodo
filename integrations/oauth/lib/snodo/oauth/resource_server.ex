@@ -6,8 +6,8 @@ defmodule Snodo.OAuth.ResourceServer do
   protected resource metadata (RFC 9728), requires a bearer token on every
   request, validates the token's signature, lifetime, and audience (RFC 8707),
   and answers a missing or invalid token with a `WWW-Authenticate` challenge
-  that names the metadata document. This package supplies those parts as
-  plugs and a verifier, ahead of `Snodo.Transport.Plug`:
+  that names the metadata document. This package supplies those parts for
+  `Snodo.Transport.Plug` and the native HTTP listener:
 
   | Module | Role |
   |---|---|
@@ -17,6 +17,7 @@ defmodule Snodo.OAuth.ResourceServer do
   | `Snodo.OAuth.ResourceServer.Verifier.JWT` | JWS verification against a JWKS document or static keys |
   | `Snodo.OAuth.ResourceServer.JWKS` | Bounded, rate-limited key cache |
   | `Snodo.OAuth.ResourceServer.ScopePolicy` | `Snodo.Authorization` policy keyed on granted scopes |
+  | `Snodo.OAuth.ResourceServer.Native` | Request gate for the native listener, using the same metadata and bearer checks |
 
   The functions here derive the metadata location from a resource identifier
   and compare audiences. The identifier is the canonical URI clients send as

@@ -2,7 +2,8 @@ defmodule Snodo.OAuth.ResourceServer.ScopePolicy do
   @moduledoc """
   A `Snodo.Authorization` policy that requires scopes per component.
 
-  The bearer plug puts the token's granted scopes in `context.auth.scopes`.
+  The bearer plug or native request gate puts the token's granted scopes in
+  `context.auth.scopes`.
   This policy compares them with the scopes each component requires, so a
   tool, prompt, or resource is listed only for callers who may use it and a
   call without the scope is refused before the handler runs:
@@ -43,7 +44,7 @@ defmodule Snodo.OAuth.ResourceServer.ScopePolicy do
   | `:resource_metadata` | omitted | Added to the error data, for clients that need the document URL |
 
   A context without an auth map, or with one that carries no `scopes` list,
-  has no scopes: over stdio or without the bearer plug, only components
+  has no scopes: over stdio or without an authentication gate, only components
   requiring nothing are reachable.
   """
 
@@ -63,7 +64,7 @@ defmodule Snodo.OAuth.ResourceServer.ScopePolicy do
   end
 
   @doc """
-  The scopes granted to `context`, from the bearer plug's assign.
+  The scopes granted to `context` by the bearer plug or native request gate.
   """
   @spec scopes(Context.t()) :: [String.t()]
   def scopes(%Context{auth: %{scopes: scopes}}) when is_list(scopes), do: scopes

@@ -90,23 +90,42 @@ defmodule Snodo.OAuth.ResourceServer.Bearer do
   def call(%Conn{halted: true} = conn, _opts), do: conn
 
   def call(%Conn{} = conn, opts) do
-    case token(conn) do
-      {:ok, token} ->
-        authenticate(conn, token, opts)
+    case authorize(conn.req_headers, opts) do
+      {:ok, auth} ->
+        Conn.assign(conn, opts.auth_assign, auth)
 
-      {:error, :missing} ->
-        refuse(conn, 401, nil, "A bearer token is required", opts)
-
-      {:error, :malformed} ->
-        refuse(conn, 400, "invalid_request", "The Authorization header is malformed", opts)
-
-      {:error, :multiple} ->
-        refuse(conn, 400, "invalid_request", "More than one Authorization header", opts)
+      {:error, status, challenge, body} ->
+        conn
+        |> Conn.put_resp_header("www-authenticate", challenge)
+        |> Conn.put_resp_content_type("application/json")
+        |> Conn.send_resp(status, body)
+        |> Conn.halt()
     end
   end
 
-  defp token(conn) do
-    case Conn.get_req_header(conn, "authorization") do
+  @doc false
+  @spec authorize([{String.t(), String.t()}], map()) ::
+          {:ok, map()} | {:error, pos_integer(), String.t(), binary()}
+  def authorize(headers, opts) when is_list(headers) do
+    case token(headers) do
+      {:ok, token} ->
+        authenticate(token, opts)
+
+      {:error, :missing} ->
+        refuse(401, nil, "A bearer token is required", opts)
+
+      {:error, :malformed} ->
+        refuse(400, "invalid_request", "The Authorization header is malformed", opts)
+
+      {:error, :multiple} ->
+        refuse(400, "invalid_request", "More than one Authorization header", opts)
+    end
+  end
+
+  defp token(headers) do
+    values = for {name, value} <- headers, String.downcase(name) == "authorization", do: value
+
+    case values do
       [] ->
         {:error, :missing}
 
@@ -122,13 +141,13 @@ defmodule Snodo.OAuth.ResourceServer.Bearer do
     end
   end
 
-  defp authenticate(conn, token, %{verifier: {module, options}} = opts) do
+  defp authenticate(token, %{verifier: {module, options}} = opts) do
     case module.verify(token, options) do
       {:ok, claims} when is_map(claims) ->
-        admit(conn, claims, opts)
+        admit(claims, opts)
 
       {:error, reason} ->
-        refuse(conn, 401, "invalid_token", "Token verification failed: " <> name(reason), opts)
+        refuse(401, "invalid_token", "Token verification failed: " <> name(reason), opts)
 
       other ->
         raise ArgumentError,
@@ -137,7 +156,7 @@ defmodule Snodo.OAuth.ResourceServer.Bearer do
     end
   end
 
-  defp admit(conn, claims, opts) do
+  defp admit(claims, opts) do
     now = System.os_time(:second)
 
     with :ok <- check_expiry(claims["exp"], now, opts.leeway),
@@ -145,18 +164,19 @@ defmodule Snodo.OAuth.ResourceServer.Bearer do
          :ok <- check_audience(claims["aud"], opts.audience),
          {:ok, scopes} <- granted_scopes(claims),
          :ok <- check_scopes(scopes, opts.required_scopes) do
-      Conn.assign(conn, opts.auth_assign, %{
-        principal: claims["sub"],
-        client_id: claims["client_id"],
-        scopes: scopes,
-        claims: claims
-      })
+      {:ok,
+       %{
+         principal: claims["sub"],
+         client_id: claims["client_id"],
+         scopes: scopes,
+         claims: claims
+       }}
     else
       {:invalid_token, description} ->
-        refuse(conn, 401, "invalid_token", description, opts)
+        refuse(401, "invalid_token", description, opts)
 
       {:insufficient_scope, description} ->
-        refuse(conn, 403, "insufficient_scope", description, opts)
+        refuse(403, "insufficient_scope", description, opts)
     end
   end
 
@@ -206,17 +226,13 @@ defmodule Snodo.OAuth.ResourceServer.Bearer do
       else: {:insufficient_scope, "The access token lacks a required scope"}
   end
 
-  defp refuse(conn, status, error, description, opts) do
+  defp refuse(status, error, description, opts) do
     body =
       if error,
         do: %{"error" => error, "error_description" => description},
         else: %{"error_description" => description}
 
-    conn
-    |> Conn.put_resp_header("www-authenticate", challenge(opts, error, description))
-    |> Conn.put_resp_content_type("application/json")
-    |> Conn.send_resp(status, JSON.encode!(body))
-    |> Conn.halt()
+    {:error, status, challenge(opts, error, description), JSON.encode!(body)}
   end
 
   # RFC 6750 section 3: a challenge without authentication information
