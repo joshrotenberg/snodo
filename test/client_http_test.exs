@@ -14,6 +14,7 @@ defmodule Snodo.ClientHTTPTest do
   alias Snodo.Subscription.Event
   alias Snodo.Transport.StreamableHTTP.Server, as: HTTPServer
   alias SnodoTest.MRTR.Server, as: ChoiceServer
+  alias SnodoTest.TestExtensions.HTTPPolicy
   alias SnodoTest.TestFixtures
   alias SnodoTest.TestPrompts.PackageAnalysis
   alias SnodoTest.TestResources.StaticText
@@ -473,6 +474,48 @@ defmodule Snodo.ClientHTTPTest do
   end
 
   describe "request headers and responses" do
+    test "an extension policy mirrors and encodes its routed name" do
+      url = FakeHTTP.start(self(), fn _headers, message -> json(message, %{}) end)
+      client = connect(url)
+      task_id = "task/café"
+
+      assert {:ok, %{}} =
+               Client.request(client, HTTPPolicy.id(), %{"taskId" => task_id},
+                 extension: HTTPPolicy
+               )
+
+      assert_receive {:fake_http, headers, %{"method" => method}}, 1_000
+      assert method == HTTPPolicy.id()
+      assert headers["mcp-method"] == HTTPPolicy.id()
+      assert headers["mcp-name"] == "=?base64?" <> Base.encode64(task_id) <> "?="
+    end
+
+    test "an extension must own the request method for the selected version" do
+      url = FakeHTTP.start(self(), fn _headers, message -> json(message, %{}) end)
+      client = connect(url)
+
+      assert {:error, %Error{code: -32_000}} =
+               Client.request(client, "tools/list", %{}, extension: HTTPPolicy)
+
+      refute_received {:fake_http, _headers, _message}
+    end
+
+    test "a failed extension policy returns a transport error without sending a request" do
+      url = FakeHTTP.start(self(), fn _headers, message -> json(message, %{}) end)
+      client = connect(url)
+
+      for mode <- ["raise", "invalid", "malformed"] do
+        assert {:error, %Error{code: -32_000} = error} =
+                 Client.request(client, HTTPPolicy.id(), %{"policyMode" => mode},
+                   extension: HTTPPolicy
+                 )
+
+        refute inspect(error) =~ "private"
+      end
+
+      refute_received {:fake_http, _headers, _message}
+    end
+
     test "request-level headers cannot set a header the transport owns" do
       {:ok, state} = HTTP.connect("http://127.0.0.1:1/mcp", [])
       message = %{"jsonrpc" => "2.0", "id" => 1, "method" => "tools/list", "params" => %{}}

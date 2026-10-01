@@ -11,6 +11,9 @@ defmodule Snodo.Client.Transport do
     * `:timeout` - milliseconds to wait for the response.
     * `:dialect` - the protocol dialect module that built the request. HTTP
       uses its `transport_policy/1` to derive headers.
+    * `:extension` - an optional extension module for the request method.
+      HTTP uses its `transport_policy/2` to derive extension routing headers;
+      other transports may ignore it.
     * `:headers` - request headers the client adds for the negotiated
       session, as `{name, value}` string pairs: `MCP-Protocol-Version` and
       `Mcp-Session-Id` on an initialize-era connection. A transport that has

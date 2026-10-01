@@ -618,7 +618,7 @@ defmodule Snodo.Extensions.Tasks.ClientTest do
   end
 
   describe "over Streamable HTTP" do
-    test "creates a task; the task methods lack the Mcp-Name header the server requires" do
+    test "gets a task and waits for its result" do
       %{runtime: runtime} = start_server()
       listener = start_supervised!({HTTPServer, runtime: runtime, port: 0})
       {:ok, client} = Client.connect({:http, HTTPServer.url(listener)})
@@ -626,7 +626,44 @@ defmodule Snodo.Extensions.Tasks.ClientTest do
       assert {:task, %Status{} = status} =
                TasksClient.call_tool(client, "slow_compute", %{"label" => "http"})
 
-      assert {:error, %Error{code: -32_020}} = TasksClient.get(client, status)
+      assert {:ok, %Status{task_id: task_id}} = TasksClient.get(client, status)
+      assert task_id == status.task_id
+
+      assert {:ok, %{"structuredContent" => %{"label" => "http", "computed" => true}}} =
+               TasksClient.await(client, status, timeout: 5_000)
+
+      assert {:error, %Error{code: -32_602}} = TasksClient.get(client, "task/café")
+    end
+
+    test "updates a task waiting for input" do
+      %{runtime: runtime} = start_server()
+      listener = start_supervised!({HTTPServer, runtime: runtime, port: 0})
+      {:ok, client} = Client.connect({:http, HTTPServer.url(listener)})
+
+      assert {:input_required, %Status{} = status} =
+               TasksClient.call_and_await(client, "confirm_delete", %{}, [], timeout: 5_000)
+
+      response = %{"action" => "accept", "content" => %{"confirmed" => true}}
+      assert :ok = TasksClient.update(client, status, %{"confirmation" => response})
+
+      assert {:ok, %{"structuredContent" => %{"confirmation" => ^response}}} =
+               TasksClient.await(client, status, timeout: 5_000)
+    end
+
+    test "cancels a running task" do
+      %{runtime: runtime} = start_server()
+      listener = start_supervised!({HTTPServer, runtime: runtime, port: 0})
+      {:ok, client} = Client.connect({:http, HTTPServer.url(listener)})
+
+      assert {:task, %Status{} = status} =
+               TasksClient.call_tool(client, "slow_compute", %{
+                 "label" => "http-cancel",
+                 "block" => true
+               })
+
+      _worker = barrier("http-cancel")
+      assert :ok = TasksClient.cancel(client, status)
+      assert {:cancelled, %Status{status: :cancelled}} = TasksClient.await(client, status)
     end
   end
 end

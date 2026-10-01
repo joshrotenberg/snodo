@@ -318,12 +318,19 @@ defmodule SnodoTest.TestExtensions.HTTPPolicy do
     :private_invalid_policy
   end
 
+  def transport_policy(%Envelope{params: %{"policyMode" => "malformed"}}, %Policy{} = base_policy) do
+    %{base_policy | request_content_types: []}
+  end
+
   def transport_policy(%Envelope{}, %Policy{} = base_policy) do
     %{
       base_policy
       | required_headers: Enum.uniq(base_policy.required_headers ++ ["mcp-name"]),
         mirrored_headers:
-          Map.put(base_policy.mirrored_headers, "mcp-name", %{path: ["params", "taskId"]})
+          Map.put(base_policy.mirrored_headers, "mcp-name", %{
+            path: ["params", "taskId"],
+            encoding: :base64_sentinel
+          })
     }
   end
 end

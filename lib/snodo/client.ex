@@ -466,6 +466,9 @@ defmodule Snodo.Client do
       message "Maximum total timeout exceeded" and
       `data: %{"maxTotalTimeoutMs" => limit}`.
     * `:timeout` - overrides the client's request timeout.
+    * `:extension` - an extension module that owns this request method. Over
+      HTTP its `transport_policy/2` supplies routing headers for the exact
+      protocol version. Other transports do not need the policy.
     * `:answer_input` - when `false`, an `input_required` result is returned
       as `{:input_required, result}` even though the client has
       `:input_handlers`. Defaults to `true`.
@@ -652,7 +655,7 @@ defmodule Snodo.Client do
 
     transport_opts =
       [dialect: client.dialect, timeout: Keyword.get(opts, :timeout, client.timeout)] ++
-        Keyword.take(opts, [:tool, :on_response_headers]) ++
+        Keyword.take(opts, [:tool, :on_response_headers, :extension]) ++
         session_options(client) ++ progress_options(progress, opts)
 
     case module.request(state, raw, transport_opts) do

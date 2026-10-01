@@ -5,8 +5,10 @@ defmodule Snodo.Client.HTTP do
   Each request is one HTTP/1.1 `POST` on its own `:gen_tcp` or `:ssl`
   connection, closed before the request returns, so no connection or process
   outlives it. The request headers come from the protocol dialect's
-  `transport_policy/1`, the same declaration the server admits requests
-  against: the accepted and request media types, and every mirrored header
+  `transport_policy/1`. For a request made with `extension: Module`, the
+  module's `transport_policy/2` adapts that policy for its exact-versioned
+  method. These are the same declarations the server admits requests against:
+  the accepted and request media types, and every mirrored header
   (for `2026-07-28`, `MCP-Protocol-Version`, `Mcp-Method`, and `Mcp-Name`) read
   from the request body. A mirrored value that is not plain printable ASCII is
   sent in the `=?base64?...?=` form when the policy allows it. A header value
@@ -95,6 +97,7 @@ defmodule Snodo.Client.HTTP do
   alias Snodo.Client.HTTP.Stream, as: SubscriptionStream
   alias Snodo.Client.Transport
   alias Snodo.Envelope
+  alias Snodo.Extension.Method, as: ExtensionMethod
   alias Snodo.Transport.Context, as: TransportContext
   alias Snodo.Transport.ParamHeaders
   alias Snodo.Transport.Policy
@@ -163,16 +166,11 @@ defmodule Snodo.Client.HTTP do
   @impl Transport
   def request(state, message, opts) when is_map(message) do
     timeout = Keyword.fetch!(opts, :timeout)
-    policy = policy(Keyword.fetch!(opts, :dialect), message)
-
     extra = Keyword.get(opts, :headers, [])
 
-    headers =
-      message_headers(policy) ++
-        mirrored_headers(policy, message) ++
-        parameter_headers(policy, message, Keyword.get(opts, :tool)) ++ extra
-
-    with :ok <- check_headers(headers),
+    with {:ok, policy} <- request_policy(Keyword.fetch!(opts, :dialect), message, opts),
+         {:ok, headers} <- request_headers(policy, message, opts, extra),
+         :ok <- check_headers(headers),
          :ok <- check_owned(state, extra) do
       state
       |> authorized_exchange("POST", headers ++ state.headers, message, opts)
@@ -306,6 +304,76 @@ defmodule Snodo.Client.HTTP do
   defp policy(dialect, message) do
     {:ok, envelope} = Envelope.decode(message, %TransportContext{transport: :streamable_http})
     %Policy{} = dialect.transport_policy(envelope)
+  end
+
+  defp request_policy(dialect, message, opts) do
+    {:ok, envelope} = Envelope.decode(message, %TransportContext{transport: :streamable_http})
+    %Policy{} = base_policy = dialect.transport_policy(envelope)
+
+    case Keyword.get(opts, :extension) do
+      nil -> {:ok, base_policy}
+      extension -> extension_policy(extension, dialect.version(), envelope, base_policy)
+    end
+  end
+
+  defp extension_policy(extension, version, envelope, base_policy) do
+    if extension_route?(extension, version, envelope.method) do
+      if function_exported?(extension, :transport_policy, 2) do
+        try do
+          case extension.transport_policy(envelope, base_policy) do
+            %Policy{} = policy -> {:ok, policy}
+            _invalid -> invalid_extension_policy(extension)
+          end
+        rescue
+          _error -> invalid_extension_policy(extension)
+        catch
+          _kind, _reason -> invalid_extension_policy(extension)
+        end
+      else
+        {:ok, base_policy}
+      end
+    else
+      invalid_extension_policy(extension)
+    end
+  end
+
+  defp extension_route?(extension, version, method) when is_atom(extension) do
+    Code.ensure_loaded?(extension) and function_exported?(extension, :methods, 0) and
+      Enum.any?(extension.methods(), fn
+        %ExtensionMethod{protocol_version: ^version, name: ^method} -> true
+        _other -> false
+      end)
+  rescue
+    _error -> false
+  catch
+    _kind, _reason -> false
+  end
+
+  defp extension_route?(_extension, _version, _method), do: false
+
+  defp invalid_extension_policy(extension),
+    do: {:error, Transport.connection_error("Invalid extension transport policy", extension)}
+
+  defp request_headers(policy, message, opts, extra) do
+    case Keyword.fetch(opts, :extension) do
+      :error ->
+        {:ok, build_request_headers(policy, message, opts, extra)}
+
+      {:ok, extension} ->
+        try do
+          {:ok, build_request_headers(policy, message, opts, extra)}
+        rescue
+          _error -> invalid_extension_policy(extension)
+        catch
+          _kind, _reason -> invalid_extension_policy(extension)
+        end
+    end
+  end
+
+  defp build_request_headers(policy, message, opts, extra) do
+    message_headers(policy) ++
+      mirrored_headers(policy, message) ++
+      parameter_headers(policy, message, Keyword.get(opts, :tool)) ++ extra
   end
 
   defp message_headers(%Policy{} = policy) do
