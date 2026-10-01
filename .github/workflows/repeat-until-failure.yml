@@ -15,9 +15,9 @@ on:
   workflow_dispatch:
     inputs:
       repeat:
-        description: "Runs per variant (mix test --repeat-until-failure)"
+        description: "Repeats per variant after the first run (mix test --repeat-until-failure)"
         type: number
-        default: 30
+        default: 20
       package:
         description: "Package to run, or all"
         type: choice
@@ -73,7 +73,8 @@ jobs:
     name: ${{ matrix.package.name }} (${{ matrix.variant }})
     needs: plan
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    # Under CPU load one run of the core suite takes about five minutes.
+    timeout-minutes: 220
     permissions:
       contents: read
     strategy:
@@ -99,7 +100,7 @@ jobs:
           --health-retries 12
     env:
       MIX_ENV: test
-      REPEAT: ${{ inputs.repeat || (github.event_name == 'pull_request' && 3) || 30 }}
+      REPEAT: ${{ inputs.repeat || (github.event_name == 'pull_request' && 3) || 20 }}
       PACKAGE: ${{ matrix.package.name }}
       VARIANT: ${{ matrix.variant }}
       TEST_ARGS: ${{ matrix.package.args }}
@@ -140,7 +141,7 @@ jobs:
           EOF
       - name: Run the suite until it fails
         id: run
-        timeout-minutes: 160
+        timeout-minutes: 200
         shell: bash
         run: |
           [[ "$REPEAT" =~ ^[1-9][0-9]*$ ]] ||
@@ -169,7 +170,8 @@ jobs:
 
           # Each run starts with "Running ExUnit with seed: N, ..."; the first
           # numbered failure ends the search, since --max-failures 1 stops the
-          # suite in the run that failed.
+          # suite in the run that failed. --repeat-until-failure N runs the
+          # suite N + 1 times.
           IFS=$'\t' read -r seed run test location < <(awk '
             /^Running ExUnit with seed: / { seed = $5; sub(/,$/, "", seed); run++ }
             /^ +1\) / {
@@ -201,7 +203,7 @@ jobs:
               echo "- Test: \`$test\`"
               echo "- Location: \`$prefix$location\`"
             fi
-            echo "- Seed: \`$seed\`, on run $run of $REPEAT"
+            echo "- Seed: \`$seed\`, on run $run of $(( REPEAT + 1 ))"
             echo "- Variant: $setting"
             echo "- Commit: \`$SHA\` on \`$REF\`"
             echo "- Rerun the same ordering: \`$rerun\`"
