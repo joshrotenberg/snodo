@@ -55,6 +55,8 @@ defmodule Snodo.Server do
   alias Snodo.Subscription
   alias Snodo.Transport.Context, as: TransportContext
 
+  @max_instrumented_method_bytes 128
+
   @type dispatch_result :: {:ok, map() | nil} | {:stream, Subscription.t()}
 
   defmacro __using__(opts) do
@@ -409,11 +411,17 @@ defmodule Snodo.Server do
 
   defp dispatch_metadata(raw, transport) do
     %{
-      method: if(is_map(raw), do: Map.get(raw, "method"), else: nil),
+      method: instrumented_method(raw),
       request_id: readable_id(raw),
       transport: transport.transport
     }
   end
+
+  defp instrumented_method(%{"method" => method})
+       when is_binary(method) and byte_size(method) <= @max_instrumented_method_bytes,
+       do: method
+
+  defp instrumented_method(_raw), do: :invalid
 
   defp dispatch_finish_metadata({:stream, _subscription}), do: %{outcome: :stream}
   defp dispatch_finish_metadata({:ok, nil}), do: %{outcome: :no_reply}
