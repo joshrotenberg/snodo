@@ -10,6 +10,71 @@ defmodule Snodo.Transport.StreamableHTTP.ServerLimitsTest do
 
   @protocol "2026-07-28"
 
+  test "a body buffered with the complete head does not count against the header limit" do
+    [head, body] = padded_request_parts("buffered")
+
+    port =
+      start_http(
+        runtime: TestFixtures.runtime(),
+        max_header_bytes: byte_size(head),
+        max_body_bytes: byte_size(body)
+      )
+
+    assert byte_size(body) > byte_size(head)
+    socket = connect(port)
+    :ok = :gen_tcp.send(socket, [head, body])
+    assert read_all(socket) =~ "HTTP/1.1 200"
+  end
+
+  test "a body buffered with the final head bytes does not count against the header limit" do
+    [head, body] = padded_request_parts("split-head")
+
+    port =
+      start_http(
+        runtime: TestFixtures.runtime(),
+        max_header_bytes: byte_size(head),
+        max_body_bytes: byte_size(body)
+      )
+
+    {prefix, suffix} = :erlang.split_binary(head, byte_size(head) - 2)
+    socket = connect(port)
+    :ok = :gen_tcp.send(socket, prefix)
+    assert {:error, :timeout} = :gen_tcp.recv(socket, 0, 50)
+
+    :ok = :gen_tcp.send(socket, [suffix, body])
+    assert read_all(socket) =~ "HTTP/1.1 200"
+  end
+
+  test "the header limit includes the final CRLF" do
+    [head, body] = request_parts(TestFixtures.request("large-head", "server/discover"))
+    port = start_http(runtime: TestFixtures.runtime(), max_header_bytes: byte_size(head) - 1)
+    socket = connect(port)
+    :ok = :gen_tcp.send(socket, [head, body])
+    assert read_all(socket) =~ "HTTP/1.1 431"
+  end
+
+  test "an incomplete head over the header limit gets 431" do
+    port = start_http(runtime: TestFixtures.runtime(), max_header_bytes: 128)
+    socket = connect(port)
+    :ok = :gen_tcp.send(socket, "POST /mcp HTTP/1.1\r\nX-Fill: " <> String.duplicate("x", 129))
+    assert read_all(socket) =~ "HTTP/1.1 431"
+  end
+
+  test "a buffered body larger than its own limit gets 413" do
+    [head, body] = padded_request_parts("oversized-body")
+
+    port =
+      start_http(
+        runtime: TestFixtures.runtime(),
+        max_header_bytes: byte_size(head),
+        max_body_bytes: byte_size(body) - 1
+      )
+
+    socket = connect(port)
+    :ok = :gen_tcp.send(socket, [head, body])
+    assert read_all(socket) =~ "HTTP/1.1 413"
+  end
+
   test "a connection over max_connections is closed and capacity returns after a close" do
     port = start_http(runtime: TestFixtures.runtime(), max_connections: 2)
     raw = TestFixtures.request("capped", "server/discover")
@@ -269,6 +334,11 @@ defmodule Snodo.Transport.StreamableHTTP.ServerLimitsTest do
 
     lines = Enum.map(headers, fn {name, value} -> [name, ": ", value, "\r\n"] end)
     [IO.iodata_to_binary(["POST /mcp HTTP/1.1\r\n", lines, "\r\n"]), body]
+  end
+
+  defp padded_request_parts(id) do
+    TestFixtures.request(id, "server/discover", %{"padding" => String.duplicate("x", 12_000)})
+    |> request_parts()
   end
 
   # A socket closed at accept can be reset rather than closed when the request

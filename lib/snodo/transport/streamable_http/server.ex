@@ -615,16 +615,19 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     end
   end
 
-  defp recv_head(_socket, acc, opts) when byte_size(acc) > opts.max_header_bytes,
-    do: {:error, 431, "HTTP request headers are too large"}
-
   defp recv_head(socket, acc, opts) do
     case :binary.match(acc, "\r\n\r\n") do
+      {index, 4} when index + 4 > opts.max_header_bytes ->
+        {:error, 431, "HTTP request headers are too large"}
+
       {index, 4} ->
         head = binary_part(acc, 0, index)
         rest_start = index + 4
         rest = binary_part(acc, rest_start, byte_size(acc) - rest_start)
         {:ok, head, rest}
+
+      :nomatch when byte_size(acc) > opts.max_header_bytes ->
+        {:error, 431, "HTTP request headers are too large"}
 
       :nomatch ->
         with {:ok, chunk} <- recv_head_chunk(socket, opts) do
