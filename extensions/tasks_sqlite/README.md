@@ -137,7 +137,8 @@ sqlite =
     timeout: 15_000,
     reap_batch_size: 500,
     max_tasks: 10_000,
-    max_active_tasks_per_scope: 100
+    max_active_tasks_per_scope: 100,
+    max_queued_writers: 1_000
   )
 
 :ok = SQLite.check_schema(sqlite)
@@ -157,12 +158,12 @@ store_ref = {SQLite, sqlite}
 Pass `store_ref` and `runner` to the Tasks extension exactly as with Memory,
 DETS, or PostgreSQL.
 
-The values shown for `:reap_batch_size`, `:max_tasks`, and
-`:max_active_tasks_per_scope` are the defaults. `reap/1` deletes at most
-`:reap_batch_size` expired Tasks per call, so a runner reaping every
-`:reap_interval_ms` (default 60,000) deletes at most that many per interval.
-`get/3` and request transitions report a Task as not found once SQLite's clock
-passes its `createdAt + ttlMs`, before it is reaped.
+The values shown for `:timeout`, `:reap_batch_size`, `:max_tasks`,
+`:max_active_tasks_per_scope`, and `:max_queued_writers` are the defaults.
+`reap/1` deletes at most `:reap_batch_size` expired Tasks per call, so a
+runner reaping every `:reap_interval_ms` (default 60,000) deletes at most that
+many per interval. `get/3` and request transitions report a Task as not found
+once SQLite's clock passes its `createdAt + ttlMs`, before it is reaped.
 
 `create/4` refuses a Task with `{:error, {:capacity_exceeded, limit}}` when the
 table already holds `:max_tasks` Tasks, or the caller's scope already has
@@ -214,19 +215,52 @@ callback from reporting success before an outer transaction later rolls back.
 Read callbacks invoked inside an application transaction reuse its pinned
 connection and consistent snapshot without opening a nested transaction.
 
-Store mutations through the same Repo on one node queue in the adapter before
-they check out a connection, and wait there for up to the store's `:timeout`
-(default 15,000 ms). They do not wait on each other inside SQLite: Exqlite holds
-the waiting connection's mutex for the whole busy wait, and Ecto's query cache
-can make the writer that holds the database finalize a statement prepared on
-that connection, so the holder would stall until the waiter gave up. When a
-writer outside this queue holds the database (another OS process, another Repo
-on the same file, or application SQL), Exqlite waits up to the Repo's
-`:busy_timeout`. Either kind of exhaustion is normalized to
-`{:error, :database_busy}` and the transaction leaves the aggregate and ledger
-untouched. Keep Tasks transactions short, use one Repo per database file for
-Tasks traffic on a node, choose the Repo timeout above its busy timeout, and
-treat the error as bounded application backpressure.
+Store mutations through the same Repo on one node take a write slot, one at a
+time in arrival order, before they begin their `IMMEDIATE` transaction. The
+slot is held by a process per Repo (per dynamic repo when the application uses
+`put_dynamic_repo/1`), started on first use under this package's application
+supervisor. It monitors the holder and each waiter: a holder that exits
+releases the slot, a waiter that exits leaves the queue, and a release hands
+the slot straight to the next waiter.
+
+The slot keeps store writers from waiting on each other inside SQLite. Exqlite
+waits out the busy timeout inside a native call that holds the waiting
+connection's mutex, and finalizing a statement prepared on that connection
+needs the same mutex. Ecto's query cache hands prepared statements between
+pooled connections, so the writer holding the database can block a scheduler
+thread, and every process scheduled on it, on the waiter's statement until the
+waiter's busy timeout ends. A writer waiting for the slot waits in an Elixir
+`receive` and holds no Exqlite mutex.
+
+A mutation checks out its connection first and then waits for the slot while
+holding that connection, inside the same checkout as its transaction. A caller
+already inside `Repo.checkout/2` therefore never waits for a slot held by a
+writer that needs its connection. The checkout, the slot wait, and the
+transaction share one deadline, the store's `:timeout` (default 15,000 ms). A
+mutation stops waiting for the slot while a tenth of `:timeout` (at most one
+second) remains, so it does not start a transaction the checkout deadline
+would cut off, and returns `{:error, :database_busy}`. At most
+`:max_queued_writers` mutations (default 1,000) wait for one Repo's slot; a
+mutation that arrives when the queue is full gets `{:error, :database_busy}`
+at once.
+
+The time one store mutation waits for another is bounded by the store's
+`:timeout`, not the Repo's `:busy_timeout`. When a writer outside the slot
+holds the database (another OS process, another Repo on the same file, or
+application SQL), Exqlite still waits up to the Repo's `:busy_timeout`.
+Application SQL that writes through the same Repo can still meet the stall
+described above, because it shares the Repo's query cache. Either kind of exhaustion is normalized to `{:error, :database_busy}`
+and the transaction leaves the aggregate and ledger untouched. Keep Tasks
+transactions short, use one Repo per database file for Tasks traffic on a
+node, choose the store timeout above the Repo's busy timeout, and treat the
+error as bounded application backpressure.
+
+Because waiting writers hold pooled connections, the number of waiters for one
+Repo stays below its `:pool_size`, and reads queue for a connection while
+every connection is held by a writer. Size the pool above the number of
+concurrent store writers you expect plus the reads that should not wait behind
+them. Callers beyond the pool wait in DBConnection's checkout queue, which
+`:queue_target` and `:queue_interval` govern.
 
 `claim_next/3` cannot skip a row held by another writer: it waits for the one
 database writer, then chooses the oldest committed available Task. This is a

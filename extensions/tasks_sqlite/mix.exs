@@ -49,7 +49,10 @@ defmodule Snodo.Extensions.Tasks.SQLite.MixProject do
   end
 
   def application do
-    [extra_applications: [:crypto, :logger]]
+    [
+      mod: {Snodo.Extensions.Tasks.Store.SQLite.Application, []},
+      extra_applications: [:crypto, :logger]
+    ]
   end
 
   defp deps do

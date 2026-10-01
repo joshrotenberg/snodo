@@ -11,12 +11,20 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite do
   SQLite has no row locks and permits only one writer. Every store mutation
   therefore uses an `IMMEDIATE` transaction, acquiring the database write
   reservation before it reads availability, lease, revision, or clock state.
-  Store mutations through the same Repo on one node queue for up to `:timeout`
-  before they check out a connection, so they never wait on each other inside
-  SQLite. Other writers, such as another OS process, another Repo, or
-  application SQL, are waited on according to the application Repo's
-  `:busy_timeout`. Exhausted contention is normalized to
-  `{:error, :database_busy}`.
+
+  Store mutations through the same Repo on one node take a write slot in
+  arrival order before they begin their transaction, so they do not wait on
+  each other inside SQLite. A mutation checks out a connection first and waits
+  for the slot while holding it. The connection checkout, the slot wait, and
+  the transaction share one `:timeout` deadline; a mutation stops waiting for
+  the slot while a tenth of `:timeout` (at most one second) remains. At most
+  `:max_queued_writers` mutations (default 1,000) wait per Repo; a mutation
+  arriving at a full queue is refused at once. Writers outside the slot, such
+  as another OS process, another Repo on the same file, or application SQL,
+  are waited on according to the application Repo's `:busy_timeout`.
+  Exhausted contention of either kind is normalized to
+  `{:error, :database_busy}`. The package README explains why the slot exists
+  and how to size the Repo pool.
 
   The supported deployment boundary is a file-backed WAL database on one
   host. Recovery remains at least once, so applications must deduplicate
@@ -53,6 +61,7 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite do
   alias Snodo.Extensions.Tasks.Store.SQLite.Persistence
   alias Snodo.Extensions.Tasks.Store.SQLite.TaskRow
   alias Snodo.Extensions.Tasks.Store.SQLite.Timestamp
+  alias Snodo.Extensions.Tasks.Store.SQLite.WriterQueue
   alias Snodo.Extensions.Tasks.Task, as: ProtocolTask
   alias Snodo.Extensions.Tasks.Transition
   alias Snodo.Extensions.Tasks.Work
@@ -62,6 +71,7 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite do
   @default_reap_batch_size 500
   @default_max_tasks 10_000
   @default_max_active_tasks_per_scope 100
+  @default_max_queued_writers 1_000
   @worker_events [:input_requested, :retry_requested, :completed, :failed]
   @request_events %{update: :input_responses_accepted, cancel: :cancelled}
   @known_options [
@@ -70,7 +80,8 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite do
     :timeout,
     :reap_batch_size,
     :max_tasks,
-    :max_active_tasks_per_scope
+    :max_active_tasks_per_scope,
+    :max_queued_writers
   ]
 
   @type audit_report :: %{
@@ -94,7 +105,9 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite do
              opts,
              :max_active_tasks_per_scope,
              @default_max_active_tasks_per_scope
-           ) do
+           ),
+         {:ok, max_queued_writers} <-
+           positive_option(opts, :max_queued_writers, @default_max_queued_writers) do
       {:ok,
        %Config{
          repo: repo,
@@ -103,6 +116,7 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite do
          reap_batch_size: reap_batch_size,
          max_tasks: max_tasks,
          max_active_tasks_per_scope: max_active_tasks_per_scope,
+         max_queued_writers: max_queued_writers,
          identity: make_ref()
        }}
     end
@@ -952,54 +966,45 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite do
       else: transact(config, :deferred, function)
   end
 
+  # Store writers take the Repo's write slot (see WriterQueue) after checking
+  # out a connection and inside that checkout, so a writer that waits for the
+  # slot never holds it while it waits for a connection. The checkout's
+  # deadline bounds the slot wait and the transaction together. A writer stops
+  # waiting for the slot while a tenth of `:timeout` (at most one second)
+  # remains, so it does not start a transaction the checkout deadline would
+  # cut off.
   defp transact_write(config, function) do
     if config.repo.in_transaction?(),
       do: {:error, :nested_write_transaction_unsupported},
-      else: with_writer_gate(config, fn -> transact(config, :immediate, function) end)
+      else: database_call(fn -> checkout_writer(config, function) end)
   end
 
-  # Exqlite waits out `:busy_timeout` inside a native call that holds the
-  # waiting connection's mutex, and finalizing a statement prepared on that
-  # connection needs the same mutex. Ecto's query cache hands prepared
-  # statements between pooled connections, so the writer that holds the
-  # database can block on the waiter's statement until the waiter gives up,
-  # and then both writers see the busy timeout. Store writers on one node
-  # therefore queue here, per Repo, before they reach SQLite.
-  defp with_writer_gate(config, function) do
-    lock = {{__MODULE__, :writer, config.repo}, self()}
+  defp checkout_writer(config, function) do
     deadline = System.monotonic_time(:millisecond) + config.timeout
 
-    case acquire_writer_gate(lock, deadline, 0) do
-      :ok ->
-        try do
-          function.()
-        after
-          :global.del_lock(lock, [node()])
-        end
-
-      :timeout ->
-        {:error, :database_busy}
-    end
+    config.repo.checkout(
+      fn -> transact_in_writer_slot(config, deadline, function) end,
+      timeout: config.timeout
+    )
   end
 
-  # The same backoff schedule as SQLite's busy handler, without a native
-  # thread or connection mutex held while waiting.
-  @writer_gate_delays_ms [1, 2, 5, 10, 15, 20, 25, 25, 25, 50]
+  defp transact_in_writer_slot(config, deadline, function) do
+    slot_deadline = deadline - min(div(config.timeout, 10), 1_000)
 
-  defp acquire_writer_gate(lock, deadline, attempt) do
-    remaining = deadline - System.monotonic_time(:millisecond)
+    case WriterQueue.acquire(
+           WriterQueue.key(config.repo),
+           slot_deadline,
+           config.max_queued_writers
+         ) do
+      {:ok, slot} ->
+        try do
+          transact(config, :immediate, function)
+        after
+          WriterQueue.release(slot)
+        end
 
-    cond do
-      :global.set_lock(lock, [node()], 0) ->
-        :ok
-
-      remaining <= 0 ->
-        :timeout
-
-      true ->
-        delay = Enum.at(@writer_gate_delays_ms, attempt, 50)
-        Process.sleep(min(delay, remaining))
-        acquire_writer_gate(lock, deadline, attempt + 1)
+      {:error, :database_busy} ->
+        {:error, :database_busy}
     end
   end
 
