@@ -30,6 +30,11 @@ most 256 bytes or an integer in the int64 range (-32600 otherwise), and a
 echoed in every response and notification for a request, so an error for a
 request whose id is out of bounds carries a null id instead.
 
+Resource template matching is linear in the length of the requested URI, with
+no backtracking, so the message size limit bounds it. Templates themselves are
+limited to 1,024 bytes and 32 variables when the resource module compiles; see
+[Components](components.md#template-shapes).
+
 ## Stdio
 
 ```elixir
