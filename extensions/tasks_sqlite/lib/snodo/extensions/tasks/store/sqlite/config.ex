@@ -13,6 +13,7 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite.Config do
           max_tasks: pos_integer() | :infinity,
           max_active_tasks_per_scope: pos_integer() | :infinity,
           max_queued_writers: pos_integer(),
+          busy_timeout: non_neg_integer(),
           identity: reference()
         }
 
@@ -24,6 +25,7 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite.Config do
     :max_tasks,
     :max_active_tasks_per_scope,
     :max_queued_writers,
+    :busy_timeout,
     :identity
   ]
   defstruct [
@@ -34,6 +36,7 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite.Config do
     :max_tasks,
     :max_active_tasks_per_scope,
     :max_queued_writers,
+    :busy_timeout,
     :identity
   ]
 end

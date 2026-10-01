@@ -13,7 +13,9 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite.WriterQueue do
   #
   # The queue monitors the holder and every waiter. A dead holder releases the
   # slot, a dead waiter leaves the queue, and a release hands the slot directly
-  # to the next waiter.
+  # to the next waiter. If a queue process itself exits, a holder keeps running
+  # its transaction while the next writer starts a new queue and can be granted
+  # the slot, so for that overlap the two meet in SQLite's busy handler.
 
   use GenServer, restart: :temporary
 
@@ -27,28 +29,24 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite.WriterQueue do
   @doc """
   Waits for the write slot until the monotonic `deadline` in milliseconds.
 
+  When the deadline has already passed, takes the slot only if it is free.
   Returns `{:error, :database_busy}` when the deadline passes, when
-  `max_waiters` writers are already waiting, or when the queue stops.
+  `max_waiters` writers are already waiting, or when the queue stops, and
+  `{:error, {:application_not_started, :snodo_tasks_sqlite}}` when the queue
+  supervisor is not running.
   """
-  @spec acquire(key(), integer(), pos_integer()) :: {:ok, slot()} | {:error, :database_busy}
+  @spec acquire(key(), integer(), non_neg_integer()) ::
+          {:ok, slot()}
+          | {:error, :database_busy | {:application_not_started, :snodo_tasks_sqlite}}
   def acquire(key, deadline, max_waiters) do
-    queue = ensure_started(key)
-    ref = Process.monitor(queue)
-    send(queue, {:acquire, self(), ref, max_waiters})
+    with {:ok, queue} <- ensure_started(key) do
+      remaining = deadline - System.monotonic_time(:millisecond)
 
-    receive do
-      {^ref, :granted} ->
-        {:ok, {queue, ref}}
-
-      {^ref, :full} ->
-        Process.demonitor(ref, [:flush])
-        {:error, :database_busy}
-
-      {:DOWN, ^ref, :process, _queue, _reason} ->
-        {:error, :database_busy}
-    after
-      max(deadline - System.monotonic_time(:millisecond), 0) ->
-        cancel(queue, ref)
+      # With no waiters allowed, the queue grants a free slot or refuses at
+      # once, so that wait needs no timeout.
+      if remaining > 0,
+        do: wait(queue, remaining, max_waiters),
+        else: wait(queue, :infinity, 0)
     end
   end
 
@@ -63,28 +61,50 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite.WriterQueue do
   @doc false
   @spec waiting(key()) :: non_neg_integer()
   def waiting(key) do
-    case Registry.lookup(__MODULE__.Registry, key) do
-      [{queue, _value}] -> GenServer.call(queue, :waiting)
-      [] -> 0
+    case __MODULE__.Registry.lookup(key) do
+      {:ok, queue} -> GenServer.call(queue, :waiting)
+      _missing -> 0
     end
   end
 
   @doc false
-  def start_link(key) do
-    GenServer.start_link(__MODULE__, key, name: {:via, Registry, {__MODULE__.Registry, key}})
+  def start_link(key), do: GenServer.start_link(__MODULE__, key)
+
+  defp wait(queue, remaining, max_waiters) do
+    ref = Process.monitor(queue)
+    send(queue, {:acquire, self(), ref, max_waiters})
+
+    receive do
+      {^ref, :granted} ->
+        {:ok, {queue, ref}}
+
+      {^ref, :full} ->
+        Process.demonitor(ref, [:flush])
+        {:error, :database_busy}
+
+      {:DOWN, ^ref, :process, _queue, _reason} ->
+        {:error, :database_busy}
+    after
+      remaining -> cancel(queue, ref)
+    end
   end
 
   defp ensure_started(key) do
-    case Registry.lookup(__MODULE__.Registry, key) do
-      [{queue, _value}] ->
-        queue
-
-      [] ->
-        case DynamicSupervisor.start_child(__MODULE__.Supervisor, {__MODULE__, key}) do
-          {:ok, queue} -> queue
-          {:error, {:already_started, queue}} -> queue
-        end
+    case __MODULE__.Registry.lookup(key) do
+      {:ok, queue} -> {:ok, queue}
+      :error -> start_queue(key)
+      :not_started -> {:error, {:application_not_started, :snodo_tasks_sqlite}}
     end
+  end
+
+  # The registry or the queue supervisor may be restarting.
+  defp start_queue(key) do
+    case __MODULE__.Registry.start_queue(key) do
+      {:ok, queue} -> {:ok, queue}
+      {:error, _reason} -> {:error, :database_busy}
+    end
+  catch
+    :exit, _reason -> {:error, :database_busy}
   end
 
   # The holder may have been granted the slot after the deadline passed. The

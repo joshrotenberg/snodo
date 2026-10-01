@@ -73,6 +73,13 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite.WriterQueueTest do
     refute_received {:granted, :dead, _waiter}
   end
 
+  test "a writer whose deadline has passed takes only a free slot", %{key: key} do
+    assert {:ok, slot} = WriterQueue.acquire(key, deadline(-10), @max_waiters)
+    assert {:error, :database_busy} = WriterQueue.acquire(key, deadline(-10), @max_waiters)
+    assert WriterQueue.waiting(key) == 0
+    :ok = WriterQueue.release(slot)
+  end
+
   test "a writer arriving at a full queue is refused at once", %{key: key} do
     assert {:ok, slot} = WriterQueue.acquire(key, deadline(@await_ms), 2)
     _first = start_waiter(key, :first, 2)
@@ -136,13 +143,17 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite.WriterQueueTest do
     repo = spawn(fn -> Process.sleep(:infinity) end)
     key = {__MODULE__, repo}
     assert {:ok, slot} = WriterQueue.acquire(key, deadline(@await_ms), @max_waiters)
-    [{queue, _value}] = Registry.lookup(WriterQueue.Registry, key)
+    {:ok, queue} = WriterQueue.Registry.lookup(key)
     monitor = Process.monitor(queue)
 
     Process.exit(repo, :kill)
 
     assert_receive {:DOWN, ^monitor, :process, ^queue, :normal}, @await_ms
     :ok = WriterQueue.release(slot)
+    # A synchronous call to the registry processes its DOWN for the queue
+    # first, so the stopped queue is no longer handed out.
+    assert {:ok, new_queue} = WriterQueue.Registry.start_queue(key)
+    refute new_queue == queue
   end
 
   defp deadline(ms), do: System.monotonic_time(:millisecond) + ms

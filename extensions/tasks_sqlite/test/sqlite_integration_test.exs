@@ -453,8 +453,8 @@ defmodule Snodo.Extensions.Tasks.SQLite.IntegrationTest do
   test "looping Store writers all keep committing within their timeout", %{
     database: database
   } do
-    with_gate_repo(database, @busy_timeout_ms, 5, fn ->
-      store = gate_store(timeout: 2_000)
+    with_gate_repo(database, 200, 5, fn ->
+      store = gate_store(timeout: 3_000)
       stop_at = System.monotonic_time(:millisecond) + 500
 
       results =
@@ -475,7 +475,7 @@ defmodule Snodo.Extensions.Tasks.SQLite.IntegrationTest do
   test "a Store writer inside Repo.checkout and one waiting for its connection both commit",
        %{database: database} do
     with_gate_repo(database, @busy_timeout_ms, 1, fn ->
-      store = gate_store(timeout: 5_000)
+      store = gate_store(timeout: 10_000)
       parent = self()
       started = System.monotonic_time(:millisecond)
 
@@ -505,11 +505,12 @@ defmodule Snodo.Extensions.Tasks.SQLite.IntegrationTest do
   end
 
   @tag mcp_contract: ["tasks-sqlite-concurrency"]
-  test "a queued Store writer returns :database_busy at its deadline and leaves the queue", %{
-    database: database
-  } do
-    with_gate_repo(database, @busy_timeout_ms, 2, fn ->
-      store = gate_store(timeout: 300)
+  # The slot wait ends while the Repo's busy timeout (100ms) plus a tenth of
+  # :timeout (60ms) remains of the 600ms budget.
+  test "a queued Store writer returns :database_busy at its slot deadline and leaves the queue",
+       %{database: database} do
+    with_gate_repo(database, 100, 2, fn ->
+      store = gate_store(timeout: 600)
       key = WriterQueue.key(GateRepo)
       {:ok, slot} = WriterQueue.acquire(key, System.monotonic_time(:millisecond) + 5_000, 10)
 
@@ -517,7 +518,7 @@ defmodule Snodo.Extensions.Tasks.SQLite.IntegrationTest do
         started = System.monotonic_time(:millisecond)
         assert {:error, :database_busy} = create_task(store, unique_id("late"), "tenant-a")
         elapsed = System.monotonic_time(:millisecond) - started
-        assert elapsed >= 270 and elapsed < 1_000, "gave up after #{elapsed}ms"
+        assert elapsed >= 420 and elapsed < 1_500, "gave up after #{elapsed}ms"
         assert WriterQueue.waiting(key) == 0
       after
         WriterQueue.release(slot)
@@ -556,8 +557,117 @@ defmodule Snodo.Extensions.Tasks.SQLite.IntegrationTest do
     end)
   end
 
+  # A writer granted the slot can still wait out the Repo's busy timeout
+  # behind a writer outside the slot. It stops waiting for the slot early
+  # enough that this wait ends with :database_busy before the checkout
+  # deadline would cut the connection off.
+  @tag mcp_contract: ["tasks-sqlite-concurrency"]
+  @tag capture_log: true
+  test "a Store writer leaves room for the Repo busy timeout inside its :timeout", %{
+    database: database
+  } do
+    with_gate_repo(database, 1_500, 3, fn ->
+      store = gate_store(timeout: 2_000)
+      key = WriterQueue.key(GateRepo)
+      outside = hold_writer!()
+
+      try do
+        {:ok, slot} = WriterQueue.acquire(key, System.monotonic_time(:millisecond) + 10_000, 10)
+
+        try do
+          # 2,000ms less 1,500ms busy timeout less 200ms leaves 300ms of slot wait.
+          {result, elapsed} = timed(fn -> create_task(store, unique_id("wait"), "tenant-a") end)
+          assert result == {:error, :database_busy}
+          assert elapsed >= 280 and elapsed < 1_400, "gave up after #{elapsed}ms"
+        after
+          WriterQueue.release(slot)
+        end
+
+        log =
+          ExUnit.CaptureLog.capture_log(fn ->
+            {result, elapsed} =
+              timed(fn -> create_task(store, unique_id("granted"), "tenant-a") end)
+
+            assert result == {:error, :database_busy}
+            assert elapsed >= 1_400, "the busy handler gave up after #{elapsed}ms"
+          end)
+
+        refute log =~ "timed out because it queued and checked out the connection"
+      after
+        release_writer(outside)
+      end
+
+      assert {:ok, %Snapshot{}} = create_task(store, unique_id("after"), "tenant-a")
+    end)
+  end
+
+  # DBConnection's checkout deadline includes the wait for a connection. A
+  # writer whose connection wait used up its slot budget still takes the slot
+  # when it is free, and is refused at once when it is not.
+  @tag mcp_contract: ["tasks-sqlite-concurrency"]
+  test "a Store writer whose connection wait used its slot budget takes only a free slot", %{
+    database: database
+  } do
+    with_gate_repo(database, 1_000, 1, fn ->
+      # 2,000ms less 1,000ms busy timeout less 200ms leaves 800ms, and the
+      # connection is held for 1,000ms.
+      store = gate_store(timeout: 2_000)
+
+      {result, elapsed} =
+        with_connection_held(1_000, fn -> create_task(store, unique_id("free"), "tenant-a") end)
+
+      assert {:ok, %Snapshot{}} = result
+      assert elapsed >= 900, "created after #{elapsed}ms"
+
+      key = WriterQueue.key(GateRepo)
+      {:ok, slot} = WriterQueue.acquire(key, System.monotonic_time(:millisecond) + 10_000, 10)
+
+      try do
+        {result, elapsed} =
+          with_connection_held(1_000, fn -> create_task(store, unique_id("held"), "tenant-a") end)
+
+        assert result == {:error, :database_busy}
+        assert elapsed >= 900 and elapsed < 1_900, "refused after #{elapsed}ms"
+      after
+        WriterQueue.release(slot)
+      end
+    end)
+  end
+
+  test "Store mutations report a stopped writer-queue supervisor", %{store: store} do
+    application_supervisor = Snodo.Extensions.Tasks.Store.SQLite.Application.Supervisor
+    queue_supervisor = Snodo.Extensions.Tasks.Store.SQLite.Supervisor
+    assert :ok = Supervisor.terminate_child(application_supervisor, queue_supervisor)
+
+    try do
+      assert {:error, {:application_not_started, :snodo_tasks_sqlite}} =
+               create_task(store, unique_id("stopped"), "tenant-a")
+    after
+      assert {:ok, _pid} = Supervisor.restart_child(application_supervisor, queue_supervisor)
+    end
+
+    assert {:ok, %Snapshot{}} = create_task(store, unique_id("restarted"), "tenant-a")
+  end
+
+  test "the writer queues restart when their registry is killed", %{store: store} do
+    queue_supervisor = Process.whereis(Snodo.Extensions.Tasks.Store.SQLite.Supervisor)
+    registry = Process.whereis(WriterQueue.Registry)
+    assert {:ok, %Snapshot{}} = create_task(store, unique_id("before"), "tenant-a")
+    monitor = Process.monitor(registry)
+
+    Process.exit(registry, :kill)
+
+    assert_receive {:DOWN, ^monitor, :process, ^registry, :killed}, 2_000
+    await_restarted(WriterQueue.Registry, registry)
+    assert Process.whereis(Snodo.Extensions.Tasks.Store.SQLite.Supervisor) == queue_supervisor
+    assert {:ok, %Snapshot{}} = create_task(store, unique_id("after"), "tenant-a")
+  end
+
   # Issue #198: after the compare-and-set race, the capacity race stalled for
-  # the full busy timeout while the losing creation busy-waited in SQLite.
+  # the full busy timeout while the losing creation busy-waited in SQLite. The
+  # stall depends on scheduling and reproduces only sometimes against the
+  # unqueued store, so this is a weak guard; the burst test above, which fails
+  # whenever two store writers meet in SQLite, is the reliable one.
   @tag mcp_contract: ["tasks-sqlite-concurrency"]
   test "a capacity race after a compare-and-set race does not stall", %{
     config: config,
@@ -1075,7 +1185,11 @@ defmodule Snodo.Extensions.Tasks.SQLite.IntegrationTest do
     assert Enum.map(history, & &1.event.kind) == [:retry_requested, :completed]
   end
 
+  # The store reads :busy_timeout from Repo.config/0, which does not include
+  # start_link options, so the application environment carries it too.
   defp start_repo(repo, database, busy_timeout, pool_size) do
+    Application.put_env(:snodo_tasks_sqlite, repo, busy_timeout: busy_timeout)
+
     repo.start_link(
       database: database,
       pool_size: pool_size,
@@ -1180,6 +1294,42 @@ defmodule Snodo.Extensions.Tasks.SQLite.IntegrationTest do
     started = System.monotonic_time(:millisecond)
     result = function.()
     {result, System.monotonic_time(:millisecond) - started}
+  end
+
+  defp with_connection_held(hold_ms, function) do
+    parent = self()
+
+    holder =
+      Task.async(fn ->
+        GateRepo.checkout(fn ->
+          send(parent, {:gate_connection_held, self()})
+
+          # Holding the only connection for a fixed time is the scenario.
+          receive do
+          after
+            hold_ms -> :ok
+          end
+        end)
+      end)
+
+    assert_receive {:gate_connection_held, _holder}, 2_000
+    result = timed(function)
+    Task.await(holder, 5_000)
+    result
+  end
+
+  defp await_restarted(name, old, deadline \\ System.monotonic_time(:millisecond) + 2_000) do
+    case Process.whereis(name) do
+      pid when is_pid(pid) and pid != old ->
+        :ok
+
+      _other ->
+        if System.monotonic_time(:millisecond) >= deadline,
+          do: flunk("#{inspect(name)} did not restart")
+
+        Process.sleep(1)
+        await_restarted(name, old, deadline)
+    end
   end
 
   defp with_gate_repo(database, busy_timeout, pool_size, function) do
