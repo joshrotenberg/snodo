@@ -144,12 +144,17 @@ defmodule Snodo.Client.Handshake do
         "clientInfo" => client.client_info
       }
 
-      case Client.request(client, "initialize", params,
-             answer_input: false,
-             on_response_headers: &send(owner, {ref, &1})
-           ) do
+      response =
+        Client.request(client, "initialize", params,
+          answer_input: false,
+          on_response_headers: &send(owner, {ref, &1})
+        )
+
+      # Taken whatever the outcome, so that no message is left behind.
+      headers = collect_headers(ref)
+
+      case response do
         {:ok, %{"protocolVersion" => version} = result} when is_binary(version) ->
-          headers = collect_headers(ref)
           open_session(client, allowed, version, result, headers)
 
         {:ok, result} ->

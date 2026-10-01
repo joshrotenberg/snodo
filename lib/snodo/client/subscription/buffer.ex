@@ -4,7 +4,12 @@ defmodule Snodo.Client.Subscription.Buffer do
   # transport process that receives the stream. An event is sent to the owner
   # while the owner has demand and queued otherwise. A full queue discards an
   # event by the overflow policy and counts it; the count reaches the owner
-  # as `{:dropped, n}` before the next delivered event. The terminal
+  # as `{:dropped, n}` just before the next delivered event, in addition to
+  # it: the report takes no demand, so a consumer that renews demand only on
+  # events still gets the event it paid for. A drop happens only when the
+  # queue is full, and the queue is drained only through deliveries, so a
+  # pending count always has a queued event to precede, also when the stream
+  # is closing. The terminal
   # `{:closed, reason}` waits behind the queued events, so the owner sees
   # every event it asks for before the end of the stream.
 
@@ -62,14 +67,14 @@ defmodule Snodo.Client.Subscription.Buffer do
     drain(%{buffer | demand: demand + n})
   end
 
-  @doc "Ends the stream after the queued events have been delivered."
+  @doc false
   @spec close(t(), term()) :: t()
   def close(%__MODULE__{closed: nil} = buffer, reason),
     do: maybe_finish(%{buffer | closed: {:pending, reason}})
 
   def close(%__MODULE__{} = buffer, _reason), do: buffer
 
-  @doc "Ends the stream now, discarding queued events."
+  @doc false
   @spec abort(t(), term()) :: t()
   def abort(%__MODULE__{closed: {:delivered, _delivered}} = buffer, _reason), do: buffer
 
