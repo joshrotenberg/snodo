@@ -27,6 +27,7 @@ defmodule Snodo.Extensions.Tasks.MixProject do
         source_url_pattern: "#{@source_url}/blob/v#{@version}/extensions/tasks/%{path}#L%{line}"
       ],
       elixirc_paths: elixirc_paths(Mix.env()),
+      test_ignore_filters: [~r{^test/fixtures/}],
       dialyzer: [
         # :ex_unit so the PLT knows ExUnit.AssertionError, which test/support raises.
         plt_add_apps: [:mix, :ex_unit],
