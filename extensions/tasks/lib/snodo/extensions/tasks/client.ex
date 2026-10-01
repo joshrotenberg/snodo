@@ -125,11 +125,9 @@ defmodule Snodo.Extensions.Tasks.Client do
 
   Over Streamable HTTP the server requires an `Mcp-Name` header that mirrors
   `params.taskId` on `tasks/get`, `tasks/update`, and `tasks/cancel`.
-  `Snodo.Client`'s HTTP transport derives the headers it sends from the core
-  protocol dialect, which does not know the extension's methods, so it does
-  not send that header and the server answers -32020. A task-augmented
-  `tools/call` and `subscriptions/listen` work over HTTP; the task methods,
-  and therefore `await/3`, work over `Snodo.Client.direct/2` and stdio.
+  This client selects the Tasks transport policy for those methods, so the
+  HTTP transport sends the mirrored header automatically. Its task methods
+  and `await/3` work over direct, stdio, and HTTP clients.
   """
 
   alias Snodo.Client.Subscription
@@ -260,7 +258,7 @@ defmodule Snodo.Extensions.Tasks.Client do
            client,
            "tasks/get",
            %{"taskId" => task_id(task)},
-           declare(client, opts)
+           declare_task(client, opts)
          ) do
       {:ok, result} -> decode(result)
       {:input_required, result} -> {:error, invalid_task(result)}
@@ -281,7 +279,7 @@ defmodule Snodo.Extensions.Tasks.Client do
   def update(%Snodo.Client{} = client, task, responses, opts \\ [])
       when is_map(responses) and is_list(opts) do
     params = %{"taskId" => task_id(task), "inputResponses" => responses}
-    acknowledge(Snodo.Client.request(client, "tasks/update", params, declare(client, opts)))
+    acknowledge(Snodo.Client.request(client, "tasks/update", params, declare_task(client, opts)))
   end
 
   @doc """
@@ -294,7 +292,7 @@ defmodule Snodo.Extensions.Tasks.Client do
   @spec cancel(Snodo.Client.t(), task_ref(), keyword()) :: :ok | {:error, Error.t()}
   def cancel(%Snodo.Client{} = client, task, opts \\ []) when is_list(opts) do
     params = %{"taskId" => task_id(task)}
-    acknowledge(Snodo.Client.request(client, "tasks/cancel", params, declare(client, opts)))
+    acknowledge(Snodo.Client.request(client, "tasks/cancel", params, declare_task(client, opts)))
   end
 
   @doc """
@@ -692,6 +690,8 @@ defmodule Snodo.Extensions.Tasks.Client do
     metadata = dialect.request_metadata(capabilities(declared))
     Keyword.update(opts, :meta, metadata, &Map.merge(metadata, &1))
   end
+
+  defp declare_task(client, opts), do: client |> declare(opts) |> Keyword.put(:extension, Tasks)
 
   defp acknowledge({:ok, _result}), do: :ok
   defp acknowledge({:input_required, result}), do: {:error, invalid_task(result)}
