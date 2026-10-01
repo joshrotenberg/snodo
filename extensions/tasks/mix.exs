@@ -69,7 +69,8 @@ defmodule Snodo.Extensions.Tasks.MixProject do
         "snodo.example ../../examples/07_tasks_memory.exs",
         "snodo.example ../../examples/08_tasks_durable.exs",
         "snodo.example ../../examples/09_tasks_retry.exs",
-        "snodo.example ../../examples/17_tasks_subscriptions.exs"
+        "snodo.example ../../examples/17_tasks_subscriptions.exs",
+        "snodo.example ../../examples/26_tasks_client.exs"
       ],
       quality: [
         "format --check-formatted",

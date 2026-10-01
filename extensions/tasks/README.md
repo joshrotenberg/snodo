@@ -72,7 +72,8 @@ MCP_PORT=3001 mix run ../fixture_server.exs
 - tool-domain errors as completed `isError` results and protocol failures as
   failed Tasks;
 - limits on concurrent workers, stored and active Tasks, worker runtime, work
-  input size, and `taskId` lengths, described under [Limits](#limits).
+  input size, and `taskId` lengths, described under [Limits](#limits);
+- client helpers on `Snodo.Client`, described under [Client](#client).
 
 Removed v1 methods (`tasks/list`, `tasks/result`) remain method-not-found. The
 legacy `tools/call.params.task` hint is tolerated and ignored. There is no
@@ -428,6 +429,61 @@ event-replay, authority, claim, and reaping contract.
   own idempotent external effects and decide when their executor explicitly
   returns `{:retry, error, status_message}`.
 
+## Client
+
+`Snodo.Extensions.Tasks.Client` calls a Tasks server through any
+`Snodo.Client`. It sends its requests with the client's public functions, so
+the client's input handlers, timeouts, and transport apply.
+
+```elixir
+alias Snodo.Extensions.Tasks.Client, as: TasksClient
+
+{:ok, client} =
+  Snodo.Client.connect({:stdio, "my_server", []},
+    input_handlers: %{form: &MyUI.form/1}
+  )
+
+{:ok, true} = TasksClient.server_supports?(client)
+
+case TasksClient.call_tool(client, "durable_export", %{"id" => 7}) do
+  {:task, status} -> TasksClient.await(client, status, timeout: 120_000)
+  {:ok, result} -> {:ok, result}
+  {:error, error} -> {:error, error}
+end
+```
+
+- Each function declares the extension in its own request's client
+  capabilities, so the client needs no extra configuration and its other
+  calls are unaffected. `capabilities/1` builds a `:client_capabilities`
+  value that declares it on every request instead.
+- `call_tool/4` returns `{:task, status}` when the server created a task and
+  the ordinary `Snodo.Client.call_tool/4` response when it ran the tool at
+  once. `call_and_await/5` does both steps.
+- `get/3`, `update/4`, and `cancel/3` send `tasks/get`, `tasks/update` with
+  `inputResponses`, and `tasks/cancel`.
+- `await/3` waits for a task to finish. It polls `tasks/get` at the task's
+  `pollIntervalMs` (at least 50 ms), or with `listen: true` waits for
+  `notifications/tasks` on a `subscriptions/listen` stream filtered by
+  `taskIds`. The wait is bounded by `:timeout`, 60,000 ms by default; at the
+  limit it returns -32001 with the last status in `cause`, and the task keeps
+  running.
+- An `input_required` task is answered with the client's `:input_handlers`
+  (form and URL elicitation, sampling, roots), with a function given as
+  `:input`, or returned to the caller as `{:input_required, status}`.
+
+Statuses decode into `Snodo.Extensions.Tasks.Client.Status`. A finished
+task's outcome is `{:ok, result}` with the final `CallToolResult` map,
+`{:error, %Snodo.Error{}}` with the task's JSON-RPC error, or
+`{:cancelled, status}`.
+
+Over Streamable HTTP, `tasks/get`, `tasks/update`, and `tasks/cancel` need an
+`Mcp-Name` header mirrored from `params.taskId`. `Snodo.Client`'s HTTP
+transport derives its headers from the core protocol dialect, which does not
+include the extension's methods, so it does not send that header yet and the
+server answers -32020. Task creation and `subscriptions/listen` work over
+HTTP; the task methods, and `await/3`, work over `Snodo.Client.direct/2` and
+stdio.
+
 ## Remaining boundaries
 
 - `taskIds` filters and `notifications/tasks` reuse core's application-owned
@@ -444,9 +500,10 @@ event-replay, authority, claim, and reaping contract.
   effects remain cooperatively cancellable application work.
 
 See the focused tests under `test/tasks_*` and the executable memory, durable
-recovery, retry, and subscription walkthroughs:
+recovery, retry, subscription, and client walkthroughs:
 
 - [`07_tasks_memory.exs`](https://github.com/joshrotenberg/snodo/blob/main/examples/07_tasks_memory.exs)
 - [`08_tasks_durable.exs`](https://github.com/joshrotenberg/snodo/blob/main/examples/08_tasks_durable.exs)
 - [`09_tasks_retry.exs`](https://github.com/joshrotenberg/snodo/blob/main/examples/09_tasks_retry.exs)
 - [`17_tasks_subscriptions.exs`](https://github.com/joshrotenberg/snodo/blob/main/examples/17_tasks_subscriptions.exs)
+- [`26_tasks_client.exs`](https://github.com/joshrotenberg/snodo/blob/main/examples/26_tasks_client.exs)

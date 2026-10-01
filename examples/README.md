@@ -1,7 +1,7 @@
 # Executable examples
 
 The numbered examples are small, standalone programs built only on public APIs.
-Examples 1–6 use standalone core `snodo`; examples 07–09 and 17 use the independent
+Examples 1–6 use standalone core `snodo`; examples 07–09, 17, and 26 use the independent
 `:snodo_tasks` child package and its one-way core dependency. Example 10 uses
 the optional `:snodo_tasks_postgres` sibling and a live application-owned
 `Ecto.Repo`. Example 11 uses the optional `:snodo_tasks_sqlite` sibling with
@@ -30,9 +30,9 @@ mix run examples/01_direct_tools.exs --check
 ```
 
 Or run the complete no-external-service set, with every script launched in a
-fresh Elixir VM. The root task delegates examples 07–09 and 17 to Tasks and example
+fresh Elixir VM. The root task delegates examples 07–09, 17, and 26 to Tasks and example
 11 to the SQLite sibling; examples 12–16, 18–20, and 23 remain in core. Examples
-21/22 run in their integration packages. All 22 default scripts run without
+21/22 run in their integration packages. All 25 default scripts run without
 external services:
 
 ```sh
@@ -101,6 +101,7 @@ not have that requirement.
 | [`23_authorization.exs`](23_authorization.exs) | Application-owned catalog policy, per-context discovery filtering, pre-validation refusal with the application's own error, audit callback, cursor isolation |
 | [`24_client_transports.exs`](24_client_transports.exs) | One `Snodo.Client` API in process, over a stdio subprocess, and over the native HTTP listener; identical results and error decoding |
 | [`25_inline_components.exs`](25_inline_components.exs) | Inline tool, resource template, and prompt blocks next to a module tool; plain return values; generated module names |
+| [`26_tasks_client.exs`](26_tasks_client.exs) | `Snodo.Extensions.Tasks.Client` over `Snodo.Client`: per-request extension declaration, task-augmented call, input answered by the client's form handler, `tasks/get`, `tasks/cancel`, typed status and outcome |
 
 The unnumbered stdio files remain interoperability and subprocess acceptance
 fixtures. DETS in example 08 is deliberately a local single-node reference

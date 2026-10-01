@@ -27,7 +27,8 @@ defmodule Mix.Tasks.Examples do
     "07_tasks_memory: ok",
     "08_tasks_durable: ok",
     "09_tasks_retry: ok",
-    "17_tasks_subscriptions: ok"
+    "17_tasks_subscriptions: ok",
+    "26_tasks_client: ok"
   ]
   @sqlite_example "11_tasks_sqlite: ok"
   @integration_examples [
