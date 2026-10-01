@@ -56,6 +56,7 @@ mix compile && (cd interop/official_client && npm run check)   # official TypeSc
 - `mix quality` includes `mix snodo.contract`, which reports 32 evidence groups. A change that moves that count needs a reason in the pull request.
 - A change to a transport or to what goes on the wire also runs the conformance lanes ([conformance/AGENTS.md](conformance/AGENTS.md)) and the wire-schema check ([interop/AGENTS.md](interop/AGENTS.md)).
 - CI formats with Elixir 1.18 as well, and its formatter wraps some long lines differently. For each changed core file, with Docker available: `docker run --rm -i -w /tmp elixir:1.18-otp-27 mix format - < FILE | diff FILE -` should print nothing. Sibling files that import Ecto formatter settings can report false differences this way.
+- [repeat-until-failure.yml](.github/workflows/repeat-until-failure.yml) is not a gate. It runs weekly, and by hand, and repeats each package's suite with `mix test --repeat-until-failure N --max-failures 1` three ways: default schedulers, `ERL_FLAGS="+S 2:2"`, and default schedulers with competing CPU load. A failure uploads the log and opens or comments on one issue per package, labeled `flaky`, with the test and the seed. Run it on a branch with `gh workflow run repeat-until-failure.yml --ref <branch> -f repeat=50 -f package=snodo_tasks_sqlite` (`package` defaults to `all`).
 
 Narrower runs while working:
 
