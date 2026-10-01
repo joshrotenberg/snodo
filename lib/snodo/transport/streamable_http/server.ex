@@ -65,10 +65,15 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   to serve discovery routes and authenticate requests before reading their
   bodies. A verified identity returned by the gate is available to
   `Snodo.Authorization`. `snodo_oauth` provides an OAuth resource-server gate.
+
+  The listener serves plaintext HTTP. It warns when bound outside loopback,
+  including when a request gate is configured. Bind it privately behind a TLS
+  reverse proxy, or run `Snodo.Transport.Plug` in an HTTP server with TLS.
   """
 
   @behaviour Snodo.Transport
   use GenServer
+  require Logger
 
   alias Snodo.Error
   alias Snodo.Progress
@@ -205,6 +210,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
       }
 
       acceptor = spawn_link(fn -> accept_loop(acceptor_state) end)
+      warn_on_public_bind(bound_ip, bound_port)
 
       {:ok,
        %{
@@ -1231,6 +1237,23 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   end
 
   defp normalize_ip(_invalid), do: raise(ArgumentError, ":ip must be an IP tuple or string")
+
+  defp warn_on_public_bind(ip, port) do
+    unless loopback?(ip) do
+      host = ip |> :inet.ntoa() |> to_string() |> bracket_ipv6()
+
+      Logger.warning(
+        "Native HTTP listener bound to non-loopback address #{host}:#{port}. " <>
+          "It serves plaintext HTTP. Bind to loopback behind a TLS reverse proxy, " <>
+          "or use an HTTP server with TLS. Configure :request_gate or a Plug " <>
+          "pipeline with Snodo.Transport.Plug for authentication."
+      )
+    end
+  end
+
+  defp loopback?({127, _, _, _}), do: true
+  defp loopback?({0, 0, 0, 0, 0, 0, 0, 1}), do: true
+  defp loopback?(_ip), do: false
 
   defp validate_port!(port) when is_integer(port) and port in 0..65_535, do: :ok
   defp validate_port!(_port), do: raise(ArgumentError, ":port must be an integer from 0 to 65535")
