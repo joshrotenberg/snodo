@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       repeat:
-        description: "Repeats per variant after the first run (mix test --repeat-until-failure)"
+        description: "Repeats per variant after the first run (mix test --repeat-until-failure); at most 35 when snodo runs, 200 otherwise"
         type: number
         default: 20
       package:
@@ -33,9 +33,11 @@ on:
 # Jobs request only what they need.
 permissions: {}
 
+# A run is never cancelled: a cancelled run skips its report. Scheduled and
+# manual runs queue separately.
 concurrency:
-  group: repeat-until-failure-${{ github.ref }}
-  cancel-in-progress: true
+  group: repeat-until-failure-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   plan:
@@ -48,22 +50,32 @@ jobs:
       - id: plan
         env:
           PACKAGE: ${{ inputs.package || 'all' }}
+          REPEAT: ${{ inputs.repeat || 20 }}
         run: |
+          # max_repeat keeps the cpu-load variant inside the test step's
+          # 200-minute timeout. Under load one run of the core suite takes
+          # about 270 s, so 35 repeats (36 runs) take about 165 minutes; the
+          # other suites take under 30 s per run.
           all='[
-            {"name": "snodo", "dir": "."},
-            {"name": "snodo_plug", "dir": "integrations/plug"},
-            {"name": "snodo_jsv", "dir": "integrations/schema_jsv"},
-            {"name": "snodo_oauth", "dir": "integrations/oauth"},
-            {"name": "snodo_telemetry", "dir": "integrations/telemetry"},
-            {"name": "snodo_tasks", "dir": "extensions/tasks"},
+            {"name": "snodo", "dir": ".", "max_repeat": 35},
+            {"name": "snodo_plug", "dir": "integrations/plug", "max_repeat": 200},
+            {"name": "snodo_jsv", "dir": "integrations/schema_jsv", "max_repeat": 200},
+            {"name": "snodo_oauth", "dir": "integrations/oauth", "max_repeat": 200},
+            {"name": "snodo_telemetry", "dir": "integrations/telemetry", "max_repeat": 200},
+            {"name": "snodo_tasks", "dir": "extensions/tasks", "max_repeat": 200},
             {"name": "snodo_tasks_postgres", "dir": "extensions/tasks_postgres",
-             "args": "--include postgres_live", "postgres": true},
-            {"name": "snodo_tasks_sqlite", "dir": "extensions/tasks_sqlite"}
+             "args": "--include postgres_live", "postgres": true, "max_repeat": 200},
+            {"name": "snodo_tasks_sqlite", "dir": "extensions/tasks_sqlite", "max_repeat": 200}
           ]'
           packages=$(jq -c --arg p "$PACKAGE" \
             'map(select($p == "all" or .name == $p))' <<<"$all")
           test "$(jq length <<<"$packages")" -gt 0 ||
             { echo "::error::Unknown package '$PACKAGE'"; exit 1; }
+          [[ "$REPEAT" =~ ^[1-9][0-9]{0,3}$ ]] ||
+            { echo "::error::repeat must be a positive integer, got '$REPEAT'"; exit 1; }
+          max=$(jq 'map(.max_repeat) | min' <<<"$packages")
+          [ "$REPEAT" -le "$max" ] ||
+            { echo "::error::repeat is $REPEAT; at most $max for '$PACKAGE'"; exit 1; }
           echo "packages=$packages" >> "$GITHUB_OUTPUT"
 
   test:
@@ -127,8 +139,6 @@ jobs:
         timeout-minutes: 200
         shell: bash
         run: |
-          [[ "$REPEAT" =~ ^[1-9][0-9]*$ ]] ||
-            { echo "::error::repeat must be a positive integer, got '$REPEAT'"; exit 1; }
           if [ "$VARIANT" = cpu-load ]; then
             # Two busy processes per core compete with the schedulers.
             for _ in $(seq $(( $(nproc) * 2 ))); do yes > /dev/null & done
@@ -167,6 +177,30 @@ jobs:
               printf "%s\t%d\t%s\t%s\n", (seed == "" ? "-" : seed), run, test, location
             }' "$log")
 
+          # The test name, location, and ref go into issue bodies inside code
+          # spans. A backtick would end the span, and an @ outside one would
+          # mention someone, so replace backticks and break up each @.
+          zwsp=$'\xe2\x80\x8b'
+          safe() {
+            local value=${1//\`/\'}
+            printf '%s' "${value//@/@$zwsp}"
+          }
+          test=$(safe "$test")
+          location=$(safe "$location")
+          ref=$(safe "$REF")
+          [[ "$seed" =~ ^[0-9]+$ ]] || seed="-"
+
+          # The output fence is longer than any run of tildes in the output,
+          # so no line of the output can close it.
+          if [ "$test" = "-" ]; then
+            tail -n 60 "$log" > "$log.excerpt"
+          else
+            awk '/^ +1\) / { found = 1 } found && shown++ < 80' "$log" > "$log.excerpt"
+          fi
+          longest=$({ grep -o '~~*' "$log.excerpt" || true; } |
+            awk '{ if (length > m) m = length } END { print m + 0 }')
+          fence=$(printf '%*s' $(( longest < 3 ? 3 : longest + 1 )) '' | tr ' ' '~')
+
           prefix=""
           [ "$DIR" = . ] || prefix="$DIR/"
           case "$VARIANT" in
@@ -188,18 +222,14 @@ jobs:
             fi
             echo "- Seed: \`$seed\`, on run $run of $(( REPEAT + 1 ))"
             echo "- Variant: $setting"
-            echo "- Commit: \`$SHA\` on \`$REF\`"
+            echo "- Commit: \`$SHA\` on \`$ref\`"
             echo "- Rerun the same ordering: \`$rerun\`"
             echo
             echo "<details><summary>Failure output</summary>"
             echo
-            echo '~~~text'
-            if [ "$test" = "-" ]; then
-              tail -n 60 "$log"
-            else
-              sed -n '/^ \{1,\}1) /,$p' "$log" | head -n 80
-            fi
-            echo '~~~'
+            echo "${fence}text"
+            cat "$log.excerpt"
+            echo "$fence"
             echo
             echo "</details>"
             echo
@@ -210,7 +240,9 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: repeat-until-failure-${{ matrix.package.name }}-${{ matrix.variant }}
-          path: ${{ runner.temp }}/repeat/
+          path: |
+            ${{ runner.temp }}/repeat/${{ matrix.package.name }}--${{ matrix.variant }}.log
+            ${{ runner.temp }}/repeat/${{ matrix.package.name }}--${{ matrix.variant }}.md
           if-no-files-found: warn
           retention-days: 30
 
@@ -223,8 +255,6 @@ jobs:
     permissions:
       issues: write
     env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -234,20 +264,35 @@ jobs:
           merge-multiple: true
       - name: Open or update one issue per package
         shell: bash
-        working-directory: ${{ runner.temp }}/repeat
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
+          # With no matching artifact, download-artifact creates no directory.
+          cd "$RUNNER_TEMP/repeat" 2>/dev/null ||
+            { echo "No failure summaries; the failure was outside the test step. See $RUN_URL."; exit 0; }
           shopt -s nullglob
-          summaries=(*.md)
-          if [ ${#summaries[@]} -eq 0 ]; then
-            echo "No failure summaries; the failure was outside the test step. See $RUN_URL."
-            exit 0
-          fi
 
-          gh label create flaky --color d93f0b \
-            --description "Found by the repeat-until-failure workflow" 2>/dev/null || true
-          open=$(gh issue list --state open --label flaky --limit 200 --json number,title)
+          # Only the fixed package and variant names are read, so artifact file
+          # names never reach a title, a path, or a command line on their own.
+          packages=(snodo snodo_plug snodo_jsv snodo_oauth snodo_telemetry
+                    snodo_tasks snodo_tasks_postgres snodo_tasks_sqlite)
+          variants=(default two-schedulers cpu-load)
+          open=""
 
-          for package in $(printf '%s\n' "${summaries[@]}" | sed 's/--.*//' | sort -u); do
+          for package in "${packages[@]}"; do
+            files=()
+            for variant in "${variants[@]}"; do
+              if [ -f "$package--$variant.md" ]; then files+=("$package--$variant.md"); fi
+            done
+            [ ${#files[@]} -gt 0 ] || continue
+
+            if [ -z "$open" ]; then
+              gh label create flaky --color d93f0b \
+                --description "Found by the repeat-until-failure workflow" 2>/dev/null || true
+              open=$(gh issue list --state open --label flaky --limit 200 --json number,title)
+            fi
+
             title="test: flaky test in $package"
             body="$RUNNER_TEMP/$package-issue.md"
             {
@@ -255,7 +300,7 @@ jobs:
               echo
               echo "The log for each failing variant is in the run's \`repeat-until-failure-$package-*\` artifacts."
               echo
-              cat "$package"--*.md
+              cat -- "${files[@]}"
             } > "$body"
 
             number=$(jq -r --arg title "$title" \
