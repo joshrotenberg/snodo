@@ -39,6 +39,24 @@ dispatch, stdio, the native HTTP listener, and Plug share one decision.
 Filtering happens before paging, so a cursor belongs to the catalog that
 context can see and expires if replayed against a different one.
 
+For a resource template, `component.uri` is the registered template, while
+`component.requested_uri` is the concrete URI on `resources/read` and on a
+subscription read check. A policy can refuse one URI without hiding or
+refusing the whole template:
+
+```elixir
+def authorize(:invocation,
+      %Snodo.Authorization.Component{
+        kind: :resource_template,
+        requested_uri: "file:///private/report"
+      }, _context, _options) do
+  {:error, Snodo.Error.authorization(-32_003, "Not permitted")}
+end
+```
+
+`requested_uri` is `nil` during discovery and template completion because
+neither names a concrete resource. It is also `nil` for other component kinds.
+
 The Tasks extension runs the `:invocation` check, and argument validation,
 when it accepts a task-augmented `tools/call`, before it stores anything. Work
 that a durable executor later runs has already passed the check. Inside the
