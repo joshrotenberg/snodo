@@ -17,8 +17,10 @@ defmodule Snodo.Client.Subscription do
       or an extension's such as `"notifications/tasks"`; `params` is its params
       map, `"_meta"` included.
     * `{:dropped, count}`: `count` events were discarded because the buffer was
-      full. It precedes the next delivered event and uses one unit of demand,
-      as an event does.
+      full. It is sent just before the next delivered event, in addition to
+      it, and takes no demand of its own; that event's unit of demand covers
+      both. A drop happens only while events are queued, so a report always
+      has an event after it, also when the stream is closing.
     * `{:closed, reason}`: the stream ended. `:complete` is the server's
       terminal result; `{:error, %Snodo.Error{}}` is its terminal error
       response, or a failure of the connection. Nothing follows it.
@@ -27,9 +29,14 @@ defmodule Snodo.Client.Subscription do
 
   Events are sent to the owner only while it has asked for them. `demand/2`
   asks for `n` more, `next/2` asks for one and waits for it, and `stream/1`
-  wraps `next/2` as an `Enumerable`. Each unit of demand is answered by one
-  message, an event or a `{:dropped, n}` report; `{:closed, reason}` needs
-  none. Events that arrive without demand wait in
+  wraps `next/2` as an `Enumerable`. Each unit of demand pays for exactly one
+  event. `{:dropped, n}` and `{:closed, reason}` take no demand, so a consumer
+  that renews demand only on events keeps receiving them after a drop.
+  Because `next/2` returns one message per call, a call that returns
+  `{:dropped, n}` leaves the event its demand paid for in the mailbox; the
+  following call returns that event, and the unit of demand that call adds
+  pays for one event delivered ahead of the next call. Events that arrive
+  without demand wait in
   the transport process, at most `:max_buffer` of them (100 by default). A
   full buffer follows the `:overflow` policy given to `Snodo.Client.listen/3`:
   `:drop_oldest` (the default) discards the oldest queued event, `:drop_newest`
@@ -86,7 +93,8 @@ defmodule Snodo.Client.Subscription do
   Asks for one event and waits for the next message.
 
   Returns the payload: `{:notification, method, params}`, `{:dropped, n}`, or
-  `{:closed, reason}`. Returns `{:error, :timeout}` when nothing arrives in
+  `{:closed, reason}`. A `{:dropped, n}` report is followed by the event this
+  call's demand paid for, which the next call returns. Returns `{:error, :timeout}` when nothing arrives in
   `timeout` milliseconds; the demand stays, so that event arrives as a message
   later and the next call returns it. If the stream has already ended, or the
   transport process exits, returns `{:closed, {:error, %Snodo.Error{}}}`. Must
@@ -111,7 +119,9 @@ defmodule Snodo.Client.Subscription do
         {^reply_to, :ended} ->
           {:closed, {:error, ended_error()}}
 
-        {:DOWN, ^monitor, :process, _pid, :noproc} ->
+        # The stream process was already gone, or stopped as the stream
+        # ended after its terminal message or `close/1`.
+        {:DOWN, ^monitor, :process, _pid, reason} when reason in [:noproc, :normal] ->
           {:closed, {:error, ended_error()}}
 
         {:DOWN, ^monitor, :process, _pid, reason} ->

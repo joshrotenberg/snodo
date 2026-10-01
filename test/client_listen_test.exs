@@ -59,6 +59,12 @@ defmodule Snodo.ClientListenTest do
 
   defp tools_changed(sequence), do: Event.tools_list_changed(metadata: %{"seq" => sequence})
 
+  defp eventually(check, attempts \\ 50) do
+    Enum.any?(1..attempts, fn _attempt ->
+      check.() || (Process.sleep(20) && false)
+    end)
+  end
+
   # The hub reports each pull. The worker pulls the next event only after the
   # stream process has taken the previous one, so `count` pulls mean that
   # `count - 1` events have reached the client's buffer.
@@ -211,9 +217,8 @@ defmodule Snodo.ClientListenTest do
       for sequence <- 1..3, do: :ok = TestSubscriptionHub.emit(hub, id, tools_changed(sequence))
       await_pulls(id, 4)
 
+      # The report takes no demand: the event that call paid for follows it.
       assert {:dropped, 2} = Subscription.next(subscription, 1_000)
-      # The report answered that call's demand; the event waits for the next.
-      refute_receive {:snodo_subscription, ^ref, _event}, 100
 
       assert {:notification, _method, %{"_meta" => %{"seq" => 1}}} =
                Subscription.next(subscription, 1_000)
@@ -236,6 +241,17 @@ defmodule Snodo.ClientListenTest do
 
       assert {:closed, {:error, %Error{code: -32_000, message: "The subscription has ended"}}} =
                Subscription.next(subscription, 1_000)
+
+      # A next/2 already waiting when the stream process stops normally.
+      %{pid: pid} = subscription = listen!(client(hub), %{"toolsListChanged" => true})
+
+      spawn(fn ->
+        true = eventually(fn -> :sys.get_state(pid).buffer.demand > 0 end)
+        Subscription.close(subscription)
+      end)
+
+      assert {:closed, {:error, %Error{code: -32_000, message: "The subscription has ended"}}} =
+               Subscription.next(subscription, 5_000)
     end
 
     test "the owner's exit closes the source and ends the process", %{hub: hub} do
@@ -349,6 +365,32 @@ defmodule Snodo.ClientListenTest do
       %{buffer: Buffer.new(self(), make_ref(), max_buffer: 2, overflow: :drop_oldest)}
     end
 
+    # The guide's GenServer pattern before 0.3.3 renewed demand only on
+    # events, so a drop report must not take the demand it renews with.
+    test "a consumer that renews demand only on events keeps receiving them after a drop" do
+      ref = make_ref()
+      buffer = Buffer.new(self(), ref, max_buffer: 3, overflow: :drop_oldest)
+
+      buffer =
+        Enum.reduce(1..10, buffer, fn n, buffer ->
+          Buffer.push(buffer, {:notification, "m", %{"n" => n}})
+        end)
+
+      assert consume(Buffer.demand(buffer, 1), ref, []) == [{:dropped, 7}, 8, 9, 10]
+    end
+
+    defp consume(buffer, ref, got) do
+      receive do
+        {:snodo_subscription, ^ref, {:notification, _method, %{"n" => n}}} ->
+          consume(Buffer.demand(buffer, 1), ref, [n | got])
+
+        {:snodo_subscription, ^ref, {:dropped, count}} ->
+          consume(buffer, ref, [{:dropped, count} | got])
+      after
+        0 -> Enum.reverse(got)
+      end
+    end
+
     test "abort/2 discards queued events and ends the stream at once", %{buffer: buffer} do
       ref = buffer.ref
       buffer = Buffer.push(buffer, {:notification, "m", %{"n" => 1}})
@@ -376,12 +418,9 @@ defmodule Snodo.ClientListenTest do
       refute Buffer.done?(buffer)
       refute_received {:snodo_subscription, ^ref, _payload}
 
-      # The drop report takes the unit of demand, as an event would.
+      # The drop report takes no demand; it comes with the event paid for.
       buffer = Buffer.demand(buffer, 1)
       assert_received {:snodo_subscription, ^ref, {:dropped, 1}}
-      refute_received {:snodo_subscription, ^ref, _payload}
-
-      buffer = Buffer.demand(buffer, 1)
       assert_received {:snodo_subscription, ^ref, {:notification, "m", %{"n" => 2}}}
       refute_received {:snodo_subscription, ^ref, _payload}
 

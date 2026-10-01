@@ -772,6 +772,20 @@ defmodule Snodo.ClientStdioTest do
                Subscription.next(subscription, 5_000)
     end
 
+    test "malformed demand and next messages do not stop the connection" do
+      client = connect()
+      {:ok, %Subscription{ref: ref, pid: connection}} = Client.listen(client, @tools_filter)
+      monitor = Process.monitor(connection)
+
+      send(connection, {:mcp_client_demand, ref, 0})
+      send(connection, {:mcp_client_demand, ref, :many})
+      send(connection, {:mcp_client_next, make_ref(), self()})
+      send(connection, {:mcp_client_next, make_ref(), :nobody})
+
+      assert {:ok, _tools} = Client.list_tools(client)
+      refute_received {:DOWN, ^monitor, :process, ^connection, _reason}
+    end
+
     test "an error response is returned instead of a handle" do
       client = connect()
 

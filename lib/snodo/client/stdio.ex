@@ -346,7 +346,7 @@ defmodule Snodo.Client.Stdio do
     end
   end
 
-  def handle_info({:mcp_client_demand, ref, n}, state) do
+  def handle_info({:mcp_client_demand, ref, n}, state) when is_integer(n) and n > 0 do
     case Map.fetch(state.subscription_refs, ref) do
       {:ok, id} ->
         entry = Map.fetch!(state.subscriptions, id)
@@ -360,7 +360,7 @@ defmodule Snodo.Client.Stdio do
   # `Snodo.Client.Subscription.next/2` asks whether the stream is still here.
   # One that has ended has no entry, and the connection lives on, so the
   # answer is what an exited stream process gives over the other transports.
-  def handle_info({:mcp_client_next, ref, reply_to}, state) do
+  def handle_info({:mcp_client_next, ref, reply_to}, state) when is_reference(reply_to) do
     unless is_map_key(state.subscription_refs, ref), do: send(reply_to, {reply_to, :ended})
     {:noreply, state}
   end

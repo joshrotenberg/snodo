@@ -4,11 +4,14 @@ defmodule Snodo.Client.Subscription.Buffer do
   # transport process that receives the stream. An event is sent to the owner
   # while the owner has demand and queued otherwise. A full queue discards an
   # event by the overflow policy and counts it; the count reaches the owner
-  # as `{:dropped, n}` before the next delivered event, and uses one unit of
-  # demand as an event does, so each unit of demand is answered by exactly
-  # one message. The terminal `{:closed, reason}` needs no demand and waits
-  # behind the queued events, so the owner sees every event it asks for
-  # before the end of the stream.
+  # as `{:dropped, n}` just before the next delivered event, in addition to
+  # it: the report takes no demand, so a consumer that renews demand only on
+  # events still gets the event it paid for. A drop happens only when the
+  # queue is full, and the queue is drained only through deliveries, so a
+  # pending count always has a queued event to precede, also when the stream
+  # is closing. The terminal
+  # `{:closed, reason}` waits behind the queued events, so the owner sees
+  # every event it asks for before the end of the stream.
 
   @enforce_keys [:owner, :ref, :max_buffer, :overflow, :queue]
   defstruct [
@@ -49,7 +52,11 @@ defmodule Snodo.Client.Subscription.Buffer do
 
   @doc false
   @spec push(t(), {:notification, String.t(), map()}) :: t()
-  def push(%__MODULE__{closed: nil} = buffer, payload), do: buffer |> enqueue(payload) |> drain()
+  def push(%__MODULE__{closed: nil, demand: demand} = buffer, payload) when demand > 0 do
+    buffer |> flush_dropped() |> deliver(payload) |> Map.put(:demand, demand - 1)
+  end
+
+  def push(%__MODULE__{closed: nil} = buffer, payload), do: enqueue(buffer, payload)
 
   # Nothing follows the terminal response.
   def push(%__MODULE__{} = buffer, _payload), do: buffer
@@ -101,19 +108,11 @@ defmodule Snodo.Client.Subscription.Buffer do
     %{buffer | dropped: buffer.dropped + 1}
   end
 
-  # While there is demand, a drop count goes out first, then the queued
-  # events in order, each taking one unit.
-  defp drain(%__MODULE__{demand: demand, dropped: dropped} = buffer)
-       when demand > 0 and dropped > 0 do
-    %{buffer | demand: demand - 1}
-    |> flush_dropped()
-    |> drain()
-  end
-
   defp drain(%__MODULE__{demand: demand, size: size} = buffer) when demand > 0 and size > 0 do
     {{:value, payload}, queue} = :queue.out(buffer.queue)
 
     %{buffer | queue: queue, size: size - 1, demand: demand - 1}
+    |> flush_dropped()
     |> deliver(payload)
     |> drain()
   end

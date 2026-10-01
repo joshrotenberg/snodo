@@ -328,16 +328,17 @@ The calling process owns the subscription. Events reach it as
 | Payload | Meaning |
 |---|---|
 | `{:notification, method, params}` | one event, as sent: `method` is `"notifications/resources/updated"`, one of the three list-changed methods, or an extension's such as `"notifications/tasks"`; `params` keeps `"_meta"` |
-| `{:dropped, n}` | `n` events were discarded because the buffer was full; precedes the next delivered event and uses one unit of demand, as an event does |
+| `{:dropped, n}` | `n` events were discarded because the buffer was full; sent just before the next delivered event, in addition to it, and takes no demand of its own |
 | `{:closed, :complete}` | the server ended the stream with its terminal result |
 | `{:closed, {:error, %Snodo.Error{}}}` | the server ended the stream with an error, or the connection failed; nothing follows |
 
 Events are sent only while the owner has asked for them.
 `Snodo.Client.Subscription.demand/2` asks for `n` more; `next/2` asks for one
 and waits for it; `stream/1` wraps `next/2` as an `Enumerable` that ends with
-the `{:closed, reason}` element. Each unit of demand is answered by one
-message, an event or a `{:dropped, n}` report; `{:closed, reason}` needs no
-demand:
+the `{:closed, reason}` element. Each unit of demand pays for exactly one
+event; `{:dropped, n}` and `{:closed, reason}` take none. A `next/2` call that
+returns `{:dropped, n}` leaves the event its demand paid for in the mailbox,
+and the following call returns it:
 
 ```elixir
 subscription
@@ -358,8 +359,8 @@ def handle_info({:snodo_subscription, ref, {:notification, method, params}}, %{s
   {:noreply, apply_change(state, method, params)}
 end
 
+# A drop report takes no demand, so there is nothing to renew.
 def handle_info({:snodo_subscription, ref, {:dropped, _n}}, %{sub: %{ref: ref}} = state) do
-  :ok = Snodo.Client.Subscription.demand(state.sub, 1)
   {:noreply, resync(state)}
 end
 ```

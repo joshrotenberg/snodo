@@ -24,9 +24,9 @@ defmodule Snodo.Client.HTTP do
   `elicitation/create` on an initialize-era connection, is answered by the
   `:on_server_request` function in the calling process, and the response is
   sent as its own `POST` before the stream is read further; without that
-  option such a request is dropped. If the server refuses that `POST`, the
-  request in flight fails at once with a -32000 transport error whose `cause`
-  is the refusal. The time the function takes counts
+  option such a request is dropped. If that `POST` fails, refused by the
+  server or by the connection, the request in flight fails at once with a
+  -32000 transport error whose `cause` is that failure. The time the function takes counts
   against the request's timeout, which is not extended. Other notifications
   are dropped. A JSON-RPC error body is returned whatever the HTTP status, so
   `Snodo.Client` decodes it as `{:error, %Snodo.Error{}}`. Anything else is a
@@ -55,8 +55,9 @@ defmodule Snodo.Client.HTTP do
   status: a `Content-Length` over the limit is refused before the body is read,
   a chunked body is refused at the first chunk that would pass it, and a body
   that ends when the connection closes is refused at the read that passes it.
-  An event stream is one body, so the limit applies to the whole stream,
-  notifications included. The status line and headers are held to the same
+  For a request, an event stream is one body, so the limit applies to the
+  whole stream, notifications included; a subscription stream is limited
+  per event, as described above. The status line and headers are held to the same
   limit. Over the limit the connection is closed and the request returns a
   -32000 transport error with `cause: {:max_response_bytes, limit}`.
 
@@ -1010,7 +1011,8 @@ defmodule Snodo.Client.HTTP do
 
   # The server waits for the answer before it finishes the request in flight,
   # so the answer goes out on its own connection before the stream is read
-  # further. A refused answer fails the request in flight at once, since the
+  # further. An answer that is not delivered, refused by the server or lost to
+  # a connection failure, fails the request in flight at once, since the
   # server then cannot complete it.
   defp answer_server_request(conn, request) do
     {state, session_headers, opts} = conn.reply
@@ -1023,7 +1025,7 @@ defmodule Snodo.Client.HTTP do
       {:error, error} ->
         {:error,
          Transport.connection_error(
-           "The server refused the answer to its #{request["method"]} request",
+           "The answer to the server's #{request["method"]} request was not delivered",
            error
          )}
     end

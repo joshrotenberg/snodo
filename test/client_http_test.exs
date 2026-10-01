@@ -1073,7 +1073,7 @@ defmodule Snodo.ClientHTTPTest do
       refute_received {:fake_http, %{":method" => "DELETE"}, nil}
     end
 
-    test "a refused answer to a server request fails the request in flight at once" do
+    test "an answer that is not delivered fails the request in flight at once" do
       elicitation = %{
         "jsonrpc" => "2.0",
         "id" => "srv-1",
@@ -1083,37 +1083,46 @@ defmodule Snodo.ClientHTTPTest do
 
       refusal = ~s({"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Unknown"}})
 
-      url =
-        FakeHTTP.start(self(), fn
-          _headers, %{"method" => "initialize"} = message ->
-            json(message, @initialized)
+      # Refused by the server, and lost to a connection closed without a
+      # response.
+      cases = [
+        {{400, [@json_type], refusal}, &match?(%Error{code: -32_600, kind: :protocol}, &1)},
+        {{:raw, ""}, &match?(%Error{code: -32_000, kind: :transport}, &1)}
+      ]
 
-          _headers, %{"method" => "tools/call"} ->
-            event = "data: #{JSON.encode!(elicitation)}\n\n"
-            {200, [{"content-type", "text/event-stream"}], {:hold, event}}
+      for {answer_response, expected_cause?} <- cases do
+        url =
+          FakeHTTP.start(self(), fn
+            _headers, %{"method" => "initialize"} = message ->
+              json(message, @initialized)
 
-          _headers, %{"id" => "srv-1"} ->
-            {400, [@json_type], refusal}
+            _headers, %{"method" => "tools/call"} ->
+              event = "data: #{JSON.encode!(elicitation)}\n\n"
+              {200, [{"content-type", "text/event-stream"}], {:hold, event}}
 
-          _headers, _notification ->
-            {202, [], ""}
-        end)
+            _headers, %{"id" => "srv-1"} ->
+              answer_response
 
-      form = fn _params -> {:ok, %{"action" => "decline"}} end
+            _headers, _notification ->
+              {202, [], ""}
+          end)
 
-      {:ok, client} =
-        negotiate(url, protocol: "2025-11-25", timeout: 5_000, input_handlers: %{form: form})
+        form = fn _params -> {:ok, %{"action" => "decline"}} end
 
-      started = System.monotonic_time(:millisecond)
+        {:ok, client} =
+          negotiate(url, protocol: "2025-11-25", timeout: 5_000, input_handlers: %{form: form})
 
-      assert {:error, %Error{code: -32_000, kind: :transport, message: message, cause: cause}} =
-               Client.call_tool(client, "ask")
+        started = System.monotonic_time(:millisecond)
 
-      assert System.monotonic_time(:millisecond) - started < 4_000
-      assert message =~ "refused the answer to its elicitation/create request"
-      assert %Error{code: -32_600, message: "Unknown", kind: :protocol} = cause
-      assert_receive {:fake_http, _headers, %{"id" => "srv-1", "result" => _answer}}, 1_000
-      assert_receive :fake_http_closed, 1_000
+        assert {:error, %Error{code: -32_000, kind: :transport, message: message, cause: cause}} =
+                 Client.call_tool(client, "ask")
+
+        assert System.monotonic_time(:millisecond) - started < 4_000
+        assert message =~ "answer to the server's elicitation/create request was not delivered"
+        assert expected_cause?.(cause)
+        assert_receive {:fake_http, _headers, %{"id" => "srv-1", "result" => _answer}}, 1_000
+        assert_receive :fake_http_closed, 1_000
+      end
     end
 
     test "a failed initialize leaves no header report in the caller's mailbox" do
@@ -1255,6 +1264,13 @@ defmodule Snodo.ClientHTTPTest do
 
       assert {:closed, {:error, %Error{code: -32_000, message: "The subscription has ended"}}} =
                Subscription.next(subscription, 1_000)
+
+      # A next/2 already waiting when the stream process stops normally.
+      {:ok, subscription} = Client.listen(client, @tools_filter)
+      close_soon(subscription)
+
+      assert {:closed, {:error, %Error{code: -32_000, message: "The subscription has ended"}}} =
+               Subscription.next(subscription, 5_000)
     end
 
     test "the owner's exit closes the connection", %{client: client} do
@@ -1472,6 +1488,15 @@ defmodule Snodo.ClientHTTPTest do
   end
 
   defp tools_changed(sequence), do: Event.tools_list_changed(metadata: %{"seq" => sequence})
+
+  # Closes the subscription from another process once next/2 has sent its
+  # demand, which it does after monitoring the stream process.
+  defp close_soon(%Subscription{pid: pid} = subscription) do
+    spawn(fn ->
+      true = eventually(fn -> :sys.get_state(pid).buffer.demand > 0 end)
+      Subscription.close(subscription)
+    end)
+  end
 
   defp disconnected?(:disconnected), do: true
   defp disconnected?({:disconnected, _socket_error}), do: true

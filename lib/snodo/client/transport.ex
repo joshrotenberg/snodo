@@ -64,11 +64,13 @@ defmodule Snodo.Client.Transport do
   `{:mcp_client_close, ref}` call by cancelling the stream on the server and
   replying `:ok`. It monitors the owner and cancels the stream when the owner
   exits. `Snodo.Client.Subscription.next/2` follows its demand with a
-  `{:mcp_client_next, ref, reply_to}` message, which a process that exits
-  once the buffer is done can ignore; a process that outlives its streams, as
-  the stdio connection does, answers it with `send(reply_to, {reply_to,
-  :ended})` for a `ref` it no longer has, so that `next/2` on an ended stream
-  returns at once. A JSON-RPC error response before the acknowledgement is returned as
+  `{:mcp_client_next, ref, reply_to}` message, where `reply_to` is a process
+  alias. The process must handle it or discard it: a process that exits once
+  the buffer is done may discard it, for example with a catch-all
+  `handle_info/2` clause, and a `GenServer` without such a clause crashes on
+  it. A process that outlives its streams, as the stdio connection does,
+  answers it with `send(reply_to, {reply_to, :ended})` for a `ref` it no
+  longer has, so that `next/2` on an ended stream returns at once. A JSON-RPC error response before the acknowledgement is returned as
   `{:error, %Snodo.Error{}}`. `Snodo.Client.listen/3` raises `ArgumentError`
   for a transport without `listen/3`.
 
