@@ -1075,6 +1075,8 @@ defmodule Snodo.Client.HTTP do
     with :ok <- answer_server_request(conn, request), do: {:ok, conn}
   end
 
+  defp handle_event({:error, :duplicate_key}, _conn), do: {:error, :malformed}
+
   defp handle_event(_other, conn), do: {:ok, conn}
 
   # The server waits for the answer before it finishes the request in flight,
