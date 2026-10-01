@@ -3,13 +3,14 @@ defmodule Snodo.Resource do
   Behaviour and compile-time convenience DSL for MCP resources.
 
   A resource module declares either one exact `:uri` or one `:uri_template`.
-  URI routing stays application-owned: the framework does not implement RFC
-  6570 expansion or authorization policy.
+  The framework matches URIs against templates but does not expand them, and
+  authorization policy stays application-owned.
 
-  A template inside the simple-expansion subset described in
-  `Snodo.Resource.Template` gets a generated `matches?/1`, so the common
-  `scheme://{var}/literal` shape needs no matcher at all. A template outside
-  that subset matches nothing until the module implements `matches?/1` itself.
+  A template in the RFC 6570 shapes described in `Snodo.Resource.Template`
+  (`{var}`, `{+path}`, `{/seg}`, `{/seg*}`, `{?q,lang}`) gets a generated
+  `matches?/1`, so it needs no matcher at all. A template outside those shapes
+  is a compile error that names the shape, unless the module implements
+  `matches?/1` itself.
 
   `matches?/1` may answer in two ways. `true` and `false` route without saying
   anything more. `{:ok, variables}`, a map of string keys to string values,
@@ -55,10 +56,10 @@ defmodule Snodo.Resource do
     opts = literal_options!(__CALLER__, opts_ast)
     definition = compile_definition!(__CALLER__, opts)
 
-    matches_body =
+    matcher =
       case definition do
         %Definition{kind: :resource, uri: expected} ->
-          quote(do: uri == unquote(expected))
+          generated_matcher(quote(do: uri == unquote(expected)))
 
         %Definition{kind: :template, uri_template: uri_template} ->
           compile_template_matcher(uri_template)
@@ -70,14 +71,34 @@ defmodule Snodo.Resource do
       @impl Snodo.Resource
       def definition, do: unquote(Macro.escape(definition))
 
-      @impl Snodo.Resource
-      def matches?(uri) when is_binary(uri) do
-        unquote(matches_body)
-      end
-
-      defoverridable matches?: 1
+      unquote(matcher)
     end
   end
+
+  # A template outside the supported shapes gets an overridable matcher that
+  # matches nothing, as before, so a module's own matches?/1 compiles the same
+  # way with or without @impl. __on_definition__/6 records that override; this
+  # names the shape when there is none.
+  @doc false
+  defmacro __before_compile__(env) do
+    {uri_template, reason} = Module.get_attribute(env.module, :snodo_unsupported_template)
+
+    unless Module.get_attribute(env.module, :snodo_matcher_defined) do
+      compile_error!(
+        env,
+        "resource template #{inspect(uri_template)} is not supported by the generated " <>
+          "matcher: #{reason}. Implement matches?/1 to match it."
+      )
+    end
+
+    :ok
+  end
+
+  @doc false
+  def __on_definition__(env, :def, :matches?, [_uri], _guards, _body),
+    do: Module.put_attribute(env.module, :snodo_matcher_defined, true)
+
+  def __on_definition__(_env, _kind, _name, _args, _guards, _body), do: :ok
 
   @doc "Returns and validates the protocol-neutral definition for a resource module."
   @spec definition(module()) :: Definition.t()
@@ -244,21 +265,39 @@ defmodule Snodo.Resource do
     end)
   end
 
-  # A template inside the simple-expansion subset gets a generated matcher that
-  # also returns its bound variables. Anything else keeps the previous
-  # behaviour of matching nothing, so the module must implement matches?/1.
+  # A template in the supported shapes gets a generated matcher that also
+  # returns its bound variables. Anything else must implement matches?/1, which
+  # __before_compile__/1 checks.
   defp compile_template_matcher(uri_template) do
     case Template.compile(uri_template) do
       {:ok, template} ->
-        quote do
-          case Snodo.Resource.Template.match(unquote(Macro.escape(template)), uri) do
-            {:ok, variables} -> {:ok, variables}
-            :error -> false
+        generated_matcher(
+          quote do
+            case Snodo.Resource.Template.match(unquote(Macro.escape(template)), uri) do
+              {:ok, variables} -> {:ok, variables}
+              :error -> false
+            end
           end
-        end
+        )
 
-      :unsupported ->
-        quote(do: false)
+      {:error, reason} ->
+        quote do
+          @snodo_unsupported_template {unquote(uri_template), unquote(reason)}
+          unquote(generated_matcher(quote(do: false)))
+          @on_definition {Snodo.Resource, :__on_definition__}
+          @before_compile Snodo.Resource
+        end
+    end
+  end
+
+  defp generated_matcher(body) do
+    quote do
+      @impl Snodo.Resource
+      def matches?(uri) when is_binary(uri) do
+        unquote(body)
+      end
+
+      defoverridable matches?: 1
     end
   end
 

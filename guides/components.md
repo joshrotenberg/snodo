@@ -227,10 +227,10 @@ direct dispatch have no headers and ignore the annotation.
 
 ## Resources
 
-A resource has an exact `:uri` or a `:uri_template`. Templates in the simple
-`scheme://{var}/literal` shape get a generated matcher, and the matched
-variables arrive in `read/2`'s params. `Snodo.Resource.Simple` accepts plain
-return values:
+A resource has an exact `:uri` or a `:uri_template`. A template in the
+supported RFC 6570 shapes gets a generated matcher, and the matched variables
+arrive in `read/2`'s params. `Snodo.Resource.Simple` accepts plain return
+values:
 
 ```elixir
 defmodule MyServer.PackageInfo do
@@ -251,9 +251,83 @@ end
 | `{:ok, %Snodo.Result{}}` | unchanged; use `Snodo.Result.resource_read/2` with `Snodo.Resource.text/3`, `json/3`, or `blob/3` for blobs, several contents, or metadata |
 | `{:error, reason}` | a JSON-RPC error; use `Snodo.Error.invalid_params/2` for a missing resource |
 
-`use Snodo.Resource` requires `read/2` to return a `Snodo.Result`. For a
-template outside the simple shape, implement `matches?/1` and return `true`,
-`false`, or `{:ok, variables}`.
+`use Snodo.Resource` requires `read/2` to return a `Snodo.Result`.
+
+### Template shapes
+
+The generated matcher handles the RFC 6570 operators that can be matched
+without ambiguity. `Snodo.Resource.Template` has the full rules.
+
+| Template | Matches | Binds |
+|---|---|---|
+| `hex://{name}/info` | `hex://jason/info` | `name`: one whole, non-empty segment |
+| `files://{root}/{+path}` | `files://docs/a/b.txt` | `path`: one or more segments, `"a/b.txt"` |
+| `hex://{name}{/version}` | `hex://jason`, `hex://jason/1.4.0` | `version`: zero or one segment |
+| `hex://{name}/docs{/page*}` | `hex://jason/docs`, `hex://jason/docs/a/b` | `page`: zero or more segments, `"a/b"` |
+| `search://{index}{?q,lang}` | `search://hex`, `search://hex?lang=en&q=json` | `q`, `lang`: named query parameters, any order |
+| `search://hex/pkgs{?q}{&sort}` | `search://hex/pkgs?q=js&sort=name` | `q`, `sort` |
+
+- The scheme is a literal and matches case-insensitively. The authority is one
+  literal, one `{var}`, or empty when a `/` follows it: `file:///{+path}`
+  matches `file:///etc/hosts` and binds `path` to `"etc/hosts"`, but not
+  `file://localhost/etc/hosts`.
+- A template has at most one variable-length path expression (`{+var}`,
+  `{/var}`, or `{/var*}`). The literal and `{var}` segments around it are
+  matched from each end, so a URI splits only one way.
+- An absent `{/var}`, `{/var*}`, or query parameter is left out of the params.
+  `q=` binds `""`.
+- A query parameter the template does not name, a repeated parameter, an empty
+  query, a fragment, a port, or userinfo means the URI does not match. A
+  template without query expressions matches no URI with a query.
+- Values are percent-decoded once and must be valid UTF-8. `+` stays `+`. A
+  variable that appears twice must bind the same value both times.
+
+A template outside these shapes is a compile error that names the shape, for
+example `fragment expansion ({#var})`, `a prefix modifier ({var:n})`, or `a
+path segment that holds literal text and an expression, or two expressions`
+for `v{version}`. Multi-variable path and simple expressions (`{/a,b}`,
+`{a,b}`) are refused because a missing value cannot be assigned to one
+variable. To serve such a template, implement `matches?/1` and return `true`,
+`false`, or `{:ok, variables}`; the module then compiles.
+
+A template is at most 1,024 bytes with at most 32 variables. Matching is
+linear in the URI length, with no backtracking, so its cost is bounded by the
+transport's message size limit.
+
+### Overlapping templates
+
+Two templates can both match one URI. `x://h/{+p}` and `x://h/docs{/page*}`
+both match `x://h/docs/intro`. Registration does not detect this, because it
+would mean comparing every pair of templates; it only checks direct URIs
+against templates. A `resources/read` for such a URI fails with JSON-RPC error
+-32603, "Multiple resource routes matched the requested URI". Give templates
+distinct literal prefixes, or serve the overlapping shapes from one module.
+
+### Values that name files
+
+A matched value is decoded, so it can contain `/` (from `%2F`, or from the
+segments `{+path}` and `{/page*}` join), can be or contain `..`, and can
+contain a NUL byte (from `%00`). Dot segments are not removed. Before using a
+value as a file path, refuse NUL bytes, then resolve it against the directory
+being served and refuse anything that escapes it:
+
+```elixir
+def read(%{"path" => path}, _context) do
+  root = "/srv/docs"
+
+  with false <- String.contains?(path, <<0>>),
+       {:ok, relative} <- Path.safe_relative(path, root) do
+    File.read(Path.join(root, relative))
+  else
+    _unsafe -> {:error, Snodo.Error.invalid_params("Resource not found")}
+  end
+end
+```
+
+`Path.safe_relative/2` accepts a NUL byte, so the first check is needed.
+
+For a single-segment `{var}` that should be a plain name, reject values that
+contain `/`, `\`, or are `.` or `..`.
 
 ## Prompts
 
