@@ -59,6 +59,8 @@ MIX_ENV=dev mix docs --warnings-as-errors
 mix compile && (cd interop/official_client && npm run check)
 ```
 
+CI also requires the `Hex packaging dry run` check on `main`. It builds the release artifacts for all eight packages.
+
 If your change touches a transport or anything on the wire, also run the conformance lanes and the wire-schema check (see [conformance/AGENTS.md](conformance/AGENTS.md) and [interop/AGENTS.md](interop/AGENTS.md)).
 
 A weekly workflow, [repeat-until-failure.yml](.github/workflows/repeat-until-failure.yml), runs every package's suite many times in a row three ways, with default schedulers, with two schedulers (`ERL_FLAGS="+S 2:2"`), and under competing CPU load, to find tests that fail only under load or with an unlucky ordering. It is not a required check. When it finds one, it opens or updates an issue labeled `flaky` with the test and the seed. To check a new or changed test the same way before pushing:
