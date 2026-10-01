@@ -20,12 +20,13 @@ defmodule Snodo.Extensions.Tasks.Client.Status do
     * `error` - for `:failed`, the JSON-RPC error object the task failed with;
       `nil` otherwise.
 
-  A creation result (`"resultType" => "task"`) is the flat task without these
-  three payloads, so a status decoded from one has `input_requests: %{}`,
-  `result: nil`, and `error: nil` whatever its status. `detailed?/1` tells
-  whether a status carries the payload its status implies.
     * `raw` - the decoded map, `_meta` included, for fields this struct does
       not name.
+
+  A creation result (`"resultType" => "task"`) is the flat task and need not
+  carry these three payloads, so a status decoded from one can have
+  `input_requests: %{}`, `result: nil`, and `error: nil` whatever its status.
+  `detailed?/1` tells whether a status carries the payload its status implies.
   """
 
   @type status :: :working | :input_required | :completed | :failed | :cancelled
