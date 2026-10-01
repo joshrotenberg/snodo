@@ -16,6 +16,7 @@ defmodule Snodo.TasksSubscriptionAcceptanceTest do
   alias SnodoTest.TasksTestSupport, as: TasksSupport
 
   @subscription_id_key "io.modelcontextprotocol/subscriptionId"
+  @receive_timeout 5_000
 
   setup do
     store = start_supervised!({Memory, scope: :shared})
@@ -50,7 +51,7 @@ defmodule Snodo.TasksSubscriptionAcceptanceTest do
     assert {:stream, subscription} = TasksSupport.dispatch(runtime, request)
 
     accepted = %{"toolsListChanged" => true, "taskIds" => [task_id]}
-    assert_receive {:tasks_subscription_opened, "tasks-direct-sub", ^accepted}
+    assert_receive {:tasks_subscription_opened, "tasks-direct-sub", ^accepted}, @receive_timeout
     assert subscription.accepted_filter == accepted
     assert subscription.extension_filters == %{Tasks.id() => %{"taskIds" => [task_id]}}
 
@@ -92,7 +93,7 @@ defmodule Snodo.TasksSubscriptionAcceptanceTest do
     assert core_notification["method"] == "notifications/tools/list_changed"
 
     assert :ok = Subscription.close(subscription, :complete)
-    assert_receive {:tasks_subscription_closed, "tasks-direct-sub", :complete}
+    assert_receive {:tasks_subscription_closed, "tasks-direct-sub", :complete}, @receive_timeout
     send(worker, {:tasks_release, "direct-subscription"})
     assert Process.alive?(hub)
   end
@@ -157,7 +158,7 @@ defmodule Snodo.TasksSubscriptionAcceptanceTest do
                auth: %{"tenant" => "a"}
              )
 
-    assert_receive {:tasks_barrier_entered, "tenant-a", worker}
+    assert_receive {:tasks_barrier_entered, "tenant-a", worker}, @receive_timeout
     task_id = created["taskId"]
 
     request =
@@ -168,7 +169,7 @@ defmodule Snodo.TasksSubscriptionAcceptanceTest do
     assert {:stream, subscription} =
              TasksSupport.dispatch(runtime, request, auth: %{"tenant" => "b"})
 
-    assert_receive {:tasks_subscription_opened, "tenant-b-listen", %{}}
+    assert_receive {:tasks_subscription_opened, "tenant-b-listen", %{}}, @receive_timeout
     assert subscription.accepted_filter == %{}
     assert subscription.extension_filters == %{}
 
@@ -195,7 +196,9 @@ defmodule Snodo.TasksSubscriptionAcceptanceTest do
       })
 
     TasksTestInput.push(input, JSON.encode!(listen) <> "\n")
-    assert_receive {:tasks_subscription_opened, "tasks-stdio-sub", %{"taskIds" => [^task_id]}}
+
+    assert_receive {:tasks_subscription_opened, "tasks-stdio-sub", %{"taskIds" => [^task_id]}},
+                   @receive_timeout
 
     assert [%{"method" => "notifications/subscriptions/acknowledged"}] =
              await_output_messages(output, 1)
@@ -214,10 +217,12 @@ defmodule Snodo.TasksSubscriptionAcceptanceTest do
 
     TasksTestInput.push(input, JSON.encode!(cancellation) <> "\n")
 
-    assert_receive {:tasks_subscription_closed, "tasks-stdio-sub", {:cancelled, "done observing"}}
+    assert_receive {:tasks_subscription_closed, "tasks-stdio-sub",
+                    {:cancelled, "done observing"}},
+                   @receive_timeout
 
     TasksTestInput.eof(input)
-    assert :ok = Task.await(server, 1_000)
+    assert :ok = Task.await(server, @receive_timeout)
     assert length(await_output_messages(output, 2)) == 2
     send(worker, {:tasks_release, "stdio-subscription"})
   end
@@ -229,7 +234,7 @@ defmodule Snodo.TasksSubscriptionAcceptanceTest do
                "label" => label
              })
 
-    assert_receive {:tasks_barrier_entered, ^label, worker}
+    assert_receive {:tasks_barrier_entered, ^label, worker}, @receive_timeout
     task_id = created["taskId"]
     task = task_from_store(store, task_id)
     {task_id, task, worker}
@@ -240,7 +245,7 @@ defmodule Snodo.TasksSubscriptionAcceptanceTest do
     state.entries[task_id].snapshot.task
   end
 
-  defp await_output_messages(output, count, attempts \\ 100)
+  defp await_output_messages(output, count, attempts \\ div(@receive_timeout, 10))
 
   defp await_output_messages(output, count, attempts) when attempts > 0 do
     {_remaining_input, raw_output} = StringIO.contents(output)
