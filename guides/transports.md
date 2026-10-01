@@ -76,7 +76,7 @@ A dependency-free listener that binds to `127.0.0.1` by default and serves
 - `application/json` for ordinary results.
 - `text/event-stream` when a handler reports progress, and for
   `subscriptions/listen`, with keepalive comments and proxy buffering disabled.
-- 405 for GET and DELETE. No session IDs are issued.
+- 405 for GET and DELETE at `/mcp`. No session IDs are issued.
 
 It checks media types, the mirrored `MCP-Protocol-Version`, `Mcp-Method`, and
 `Mcp-Name` headers, the `Mcp-Param-*` headers for a tool's `x-mcp-header`
@@ -92,14 +92,27 @@ Options include `:ip`, `:port`, `:path`, `:request_timeout`, `:read_timeout`,
 `:max_body_bytes` (2 MB). Body bytes received with the head count only toward
 `:max_body_bytes`.
 
+The listener is unauthenticated unless `:request_gate` is set to a
+`{module, options}` implementing `Snodo.Transport.StreamableHTTP.RequestGate`.
+The gate sees the parsed method, path, and headers before the body is read. It
+can serve a separate route, refuse the request, or return trusted identity for
+`Snodo.Authorization`. An invalid result or exception fails closed with 500.
+The listener bounds the gate with `:request_gate_timeout`; the gate must also
+bound and clean up any external calls it makes. For OAuth bearer tokens and
+protected resource metadata, use `Snodo.OAuth.ResourceServer.Native` from
+[`snodo_oauth`](https://hexdocs.pm/snodo_oauth).
+
 The listener also bounds what clients can hold open:
 
 - `:max_connections` (default 1,024). A connection accepted at the limit is
   closed without being read.
 - `:head_timeout` (default 10,000 ms from accept). The request head must be
   complete by then; `:read_timeout` (5,000 ms) still bounds each read.
-- `:body_timeout` (default 10,000 ms from the end of the head). The request
-  body must be complete by then; `:read_timeout` still bounds each read.
+- `:request_gate_timeout` (default 10,000 ms). A gate that does not return in
+  time gets a 504 response.
+- `:body_timeout` (default 10,000 ms from the end of the head, or from gate
+  admission when a gate is configured). The request body must be read by then;
+  `:read_timeout` still bounds each read.
 - `:max_subscriptions` (default 256). A `subscriptions/listen` stream over the
   limit is closed at its source and the request gets 503. A slot returns when
   the connection serving a stream exits, including a client disconnect.

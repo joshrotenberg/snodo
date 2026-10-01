@@ -3,11 +3,12 @@
 `snodo_oauth` implements both sides of the
 [MCP authorization specification](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization).
 
-For servers that run behind `snodo_plug`, the resource-server side: the
+For HTTP servers, the resource-server side: the
 protected resource metadata document (RFC 9728), bearer token extraction and
 validation with audience binding (RFC 8707), the `WWW-Authenticate` challenges
 that point a client at the metadata, and a `Snodo.Authorization` policy that
-requires scopes per tool, prompt, or resource.
+requires scopes per tool, prompt, or resource. The package supports both
+`snodo_plug` and the native Streamable HTTP listener.
 
 For `Snodo.Client`, the [client side](#client): `Snodo.OAuth.Client` obtains,
 refreshes, and steps up the bearer token the HTTP transport sends, through
@@ -17,8 +18,7 @@ credentials grant.
 
 It depends on `plug` and `jose`; the `snodo` core stays free of Hex
 dependencies. It does not implement the authorization server, token
-introspection (RFC 7662), DPoP (RFC 9449), or CORS. The native HTTP listener
-in the core sets no identity and is not covered by this package.
+introspection (RFC 7662), DPoP (RFC 9449), or CORS.
 
 ## Install
 
@@ -36,6 +36,7 @@ in the core sets no identity and is not covered by this package.
 |---|---|
 | `Snodo.OAuth.ResourceServer.Metadata` | A plug serving the RFC 9728 document at `/.well-known/oauth-protected-resource` or, for a resource with a path, at `/.well-known/oauth-protected-resource/<path>` |
 | `Snodo.OAuth.ResourceServer.Bearer` | A plug that requires a valid bearer token on every request, sets the `:mcp_auth` assign that `Snodo.Transport.Plug` trusts, and answers 400, 401, and 403 with a `WWW-Authenticate` challenge |
+| `Snodo.OAuth.ResourceServer.Native` | A request gate for the native listener, serving the same metadata and applying the same bearer checks before the body is read |
 | `Snodo.OAuth.ResourceServer.Verifier` | The token verification behaviour |
 | `Snodo.OAuth.ResourceServer.Verifier.JWT` | Verifies JWT access tokens (RFC 9068) with `jose` |
 | `Snodo.OAuth.ResourceServer.JWKS` | A supervised key cache: static keys, a JWKS URL, or both |
@@ -45,6 +46,10 @@ The order in a pipeline is metadata, bearer, transport. The metadata plug
 answers its own path and passes everything else on; the bearer plug halts
 any other request that lacks a valid token; the transport reads identity
 from the assign only.
+
+The native listener instead calls a request gate. The gate serves the metadata
+path and returns verified identity for MCP requests. The core listener remains
+free of Hex dependencies and rejects a gate failure with HTTP 500.
 
 `resource` is the canonical URI of the MCP server, the value clients send as
 the RFC 8707 `resource` parameter and authorization servers put in the
@@ -112,6 +117,45 @@ children = [
 Each plug halts the connection it answers, and each `call/2` passes a halted
 connection through, so the chain needs no `Plug.Builder`. The transport
 options are the ones `snodo_plug` documents.
+
+## Native listener
+
+Start the same JWKS cache and configure the native listener's request gate:
+
+```elixir
+children = [
+  {Snodo.OAuth.ResourceServer.JWKS,
+   name: MyApp.JWKS, url: "https://auth.example.com/.well-known/jwks.json"},
+  {Snodo.Transport.StreamableHTTP.Server,
+   runtime: MyApp.MCPServer.runtime(),
+   ip: {127, 0, 0, 1},
+   port: 4000,
+   path: "/mcp",
+   request_gate:
+     {Snodo.OAuth.ResourceServer.Native,
+      metadata: [
+        resource: "https://mcp.example.com/mcp",
+        authorization_servers: ["https://auth.example.com"],
+        scopes_supported: ["mcp:read", "mcp:write"]
+      ],
+      bearer: [
+        resource: "https://mcp.example.com/mcp",
+        verifier:
+          {Snodo.OAuth.ResourceServer.Verifier.JWT,
+           keys: MyApp.JWKS, issuer: "https://auth.example.com"},
+        required_scopes: ["mcp:read"]
+      ]}}
+]
+```
+
+The gate serves `/.well-known/oauth-protected-resource/mcp` without a token.
+It checks bearer tokens before the listener reads an MCP request body and
+places verified identity in the request context used by
+`Snodo.Authorization`. It gives the same 400, 401, and 403 challenges as the
+bearer plug. The listener's `:path` must match the resource URI path, and the
+resource URI cannot contain a query; invalid configurations fail at startup.
+For a public HTTPS resource, terminate TLS at a reverse proxy and keep the
+native listener on a private bind address, as in this example.
 
 ## Phoenix
 

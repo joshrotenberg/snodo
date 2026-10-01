@@ -21,11 +21,12 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
       complete, default 10,000. `:read_timeout` (default 5,000) still bounds
       each read; this deadline bounds the whole head, so a client that sends it
       a byte at a time is closed when the deadline passes.
-    * `:body_timeout` - milliseconds from the end of the head until the request
-      body must be complete, default 10,000. Each body read returns what has
-      arrived and waits at most `:read_timeout`; this deadline bounds the whole
-      body, so a client that sends it a little at a time is closed when the
-      deadline passes.
+    * `:request_gate_timeout` - milliseconds allowed for a request gate to
+      check the head, default 10,000. A timed-out gate gets a 504 response.
+    * `:body_timeout` - milliseconds from the end of the head, or from gate
+      admission when a gate is configured, until the request body must be
+      read, default 10,000. Each body read returns what has arrived and waits
+      at most `:read_timeout`; this deadline bounds the whole body.
     * `:max_subscriptions` - the most `subscriptions/listen` streams open at
       once, default 256. The executor holds one count per listener and returns
       a slot when the connection serving that stream exits. A stream over the
@@ -58,6 +59,12 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   Applications that already run Plug, Bandit, or Cowboy can translate their
   request into `Snodo.Transport.StreamableHTTP.Request` and use the pure adapter
   directly instead of starting this listener.
+
+  The listener has no built-in authentication. Set `:request_gate` to a
+  `{module, options}` implementing `Snodo.Transport.StreamableHTTP.RequestGate`
+  to serve discovery routes and authenticate requests before reading their
+  bodies. A verified identity returned by the gate is available to
+  `Snodo.Authorization`. `snodo_oauth` provides an OAuth resource-server gate.
   """
 
   @behaviour Snodo.Transport
@@ -82,6 +89,8 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   @default_max_connections 1_024
   @default_head_timeout 10_000
   @default_body_timeout 10_000
+  @default_request_gate_timeout 10_000
+  @header_name_pattern ~r/\A[!#$%&'*+\-.^_`|~0-9A-Za-z]+\z/
   @default_max_subscriptions 256
   @default_drain_timeout 5_000
   # The supervisor's default worker shutdown, kept for the work after a drain.
@@ -130,11 +139,16 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     ip = normalize_ip(Keyword.get(opts, :ip, @default_ip))
     port = Keyword.get(opts, :port, 0)
     path = validate_path!(Keyword.get(opts, :path, @default_path))
+    request_gate = request_gate!(Keyword.get(opts, :request_gate), path)
     validate_port!(port)
 
     max_connections = positive_option!(opts, :max_connections, @default_max_connections)
     head_timeout = positive_option!(opts, :head_timeout, @default_head_timeout)
     body_timeout = positive_option!(opts, :body_timeout, @default_body_timeout)
+
+    request_gate_timeout =
+      positive_option!(opts, :request_gate_timeout, @default_request_gate_timeout)
+
     max_subscriptions = positive_option!(opts, :max_subscriptions, @default_max_subscriptions)
     drain_timeout = positive_option!(opts, :drain_timeout, @default_drain_timeout)
 
@@ -160,6 +174,8 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
         runtime: runtime,
         executor: executor,
         path: path,
+        request_gate: request_gate,
+        request_gate_timeout: request_gate_timeout,
         server_ref: server_ref,
         request_timeout: Keyword.get(opts, :request_timeout, :default),
         deadline_timeout: deadline_timeout!(Keyword.get(opts, :request_timeout, :default)),
@@ -373,9 +389,9 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     connection_ref = make_ref()
 
     response =
-      with {:ok, request} <- read_request(socket, peer, connection_ref, opts),
+      with {:ok, request, auth} <- read_request(socket, peer, connection_ref, opts),
            :ok <- validate_endpoint(request, opts.path) do
-        execute_request(socket, request, opts)
+        execute_request(socket, request, auth, opts)
       else
         {:response, response} -> response
       end
@@ -389,12 +405,13 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
       :ok
   end
 
-  defp execute_request(socket, request, opts) do
+  defp execute_request(socket, request, auth, opts) do
     case StreamableHTTP.prepare(opts.runtime, request, opts.adapter_opts) do
       {:response, response} ->
         response
 
       {:ok, prepared} ->
+        prepared = with_auth(prepared, auth, opts.request_gate)
         sink = Progress.sink(self())
         prepared = put_in(prepared.transport.metadata[:progress_sink], sink)
         opts = Map.merge(opts, %{progress: Progress.state(sink), progress_started?: false})
@@ -445,6 +462,9 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
         end
     end
   end
+
+  defp with_auth(prepared, _auth, nil), do: prepared
+  defp with_auth(prepared, auth, _gate), do: put_in(prepared.transport.metadata[:auth], auth)
 
   defp await_execution(socket, executor, execution_ref, key, prepared, opts) do
     case :inet.setopts(socket, active: :once) do
@@ -590,20 +610,29 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
 
   defp read_request(socket, peer, connection_ref, opts) do
     with {:ok, head, rest} <- recv_head(socket, "", opts),
-         body_deadline = System.monotonic_time(:millisecond) + opts.body_timeout,
+         ungated_body_deadline = System.monotonic_time(:millisecond) + opts.body_timeout,
          {:ok, method, target, headers, content_length} <-
            parse_request_head(head, opts.max_body_bytes),
+         request = %Request{
+           method: method,
+           path: request_path(target),
+           headers: headers,
+           body: "",
+           peer: peer,
+           connection_ref: connection_ref
+         },
+         {:ok, auth} <- check_request_gate(request, opts.request_gate, opts.request_gate_timeout),
+         body_deadline =
+           if(opts.request_gate,
+             do: System.monotonic_time(:millisecond) + opts.body_timeout,
+             else: ungated_body_deadline
+           ),
          {:ok, body} <- recv_body(socket, rest, content_length, body_deadline, opts) do
-      {:ok,
-       %Request{
-         method: method,
-         path: request_path(target),
-         headers: headers,
-         body: body,
-         peer: peer,
-         connection_ref: connection_ref
-       }}
+      {:ok, %{request | body: body}, auth}
     else
+      {:response, %Response{} = response} ->
+        {:response, response}
+
       {:error, status, message} ->
         {:response, basic_error(status, message)}
 
@@ -612,6 +641,71 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
 
       {:error, _socket_reason} ->
         {:response, basic_error(400, "Failed to read HTTP request")}
+    end
+  end
+
+  defp check_request_gate(_request, nil, _timeout), do: {:ok, nil}
+
+  defp check_request_gate(request, {module, state}, timeout) do
+    result =
+      [request]
+      |> Task.async_stream(&module.check(&1, state), timeout: timeout, on_timeout: :kill_task)
+      |> Enum.at(0)
+
+    case result do
+      {:ok, {:ok, auth}} ->
+        {:ok, auth}
+
+      {:ok, {:response, %Response{} = response}} ->
+        if valid_gate_response?(response, request.method),
+          do: {:response, response},
+          else: {:response, basic_error(500, "Request gate returned an invalid response")}
+
+      {:exit, :timeout} ->
+        {:response, basic_error(504, "Request gate timed out")}
+
+      {:exit, _reason} ->
+        {:response, basic_error(500, "Request gate failed")}
+
+      _invalid ->
+        {:response, basic_error(500, "Request gate returned an invalid result")}
+    end
+  rescue
+    _exception -> {:response, basic_error(500, "Request gate failed")}
+  end
+
+  defp valid_gate_response?(%Response{status: status, headers: headers, body: body}, method)
+       when is_integer(status) and status in 100..599 and is_list(headers) and is_binary(body) do
+    Enum.all?(headers, fn
+      {name, value} when is_binary(name) and is_binary(value) ->
+        Regex.match?(@header_name_pattern, name) and valid_gate_header_value?(value)
+
+      _invalid ->
+        false
+    end) and valid_gate_content_length?(headers, body, method)
+  end
+
+  defp valid_gate_response?(_response, _method), do: false
+
+  defp valid_gate_header_value?(value) do
+    value
+    |> :binary.bin_to_list()
+    |> Enum.all?(fn byte -> byte == 9 or byte in 32..126 or byte in 128..255 end)
+  end
+
+  defp valid_gate_content_length?(headers, body, method) do
+    case response_header_values(headers, "content-length") do
+      [] -> true
+      [value] when method == "HEAD" -> valid_content_length?(value)
+      [value] -> value == Integer.to_string(byte_size(body))
+      _duplicates -> false
+    end
+  end
+
+  defp valid_content_length?(value) do
+    case Integer.parse(value) do
+      {length, ""} when length >= 0 -> true
+      _invalid -> false
     end
   end
 
@@ -791,12 +885,12 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   defp send_response(socket, %Response{} = response) do
     body = response.body
 
-    headers =
-      response.headers ++
-        [
-          {"content-length", Integer.to_string(byte_size(body))},
-          {"connection", "close"}
-        ]
+    length_header =
+      if response_header_values(response.headers, "content-length") == [],
+        do: [{"content-length", Integer.to_string(byte_size(body))}],
+        else: []
+
+    headers = response.headers ++ length_header ++ [{"connection", "close"}]
 
     lines =
       Enum.map(headers, fn {name, value} ->
@@ -1015,6 +1109,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   defp reason_phrase(200), do: "OK"
   defp reason_phrase(202), do: "Accepted"
   defp reason_phrase(400), do: "Bad Request"
+  defp reason_phrase(401), do: "Unauthorized"
   defp reason_phrase(403), do: "Forbidden"
   defp reason_phrase(404), do: "Not Found"
   defp reason_phrase(405), do: "Method Not Allowed"
@@ -1031,6 +1126,11 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   defp header_values(headers, name) do
     wanted = String.downcase(name)
     for {^wanted, value} <- headers, do: value
+  end
+
+  defp response_header_values(headers, name) do
+    wanted = String.downcase(name)
+    for {header_name, value} <- headers, String.downcase(header_name) == wanted, do: value
   end
 
   defp peer_name(socket) do
@@ -1137,6 +1237,20 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
 
   defp validate_path!("/" <> _rest = path), do: path
   defp validate_path!(_path), do: raise(ArgumentError, ":path must begin with /")
+
+  defp request_gate!(nil, _path), do: nil
+
+  defp request_gate!({module, gate_opts}, path) when is_atom(module) and is_list(gate_opts) do
+    if Code.ensure_loaded?(module) and function_exported?(module, :init, 2) and
+         function_exported?(module, :check, 2) do
+      {module, module.init(gate_opts, %{path: path})}
+    else
+      raise ArgumentError, ":request_gate module must implement init/2 and check/2"
+    end
+  end
+
+  defp request_gate!(_invalid, _path),
+    do: raise(ArgumentError, ":request_gate must be {module, options}")
 
   defp bracket_ipv6(host) do
     if String.contains?(host, ":"), do: "[#{host}]", else: host

@@ -3,6 +3,7 @@ defmodule Snodo.Transport.StreamableHTTP.ServerAcceptanceTest do
 
   alias Snodo.Server.Executor
   alias Snodo.Subscription.Event
+  alias Snodo.Transport.StreamableHTTP.Response
   alias Snodo.Transport.StreamableHTTP.Server, as: HTTPServer
   alias SnodoTest.TestFixtures
   alias SnodoTest.TestResources.StaticText
@@ -12,6 +13,45 @@ defmodule Snodo.Transport.StreamableHTTP.ServerAcceptanceTest do
   alias SnodoTest.TestTools.Trapping
 
   @protocol "2026-07-28"
+
+  defmodule InvalidGate do
+    @moduledoc false
+    @behaviour Snodo.Transport.StreamableHTTP.RequestGate
+
+    @impl true
+    def init(_opts, _listener), do: nil
+
+    @impl true
+    def check(_request, _state), do: :invalid
+  end
+
+  defmodule InvalidResponseGate do
+    @moduledoc false
+    @behaviour Snodo.Transport.StreamableHTTP.RequestGate
+
+    @impl true
+    def init(opts, _listener), do: Keyword.fetch!(opts, :response)
+
+    @impl true
+    def check(_request, response), do: {:response, response}
+  end
+
+  defmodule BlockingGate do
+    @moduledoc false
+    @behaviour Snodo.Transport.StreamableHTTP.RequestGate
+
+    @impl true
+    def init(opts, _listener), do: Keyword.fetch!(opts, :notify)
+
+    @impl true
+    def check(_request, notify) do
+      send(notify, {:checking_request, self()})
+
+      receive do
+        :release_gate -> {:ok, nil}
+      end
+    end
+  end
 
   @tag mcp_contract: ["streamable-http-listener"]
   test "binds to localhost, serves the configured path, and closes each response" do
@@ -38,6 +78,108 @@ defmodule Snodo.Transport.StreamableHTTP.ServerAcceptanceTest do
     get_response = raw_request(port, "GET", "/mcp", [], "")
     assert get_response.status == 405
     assert get_response.headers["allow"] == "POST"
+  end
+
+  test "an invalid request-gate result fails closed" do
+    runtime = TestFixtures.runtime()
+
+    {:ok, server} =
+      start_supervised({HTTPServer, runtime: runtime, port: 0, request_gate: {InvalidGate, []}})
+
+    {_ip, port, _path} = HTTPServer.address(server)
+    raw = TestFixtures.request("gated-http", "tools/list")
+    response = raw_request(port, "POST", "/mcp", headers(raw), JSON.encode!(raw))
+
+    assert response.status == 500
+  end
+
+  test "an invalid response from a request gate gets HTTP 500" do
+    runtime = TestFixtures.runtime()
+
+    {:ok, server} =
+      start_supervised(
+        {HTTPServer,
+         runtime: runtime,
+         port: 0,
+         request_gate: {InvalidResponseGate, response: %Response{status: 401, body: nil}}}
+      )
+
+    {_ip, port, _path} = HTTPServer.address(server)
+    raw = TestFixtures.request("invalid-gate-response", "tools/list")
+    response = raw_request(port, "POST", "/mcp", headers(raw), JSON.encode!(raw))
+
+    assert response.status == 500
+  end
+
+  test "a request gate cannot inject response headers" do
+    runtime = TestFixtures.runtime()
+    response = %Response{status: 401, headers: [{"x-check", "ok\r\nx-injected: yes"}]}
+
+    {:ok, server} =
+      start_supervised(
+        {HTTPServer,
+         runtime: runtime, port: 0, request_gate: {InvalidResponseGate, response: response}}
+      )
+
+    {_ip, port, _path} = HTTPServer.address(server)
+    raw = TestFixtures.request("injected-gate-response", "tools/list")
+    reply = raw_request(port, "POST", "/mcp", headers(raw), JSON.encode!(raw))
+
+    assert reply.status == 500
+    refute Map.has_key?(reply.headers, "x-injected")
+  end
+
+  test "a slow gate has its own timeout before body reading begins" do
+    runtime = TestFixtures.runtime()
+
+    {:ok, server} =
+      start_supervised(
+        {HTTPServer,
+         runtime: runtime,
+         port: 0,
+         request_gate: {BlockingGate, notify: self()},
+         request_gate_timeout: 2_000,
+         body_timeout: 100}
+      )
+
+    {_ip, port, _path} = HTTPServer.address(server)
+    raw = TestFixtures.request("slow-gate", "tools/list")
+    body = JSON.encode!(raw)
+    {:ok, socket} = :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: false])
+
+    [head, _body] =
+      :binary.split(
+        IO.iodata_to_binary(encoded_request("POST", "/mcp", headers(raw), body)),
+        "\r\n\r\n"
+      )
+
+    :ok = :gen_tcp.send(socket, [head, "\r\n\r\n"])
+
+    assert_receive {:checking_request, gate}, 1_000
+    :ok = :gen_tcp.send(socket, body)
+    Process.send_after(self(), :release_gate, 250)
+    assert_receive :release_gate, 1_000
+    send(gate, :release_gate)
+    assert parse_response(recv_all(socket, "")).status == 200
+  end
+
+  test "a timed-out request gate gets HTTP 504" do
+    runtime = TestFixtures.runtime()
+
+    {:ok, server} =
+      start_supervised(
+        {HTTPServer,
+         runtime: runtime,
+         port: 0,
+         request_gate: {BlockingGate, notify: self()},
+         request_gate_timeout: 100}
+      )
+
+    {_ip, port, _path} = HTTPServer.address(server)
+    raw = TestFixtures.request("timed-out-gate", "tools/list")
+    response = raw_request(port, "POST", "/mcp", headers(raw), JSON.encode!(raw))
+
+    assert response.status == 504
   end
 
   test "serves resource reads through the live listener with exact URI headers" do
