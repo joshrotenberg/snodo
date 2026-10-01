@@ -49,6 +49,10 @@ faults are caught so they cannot change the observed operation's result. No
 event includes request params, auth data, work input, access values, task
 results/errors, or input responses.
 
+Dispatch `method` metadata contains the incoming method only when it is a
+string of at most 128 bytes. A missing, non-string, or longer method is
+reported as `:invalid` before the request envelope is validated.
+
 Durations use the VM's native monotonic time unit. Convert them with
 `System.convert_time_unit(duration, :native, desired_unit)`.
 

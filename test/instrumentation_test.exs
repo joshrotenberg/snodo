@@ -2,6 +2,8 @@ defmodule Snodo.InstrumentationTest do
   use ExUnit.Case, async: true
 
   alias Snodo.Instrumentation
+  alias Snodo.Server
+  alias Snodo.Transport.Context, as: TransportContext
   alias SnodoTest.RaisingInstrumentationSink
   alias SnodoTest.TestFixtures
   alias SnodoTest.TestInstrumentationSink
@@ -34,6 +36,38 @@ defmodule Snodo.InstrumentationTest do
     assert stop_metadata == Map.put(metadata, :outcome, :ok)
     refute inspect([start, metadata, stop, stop_metadata]) =~ "must-not-appear"
     refute inspect([start, metadata, stop, stop_metadata]) =~ "also-private"
+  end
+
+  test "dispatch reports malformed or oversized methods as invalid metadata" do
+    runtime = TestFixtures.runtime(instrumentation: {TestInstrumentationSink, self()})
+    transport = %TransportContext{transport: :direct}
+
+    for method <- [
+          %{"arguments" => %{"password" => "pw"}},
+          String.duplicate("é", 65),
+          nil
+        ] do
+      raw = %{"jsonrpc" => "2.0", "id" => 1, "method" => method}
+      assert {:ok, %{"error" => _}} = Server.dispatch(runtime, raw, transport)
+
+      assert_received {:instrumentation, [:snodo, :server, :dispatch, :start], _start,
+                       %{method: :invalid} = metadata}
+
+      assert_received {:instrumentation, [:snodo, :server, :dispatch, :stop], _stop,
+                       %{method: :invalid}}
+
+      assert metadata == %{method: :invalid, request_id: 1, transport: :direct}
+    end
+
+    method = String.duplicate("é", 64)
+    raw = %{"jsonrpc" => "2.0", "id" => 2, "method" => method}
+    assert {:ok, %{"error" => _}} = Server.dispatch(runtime, raw, transport)
+
+    assert_received {:instrumentation, [:snodo, :server, :dispatch, :start], _start,
+                     %{method: ^method}}
+
+    assert_received {:instrumentation, [:snodo, :server, :dispatch, :stop], _stop,
+                     %{method: ^method}}
   end
 
   test "dispatch errors and streams have explicit terminal outcomes" do
