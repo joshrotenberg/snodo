@@ -35,6 +35,8 @@ accepts the same options as overrides. Other options: `protocols:` (see
 
 ## Tools
 
+Projects using the Snodo DSL can add `import_deps: [:snodo]` to their `.formatter.exs` so DSL calls are kept without parentheses.
+
 `Snodo.Tool.Simple` builds the input schema from `argument/3` declarations:
 
 ```elixir
