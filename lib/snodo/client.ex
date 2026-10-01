@@ -582,7 +582,7 @@ defmodule Snodo.Client do
   @spec listen(t(), map(), keyword()) :: {:ok, Subscription.t()} | {:error, Error.t()}
   def listen(%__MODULE__{transport: {module, _state}} = client, notifications, opts \\ [])
       when is_map(notifications) and is_list(opts) do
-    unless function_exported?(module, :listen, 3) do
+    unless Code.ensure_loaded?(module) and function_exported?(module, :listen, 3) do
       raise ArgumentError, "#{inspect(module)} does not implement listen/3"
     end
 

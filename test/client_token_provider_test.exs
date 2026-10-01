@@ -217,6 +217,98 @@ defmodule Snodo.ClientTokenProviderTest do
                    1_000
   end
 
+  test "the default connect probes and negotiates with the provider's token" do
+    challenge = ~s(Bearer resource_metadata="#{@metadata}")
+
+    # A modern server: the probe settles the version.
+    modern = fn
+      %{"authorization" => "Bearer t2"}, %{"method" => "server/discover", "id" => id} ->
+        result = %{"supportedVersions" => ["2026-07-28"], "capabilities" => %{}}
+
+        {200, [{"content-type", "application/json"}],
+         JSON.encode!(%{"jsonrpc" => "2.0", "id" => id, "result" => result})}
+
+      %{"authorization" => "Bearer t2"}, message ->
+        ok(message)
+
+      _headers, _message ->
+        unauthorized(challenge)
+    end
+
+    url = FakeHTTP.start(self(), modern)
+
+    {:ok, client} =
+      Client.connect({:http, url},
+        token_provider: Provider.start(self(), {:ok, "t1"}, {:ok, "t2"})
+      )
+
+    assert %Client{protocol: "2026-07-28", session: nil} = client
+    assert {:ok, []} = Client.list_tools(client)
+
+    assert_receive {:fake_http, %{"authorization" => "Bearer t1"},
+                    %{"method" => "server/discover"}},
+                   1_000
+
+    assert_receive {:provider, :refresh, %Challenge{}, %{status: 401, token: "t1"}}, 1_000
+
+    assert_receive {:fake_http, %{"authorization" => "Bearer t2"},
+                    %{"method" => "server/discover"}},
+                   1_000
+
+    assert_receive {:fake_http, %{"authorization" => "Bearer t2"}, %{"method" => "tools/list"}},
+                   1_000
+
+    # An initialize-era server: the probe fails, and initialize follows with
+    # the refreshed token.
+    legacy = fn
+      %{"authorization" => "Bearer t2"}, %{"method" => "server/discover", "id" => id} ->
+        error = %{"code" => -32_601, "message" => "Method not found"}
+
+        {200, [{"content-type", "application/json"}],
+         JSON.encode!(%{"jsonrpc" => "2.0", "id" => id, "error" => error})}
+
+      %{"authorization" => "Bearer t2"}, %{"method" => "initialize", "id" => id} ->
+        result = %{
+          "protocolVersion" => "2025-11-25",
+          "capabilities" => %{"tools" => %{}},
+          "serverInfo" => %{"name" => "fake", "version" => "1.0.0"}
+        }
+
+        {200, [{"content-type", "application/json"}, {"mcp-session-id", "s1"}],
+         JSON.encode!(%{"jsonrpc" => "2.0", "id" => id, "result" => result})}
+
+      %{"authorization" => "Bearer t2"}, %{"method" => "notifications/initialized"} ->
+        {202, [], ""}
+
+      %{"authorization" => "Bearer t2"}, message ->
+        ok(message)
+
+      _headers, _message ->
+        unauthorized(challenge)
+    end
+
+    url = FakeHTTP.start(self(), legacy)
+
+    {:ok, client} =
+      Client.connect({:http, url},
+        token_provider: Provider.start(self(), {:ok, "t1"}, {:ok, "t2"})
+      )
+
+    assert %Client{protocol: "2025-11-25"} = client
+    assert {:ok, []} = Client.list_tools(client)
+
+    assert_receive {:fake_http, %{"authorization" => "Bearer t2"},
+                    %{"method" => "server/discover"}},
+                   1_000
+
+    assert_receive {:fake_http, %{"authorization" => "Bearer t2"}, %{"method" => "initialize"}},
+                   1_000
+
+    assert_receive {:fake_http, %{"authorization" => "Bearer t2", "mcp-session-id" => "s1"},
+                    %{"method" => "tools/list"}},
+                   1_000
+  end
+
   test "a 401 asks the provider to refresh with the challenge and retries once" do
     challenge = ~s(Bearer resource_metadata="#{@metadata}", scope="mcp:read")
     url = FakeHTTP.start(self(), require_token("t2", unauthorized(challenge)))
