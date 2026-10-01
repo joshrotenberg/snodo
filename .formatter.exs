@@ -30,6 +30,6 @@ locals_without_parens = [
     "conformance/*.{ex,exs}",
     "conformance/{fixture,support}/*.{ex,exs}"
   ],
-  locals_without_parens: locals_without_parens,
+  # Exported for projects that use the DSL; this repository keeps the parentheses.
   export: [locals_without_parens: locals_without_parens]
 ]

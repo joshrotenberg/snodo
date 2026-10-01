@@ -35,7 +35,9 @@ accepts the same options as overrides. Other options: `protocols:` (see
 
 ## Tools
 
-Projects using the Snodo DSL can add `import_deps: [:snodo]` to their `.formatter.exs` so DSL calls are kept without parentheses.
+A project that uses the DSL can add `import_deps: [:snodo]` to its
+`.formatter.exs` so that `mix format` leaves DSL calls such as `tool`,
+`argument`, and `input_schema` without parentheses.
 
 `Snodo.Tool.Simple` builds the input schema from `argument/3` declarations:
 
