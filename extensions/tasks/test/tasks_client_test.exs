@@ -45,6 +45,12 @@ defmodule Snodo.Extensions.Tasks.ClientTest do
     end
   end
 
+  defp timed(fun) do
+    started = System.monotonic_time(:millisecond)
+    result = fun.()
+    {System.monotonic_time(:millisecond) - started, result}
+  end
+
   defp accept(_params), do: {:ok, %{"action" => "accept", "content" => %{"confirmed" => true}}}
 
   defp barrier(label) do
@@ -116,6 +122,18 @@ defmodule Snodo.Extensions.Tasks.ClientTest do
 
       assert {:ok, %{"content" => [%{"text" => "Hello, Ada!"}]}} =
                TasksClient.call_and_await(direct(runtime), "greet", %{"name" => "Ada"})
+    end
+
+    test "outcome/1 refuses a status that is not finished" do
+      working = %Status{task_id: "t", status: :working, raw: %{}}
+
+      assert_raise ArgumentError, ~r/expects a finished task, but task "t" is working/, fn ->
+        TasksClient.outcome(working)
+      end
+
+      assert_raise ArgumentError, ~r/needs the error/, fn ->
+        TasksClient.outcome(%Status{task_id: "t", status: :failed, raw: %{}})
+      end
     end
 
     test "the creation result decodes into a status" do
@@ -328,6 +346,89 @@ defmodule Snodo.Extensions.Tasks.ClientTest do
                TasksClient.await(client, status, listen: true, timeout: 1_000)
     end
 
+    test "a stalled request does not outlast the wait on a direct client" do
+      stall = fn context ->
+        if context.request_method == "tasks/get", do: Process.sleep(1_000)
+        :shared
+      end
+
+      %{runtime: runtime} = start_server(scope: stall)
+      client = direct(runtime)
+      {:task, status} = TasksClient.call_tool(client, "slow_compute", %{"label" => "stalled"})
+
+      {elapsed, result} = timed(fn -> TasksClient.await(client, status, timeout: 100) end)
+      assert {:error, %Error{code: -32_001, cause: {:timeout, ^status}}} = result
+      assert elapsed < 800
+
+      # Given only the taskId, no status has been read when the time is up.
+      {elapsed, result} = timed(fn -> TasksClient.await(client, status.task_id, timeout: 100) end)
+      assert {:error, %Error{code: -32_001, cause: {:timeout, nil}}} = result
+      assert elapsed < 800
+    end
+
+    test "polls are at least :min_poll_interval apart" do
+      # The server's pollIntervalMs is 5 ms.
+      %{runtime: runtime} = start_server(scope: report_gets(self()))
+      client = direct(runtime)
+
+      {:task, %Status{poll_interval_ms: 5} = status} =
+        TasksClient.call_tool(client, "slow_compute", %{"label" => "floor", "block" => true})
+
+      worker = barrier("floor")
+      waiter = Task.async(fn -> TasksClient.await(client, status, timeout: 5_000) end)
+
+      assert_receive {:get, first}, 5_000
+      assert_receive {:get, second}, 5_000
+      assert second - first >= 50
+
+      send(worker, {:tasks_release, "floor"})
+      assert {:ok, _result} = Task.await(waiter, 5_000)
+    end
+
+    test "a handler response that is not valid for its kind stops the wait" do
+      %{runtime: runtime} = start_server()
+      client = direct(runtime, input_handlers: %{form: fn _params -> {:ok, %{"ok" => true}} end})
+
+      assert {:error, %Error{code: -32_603, cause: cause}} =
+               TasksClient.call_and_await(client, "confirm_delete", %{}, [], timeout: 5_000)
+
+      assert {:input_handler, "confirmation", {:invalid_response, %{"ok" => true}}, %Status{}} =
+               cause
+    end
+
+    test "a handler exception propagates" do
+      %{runtime: runtime} = start_server()
+      client = direct(runtime, input_handlers: %{form: fn _params -> raise "no UI" end})
+
+      assert_raise RuntimeError, "no UI", fn ->
+        TasksClient.call_and_await(client, "confirm_delete", %{}, [], timeout: 5_000)
+      end
+    end
+
+    test "a finished status without its payload is read again" do
+      %{runtime: runtime} = start_server()
+      client = direct(runtime)
+
+      {:task, status} = TasksClient.call_tool(client, "slow_compute", %{"label" => "flat"})
+      assert {:ok, result} = TasksClient.await(client, status, timeout: 5_000)
+
+      # The flat creation shape: a finished status without its result.
+      assert {:ok, flat} =
+               Status.from_map(%{
+                 "taskId" => status.task_id,
+                 "status" => "completed",
+                 "resultType" => "task"
+               })
+
+      refute Status.detailed?(flat)
+
+      assert_raise ArgumentError, ~r/read the task with get\/3/, fn ->
+        TasksClient.outcome(flat)
+      end
+
+      assert {:ok, ^result} = TasksClient.await(client, flat, timeout: 5_000)
+    end
+
     test "invalid options raise" do
       %{runtime: runtime} = start_server()
       client = direct(runtime)
@@ -408,6 +509,41 @@ defmodule Snodo.Extensions.Tasks.ClientTest do
       assert {:ok, %{"structuredContent" => %{"label" => "ended"}}} = Task.await(waiter, 5_000)
     end
 
+    test "a request already answered is not answered again", %{store: store} = ctx do
+      client = direct(ctx.runtime)
+      test = self()
+      {:task, status} = TasksClient.call_tool(client, "confirm_delete")
+      task_id = status.task_id
+
+      TasksSupport.eventually_get(ctx.runtime, task_id, &(&1["status"] == "input_required"))
+      waiting = :sys.get_state(store).entries[task_id].snapshot.task
+
+      answer = fn %Status{input_requests: requests} ->
+        send(test, {:asked, Map.keys(requests)})
+        {:ok, Map.new(requests, fn {key, _request} -> {key, %{"action" => "accept"}} end)}
+      end
+
+      waiter =
+        Task.async(fn ->
+          TasksClient.await(client, status, listen: true, input: answer, timeout: 5_000)
+        end)
+
+      assert_receive {:tasks_subscription_opened, request_id, %{"taskIds" => [^task_id]}}, 5_000
+      assert_receive {:asked, ["confirmation"]}, 5_000
+
+      # A stale event that still lists the answered request, then the real
+      # completion.
+      assert :ok = TasksSubscriptionHub.emit(ctx.hub, request_id, Tasks.status_event(waiting))
+      TasksSupport.eventually_get(ctx.runtime, task_id, &(&1["status"] == "completed"))
+      completed = :sys.get_state(store).entries[task_id].snapshot.task
+      assert :ok = TasksSubscriptionHub.emit(ctx.hub, request_id, Tasks.status_event(completed))
+
+      assert {:ok, %{"structuredContent" => %{"confirmation" => %{"action" => "accept"}}}} =
+               Task.await(waiter, 5_000)
+
+      refute_received {:asked, _keys}
+    end
+
     test "an unknown task is refused", %{runtime: runtime} do
       assert {:error, %Error{code: -32_602}} =
                TasksClient.await(direct(runtime), "no-such-task", listen: true, timeout: 1_000)
@@ -415,13 +551,16 @@ defmodule Snodo.Extensions.Tasks.ClientTest do
   end
 
   describe "over stdio" do
-    setup do
+    # A :stall tag, [method, milliseconds], makes the server's store stall on
+    # that method.
+    setup ctx do
       elixir = System.find_executable("elixir")
       core = Snodo.Client |> :code.which() |> List.to_string() |> Path.dirname()
       tasks = Path.expand(Mix.Project.compile_path())
+      stall = if ctx[:stall], do: ["--stall" | ctx.stall], else: []
 
       {:ok, client} =
-        Client.connect({:stdio, elixir, ["-pa", core, "-pa", tasks, @fixture]},
+        Client.connect({:stdio, elixir, ["-pa", core, "-pa", tasks, @fixture | stall]},
           input_handlers: %{form: &accept/1}
         )
 
@@ -453,6 +592,28 @@ defmodule Snodo.Extensions.Tasks.ClientTest do
                TasksClient.await(client, status, listen: true, timeout: 10_000)
 
       assert :ok = TasksClient.cancel(client, status)
+    end
+
+    @tag stall: ["tasks/get", "2000"]
+    test "a stalled tasks/get does not outlast the wait", %{client: client} do
+      {:task, status} = TasksClient.call_tool(client, "slow_compute", %{"label" => "stalled"})
+
+      {elapsed, result} = timed(fn -> TasksClient.await(client, status, timeout: 200) end)
+
+      assert {:error, %Error{code: -32_001, data: %{"timeoutMs" => 200}, cause: cause}} = result
+      assert {:timeout, %Status{status: :working}} = cause
+      assert elapsed < 1_500
+    end
+
+    @tag stall: ["subscriptions/listen", "2000"]
+    test "a stalled subscriptions/listen does not outlast the wait", %{client: client} do
+      {:task, status} = TasksClient.call_tool(client, "slow_compute", %{"label" => "unheard"})
+
+      {elapsed, result} =
+        timed(fn -> TasksClient.await(client, status, listen: true, timeout: 200) end)
+
+      assert {:error, %Error{code: -32_001, data: %{"timeoutMs" => 200}}} = result
+      assert elapsed < 1_500
     end
   end
 

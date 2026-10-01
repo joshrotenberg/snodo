@@ -64,11 +64,29 @@ defmodule Snodo.Extensions.Tasks.Client do
   without a subscription source refuses `subscriptions/listen` with -32601,
   which `await/3` returns.
 
-  Either way the wait is bounded by `:timeout`, 60,000 ms unless set. At the
+  Either way the wait is bounded by `:timeout`, 60,000 ms unless set. Each
+  request the wait sends gets the time left as its timeout, or
+  `:request_timeout` (the client's timeout unless set) when that is shorter.
+  A direct client has no request timeout, so there each `tasks/get` and
+  `tasks/update` runs in a task that is stopped when the time is up. At the
   limit `await/3` returns -32001 (`kind: :transport`) with `"taskId"` and
   `"timeoutMs"` in `data` and `{:timeout, status}` in `cause`, where `status`
-  is the last status read. The task keeps running on the server; call
-  `await/3` again to keep waiting, or `cancel/3`.
+  is the last status read, or `nil` when none was read. The task keeps
+  running on the server; call `await/3` again to keep waiting, or
+  `cancel/3`.
+
+  Three parts of a wait are not cut short at the limit:
+
+    * On a direct client, `listen: true` waits for the stream's
+      acknowledgement without a bound. The stream belongs to the calling
+      process, and the direct transport opens it in that process with no
+      timeout, so it cannot be moved to a task that is stopped at the
+      deadline. Over stdio and Streamable HTTP the acknowledgement is bounded
+      like any other request.
+    * Closing the stream at the end of a `listen: true` wait, which
+      `Snodo.Client.Subscription.close/1` bounds at 5,000 ms.
+    * Input handlers and the `:input` function, which run in the calling
+      process until they return.
 
   ## Input
 
@@ -91,11 +109,17 @@ defmodule Snodo.Extensions.Tasks.Client do
       `{:error, reason}`.
 
   The responses are sent with `tasks/update` and the wait goes on. A handler
-  or function that returns `{:error, reason}` or anything other than
-  `{:ok, map}` stops the wait with -32603 (`kind: :execution`) and
+  response is checked as `Snodo.Client` checks it: an elicitation result needs
+  an `"action"` of `"accept"`, `"decline"`, or `"cancel"`, a sampling result
+  must pass `Snodo.Sampling.valid_response?/1`, and a roots result
+  `Snodo.Roots.valid_response?/1`. A handler or function that returns
+  `{:error, reason}`, anything other than `{:ok, map}`, or a handler
+  response that fails its check (`reason` is `{:invalid_response, response}`)
+  stops the wait with -32603 (`kind: :execution`) and
   `cause: {:input_handler, key, reason, status}`; `key` is `nil` for the
-  function form. To answer by hand, call `update/4` with the responses and
-  then `await/3` again.
+  function form. An exception raised by a handler or the function
+  propagates to the caller. To answer by hand, call `update/4` with the
+  responses and then `await/3` again.
 
   ## Transports
 
@@ -113,6 +137,8 @@ defmodule Snodo.Extensions.Tasks.Client do
   alias Snodo.Error
   alias Snodo.Extensions.Tasks
   alias Snodo.Extensions.Tasks.Client.Status
+  alias Snodo.Roots
+  alias Snodo.Sampling
 
   @typedoc "A task, by its `taskId` or by a status read earlier."
   @type task_ref :: String.t() | Status.t()
@@ -134,6 +160,7 @@ defmodule Snodo.Extensions.Tasks.Client do
   @default_poll_interval 1_000
   @default_min_poll_interval 50
   @notification "notifications/tasks"
+  @elicitation_actions ~w(accept decline cancel)
 
   @doc """
   Adds the Tasks extension to a client capabilities map.
@@ -274,7 +301,8 @@ defmodule Snodo.Extensions.Tasks.Client do
   Waits for a task to finish and returns its outcome.
 
   The wait starts by reading the task with `tasks/get`, unless it is given a
-  finished task's status, whose outcome it returns at once. See the module
+  finished task's status with its result or error, whose outcome it returns
+  at once. See the module
   doc for the outcomes, the two ways of waiting, and input.
 
   Options:
@@ -294,19 +322,19 @@ defmodule Snodo.Extensions.Tasks.Client do
   """
   @spec await(Snodo.Client.t(), task_ref(), keyword()) :: outcome()
   def await(%Snodo.Client{} = client, task, opts \\ []) when is_list(opts) do
-    state = wait_state!(client, task_id(task), opts)
+    state = wait_state!(client, task, opts)
 
     cond do
-      # A finished task never changes.
-      is_struct(task, Status) and Status.terminal?(task) ->
+      # A finished task never changes. A creation result may carry a
+      # finished status without its payload; that one is read again.
+      is_struct(task, Status) and Status.terminal?(task) and Status.detailed?(task) ->
         outcome(task)
 
       state.listen? ->
         listen(state)
 
       true ->
-        with {:ok, status} <- get(client, state.task_id, state.request_opts),
-             do: poll(state, status)
+        with {:ok, status} <- bounded_get(state), do: poll(state, status)
     end
   end
 
@@ -314,11 +342,15 @@ defmodule Snodo.Extensions.Tasks.Client do
   Returns the outcome of a finished task: `{:ok, result}` for `:completed`,
   `{:error, %Snodo.Error{}}` for `:failed`, and `{:cancelled, status}` for
   `:cancelled`.
+
+  Raises `ArgumentError` for a status that is not finished, and for a
+  completed or failed status without its `result` or `error`, as in a
+  creation result; read such a task with `get/3` first.
   """
   @spec outcome(Status.t()) :: outcome()
-  def outcome(%Status{status: :completed, result: result}), do: {:ok, result}
+  def outcome(%Status{status: :completed, result: result}) when is_map(result), do: {:ok, result}
 
-  def outcome(%Status{status: :failed, error: error} = status) do
+  def outcome(%Status{status: :failed, error: error} = status) when is_map(error) do
     code = Map.fetch!(error, "code")
 
     {:error,
@@ -333,6 +365,18 @@ defmodule Snodo.Extensions.Tasks.Client do
 
   def outcome(%Status{status: :cancelled} = status), do: {:cancelled, status}
 
+  def outcome(%Status{status: status} = task) when status in [:completed, :failed] do
+    raise ArgumentError,
+          "outcome/1 needs the #{if status == :completed, do: "result", else: "error"} of " <>
+            "task #{inspect(task.task_id)}, which this #{status} status does not carry; " <>
+            "read the task with get/3"
+  end
+
+  def outcome(%Status{status: status} = task) do
+    raise ArgumentError,
+          "outcome/1 expects a finished task, but task #{inspect(task.task_id)} is #{status}"
+  end
+
   # Polling
 
   defp poll(state, status) do
@@ -345,14 +389,11 @@ defmodule Snodo.Extensions.Tasks.Client do
   defp poll_next(state, status) do
     case remaining(state) do
       0 ->
-        {:error, timeout_error(state, status)}
+        {:error, timeout_error(state)}
 
       remaining ->
         Process.sleep(min(interval(state, status), remaining))
-
-        with {:ok, status} <- get(state.client, state.task_id, state.request_opts) do
-          poll(state, status)
-        end
+        with {:ok, status} <- bounded_get(state), do: poll(state, status)
     end
   end
 
@@ -362,11 +403,13 @@ defmodule Snodo.Extensions.Tasks.Client do
 
   # Listening
 
-  defp listen(state) do
-    listen_opts = declare(state.client, state.request_opts)
+  defp listen(%{client: client} = state) do
     filter = %{"taskIds" => [state.task_id]}
+    open = &Snodo.Client.listen(client, filter, declare(client, &1))
 
-    with {:ok, subscription} <- Snodo.Client.listen(state.client, filter, listen_opts) do
+    # The calling process must own the stream, so the direct transport's
+    # acknowledgement cannot be waited for in a task; see the module doc.
+    with {:ok, subscription} <- bounded(state, open, false) do
       try do
         listen_from(%{state | subscription: subscription})
       after
@@ -378,9 +421,7 @@ defmodule Snodo.Extensions.Tasks.Client do
 
   defp listen_from(%{subscription: subscription} = state) do
     if state.task_id in List.wrap(subscription.accepted["taskIds"]) do
-      with {:ok, status} <- get(state.client, state.task_id, state.request_opts) do
-        stream(state, status)
-      end
+      with {:ok, status} <- bounded_get(state), do: stream(state, status)
     else
       {:error, Error.invalid_params("Unknown or inaccessible taskId")}
     end
@@ -402,15 +443,13 @@ defmodule Snodo.Extensions.Tasks.Client do
         stream_next(state, status)
 
       {:dropped, _count} ->
-        with {:ok, status} <- get(state.client, task_id, state.request_opts) do
-          stream(state, status)
-        end
+        with {:ok, status} <- bounded_get(state), do: stream(state, status)
 
       {:closed, _reason} ->
         poll_next(state, status)
 
       {:error, :timeout} ->
-        {:error, timeout_error(state, status)}
+        {:error, timeout_error(state)}
     end
   end
 
@@ -426,7 +465,9 @@ defmodule Snodo.Extensions.Tasks.Client do
 
   # One status, from either way of waiting.
 
-  defp observe(state, %Status{status: :input_required} = status) do
+  defp observe(state, %Status{} = status), do: observe_status(%{state | last: status}, status)
+
+  defp observe_status(state, %Status{status: :input_required} = status) do
     pending = Map.drop(status.input_requests, MapSet.to_list(state.answered))
 
     if map_size(pending) == 0,
@@ -434,7 +475,7 @@ defmodule Snodo.Extensions.Tasks.Client do
       else: answer(state, status, pending)
   end
 
-  defp observe(state, %Status{} = status) do
+  defp observe_status(state, %Status{} = status) do
     if Status.terminal?(status),
       do: {:done, outcome(status)},
       else: {:continue, state}
@@ -443,7 +484,9 @@ defmodule Snodo.Extensions.Tasks.Client do
   defp answer(state, status, pending) do
     case responses(state, %{status | input_requests: pending}) do
       {:ok, responses} ->
-        case update(state.client, state.task_id, responses, state.request_opts) do
+        update = &update(state.client, state.task_id, responses, &1)
+
+        case bounded(state, update) do
           :ok ->
             answered = MapSet.union(state.answered, MapSet.new(Map.keys(responses)))
             {:continue, %{state | answered: answered}}
@@ -482,7 +525,7 @@ defmodule Snodo.Extensions.Tasks.Client do
       with kind when not is_nil(kind) <- input_kind(request),
            {:ok, handler} <- Map.fetch(handlers, kind),
            params when is_map(params) <- Map.get(request, "params", %{}) do
-        {:cont, {:ok, [{key, handler, params} | calls]}}
+        {:cont, {:ok, [{key, kind, handler, params} | calls]}}
       else
         _unhandled -> {:halt, :unhandled}
       end
@@ -491,20 +534,39 @@ defmodule Snodo.Extensions.Tasks.Client do
 
   defp run_handlers(calls, status) do
     calls
-    |> Enum.sort_by(fn {key, _handler, _params} -> key end)
-    |> Enum.reduce_while({:ok, %{}}, fn {key, handler, params}, {:ok, responses} ->
-      case handler.(params) do
-        {:ok, response} when is_map(response) ->
-          {:cont, {:ok, Map.put(responses, key, response)}}
-
-        {:error, reason} ->
-          {:halt, {:error, input_error(key, reason, status)}}
-
-        other ->
-          {:halt, {:error, input_error(key, {:invalid_return, other}, status)}}
+    |> Enum.sort_by(fn {key, _kind, _handler, _params} -> key end)
+    |> Enum.reduce_while({:ok, %{}}, fn {key, kind, handler, params}, {:ok, responses} ->
+      case run_handler(kind, handler, params) do
+        {:ok, response} -> {:cont, {:ok, Map.put(responses, key, response)}}
+        {:error, reason} -> {:halt, {:error, input_error(key, reason, status)}}
       end
     end)
   end
+
+  defp run_handler(kind, handler, params) do
+    case handler.(params) do
+      {:ok, response} when is_map(response) ->
+        if valid_response?(kind, response),
+          do: {:ok, response},
+          else: {:error, {:invalid_response, response}}
+
+      {:error, reason} ->
+        {:error, reason}
+
+      other ->
+        {:error, {:invalid_return, other}}
+    end
+  end
+
+  # The checks `Snodo.Client` applies to the same handlers' responses.
+  defp valid_response?(kind, %{"action" => action} = response)
+       when kind in [:form, :url] and action in @elicitation_actions do
+    not is_struct(response) and Enum.all?(Map.keys(response), &is_binary/1)
+  end
+
+  defp valid_response?(:sampling, response), do: Sampling.valid_response?(response)
+  defp valid_response?(:roots, response), do: Roots.valid_response?(response)
+  defp valid_response?(_kind, _response), do: false
 
   defp input_kind(%{"method" => "elicitation/create"} = request) do
     case get_in(request, ["params", "mode"]) do
@@ -520,18 +582,14 @@ defmodule Snodo.Extensions.Tasks.Client do
 
   # Options and shared helpers
 
-  defp wait_state!(client, task_id, opts) do
+  defp wait_state!(client, task, opts) do
     timeout = Keyword.get(opts, :timeout, @default_timeout)
     poll_interval = Keyword.get(opts, :poll_interval, @default_poll_interval)
     min_poll_interval = Keyword.get(opts, :min_poll_interval, @default_min_poll_interval)
     listen? = Keyword.get(opts, :listen, false)
     input = Keyword.get(opts, :input, :handlers)
 
-    unless timeout == :infinity or (is_integer(timeout) and timeout > 0) do
-      raise ArgumentError,
-            ":timeout must be a positive integer or :infinity, got: #{inspect(timeout)}"
-    end
-
+    timeout!(:timeout, timeout)
     positive!(:poll_interval, poll_interval)
     positive!(:min_poll_interval, min_poll_interval)
 
@@ -544,25 +602,32 @@ defmodule Snodo.Extensions.Tasks.Client do
             ":input must be :handlers, :return, or a function of one argument, got: #{inspect(input)}"
     end
 
-    request_opts =
-      case Keyword.fetch(opts, :request_timeout) do
-        {:ok, request_timeout} -> [timeout: request_timeout]
-        :error -> []
-      end
+    request_timeout = Keyword.get(opts, :request_timeout, client.timeout)
+
+    timeout!(:request_timeout, request_timeout)
 
     %{
       client: client,
-      task_id: task_id,
+      task_id: task_id(task),
+      last: if(is_struct(task, Status), do: task),
       timeout: timeout,
       deadline: deadline(timeout),
       poll_interval: poll_interval,
       min_poll_interval: min_poll_interval,
       listen?: listen?,
       input: input,
-      request_opts: request_opts,
+      request_timeout: request_timeout,
       answered: MapSet.new(),
       subscription: nil
     }
+  end
+
+  defp timeout!(_option, :infinity), do: :ok
+  defp timeout!(_option, value) when is_integer(value) and value > 0, do: :ok
+
+  defp timeout!(option, value) do
+    raise ArgumentError,
+          "#{inspect(option)} must be a positive integer or :infinity, got: #{inspect(value)}"
   end
 
   defp positive!(_option, value) when is_integer(value) and value > 0, do: :ok
@@ -578,6 +643,48 @@ defmodule Snodo.Extensions.Tasks.Client do
 
   defp remaining(%{deadline: deadline}),
     do: max(deadline - System.monotonic_time(:millisecond), 0)
+
+  defp bounded_get(state), do: bounded(state, &get(state.client, state.task_id, &1))
+
+  # Runs one request of a wait with the time left. A remote transport stops
+  # the request at its `:timeout`. The direct transport has no timeout, so
+  # there the request runs in a task that is stopped at the deadline, unless
+  # `isolate?` is false.
+  defp bounded(state, request, isolate? \\ true) do
+    case remaining(state) do
+      0 ->
+        {:error, timeout_error(state)}
+
+      remaining ->
+        opts = [timeout: min(remaining, state.request_timeout)]
+
+        if isolate? and direct?(state.client) and remaining != :infinity,
+          do: state |> isolated(request, opts, remaining) |> wait_timeout(state),
+          else: opts |> request.() |> wait_timeout(state)
+    end
+  end
+
+  defp isolated(_state, request, opts, remaining) do
+    task = Task.async(fn -> request.(opts) end)
+
+    case Task.yield(task, remaining) || Task.shutdown(task, :brutal_kill) do
+      {:ok, result} -> result
+      {:exit, reason} -> exit(reason)
+      nil -> :timeout
+    end
+  end
+
+  # A request timeout that used up the time left is the wait's timeout.
+  defp wait_timeout(:timeout, state), do: {:error, timeout_error(state)}
+
+  defp wait_timeout({:error, %Error{code: -32_001, kind: :transport}} = error, state) do
+    if remaining(state) == 0, do: {:error, timeout_error(state)}, else: error
+  end
+
+  defp wait_timeout(result, _state), do: result
+
+  defp direct?(%Snodo.Client{transport: {Snodo.Client.Direct, _state}}), do: true
+  defp direct?(%Snodo.Client{}), do: false
 
   # The declaration goes in the request's `_meta` through `:meta`, which wins
   # over the metadata the client builds from its own capabilities.
@@ -612,13 +719,13 @@ defmodule Snodo.Extensions.Tasks.Client do
 
   defp advertised?(_capabilities), do: false
 
-  defp timeout_error(state, status) do
+  defp timeout_error(state) do
     %Error{
       code: -32_001,
       message: "The task did not finish within the wait",
       kind: :transport,
       data: %{"taskId" => state.task_id, "timeoutMs" => state.timeout},
-      cause: {:timeout, status}
+      cause: {:timeout, state.last}
     }
   end
 

@@ -1,6 +1,9 @@
 # A Tasks server on stdio for Snodo.Extensions.Tasks.ClientTest. It runs the
 # package's test tools with a Memory store, and a subscription source that
 # sends each requested task's current status and then ends the stream.
+#
+# With `--stall METHOD MS`, the store's authorization of each METHOD request
+# takes MS milliseconds, so the request stalls.
 defmodule SnodoTest.TasksClientStdio.Source do
   @moduledoc false
   @behaviour Snodo.Subscription.Source
@@ -47,7 +50,19 @@ end
 alias Snodo.Extensions.Tasks.Runner
 alias Snodo.Extensions.Tasks.Store.Memory
 
-{:ok, store} = Memory.start_link(scope: :shared)
+scope =
+  case System.argv() do
+    ["--stall", method, ms] ->
+      fn context ->
+        if context.request_method == method, do: Process.sleep(String.to_integer(ms))
+        :shared
+      end
+
+    [] ->
+      :shared
+  end
+
+{:ok, store} = Memory.start_link(scope: scope)
 {:ok, runner} = Runner.start_link(store: {Memory, store})
 
 runtime =

@@ -464,12 +464,18 @@ end
 - `await/3` waits for a task to finish. It polls `tasks/get` at the task's
   `pollIntervalMs` (at least 50 ms), or with `listen: true` waits for
   `notifications/tasks` on a `subscriptions/listen` stream filtered by
-  `taskIds`. The wait is bounded by `:timeout`, 60,000 ms by default; at the
-  limit it returns -32001 with the last status in `cause`, and the task keeps
-  running.
+  `taskIds`. The wait is bounded by `:timeout`, 60,000 ms by default: each
+  request gets the time left as its timeout, and on a direct client, which
+  has no request timeout, each `tasks/get` and `tasks/update` runs in a task
+  stopped at the deadline. At the limit it returns -32001 with the last
+  status in `cause`, and the task keeps running. On a direct client the wait
+  for a `listen: true` stream's acknowledgement is not bounded, because the
+  stream belongs to the calling process; the module doc lists what else the
+  limit does not interrupt.
 - An `input_required` task is answered with the client's `:input_handlers`
-  (form and URL elicitation, sampling, roots), with a function given as
-  `:input`, or returned to the caller as `{:input_required, status}`.
+  (form and URL elicitation, sampling, roots), whose responses are checked as
+  `Snodo.Client` checks them, with a function given as `:input`, or returned
+  to the caller as `{:input_required, status}`.
 
 Statuses decode into `Snodo.Extensions.Tasks.Client.Status`. A finished
 task's outcome is `{:ok, result}` with the final `CallToolResult` map,

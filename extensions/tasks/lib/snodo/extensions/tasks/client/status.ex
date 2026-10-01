@@ -19,6 +19,11 @@ defmodule Snodo.Extensions.Tasks.Client.Status do
       sent it; `nil` otherwise.
     * `error` - for `:failed`, the JSON-RPC error object the task failed with;
       `nil` otherwise.
+
+  A creation result (`"resultType" => "task"`) is the flat task without these
+  three payloads, so a status decoded from one has `input_requests: %{}`,
+  `result: nil`, and `error: nil` whatever its status. `detailed?/1` tells
+  whether a status carries the payload its status implies.
     * `raw` - the decoded map, `_meta` included, for fields this struct does
       not name.
   """
@@ -68,17 +73,19 @@ defmodule Snodo.Extensions.Tasks.Client.Status do
   Decodes a task map from the wire.
 
   Returns `{:error, reason}` when `taskId` is not a non-empty string, when
-  `status` is not one of the five statuses, or when the payload its status
-  requires is missing: an `inputRequests` object for `input_required`, a
-  `result` object for `completed`, and an `error` object with an integer
-  `code` and a string `message` for `failed`.
+  `status` is not one of the five statuses, or, for anything but a creation
+  result, when the payload its status requires is missing: an
+  `inputRequests` object for `input_required`, a `result` object for
+  `completed`, and an `error` object with an integer `code` and a string
+  `message` for `failed`. A creation result needs no payload, and a payload
+  it does carry is checked the same way.
   """
   @spec from_map(map()) :: {:ok, t()} | {:error, term()}
   def from_map(%{"taskId" => task_id, "status" => status} = map)
       when is_binary(task_id) and task_id != "" and is_map_key(@statuses, status) do
     status = Map.fetch!(@statuses, status)
 
-    with {:ok, payload} <- payload(status, map) do
+    with {:ok, payload} <- payload(status, map, map["resultType"] == "task") do
       {:ok,
        struct!(
          __MODULE__,
@@ -101,6 +108,30 @@ defmodule Snodo.Extensions.Tasks.Client.Status do
   @doc "Returns true for `:completed`, `:failed`, and `:cancelled`, which never change."
   @spec terminal?(t()) :: boolean()
   def terminal?(%__MODULE__{status: status}), do: status in @terminal
+
+  @doc """
+  Returns true when the status carries the payload its status implies:
+  `input_requests` for `:input_required`, `result` for `:completed`, and
+  `error` for `:failed`. A status decoded from a creation result may not.
+  """
+  @spec detailed?(t()) :: boolean()
+  def detailed?(%__MODULE__{status: :input_required, input_requests: requests}),
+    do: map_size(requests) > 0
+
+  def detailed?(%__MODULE__{status: :completed, result: result}), do: is_map(result)
+  def detailed?(%__MODULE__{status: :failed, error: error}), do: is_map(error)
+  def detailed?(%__MODULE__{}), do: true
+
+  @payload_keys %{input_required: "inputRequests", completed: "result", failed: "error"}
+
+  # A creation result is the flat task; it carries no payload to require.
+  defp payload(status, map, true = _creation?) do
+    if Map.has_key?(map, Map.get(@payload_keys, status)),
+      do: payload(status, map),
+      else: {:ok, %{}}
+  end
+
+  defp payload(status, map, false), do: payload(status, map)
 
   defp payload(:input_required, %{"inputRequests" => requests}) when is_map(requests) do
     if Enum.all?(requests, fn {key, request} -> is_binary(key) and is_map(request) end),
