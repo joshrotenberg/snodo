@@ -83,7 +83,7 @@ application-written bridge.
 
 <!-- x-release-please-start-version -->
 ```elixir
-{:snodo_telemetry, "~> 0.3.2"}
+{:snodo_telemetry, "~> 0.4.0"}
 ```
 <!-- x-release-please-end -->
 

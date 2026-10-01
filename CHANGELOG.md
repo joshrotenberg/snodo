@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.4.0](https://github.com/joshrotenberg/snodo/compare/v0.3.2...v0.4.0) (2026-10-01)
+
+
+### ⚠ BREAKING CHANGES
+
+* Snodo.Resource.Template.compile/1 returns {:error, reason} naming the unsupported shape instead of :unsupported, and the struct has new fields. Three kinds of template that compiled and matched URIs before are now refused at compile time: a variable name with a leading dot ({.ext}, {..}), which is RFC 6570 label expansion and before was read as a variable named ".ext"; templates longer than 1,024 bytes; and templates with more than 32 variables. A resource module whose :uri_template is outside the supported shapes and that does not define matches?/1 is now a compile error naming the shape; before, it compiled and matched no URI. A module that defines its own matches?/1 for such a template compiles as before, with or without @impl.
+
+### Features
+
+* RFC 6570 resource templates ([#204](https://github.com/joshrotenberg/snodo/issues/204)) ([5c10d2f](https://github.com/joshrotenberg/snodo/commit/5c10d2f9a4e06590453b60d14aefe985c9e86b8e))
+* Tasks client API ([#205](https://github.com/joshrotenberg/snodo/issues/205)) ([7e8fca2](https://github.com/joshrotenberg/snodo/commit/7e8fca22403bd666d477f0683c767ef2fd1f8ed3))
+
+
+### Bug Fixes
+
+* client follow-ups from the [#184](https://github.com/joshrotenberg/snodo/issues/184) and [#187](https://github.com/joshrotenberg/snodo/issues/187) reviews ([#202](https://github.com/joshrotenberg/snodo/issues/202)) ([5e007b2](https://github.com/joshrotenberg/snodo/commit/5e007b263b3e86b6f1c33ee8da74ed83f440d283))
+* grant the SQLite write slot to store writers in arrival order ([#199](https://github.com/joshrotenberg/snodo/issues/199)) ([7d7ed35](https://github.com/joshrotenberg/snodo/commit/7d7ed35a9b1306c9dc85d337a6b02316b628bd70))
+
 ## [0.3.2](https://github.com/joshrotenberg/snodo/compare/v0.3.1...v0.3.2) (2026-09-30)
 
 
