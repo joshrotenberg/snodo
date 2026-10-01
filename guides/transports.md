@@ -88,7 +88,9 @@ arguments (see [Components](components.md#arguments-in-http-headers)), and
 It is off by default, because a reverse proxy commonly forwards the public name.
 A client disconnect cancels the request.
 Options include `:ip`, `:port`, `:path`, `:request_timeout`, `:read_timeout`,
-`:max_header_bytes`, and `:max_body_bytes` (2 MB).
+`:max_header_bytes` (32 KB, including the final `\r\n\r\n`), and
+`:max_body_bytes` (2 MB). Body bytes received with the head count only toward
+`:max_body_bytes`.
 
 The listener also bounds what clients can hold open:
 
