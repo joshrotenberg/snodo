@@ -699,7 +699,7 @@ defmodule Snodo.ClientStdioTest do
     test "next/2 on a stream that has ended returns at once, as over the other transports" do
       client = connect()
       {:ok, subscription} = Client.listen(client, @tools_filter)
-      %{ref: ref, pid: connection} = subscription
+      %{pid: connection} = subscription
 
       # The terminal message needs no demand, so it is already in the
       # mailbox when next/2 asks; the connection's answer to that call is
