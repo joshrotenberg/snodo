@@ -269,15 +269,15 @@ defmodule Snodo.ClientHTTPTest do
 
     test "reset_timeout_on_progress keeps a request alive up to max_total_timeout" do
       client = connect(serve(TestFixtures.runtime(tools: [Ticks])))
-      arguments = %{"count" => 10, "intervalMs" => 100}
+      arguments = %{"count" => 25, "intervalMs" => 100}
 
-      assert {:error, %Error{code: -32_001, data: %{"timeoutMs" => 500}}} =
-               Client.call_tool(client, "ticks", arguments, progress: self(), timeout: 500)
+      assert {:error, %Error{code: -32_001, data: %{"timeoutMs" => 2_000}}} =
+               Client.call_tool(client, "ticks", arguments, progress: self(), timeout: 2_000)
 
-      assert {:ok, %{"content" => [%{"text" => "ticked 10"}]}} =
+      assert {:ok, %{"content" => [%{"text" => "ticked 25"}]}} =
                Client.call_tool(client, "ticks", arguments,
                  progress: self(),
-                 timeout: 500,
+                 timeout: 2_000,
                  reset_timeout_on_progress: true
                )
 
@@ -285,13 +285,13 @@ defmodule Snodo.ClientHTTPTest do
               %Error{
                 code: -32_001,
                 message: "Maximum total timeout exceeded",
-                data: %{"maxTotalTimeoutMs" => 700}
+                data: %{"maxTotalTimeoutMs" => 2_200}
               }} =
                Client.call_tool(client, "ticks", arguments,
                  progress: self(),
-                 timeout: 500,
+                 timeout: 2_000,
                  reset_timeout_on_progress: true,
-                 max_total_timeout: 700
+                 max_total_timeout: 2_200
                )
     end
 
