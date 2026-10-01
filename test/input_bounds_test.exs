@@ -29,6 +29,25 @@ defmodule Snodo.InputBoundsTest do
     assert elapsed < 1_000_000
   end
 
+  test "decoding refuses duplicate object keys at every depth" do
+    assert {:error, :duplicate_key} = JSONValue.decode(~s({"a":1,"a":2}))
+    assert {:error, :duplicate_key} = JSONValue.decode(~s({"a":{"b":1,"b":2}}))
+    assert {:error, :duplicate_key} = JSONValue.decode(~S({"a":1,"\u0061":2}))
+    assert {:ok, [%{"a" => 1}, %{"a" => 2}]} = JSONValue.decode(~s([{"a":1},{"a":2}]))
+  end
+
+  test "stdio answers a duplicate-key request with a parse error and keeps serving" do
+    duplicate = ~s({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"a":1,"a":2}})
+    valid = TestFixtures.request(2, "tools/list")
+    {:ok, io} = StringIO.open(duplicate <> "\n" <> JSON.encode!(valid) <> "\n")
+
+    assert :ok = Stdio.serve(TestFixtures.runtime(), input: io, output: io)
+    {_input, output} = StringIO.contents(io)
+
+    assert [%{"id" => nil, "error" => %{"code" => -32_700}}, %{"id" => 2, "result" => _}] =
+             output |> String.split("\n", trim: true) |> Enum.map(&JSON.decode!/1)
+  end
+
   test "ids and progress tokens are bounded" do
     assert Envelope.bounded_id?(String.duplicate("a", 256))
     refute Envelope.bounded_id?(String.duplicate("a", 257))

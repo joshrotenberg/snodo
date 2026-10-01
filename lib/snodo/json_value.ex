@@ -28,13 +28,27 @@ defmodule Snodo.JSONValue do
   # before conversion.
   @spec decode(binary()) :: {:ok, term()} | {:error, term()}
   def decode(text) when is_binary(text) do
-    case JSON.decode(text, nil, integer: &bounded_integer/1) do
+    case JSON.decode(text, nil,
+           integer: &bounded_integer/1,
+           object_start: fn _acc -> %{} end,
+           object_push: &push_unique_key/3,
+           object_finish: fn object, old_acc -> {object, old_acc} end
+         ) do
       {value, nil, ""} -> {:ok, value}
       {_value, nil, _rest} -> {:error, :trailing_data}
       {:error, reason} -> {:error, reason}
     end
   catch
     :throw, {__MODULE__, :integer_too_long} -> {:error, :integer_too_long}
+    :throw, {__MODULE__, :duplicate_key} -> {:error, :duplicate_key}
+  end
+
+  defp push_unique_key(key, value, object) do
+    if Map.has_key?(object, key) do
+      throw({__MODULE__, :duplicate_key})
+    else
+      Map.put(object, key, value)
+    end
   end
 
   # The decoder passes the literal with its sign; the limit counts digits only.

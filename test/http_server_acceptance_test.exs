@@ -92,6 +92,18 @@ defmodule Snodo.Transport.StreamableHTTP.ServerAcceptanceTest do
     assert get_response.headers["allow"] == "POST"
   end
 
+  test "refuses duplicate JSON keys in a raw HTTP request" do
+    {:ok, server} = start_supervised({HTTPServer, runtime: TestFixtures.runtime(), port: 0})
+    {_ip, port, _path} = HTTPServer.address(server)
+    request = TestFixtures.request(1, "tools/list")
+    body = ~s({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"a":1,"a":2}})
+
+    response = raw_request(port, "POST", "/mcp", headers(request), body)
+
+    assert response.status == 400
+    assert %{"id" => nil, "error" => %{"code" => -32_700}} = JSON.decode!(response.body)
+  end
+
   test "warns after binding a wildcard address" do
     log =
       capture_log(fn ->

@@ -664,6 +664,29 @@ defmodule Snodo.ClientHTTPTest do
       assert {:error, %Error{code: -32_000, kind: :transport}} = Client.discover(connect(url))
     end
 
+    test "duplicate keys in JSON and SSE responses are transport errors" do
+      body = ~s({"jsonrpc":"2.0","id":1,"result":{"a":1,"a":2}})
+      valid = ~s({"jsonrpc":"2.0","id":1,"result":{"a":1}})
+
+      url =
+        FakeHTTP.start(self(), fn _headers, _message ->
+          {200, [{"content-type", "application/json"}], body}
+        end)
+
+      assert {:error, %Error{code: -32_000, kind: :transport}} = Client.discover(connect(url))
+
+      url =
+        FakeHTTP.start(self(), fn _headers, _message ->
+          {200, [{"content-type", "text/event-stream"}],
+           "event: message\ndata: " <>
+             body <>
+             "\n\n" <>
+             "event: message\ndata: " <> valid <> "\n\n"}
+        end)
+
+      assert {:error, %Error{code: -32_000, kind: :transport}} = Client.discover(connect(url))
+    end
+
     test "list functions stop when a server repeats a cursor" do
       url =
         FakeHTTP.start(self(), fn _headers, message ->

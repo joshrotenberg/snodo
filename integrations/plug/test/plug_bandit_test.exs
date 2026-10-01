@@ -87,6 +87,19 @@ defmodule Snodo.Transport.PlugBanditTest do
     assert {200, _result} = rpc(port, body, headers: [{"origin", "http://localhost:9999"}])
   end
 
+  test "refuses duplicate JSON keys in a raw Plug request" do
+    %{port: port} = server()
+    {head, _encoded} = http_request(request("server/discover", %{}))
+    body = ~s({"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"a":1,"a":2}})
+    head = String.replace(head, ~r/content-length: \d+/, "content-length: #{byte_size(body)}")
+    socket = connect(port)
+    :ok = :gen_tcp.send(socket, [head, body])
+    [response_head, response_body] = String.split(read_all(socket), "\r\n\r\n", parts: 2)
+
+    assert response_head =~ "HTTP/1.1 400"
+    assert %{"id" => nil, "error" => %{"code" => -32_700}} = JSON.decode!(response_body)
+  end
+
   test "legacy session headers are ignored and never echoed by the modern binding" do
     %{port: port} = server()
     socket = connect(port)
