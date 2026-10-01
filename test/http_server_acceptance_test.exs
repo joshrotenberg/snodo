@@ -1,5 +1,6 @@
 defmodule Snodo.Transport.StreamableHTTP.ServerAcceptanceTest do
   use ExUnit.Case, async: true
+  import ExUnit.CaptureLog
 
   alias Snodo.Server.Executor
   alias Snodo.Subscription.Event
@@ -53,6 +54,17 @@ defmodule Snodo.Transport.StreamableHTTP.ServerAcceptanceTest do
     end
   end
 
+  defmodule PassingGate do
+    @moduledoc false
+    @behaviour Snodo.Transport.StreamableHTTP.RequestGate
+
+    @impl true
+    def init(_opts, _listener), do: nil
+
+    @impl true
+    def check(_request, _state), do: {:ok, nil}
+  end
+
   @tag mcp_contract: ["streamable-http-listener"]
   test "binds to localhost, serves the configured path, and closes each response" do
     runtime = TestFixtures.runtime()
@@ -78,6 +90,54 @@ defmodule Snodo.Transport.StreamableHTTP.ServerAcceptanceTest do
     get_response = raw_request(port, "GET", "/mcp", [], "")
     assert get_response.status == 405
     assert get_response.headers["allow"] == "POST"
+  end
+
+  test "warns after binding a wildcard address" do
+    log =
+      capture_log(fn ->
+        {:ok, server} =
+          start_supervised(
+            {HTTPServer, runtime: TestFixtures.runtime(), ip: {0, 0, 0, 0}, port: 0}
+          )
+
+        assert {{0, 0, 0, 0}, _port, "/mcp"} = HTTPServer.address(server)
+      end)
+
+    assert log =~ "Native HTTP listener bound to non-loopback address 0.0.0.0:"
+    assert log =~ "plaintext HTTP"
+    assert log =~ ":request_gate"
+  end
+
+  test "also warns on a wildcard address when a gate is configured" do
+    log =
+      capture_log(fn ->
+        {:ok, server} =
+          start_supervised(
+            {HTTPServer,
+             runtime: TestFixtures.runtime(),
+             ip: {0, 0, 0, 0},
+             port: 0,
+             request_gate: {PassingGate, []}}
+          )
+
+        assert {{0, 0, 0, 0}, _port, "/mcp"} = HTTPServer.address(server)
+      end)
+
+    assert log =~ "Native HTTP listener bound to non-loopback address 0.0.0.0:"
+  end
+
+  test "does not warn when binding loopback" do
+    log =
+      capture_log(fn ->
+        {:ok, server} =
+          start_supervised(
+            {HTTPServer, runtime: TestFixtures.runtime(), ip: {127, 0, 0, 1}, port: 0}
+          )
+
+        assert {{127, 0, 0, 1}, _port, "/mcp"} = HTTPServer.address(server)
+      end)
+
+    refute log =~ "Native HTTP listener bound to non-loopback address"
   end
 
   test "an invalid request-gate result fails closed" do

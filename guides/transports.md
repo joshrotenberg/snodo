@@ -102,6 +102,11 @@ bound and clean up any external calls it makes. For OAuth bearer tokens and
 protected resource metadata, use `Snodo.OAuth.ResourceServer.Native` from
 [`snodo_oauth`](https://hexdocs.pm/snodo_oauth).
 
+Binding `:ip` outside loopback logs a startup warning, even with a request
+gate: the native listener still serves plaintext HTTP. Bind it privately
+behind a TLS reverse proxy, or use `Snodo.Transport.Plug` in an HTTP server
+with TLS. Configure authentication with a request gate or in the Plug pipeline.
+
 The listener also bounds what clients can hold open:
 
 - `:max_connections` (default 1,024). A connection accepted at the limit is
