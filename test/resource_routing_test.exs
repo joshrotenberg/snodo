@@ -53,8 +53,9 @@ defmodule Snodo.ResourceRoutingTest do
   defmodule Custom do
     @moduledoc false
 
-    # An operator puts this outside the subset, so no matcher is generated and
-    # the module supplies its own. A boolean answer still routes.
+    # Reserved expansion in the authority is outside the supported shapes, so
+    # no matcher is generated and the module supplies its own. A boolean
+    # answer still routes.
     use Snodo.Resource, uri_template: "hex://{+path}/raw", name: "raw"
 
     @impl true
@@ -64,6 +65,36 @@ defmodule Snodo.ResourceRoutingTest do
     def read(%{"uri" => uri}, _context) do
       {:ok, Snodo.Result.resource_read(Snodo.Resource.text(uri, "raw", mime_type: "text/plain"))}
     end
+  end
+
+  defmodule PackageFile do
+    @moduledoc false
+
+    use Snodo.Resource.Simple,
+      uri_template: "hex://{name}/files/{+path}{?rev}",
+      name: "package_file",
+      completion_arguments: ["name", "rev"]
+
+    @impl true
+    def read(params, _context), do: {:ok, Map.drop(params, ["uri", "_meta"])}
+
+    @impl true
+    def complete(%Snodo.Completion{argument: "rev", value: value}, _context) do
+      values = Enum.filter(["1", "2", "10"], &String.starts_with?(&1, value))
+      {:ok, Snodo.Result.completion(values, total: length(values))}
+    end
+
+    def complete(%Snodo.Completion{argument: "name"}, _context),
+      do: {:ok, Snodo.Result.completion(["jason"])}
+  end
+
+  defmodule PackageDocs do
+    @moduledoc false
+
+    use Snodo.Resource.Simple, uri_template: "hex://{name}/docs{/page*}", name: "package_docs"
+
+    @impl true
+    def read(params, _context), do: {:ok, Map.drop(params, ["uri", "_meta"])}
   end
 
   defp read(uri, resources) do
@@ -120,6 +151,137 @@ defmodule Snodo.ResourceRoutingTest do
       result = read("hex://a/b/raw", [Custom])["result"]
 
       assert hd(result["contents"])["text"] == "raw"
+    end
+  end
+
+  describe "RFC 6570 operators" do
+    test "reserved and query expansion bind through the generated matcher" do
+      assert contents("hex://jason/files/lib/jason.ex?rev=2", [PackageFile]) ==
+               %{"name" => "jason", "path" => "lib/jason.ex", "rev" => "2"}
+
+      assert contents("hex://jason/files/mix.exs", [PackageFile]) ==
+               %{"name" => "jason", "path" => "mix.exs"}
+    end
+
+    test "exploded path segments bind through the generated matcher" do
+      assert contents("hex://jason/docs", [PackageDocs]) == %{"name" => "jason"}
+
+      assert contents("hex://jason/docs/guides/intro", [PackageDocs]) ==
+               %{"name" => "jason", "page" => "guides/intro"}
+    end
+
+    test "URIs outside the template are not found" do
+      for uri <- [
+            "hex://jason/files",
+            "hex://jason/files/a?other=1",
+            "hex://jason/files/a?rev=1&rev=2",
+            "hex://jason/docs/"
+          ] do
+        error = read(uri, [PackageFile, PackageDocs])["error"]
+
+        assert error["code"] == -32_602, uri
+        assert error["message"] == "Resource not found"
+      end
+    end
+
+    test "completion reaches query variables of a template in the new shapes" do
+      runtime = TestFixtures.runtime(resources: [PackageFile])
+
+      {:ok, response} =
+        MCPTest.dispatch(runtime,
+          protocol: "2026-07-28",
+          method: "completion/complete",
+          params: %{
+            "ref" => %{"type" => "ref/resource", "uri" => "hex://{name}/files/{+path}{?rev}"},
+            "argument" => %{"name" => "rev", "value" => "1"},
+            "context" => %{"arguments" => %{"name" => "jason", "path" => "mix.exs"}}
+          }
+        )
+
+      assert response["result"]["completion"]["values"] == ["1", "10"]
+    end
+  end
+
+  describe "overlapping templates" do
+    defmodule AnyPath do
+      @moduledoc false
+      use Snodo.Resource.Simple, uri_template: "x://h/{+p}", name: "any_path"
+
+      @impl true
+      def read(_params, _context), do: {:ok, "any"}
+    end
+
+    defmodule DocsPage do
+      @moduledoc false
+      use Snodo.Resource.Simple, uri_template: "x://h/docs{/page*}", name: "docs_page"
+
+      @impl true
+      def read(_params, _context), do: {:ok, "docs"}
+    end
+
+    test "register without error, and a URI both match fails to read" do
+      error = read("x://h/docs/intro", [AnyPath, DocsPage])["error"]
+
+      assert error["code"] == -32_603
+      assert error["message"] == "Multiple resource routes matched the requested URI"
+
+      assert hd(read("x://h/other/intro", [AnyPath, DocsPage])["result"]["contents"])["text"] ==
+               "any"
+    end
+  end
+
+  describe "unsupported templates" do
+    test "are a compile error naming the shape when the module has no matches?/1" do
+      source = """
+      defmodule SnodoTest.UnsupportedTemplate#{System.unique_integer([:positive])} do
+        use Snodo.Resource, uri_template: "hex://{name}/{#section}", name: "unsupported"
+
+        @impl true
+        def read(_params, _context), do: {:error, :unreachable}
+      end
+      """
+
+      error = assert_raise CompileError, fn -> Code.compile_string(source) end
+
+      assert Exception.message(error) =~ ~s(resource template "hex://{name}/{#section}")
+      assert Exception.message(error) =~ "fragment expansion ({#var})"
+      assert Exception.message(error) =~ "Implement matches?/1"
+    end
+
+    test "a module's own matches?/1 without @impl compiles without warnings" do
+      source = """
+      defmodule SnodoTest.UnsupportedTemplateNoImpl#{System.unique_integer([:positive])} do
+        use Snodo.Resource, uri_template: "hex://{name}/{#section}", name: "no_impl"
+
+        def matches?(uri), do: String.starts_with?(uri, "hex://")
+
+        @impl true
+        def read(_params, _context), do: {:error, :unreachable}
+      end
+      """
+
+      {result, diagnostics} = Code.with_diagnostics(fn -> Code.compile_string(source) end)
+
+      assert [{module, _binary}] = result
+      assert diagnostics == []
+      assert module.matches?("hex://jason/x") == true
+    end
+
+    test "compile when the module implements matches?/1" do
+      source = """
+      defmodule SnodoTest.UnsupportedTemplateWithMatcher#{System.unique_integer([:positive])} do
+        use Snodo.Resource.Simple, uri_template: "hex://{name}/{#section}", name: "custom"
+
+        @impl true
+        def matches?(uri), do: String.starts_with?(uri, "hex://")
+
+        @impl true
+        def read(_params, _context), do: {:ok, "custom"}
+      end
+      """
+
+      assert [{module, _binary}] = Code.compile_string(source)
+      assert module.matches?("hex://jason/x") == true
     end
   end
 
