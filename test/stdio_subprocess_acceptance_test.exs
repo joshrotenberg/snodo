@@ -25,7 +25,7 @@ defmodule Snodo.Transport.StdioSubprocessAcceptanceTest do
     stderr_path =
       Path.join(
         System.tmp_dir!(),
-        "snodo_stdio_stderr_#{System.unique_integer([:positive])}.log"
+        "snodo_stdio_stderr_#{System.pid()}_#{System.unique_integer([:positive])}.log"
       )
 
     on_exit(fn -> File.rm(stderr_path) end)

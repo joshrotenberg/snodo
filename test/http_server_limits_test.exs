@@ -35,8 +35,10 @@ defmodule Snodo.Transport.StreamableHTTP.ServerLimitsTest do
 
   test "a client that trickles the request head is closed at head_timeout" do
     port = start_http(runtime: TestFixtures.runtime(), head_timeout: 300, read_timeout: 1_000)
-    {:ok, socket} = :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: true])
+    # The head deadline runs from accept, which can complete before connect/3
+    # returns here, so the clock starts before connecting.
     started = System.monotonic_time(:millisecond)
+    {:ok, socket} = :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: true])
 
     # Each byte arrives well inside :read_timeout, so only the head deadline
     # can end the connection.
@@ -53,8 +55,10 @@ defmodule Snodo.Transport.StreamableHTTP.ServerLimitsTest do
     port = start_http(runtime: runtime, body_timeout: 300, read_timeout: 5_000)
     [head, body] = request_parts(TestFixtures.request("slow-body", "server/discover"))
     {:ok, socket} = :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: true])
-    :ok = :gen_tcp.send(socket, head)
+    # The body deadline runs from the end of the head, which the server can
+    # read before send/2 returns here, so the clock starts before sending.
     started = System.monotonic_time(:millisecond)
+    :ok = :gen_tcp.send(socket, head)
 
     # Each byte arrives well inside :read_timeout, and the whole body takes
     # seconds, so only the body deadline can end the request this early.

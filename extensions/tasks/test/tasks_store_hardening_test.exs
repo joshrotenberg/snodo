@@ -29,7 +29,11 @@ defmodule Snodo.TasksStoreHardeningTest do
       Memory.start_link(scope: "tenant")
     end
 
-    path = Path.join(System.tmp_dir!(), "snodo-scope-#{System.unique_integer([:positive])}.dets")
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "snodo-scope-#{System.pid()}-#{System.unique_integer([:positive])}.dets"
+      )
 
     assert_raise ArgumentError, ~r/:scope is required/, fn ->
       Snodo.Extensions.Tasks.Store.Dets.start_link(path: path, table: :snodo_scope_required)

@@ -102,8 +102,12 @@ defmodule Snodo.Extensions.Tasks.SQLite.IntegrationTest do
   @race_await_ms @busy_timeout_ms + 5_000
   @retry_delay_ms 1_500
 
+  # SQLite admits one writer at a time. A creation that waits out the busy
+  # timeout behind the other racer is refused with :database_busy, the store's
+  # documented backpressure result, which the contract retries once.
   use Snodo.Extensions.Tasks.Store.ContractTest,
-    start_store: &__MODULE__.start_contract_store/2
+    start_store: &__MODULE__.start_contract_store/2,
+    retryable?: &(&1 == {:error, :database_busy})
 
   setup_all do
     database = unique_database("suite")
@@ -1346,7 +1350,7 @@ defmodule Snodo.Extensions.Tasks.SQLite.IntegrationTest do
   defp unique_database(label) do
     Path.join(
       System.tmp_dir!(),
-      "snodo_tasks_sqlite_#{label}_#{System.unique_integer([:positive, :monotonic])}.sqlite3"
+      "snodo_tasks_sqlite_#{label}_#{System.pid()}_#{System.unique_integer([:positive, :monotonic])}.sqlite3"
     )
   end
 

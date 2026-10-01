@@ -151,12 +151,14 @@ jobs:
         run: |
           version="${TAG#v}"
           mkdir -p release
+          built=0
 
           build() {
             package="$1"
             dir="$2"
             (cd "$dir" && SNODO_HEX=1 mix hex.build \
               --output "$GITHUB_WORKSPACE/release/$package-$version.tar")
+            built=$((built + 1))
           }
 
           build snodo .
@@ -168,7 +170,9 @@ jobs:
           build snodo_tasks_postgres extensions/tasks_postgres
           build snodo_tasks_sqlite extensions/tasks_sqlite
 
-          test "$(find release -maxdepth 1 -name '*.tar' -type f | wc -l)" -eq 7
+          # One tarball per build call above, so adding a package cannot leave
+          # this check behind.
+          test "$(find release -maxdepth 1 -name '*.tar' -type f | wc -l)" -eq "$built"
       # hex.publish builds its own archive. Compare the later local build with
       # what Hex serves before making a provenance claim about published bytes.
       - name: Verify release tarballs against Hex
