@@ -7,9 +7,6 @@ name: Repeat until failure
 # required check. A failure uploads the log and opens or updates one issue per
 # package, labeled `flaky`, naming the test and the seed.
 on:
-  # TEMPORARY: proof run before the workflow is on main. Removed before ready.
-  pull_request:
-    paths: [.github/workflows/repeat-until-failure.yml]
   schedule:
     - cron: "43 5 * * 0"
   workflow_dispatch:
@@ -100,7 +97,7 @@ jobs:
           --health-retries 12
     env:
       MIX_ENV: test
-      REPEAT: ${{ inputs.repeat || (github.event_name == 'pull_request' && 3) || 20 }}
+      REPEAT: ${{ inputs.repeat || 20 }}
       PACKAGE: ${{ matrix.package.name }}
       VARIANT: ${{ matrix.variant }}
       TEST_ARGS: ${{ matrix.package.args }}
@@ -125,20 +122,6 @@ jobs:
         run: |
           mix deps.get
           mix compile
-      # TEMPORARY: a test that fails about half the time, to exercise the
-      # failure path in the proof run. Removed before ready.
-      - name: Add a flaky test for the proof run
-        if: github.event_name == 'pull_request' && matrix.package.name == 'snodo_telemetry'
-        run: |
-          cat > test/proof_flaky_test.exs <<'EOF'
-          defmodule Snodo.ProofFlakyTest do
-            use ExUnit.Case, async: true
-
-            test "fails about half the time" do
-              assert :rand.uniform(2) == 1
-            end
-          end
-          EOF
       - name: Run the suite until it fails
         id: run
         timeout-minutes: 200
