@@ -322,6 +322,19 @@ defmodule Snodo.ClientStdioTest do
     assert {:error, %Error{code: -32_000, kind: :transport}} = Client.list_tools(client)
   end
 
+  test "an exit signal from another process stops the connection" do
+    client = connect()
+    %Client{transport: {Snodo.Client.Stdio, connection}} = client
+    monitor = Process.monitor(connection)
+
+    Process.exit(connection, :normal)
+    assert {:ok, _tools} = Client.list_tools(client)
+
+    Process.exit(connection, :shutdown)
+    assert_receive {:DOWN, ^monitor, :process, ^connection, :shutdown}, 5_000
+    assert {:error, %Error{code: -32_000, kind: :transport}} = Client.list_tools(client)
+  end
+
   test "the connection closes when the process that opened it exits" do
     parent = self()
 
@@ -681,6 +694,72 @@ defmodule Snodo.ClientStdioTest do
 
       assert_receive {:snodo_subscription, ^ref, {:closed, :complete}}, 5_000
       refute Map.has_key?(:sys.get_state(connection).subscriptions, id)
+    end
+
+    test "next/2 on a stream that has ended returns at once, as over the other transports" do
+      client = connect()
+      {:ok, subscription} = Client.listen(client, @tools_filter)
+      %{ref: ref, pid: connection} = subscription
+
+      # The terminal message needs no demand, so it is already in the
+      # mailbox when next/2 asks; the connection's answer to that call is
+      # not left behind.
+      assert {:ok, _result} = Client.call_tool(client, "complete")
+      assert eventually(fn -> :sys.get_state(connection).subscriptions == %{} end)
+      assert {:closed, :complete} = Subscription.next(subscription, 5_000)
+      refute_receive _stray, 200
+
+      assert {:closed, {:error, %Error{code: -32_000, message: "The subscription has ended"}}} =
+               Subscription.next(subscription, 1_000)
+
+      {:ok, %Subscription{ref: ref} = subscription} = Client.listen(client, @tools_filter)
+      assert :ok = Subscription.close(subscription)
+
+      assert {:closed, {:error, %Error{code: -32_000, message: "The subscription has ended"}}} =
+               Subscription.next(subscription, 1_000)
+
+      refute_receive {:snodo_subscription, ^ref, _payload}, 100
+    end
+
+    # As in the stdin test above: the server reads the listen request, closes
+    # its stdin, and acknowledges, so the next write fails with EPIPE.
+    test "a port exit ends open streams with a transport error" do
+      acknowledgement =
+        %{
+          "jsonrpc" => "2.0",
+          "method" => "notifications/subscriptions/acknowledged",
+          "params" => %{
+            "notifications" => @tools_filter,
+            "_meta" => %{"io.modelcontextprotocol/subscriptionId" => "ID"}
+          }
+        }
+        |> JSON.encode!()
+        |> String.replace(~s("ID"), "%s")
+
+      script = """
+      read -r line
+      id=$(printf '%s' "$line" | sed 's/.*"id":\\([0-9]*\\).*/\\1/')
+      exec 0<&-
+      printf "$1\\n" "$id"
+      sleep 5
+      """
+
+      {:ok, client} =
+        Client.connect({:stdio, "/bin/sh", ["-c", script, "sh", acknowledgement]},
+          protocol: "2026-07-28",
+          timeout: 10_000
+        )
+
+      on_exit(fn -> Client.close(client) end)
+      {:ok, subscription} = Client.listen(client, @tools_filter)
+
+      assert {:error, %Error{code: -32_000, cause: {:port_exit, :epipe}}} =
+               Client.list_tools(client)
+
+      assert {:closed, {:error, %Error{code: -32_000, kind: :transport} = error}} =
+               Subscription.next(subscription, 5_000)
+
+      assert error.cause == {:port_exit, :epipe}
     end
 
     test "a source failure ends the stream with the server's error" do

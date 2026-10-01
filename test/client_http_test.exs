@@ -32,6 +32,17 @@ defmodule Snodo.ClientHTTPTest do
     end
   end
 
+  defmodule NoToken do
+    @moduledoc false
+    @behaviour Snodo.Client.TokenProvider
+
+    @impl true
+    def token(_state, _context), do: {:ok, nil}
+
+    @impl true
+    def refresh(_state, _challenge, _context), do: {:ok, "unused"}
+  end
+
   defmodule FakeHTTP do
     @moduledoc false
     # Answers each request with `respond.(headers, message)` and forwards what
@@ -42,7 +53,10 @@ defmodule Snodo.ClientHTTPTest do
     # `respond` returns `{status, headers, body}`, sent with a Content-Length;
     # `{status, headers, {:stream, chunks}}`, sent without one until a send
     # fails, after which the bytes sent go to `owner` as `{:fake_http_sent, n}`;
-    # or `{:raw, iodata}`, sent as it is.
+    # `{status, headers, {:hold, body}}`, sent without one on a connection that
+    # stays open, while later requests are served, until the client closes it,
+    # which is reported to `owner` as `:fake_http_closed`; or `{:raw, iodata}`,
+    # sent as it is.
 
     def start(owner, respond) do
       {:ok, listen} =
@@ -62,9 +76,32 @@ defmodule Snodo.ClientHTTPTest do
       :ok = :inet.setopts(socket, packet: :raw)
       message = read_body(socket, headers)
       send(owner, {:fake_http, headers, message})
-      _result = reply(socket, owner, respond.(headers, message))
-      :ok = :gen_tcp.close(socket)
+
+      case respond.(headers, message) do
+        {status, response_headers, {:hold, body}} ->
+          hold(socket, owner, [head(status, response_headers), body])
+
+        response ->
+          _result = reply(socket, owner, response)
+          :ok = :gen_tcp.close(socket)
+      end
+
       accept(listen, owner, respond)
+    end
+
+    defp hold(socket, owner, data) do
+      holder =
+        spawn_link(fn ->
+          receive do
+            :hold ->
+              :ok = :gen_tcp.send(socket, data)
+              {:error, _closed} = :gen_tcp.recv(socket, 0)
+              send(owner, :fake_http_closed)
+          end
+        end)
+
+      :ok = :gen_tcp.controlling_process(socket, holder)
+      send(holder, :hold)
     end
 
     defp reply(socket, _owner, {:raw, data}), do: :gen_tcp.send(socket, data)
@@ -436,6 +473,34 @@ defmodule Snodo.ClientHTTPTest do
   end
 
   describe "request headers and responses" do
+    test "request-level headers cannot set a header the transport owns" do
+      {:ok, state} = HTTP.connect("http://127.0.0.1:1/mcp", [])
+      message = %{"jsonrpc" => "2.0", "id" => 1, "method" => "tools/list", "params" => %{}}
+      notification = %{"jsonrpc" => "2.0", "method" => "notifications/initialized"}
+      opts = [dialect: V2026_07_28, timeout: 1_000]
+
+      for name <- ~w(Host content-length Content-Type transfer-encoding connection) do
+        headers = [{name, "1"}]
+
+        assert {:error, %Error{code: -32_000, cause: ^name}} =
+                 HTTP.request(state, message, [headers: headers] ++ opts)
+
+        assert {:error, %Error{code: -32_000, cause: ^name}} =
+                 HTTP.notify(state, notification, [headers: headers] ++ opts)
+      end
+
+      # Authorization is the caller's to set unless a token provider owns it.
+      headers = [headers: [{"Authorization", "Bearer x"}]]
+
+      assert {:error, %Error{cause: {:failed_connect, _reason}}} =
+               HTTP.request(state, message, headers ++ opts)
+
+      {:ok, state} = HTTP.connect("http://127.0.0.1:1/mcp", token_provider: {NoToken, nil})
+
+      assert {:error, %Error{code: -32_000, cause: "Authorization"}} =
+               HTTP.request(state, message, headers ++ opts)
+    end
+
     test "sends the dialect's mirrored headers, extra headers, and a base64 Mcp-Name" do
       url = FakeHTTP.start(self(), fn _headers, message -> json(message, %{"contents" => []}) end)
       client = connect(url, headers: [{"authorization", "Bearer token"}])
@@ -1008,6 +1073,73 @@ defmodule Snodo.ClientHTTPTest do
       refute_received {:fake_http, %{":method" => "DELETE"}, nil}
     end
 
+    test "a refused answer to a server request fails the request in flight at once" do
+      elicitation = %{
+        "jsonrpc" => "2.0",
+        "id" => "srv-1",
+        "method" => "elicitation/create",
+        "params" => %{"mode" => "form", "message" => "Name?", "requestedSchema" => %{}}
+      }
+
+      refusal = ~s({"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Unknown"}})
+
+      url =
+        FakeHTTP.start(self(), fn
+          _headers, %{"method" => "initialize"} = message ->
+            json(message, @initialized)
+
+          _headers, %{"method" => "tools/call"} ->
+            event = "data: #{JSON.encode!(elicitation)}\n\n"
+            {200, [{"content-type", "text/event-stream"}], {:hold, event}}
+
+          _headers, %{"id" => "srv-1"} ->
+            {400, [@json_type], refusal}
+
+          _headers, _notification ->
+            {202, [], ""}
+        end)
+
+      form = fn _params -> {:ok, %{"action" => "decline"}} end
+
+      {:ok, client} =
+        negotiate(url, protocol: "2025-11-25", timeout: 5_000, input_handlers: %{form: form})
+
+      started = System.monotonic_time(:millisecond)
+
+      assert {:error, %Error{code: -32_000, kind: :transport, message: message, cause: cause}} =
+               Client.call_tool(client, "ask")
+
+      assert System.monotonic_time(:millisecond) - started < 4_000
+      assert message =~ "refused the answer to its elicitation/create request"
+      assert %Error{code: -32_600, message: "Unknown", kind: :protocol} = cause
+      assert_receive {:fake_http, _headers, %{"id" => "srv-1", "result" => _answer}}, 1_000
+      assert_receive :fake_http_closed, 1_000
+    end
+
+    test "a failed initialize leaves no header report in the caller's mailbox" do
+      error = %{"code" => -32_602, "message" => "Unsupported"}
+
+      for outcome <- [%{"result" => %{}}, %{"error" => error}] do
+        url =
+          FakeHTTP.start(self(), fn _headers, message ->
+            body = JSON.encode!(Map.merge(%{"jsonrpc" => "2.0", "id" => message["id"]}, outcome))
+            {200, [@json_type], body}
+          end)
+
+        assert {:error, %Error{}} = negotiate(url, protocol: "2025-11-25")
+        assert_receive {:fake_http, _headers, %{"method" => "initialize"}}, 1_000
+        refute header_report?()
+      end
+    end
+
+    defp header_report? do
+      receive do
+        {ref, headers} when is_reference(ref) and is_list(headers) -> true
+      after
+        0 -> false
+      end
+    end
+
     test "an initialized notification the server refuses ends the connection" do
       url =
         FakeHTTP.start(self(), fn
@@ -1120,6 +1252,9 @@ defmodule Snodo.ClientHTTPTest do
       assert_receive {:subscription_closed, ^id, reason}, 1_000
       assert disconnected?(reason)
       assert :ok = Subscription.close(subscription)
+
+      assert {:closed, {:error, %Error{code: -32_000, message: "The subscription has ended"}}} =
+               Subscription.next(subscription, 1_000)
     end
 
     test "the owner's exit closes the connection", %{client: client} do
@@ -1161,6 +1296,9 @@ defmodule Snodo.ClientHTTPTest do
 
       assert_receive {:snodo_subscription, ^ref, {:closed, :complete}}, 1_000
       assert_receive {:DOWN, ^monitor, :process, ^pid, :normal}, 1_000
+
+      assert {:closed, {:error, %Error{code: -32_000, message: "The subscription has ended"}}} =
+               Subscription.next(subscription, 1_000)
     end
 
     test "a source failure ends the stream with the server's error", %{hub: hub, client: client} do
@@ -1210,16 +1348,22 @@ defmodule Snodo.ClientHTTPTest do
       assert {:error, %Error{code: -32_001, data: %{"timeoutMs" => 200}}} =
                Client.listen(connect(url), %{"toolsListChanged" => true}, timeout: 200)
 
+      # The event comes longer after the acknowledgement than the timeout,
+      # so neither the original deadline nor a fresh one may apply to it.
       url =
         FakeHTTP.start(self(), fn _headers, _message ->
-          slow = Stream.map(events([@acknowledgement, event(1)]), &(Process.sleep(150) && &1))
-          {200, [{"content-type", "text/event-stream"}], {:stream, slow}}
+          paced =
+            Stream.map(Enum.zip([50, 600], events([@acknowledgement, event(1)])), fn
+              {pause, chunk} -> Process.sleep(pause) && chunk
+            end)
+
+          {200, [{"content-type", "text/event-stream"}], {:stream, paced}}
         end)
 
       {:ok, subscription} =
         Client.listen(connect(url), %{"toolsListChanged" => true}, timeout: 250)
 
-      assert {:notification, _method, %{"seq" => 1}} = Subscription.next(subscription, 1_000)
+      assert {:notification, _method, %{"seq" => 1}} = Subscription.next(subscription, 2_000)
     end
 
     test "a stream that ends before the acknowledgement, and a JSON error body, are errors" do
@@ -1284,6 +1428,34 @@ defmodule Snodo.ClientHTTPTest do
 
       assert {:closed, {:error, %Error{code: -32_000, cause: {:max_response_bytes, @mib}}}} =
                Subscription.next(subscription, 5_000)
+    end
+
+    test ":max_response_bytes is not applied to a read that holds several events" do
+      body = IO.iodata_to_binary(events([@acknowledgement | Enum.map(1..30, &event/1)]))
+      assert byte_size(body) > 3_000
+      sse = "content-type: text/event-stream\r\n"
+      chunk = [Integer.to_string(byte_size(body), 16), "\r\n", body, "\r\n0\r\n\r\n"]
+
+      responses = [
+        {200, [{"content-type", "text/event-stream"}], body},
+        {200, [{"content-type", "text/event-stream"}], {:stream, [body]}},
+        {:raw, ["HTTP/1.1 200 OK\r\n", sse, "transfer-encoding: chunked\r\n\r\n", chunk]}
+      ]
+
+      for response <- responses do
+        url = FakeHTTP.start(self(), fn _headers, _message -> response end)
+
+        {:ok, subscription} =
+          Client.listen(connect(url, max_response_bytes: 1_000), %{"toolsListChanged" => true})
+
+        for n <- 1..30 do
+          assert {:notification, _method, %{"seq" => ^n}} =
+                   Subscription.next(subscription, 1_000)
+        end
+
+        assert {:closed, {:error, %Error{code: -32_000, cause: :closed}}} =
+                 Subscription.next(subscription, 1_000)
+      end
     end
 
     defp event(sequence, padding \\ "") do

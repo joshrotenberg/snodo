@@ -212,6 +212,8 @@ defmodule Snodo.ClientListenTest do
       await_pulls(id, 4)
 
       assert {:dropped, 2} = Subscription.next(subscription, 1_000)
+      # The report answered that call's demand; the event waits for the next.
+      refute_receive {:snodo_subscription, ^ref, _event}, 100
 
       assert {:notification, _method, %{"_meta" => %{"seq" => 1}}} =
                Subscription.next(subscription, 1_000)
@@ -231,6 +233,9 @@ defmodule Snodo.ClientListenTest do
 
       assert :ok = Subscription.close(subscription)
       refute_received {:snodo_subscription, _ref, _payload}
+
+      assert {:closed, {:error, %Error{code: -32_000, message: "The subscription has ended"}}} =
+               Subscription.next(subscription, 1_000)
     end
 
     test "the owner's exit closes the source and ends the process", %{hub: hub} do
@@ -371,8 +376,12 @@ defmodule Snodo.ClientListenTest do
       refute Buffer.done?(buffer)
       refute_received {:snodo_subscription, ^ref, _payload}
 
+      # The drop report takes the unit of demand, as an event would.
       buffer = Buffer.demand(buffer, 1)
       assert_received {:snodo_subscription, ^ref, {:dropped, 1}}
+      refute_received {:snodo_subscription, ^ref, _payload}
+
+      buffer = Buffer.demand(buffer, 1)
       assert_received {:snodo_subscription, ^ref, {:notification, "m", %{"n" => 2}}}
       refute_received {:snodo_subscription, ^ref, _payload}
 

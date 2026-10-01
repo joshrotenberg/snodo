@@ -28,7 +28,8 @@ defmodule Snodo.Client.Stdio do
       with -32603 without running the handler.
 
   The connection process monitors the process that called `connect/2` and
-  closes when it exits. When a request times out, the transport answers the
+  closes when it exits. An exit signal from another process, such as
+  `Process.exit(pid, :shutdown)`, stops it with that reason. When a request times out, the transport answers the
   caller with a -32001 error and sends the server `notifications/cancelled` for
   that request ID. When the server exits, or closes its stdin so that a write
   to it fails, requests in flight and later requests fail with -32000.
@@ -356,6 +357,14 @@ defmodule Snodo.Client.Stdio do
     end
   end
 
+  # `Snodo.Client.Subscription.next/2` asks whether the stream is still here.
+  # One that has ended has no entry, and the connection lives on, so the
+  # answer is what an exited stream process gives over the other transports.
+  def handle_info({:mcp_client_next, ref, reply_to}, state) do
+    unless is_map_key(state.subscription_refs, ref), do: send(reply_to, {reply_to, :ended})
+    {:noreply, state}
+  end
+
   def handle_info({:DOWN, ref, :process, _owner, _reason}, %{owner: ref} = state) do
     {:stop, :normal, state}
   end
@@ -385,6 +394,12 @@ defmodule Snodo.Client.Stdio do
 
     {:noreply, %{state | handlers: handlers}}
   end
+
+  # The connection traps exits only to clean up its handlers. An exit signal
+  # from any other process stops it as it would stop a process that does not
+  # trap exits, and a :normal one is ignored the same way.
+  def handle_info({:EXIT, _pid, :normal}, state), do: {:noreply, state}
+  def handle_info({:EXIT, _pid, reason}, state), do: {:stop, reason, state}
 
   def handle_info(_message, state), do: {:noreply, state}
 

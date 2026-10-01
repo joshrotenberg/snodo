@@ -328,14 +328,16 @@ The calling process owns the subscription. Events reach it as
 | Payload | Meaning |
 |---|---|
 | `{:notification, method, params}` | one event, as sent: `method` is `"notifications/resources/updated"`, one of the three list-changed methods, or an extension's such as `"notifications/tasks"`; `params` keeps `"_meta"` |
-| `{:dropped, n}` | `n` events were discarded because the buffer was full; precedes the next delivered event |
+| `{:dropped, n}` | `n` events were discarded because the buffer was full; precedes the next delivered event and uses one unit of demand, as an event does |
 | `{:closed, :complete}` | the server ended the stream with its terminal result |
 | `{:closed, {:error, %Snodo.Error{}}}` | the server ended the stream with an error, or the connection failed; nothing follows |
 
 Events are sent only while the owner has asked for them.
 `Snodo.Client.Subscription.demand/2` asks for `n` more; `next/2` asks for one
 and waits for it; `stream/1` wraps `next/2` as an `Enumerable` that ends with
-the `{:closed, reason}` element:
+the `{:closed, reason}` element. Each unit of demand is answered by one
+message, an event or a `{:dropped, n}` report; `{:closed, reason}` needs no
+demand:
 
 ```elixir
 subscription
@@ -355,6 +357,11 @@ def handle_info({:snodo_subscription, ref, {:notification, method, params}}, %{s
   :ok = Snodo.Client.Subscription.demand(state.sub, 1)
   {:noreply, apply_change(state, method, params)}
 end
+
+def handle_info({:snodo_subscription, ref, {:dropped, _n}}, %{sub: %{ref: ref}} = state) do
+  :ok = Snodo.Client.Subscription.demand(state.sub, 1)
+  {:noreply, resync(state)}
+end
 ```
 
 Events that arrive without demand wait in the transport process, at most
@@ -367,7 +374,9 @@ queued events, so the owner sees every event it asks for before the end.
 `Snodo.Client.Subscription.close/1` ends the stream, and so does the owner's
 exit: stdio sends `notifications/cancelled`, HTTP closes the connection, and
 the direct client closes the source. No message follows `close/1`; events
-already delivered stay in the mailbox.
+already delivered stay in the mailbox. `next/2` on a stream that has ended,
+after its `{:closed, reason}` or after `close/1`, returns
+`{:closed, {:error, %Snodo.Error{}}}` at once over every transport.
 
 `listen/3` returns `{:error, %Snodo.Error{}}` for a JSON-RPC error response
 (-32601 from a server without a subscription source, -32602 for an invalid

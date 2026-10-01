@@ -10,7 +10,9 @@ defmodule Snodo.Client.HTTP do
   (for `2026-07-28`, `MCP-Protocol-Version`, `Mcp-Method`, and `Mcp-Name`) read
   from the request body. A mirrored value that is not plain printable ASCII is
   sent in the `=?base64?...?=` form when the policy allows it. A header value
-  that contains CR, LF, or NUL is refused with a -32000 transport error.
+  that contains CR, LF, or NUL is refused with a -32000 transport error, and
+  so is a request-level `:headers` entry that names a header the transport
+  owns (see the `:headers` option).
 
   The response may be `application/json` or `text/event-stream`. An event
   stream is read as it arrives, and the transport returns the response whose
@@ -22,7 +24,9 @@ defmodule Snodo.Client.HTTP do
   `elicitation/create` on an initialize-era connection, is answered by the
   `:on_server_request` function in the calling process, and the response is
   sent as its own `POST` before the stream is read further; without that
-  option such a request is dropped. The time the function takes counts
+  option such a request is dropped. If the server refuses that `POST`, the
+  request in flight fails at once with a -32000 transport error whose `cause`
+  is the refusal. The time the function takes counts
   against the request's timeout, which is not extended. Other notifications
   are dropped. A JSON-RPC error body is returned whatever the HTTP status, so
   `Snodo.Client` decodes it as `{:error, %Snodo.Error{}}`. Anything else is a
@@ -160,13 +164,15 @@ defmodule Snodo.Client.HTTP do
     timeout = Keyword.fetch!(opts, :timeout)
     policy = policy(Keyword.fetch!(opts, :dialect), message)
 
+    extra = Keyword.get(opts, :headers, [])
+
     headers =
       message_headers(policy) ++
         mirrored_headers(policy, message) ++
-        parameter_headers(policy, message, Keyword.get(opts, :tool)) ++
-        Keyword.get(opts, :headers, [])
+        parameter_headers(policy, message, Keyword.get(opts, :tool)) ++ extra
 
-    with :ok <- check_headers(headers) do
+    with :ok <- check_headers(headers),
+         :ok <- check_owned(state, extra) do
       state
       |> authorized_exchange("POST", headers ++ state.headers, message, opts)
       |> report_headers(Keyword.get(opts, :on_response_headers))
@@ -178,18 +184,18 @@ defmodule Snodo.Client.HTTP do
   def notify(state, message, opts) when is_map(message) do
     policy = policy(Keyword.fetch!(opts, :dialect), message)
 
-    headers =
-      message_headers(policy) ++
-        mirrored_headers(policy, message) ++ Keyword.get(opts, :headers, [])
+    extra = Keyword.get(opts, :headers, [])
+    headers = message_headers(policy) ++ mirrored_headers(policy, message) ++ extra
 
-    deliver(state, headers, message, opts)
+    with :ok <- check_owned(state, extra), do: deliver(state, headers, message, opts)
   end
 
   @impl Transport
   def delete_session(state, opts) do
     headers = Keyword.get(opts, :headers, [])
 
-    with :ok <- check_headers(headers) do
+    with :ok <- check_headers(headers),
+         :ok <- check_owned(state, headers) do
       _outcome = authorized_exchange(state, "DELETE", headers ++ state.headers, nil, opts)
     end
 
@@ -248,9 +254,9 @@ defmodule Snodo.Client.HTTP do
                :none <- challenge(state, status, response_headers) do
             conn = %{conn | body: body_state(response_headers)}
 
-            case read_body(conn, status, response_headers, rest) do
-              {:ok, conn} -> {:ok, status, finish(conn)}
-              {:error, reason} -> {:error, reason}
+            with {:ok, conn} <- read_body(conn, status, response_headers, rest),
+                 {:ok, outcome} <- finish(conn) do
+              {:ok, status, outcome}
             end
           end
         after
@@ -320,6 +326,22 @@ defmodule Snodo.Client.HTTP do
 
   defp invalid_header(header),
     do: {:error, Transport.connection_error("Invalid HTTP request header", header)}
+
+  # Request-level headers may not set what the transport writes itself, the
+  # same rule `connect/2` applies to `:headers`.
+  defp check_owned(state, headers) do
+    owned = if state.token_provider, do: ["authorization" | @owned_headers], else: @owned_headers
+
+    case Enum.find(headers, &owned_header?(&1, owned)) do
+      nil -> :ok
+      {name, _value} -> invalid_header(name)
+    end
+  end
+
+  defp owned_header?({name, _value}, owned) when is_binary(name),
+    do: String.downcase(name) in owned
+
+  defp owned_header?(_header, _owned), do: false
 
   # A message that gets no JSON-RPC response: a notification, or the client's
   # answer to a server request. The server accepts it with a 2xx and no body,
@@ -466,8 +488,10 @@ defmodule Snodo.Client.HTTP do
              {:ok, status, response_headers, rest} <- read_head(conn, "", 0) do
           conn = %{conn | body: body_state(response_headers)}
 
-          case read_body(conn, status, response_headers, rest) do
-            {:ok, conn} -> {:ok, status, response_headers, finish(conn)}
+          with {:ok, conn} <- read_body(conn, status, response_headers, rest),
+               {:ok, outcome} <- finish(conn) do
+            {:ok, status, response_headers, outcome}
+          else
             {:done, response} -> {:ok, status, response_headers, {:response, response}}
             {:error, reason} -> {:error, reason}
           end
@@ -721,13 +745,32 @@ defmodule Snodo.Client.HTTP do
   # an event stream has delivered the response, or `{:error, reason}`.
   defp read_body(conn, status, headers, rest) do
     case framing(status, headers) do
-      :chunked -> read_chunks(conn, rest)
-      {:length, length} when length > conn.limit -> {:error, :too_large}
-      {:length, length} -> read_length(conn, rest, length)
-      :close -> read_to_close(conn, {:ok, rest})
-      :malformed -> {:error, :malformed}
+      :chunked ->
+        read_chunks(conn, rest)
+
+      {:length, length} ->
+        if over_limit?(conn, length),
+          do: {:error, :too_large},
+          else: read_length(conn, rest, length)
+
+      :close ->
+        read_to_close(conn, {:ok, rest})
+
+      :malformed ->
+        {:error, :malformed}
     end
   end
+
+  # Whether `bytes` more of the body would pass the limit. A subscription's
+  # event stream has no end, so its limit applies to each event as it is
+  # split off (`next_event/1`), not to the body or to a chunk, which can hold
+  # many events.
+  defp over_limit?(conn, bytes), do: not per_event?(conn) and conn.read + bytes > conn.limit
+
+  defp per_event?(%{stream: stream, body: {:events, _buffer, _scanned, _sample}}),
+    do: is_pid(stream)
+
+  defp per_event?(_conn), do: false
 
   # RFC 9112 section 6.3: 204 and 304 have no body, a chunked final transfer
   # coding wins over Content-Length, any other transfer coding runs until the
@@ -783,8 +826,7 @@ defmodule Snodo.Client.HTTP do
       [line, rest] ->
         case chunk_size(line) do
           {:ok, 0} -> {:ok, conn}
-          {:ok, size} when conn.read + size > conn.limit -> {:error, :too_large}
-          {:ok, size} -> read_chunk(conn, rest, size)
+          {:ok, size} -> start_chunk(conn, rest, size)
           :malformed -> {:error, :malformed}
         end
 
@@ -796,7 +838,15 @@ defmodule Snodo.Client.HTTP do
     end
   end
 
-  # The chunk's data is followed by CRLF.
+  defp start_chunk(conn, buffer, size) do
+    if over_limit?(conn, size),
+      do: {:error, :too_large},
+      else: read_chunk(conn, buffer, size)
+  end
+
+  # The chunk's data is followed by CRLF. `size` is the part of the chunk's
+  # data not yet fed; data is fed as it arrives, so a large chunk is not held
+  # whole before its events are split off.
   defp read_chunk(conn, buffer, size) when byte_size(buffer) >= size + 2 do
     case binary_part(buffer, size, byte_size(buffer) - size) do
       "\r\n" <> rest ->
@@ -808,8 +858,17 @@ defmodule Snodo.Client.HTTP do
     end
   end
 
+  defp read_chunk(conn, buffer, size) when byte_size(buffer) > size do
+    with {:ok, conn} <- feed(conn, binary_part(buffer, 0, size)),
+         {:ok, data} <- recv(conn) do
+      read_chunk(conn, binary_part(buffer, size, byte_size(buffer) - size) <> data, 0)
+    end
+  end
+
   defp read_chunk(conn, buffer, size) do
-    with {:ok, data} <- recv(conn), do: read_chunk(conn, buffer <> data, size)
+    with {:ok, conn} <- feed(conn, buffer),
+         {:ok, data} <- recv(conn),
+         do: read_chunk(conn, data, size - byte_size(buffer))
   end
 
   defp chunk_size(line) do
@@ -843,13 +902,14 @@ defmodule Snodo.Client.HTTP do
       else: {:buffer, ""}
   end
 
-  # The limit counts every body byte, notifications included.
+  # The limit counts every body byte, notifications included, except on a
+  # subscription's event stream, where `next_event/1` checks each event.
   defp feed(conn, data) do
-    read = conn.read + byte_size(data)
-
-    if read > conn.limit,
-      do: {:error, :too_large},
-      else: consume(%{conn | read: read}, data)
+    cond do
+      per_event?(conn) -> consume(conn, data)
+      over_limit?(conn, byte_size(data)) -> {:error, :too_large}
+      true -> consume(%{conn | read: conn.read + byte_size(data)}, data)
+    end
   end
 
   defp consume(%{body: {:buffer, body}} = conn, data),
@@ -866,30 +926,36 @@ defmodule Snodo.Client.HTTP do
 
     case :binary.match(buffer, ["\r\n\r\n", "\n\n"], scope: {from, byte_size(buffer) - from}) do
       :nomatch ->
-        {:ok, %{conn | body: {:events, buffer, byte_size(buffer), sample}}}
+        if per_event?(conn) and byte_size(buffer) > conn.limit,
+          do: {:error, :too_large},
+          else: {:ok, %{conn | body: {:events, buffer, byte_size(buffer), sample}}}
 
       {start, length} ->
-        rest = binary_part(buffer, start + length, byte_size(buffer) - start - length)
-        conn = %{conn | body: {:events, rest, 0, sample}, read: event_bytes_read(conn, rest)}
-
-        case event(conn, binary_part(buffer, 0, start)) do
-          {:response, response} -> {:done, response}
-          {:ok, conn} -> next_event(conn)
-        end
+        if per_event?(conn) and start + length > conn.limit,
+          do: {:error, :too_large},
+          else: split_event(conn, start, length)
     end
   end
 
-  # A subscription stream has no end, so its limit counts one event at a time.
-  defp event_bytes_read(%{stream: nil, read: read}, _rest), do: read
-  defp event_bytes_read(_conn, rest), do: byte_size(rest)
+  defp split_event(%{body: {:events, buffer, _scanned, sample}} = conn, start, length) do
+    rest = binary_part(buffer, start + length, byte_size(buffer) - start - length)
+    conn = %{conn | body: {:events, rest, 0, sample}}
+
+    case event(conn, binary_part(buffer, 0, start)) do
+      {:response, response} -> {:done, response}
+      {:ok, conn} -> next_event(conn)
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
   # A stream may end without a blank line after its last event.
-  defp finish(%{body: {:buffer, body}}), do: {:body, body}
+  defp finish(%{body: {:buffer, body}}), do: {:ok, {:body, body}}
 
   defp finish(%{body: {:events, buffer, _scanned, sample}} = conn) do
     case event(conn, buffer) do
-      {:response, response} -> {:response, response}
-      {:ok, _conn} -> {:unmatched, sample}
+      {:response, response} -> {:ok, {:response, response}}
+      {:ok, _conn} -> {:ok, {:unmatched, sample}}
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -937,21 +1003,30 @@ defmodule Snodo.Client.HTTP do
          %{on_server_request: responder} = conn
        )
        when not is_nil(id) and is_binary(method) and is_function(responder, 1) do
-    answer_server_request(conn, request)
-    {:ok, conn}
+    with :ok <- answer_server_request(conn, request), do: {:ok, conn}
   end
 
   defp handle_event(_other, conn), do: {:ok, conn}
 
   # The server waits for the answer before it finishes the request in flight,
   # so the answer goes out on its own connection before the stream is read
-  # further. A refused answer surfaces as the failure of the request in
-  # flight, which the server then cannot complete.
+  # further. A refused answer fails the request in flight at once, since the
+  # server then cannot complete it.
   defp answer_server_request(conn, request) do
     {state, session_headers, opts} = conn.reply
     response = conn.on_server_request.(request)
-    _outcome = deliver(state, message_headers(%Policy{}) ++ session_headers, response, opts)
-    :ok
+
+    case deliver(state, message_headers(%Policy{}) ++ session_headers, response, opts) do
+      :ok ->
+        :ok
+
+      {:error, error} ->
+        {:error,
+         Transport.connection_error(
+           "The server refused the answer to its #{request["method"]} request",
+           error
+         )}
+    end
   end
 
   defp decode_json(status, body) do
