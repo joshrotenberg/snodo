@@ -311,7 +311,7 @@ defmodule Snodo.Router do
       )
       when is_binary(uri) and is_map(params) do
     with {:ok, {resource, variables}} <- resolve_resource(router, uri),
-         :ok <- authorize_invocation(context, authorization(opts), :resource, resource) do
+         :ok <- authorize_invocation(context, authorization(opts), :resource, resource, uri) do
       invoke_resource(resource, Map.merge(params, variables), context)
     end
   end
@@ -417,10 +417,19 @@ defmodule Snodo.Router do
     end
   end
 
-  defp authorize_invocation(%Context{}, nil, _kind, _module), do: :ok
+  defp authorize_invocation(context, authorization, kind, module, requested_uri \\ nil)
 
-  defp authorize_invocation(%Context{} = context, authorization, kind, module) do
-    case Authorization.decide(authorization, :invocation, component(kind, module), context) do
+  defp authorize_invocation(%Context{}, nil, _kind, _module, _requested_uri), do: :ok
+
+  defp authorize_invocation(%Context{} = context, authorization, kind, module, requested_uri) do
+    component = component(kind, module)
+
+    component =
+      if component.kind == :resource_template,
+        do: %{component | requested_uri: requested_uri},
+        else: component
+
+    case Authorization.decide(authorization, :invocation, component, context) do
       :ok -> :ok
       {:refused, %Error{} = error} -> {:error, error}
       {:fault, %Error{} = error} -> {:error, error}
@@ -631,7 +640,7 @@ defmodule Snodo.Router do
   defp readable?(router, uri, context, authorization) do
     case resolve_resource(router, uri) do
       {:ok, {resource, _variables}} ->
-        authorize_invocation(context, authorization, :resource, resource) == :ok
+        authorize_invocation(context, authorization, :resource, resource, uri) == :ok
 
       {:error, %Error{code: -32_602}} ->
         true

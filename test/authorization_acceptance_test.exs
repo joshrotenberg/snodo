@@ -2,6 +2,7 @@ defmodule Snodo.AuthorizationAcceptanceTest do
   use ExUnit.Case, async: true
 
   alias Snodo.Authorization
+  alias Snodo.Authorization.Component
   alias Snodo.Protocol.V2025_06_18
   alias Snodo.Protocol.V2025_11_25
   alias Snodo.Protocol.V2026_07_28
@@ -27,6 +28,30 @@ defmodule Snodo.AuthorizationAcceptanceTest do
 
   @protocol "2026-07-28"
   @refused Policy.refusal_code()
+
+  defmodule RequestedURIPolicy do
+    @moduledoc false
+    @behaviour Snodo.Authorization
+
+    @impl true
+    def authorize(
+          :invocation,
+          %Snodo.Authorization.Component{kind: :resource_template} = component,
+          _context,
+          owner
+        )
+        when is_pid(owner) do
+      send(owner, {:template_component, component})
+
+      if component.requested_uri == "probe://items/private" do
+        {:error, Snodo.Error.authorization(-32_003, "Private resource")}
+      else
+        :ok
+      end
+    end
+
+    def authorize(_phase, _component, _context, _owner), do: :ok
+  end
 
   defp runtime(allowed, extra \\ []) do
     defaults = [
@@ -158,6 +183,60 @@ defmodule Snodo.AuthorizationAcceptanceTest do
     end
 
     refute_received {:probe, _callback}
+  end
+
+  test "a resource-template policy sees the concrete URI and can refuse one path" do
+    runtime =
+      TestFixtures.runtime(
+        resources: [ProbeTemplate],
+        authorization: {RequestedURIPolicy, self()}
+      )
+
+    assert %{"error" => %{"code" => -32_003}} =
+             dispatch(runtime, nil, "resources/read", %{"uri" => "probe://items/private"})
+
+    assert_received {:template_component,
+                     %Component{
+                       uri: "probe://items/{id}",
+                       requested_uri: "probe://items/private"
+                     }}
+
+    refute_received {:probe, :template_read}
+
+    assert %{"result" => _} =
+             dispatch(runtime, nil, "resources/read", %{"uri" => "probe://items/public"})
+
+    assert_received {:template_component,
+                     %Component{
+                       uri: "probe://items/{id}",
+                       requested_uri: "probe://items/public"
+                     }}
+
+    assert_received {:probe, :template_read}
+
+    context = %Snodo.Context{
+      protocol_version: @protocol,
+      protocol: V2026_07_28,
+      transport: %TransportContext{transport: :direct},
+      request_method: "subscriptions/listen"
+    }
+
+    assert ["probe://items/public"] ==
+             Snodo.Router.filter_readable(
+               runtime.router,
+               ["probe://items/private", "probe://items/public"],
+               context,
+               authorization: runtime.authorization
+             )
+
+    assert %{"result" => _} =
+             dispatch(runtime, nil, "completion/complete", %{
+               "ref" => %{"type" => "ref/resource", "uri" => "probe://items/{id}"},
+               "argument" => %{"name" => "id", "value" => "r"}
+             })
+
+    assert_received {:template_component,
+                     %Component{uri: "probe://items/{id}", requested_uri: nil}}
   end
 
   test "an authorized context still reaches every handler" do
