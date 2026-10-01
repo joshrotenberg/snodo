@@ -27,6 +27,7 @@ defmodule Snodo.Extensions.Tasks.MixProject do
         source_url_pattern: "#{@source_url}/blob/v#{@version}/extensions/tasks/%{path}#L%{line}"
       ],
       elixirc_paths: elixirc_paths(Mix.env()),
+      test_ignore_filters: [~r{^test/fixtures/}],
       dialyzer: [
         # :ex_unit so the PLT knows ExUnit.AssertionError, which test/support raises.
         plt_add_apps: [:mix, :ex_unit],
@@ -69,7 +70,8 @@ defmodule Snodo.Extensions.Tasks.MixProject do
         "snodo.example ../../examples/07_tasks_memory.exs",
         "snodo.example ../../examples/08_tasks_durable.exs",
         "snodo.example ../../examples/09_tasks_retry.exs",
-        "snodo.example ../../examples/17_tasks_subscriptions.exs"
+        "snodo.example ../../examples/17_tasks_subscriptions.exs",
+        "snodo.example ../../examples/26_tasks_client.exs"
       ],
       quality: [
         "format --check-formatted",
