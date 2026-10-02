@@ -16,12 +16,39 @@ defmodule SnodoTest.OverclaimingSubscriptionSource do
   end
 end
 
+defmodule SnodoTest.ContextRecordingSubscriptionSource do
+  @behaviour Snodo.Subscription.Source
+
+  @impl true
+  def open(filter, context, owner) do
+    send(owner, {:subscription_open_context, context})
+    {:ok, filter, owner}
+  end
+
+  @impl true
+  def next(_handle, _options), do: :closed
+
+  @impl true
+  def close(_handle, _reason, _options), do: :ok
+end
+
+defmodule SnodoTest.SubscriptionPrincipal do
+  @moduledoc false
+  defstruct [:name, :scope]
+end
+
 defmodule Snodo.SubscriptionProtocolAcceptanceTest do
   use ExUnit.Case, async: true
 
+  alias Snodo.Context
+  alias Snodo.Protocol.V2026_07_28
   alias Snodo.Subscription
   alias Snodo.Subscription.Event
+  alias Snodo.Subscription.Source
   alias Snodo.Test, as: MCPTest
+  alias Snodo.Transport.Context, as: TransportContext
+  alias SnodoTest.ContextRecordingSubscriptionSource
+  alias SnodoTest.SubscriptionPrincipal
   alias SnodoTest.TestFixtures
   alias SnodoTest.TestSubscriptionHub
   alias SnodoTest.TestSubscriptionSource
@@ -198,6 +225,81 @@ defmodule Snodo.SubscriptionProtocolAcceptanceTest do
     [opened] = opened_filter["resourceSubscriptions"]
     assert :binary.referenced_byte_size(opened) == byte_size(opened)
 
+    assert :ok = Subscription.close(subscription, :complete)
+  end
+
+  test "an open subscription drops request-only context after the source opens" do
+    decoded =
+      %{
+        "metadata" => String.duplicate("m", 100),
+        "method" => "subscriptions/listen",
+        "capabilities" => String.duplicate("c", 100),
+        "header" => String.duplicate("h", 100),
+        "extension" => String.duplicate("e", 100),
+        "padding" => String.duplicate("x", 100_000)
+      }
+      |> JSON.encode!()
+      |> JSON.decode!()
+
+    assert :binary.referenced_byte_size(decoded["extension"]) > 100_000
+    assert :binary.referenced_byte_size(decoded["header"]) > 100_000
+
+    context = %Context{
+      protocol_version: "2026-07-28",
+      protocol: V2026_07_28,
+      transport: %TransportContext{
+        transport: :direct,
+        request_headers: %{"x-padding" => decoded["header"]},
+        metadata: %{request_data: decoded["metadata"]}
+      },
+      request_id: "sub-retained-context",
+      request_method: decoded["method"],
+      request_params: %{"padding" => decoded["padding"]},
+      client_info: %{"padding" => decoded["capabilities"]},
+      client_capabilities: %{"padding" => decoded["capabilities"]},
+      metadata: %{"padding" => decoded["metadata"]},
+      extensions: %{"test.extension" => %{"value" => decoded["extension"]}},
+      server_info: %{"name" => "test", "version" => "1"},
+      server_capabilities: %{"tools" => %{"listChanged" => true}},
+      auth: %{
+        principal: %SubscriptionPrincipal{
+          name: decoded["header"],
+          scope: {:scope, decoded["extension"]}
+        }
+      }
+    }
+
+    source = Source.normalize!({ContextRecordingSubscriptionSource, self()})
+
+    assert {:ok, subscription} =
+             Subscription.open(source, %{"toolsListChanged" => true}, context)
+
+    assert_receive {:subscription_open_context, ^context}, 1_000
+    assert subscription.context.request_params == %{}
+    assert subscription.context.client_info == nil
+    assert subscription.context.client_capabilities == %{}
+    assert subscription.context.metadata == %{}
+    assert subscription.context.transport == %TransportContext{transport: :direct}
+    assert subscription.context.request_method == "subscriptions/listen"
+
+    assert :binary.referenced_byte_size(subscription.context.request_method) ==
+             byte_size(subscription.context.request_method)
+
+    assert subscription.context.server_info == context.server_info
+    assert subscription.context.auth == context.auth
+
+    assert %SubscriptionPrincipal{name: name, scope: {:scope, scope}} =
+             subscription.context.auth.principal
+
+    assert :binary.referenced_byte_size(name) == byte_size(name)
+    assert :binary.referenced_byte_size(scope) == byte_size(scope)
+
+    retained = subscription.context.extensions["test.extension"]["value"]
+    assert retained == decoded["extension"]
+    assert :binary.referenced_byte_size(retained) == byte_size(retained)
+
+    assert {:ok, _acknowledgement} = Subscription.acknowledgement(subscription)
+    assert {:ok, _completion} = Subscription.completion(subscription)
     assert :ok = Subscription.close(subscription, :complete)
   end
 
