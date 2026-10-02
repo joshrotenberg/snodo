@@ -77,6 +77,7 @@ defmodule Snodo.Client do
       end)
   """
 
+  alias Snodo.Client.Cache
   alias Snodo.Client.Deadline
   alias Snodo.Client.Direct
   alias Snodo.Client.Handshake
@@ -127,6 +128,9 @@ defmodule Snodo.Client do
           timeout: timeout(),
           probe_timeout: timeout(),
           max_pages: pos_integer(),
+          cache: boolean(),
+          cache_namespace: term(),
+          cache_variant: term(),
           input_handlers: input_handlers(),
           max_input_rounds: pos_integer()
         }
@@ -148,6 +152,9 @@ defmodule Snodo.Client do
     timeout: 30_000,
     probe_timeout: @default_probe_timeout,
     max_pages: 1_000,
+    cache: false,
+    cache_namespace: nil,
+    cache_variant: nil,
     input_handlers: %{},
     max_input_rounds: @default_max_input_rounds
   ]
@@ -166,6 +173,14 @@ defmodule Snodo.Client do
     prompts: {"prompts/list", "prompts"}
   }
   @list_kinds Map.keys(@list_operations)
+  @cacheable_methods [
+    "server/discover",
+    "tools/list",
+    "resources/list",
+    "resources/templates/list",
+    "prompts/list",
+    "resources/read"
+  ]
 
   @doc """
   Builds a client that dispatches to `runtime` in the calling process.
@@ -217,6 +232,9 @@ defmodule Snodo.Client do
       `context.auth`, as a transport would supply it after authenticating.
     * `:max_pages` - the most pages `list_tools/1` and the other list
       functions request before returning an error. Defaults to 1,000.
+    * `:cache` - opt in to caching complete discovery, list, and resource-read
+      results according to their `ttlMs` and `cacheScope` hints. Defaults to
+      `false`. The shared cache holds at most 256 results and 16 MiB.
   """
   @spec direct(Runtime.t(), keyword()) :: {:ok, t()} | {:error, Error.t()}
   def direct(%Runtime{} = runtime, opts \\ []) when is_list(opts) do
@@ -249,7 +267,7 @@ defmodule Snodo.Client do
     * `:probe_timeout` - milliseconds to wait for the answer to the
       `server/discover` probe, 10,000 unless set.
     * `:client_capabilities`, `:client_info`, `:max_pages`,
-      `:input_handlers`, and `:max_input_rounds` - as for `direct/2`.
+      `:input_handlers`, `:max_input_rounds`, and `:cache` - as for `direct/2`.
     * `:timeout` - the default request timeout in milliseconds, 30,000 unless
       set. Each request can override it with `timeout:`.
 
@@ -324,8 +342,9 @@ defmodule Snodo.Client do
   request is refused with -32601; the server's capabilities and instructions
   are in the client's `session`.
   """
-  @spec discover(t()) :: response()
-  def discover(%__MODULE__{} = client), do: request(client, "server/discover")
+  @spec discover(t(), keyword()) :: response()
+  def discover(%__MODULE__{} = client, opts \\ []),
+    do: request(client, "server/discover", %{}, opts)
 
   @doc """
   Requests `ping`, which the initialize-era versions define; the server
@@ -345,20 +364,21 @@ defmodule Snodo.Client do
   Over HTTP, a tool whose input schema has an invalid `x-mcp-header`
   annotation is left out and a warning is logged, as 2026-07-28 requires.
   """
-  @spec list_tools(t()) :: {:ok, [map()]} | {:error, Error.t()}
-  def list_tools(%__MODULE__{} = client), do: list_all(client, :tools)
+  @spec list_tools(t(), keyword()) :: {:ok, [map()]} | {:error, Error.t()}
+  def list_tools(%__MODULE__{} = client, opts \\ []), do: list_all(client, :tools, opts)
 
   @doc "Lists every direct resource, following `nextCursor` until the last page."
-  @spec list_resources(t()) :: {:ok, [map()]} | {:error, Error.t()}
-  def list_resources(%__MODULE__{} = client), do: list_all(client, :resources)
+  @spec list_resources(t(), keyword()) :: {:ok, [map()]} | {:error, Error.t()}
+  def list_resources(%__MODULE__{} = client, opts \\ []), do: list_all(client, :resources, opts)
 
   @doc "Lists every resource template, following `nextCursor` until the last page."
-  @spec list_resource_templates(t()) :: {:ok, [map()]} | {:error, Error.t()}
-  def list_resource_templates(%__MODULE__{} = client), do: list_all(client, :resource_templates)
+  @spec list_resource_templates(t(), keyword()) :: {:ok, [map()]} | {:error, Error.t()}
+  def list_resource_templates(%__MODULE__{} = client, opts \\ []),
+    do: list_all(client, :resource_templates, opts)
 
   @doc "Lists every prompt, following `nextCursor` until the last page."
-  @spec list_prompts(t()) :: {:ok, [map()]} | {:error, Error.t()}
-  def list_prompts(%__MODULE__{} = client), do: list_all(client, :prompts)
+  @spec list_prompts(t(), keyword()) :: {:ok, [map()]} | {:error, Error.t()}
+  def list_prompts(%__MODULE__{} = client, opts \\ []), do: list_all(client, :prompts, opts)
 
   @doc """
   Requests one page of a list operation.
@@ -366,13 +386,14 @@ defmodule Snodo.Client do
   `kind` is one of `:tools`, `:resources`, `:resource_templates`, or
   `:prompts`. Pass the previous page's `next_cursor` to continue.
   """
-  @spec list_page(t(), list_kind(), String.t() | nil) :: {:ok, Page.t()} | {:error, Error.t()}
-  def list_page(%__MODULE__{} = client, kind, cursor \\ nil)
+  @spec list_page(t(), list_kind(), String.t() | nil, keyword()) ::
+          {:ok, Page.t()} | {:error, Error.t()}
+  def list_page(%__MODULE__{} = client, kind, cursor \\ nil, opts \\ [])
       when kind in @list_kinds and (is_binary(cursor) or is_nil(cursor)) do
     {method, key} = Map.fetch!(@list_operations, kind)
     params = if cursor, do: %{"cursor" => cursor}, else: %{}
 
-    case request(client, method, params) do
+    case request(client, method, params, opts) do
       {:ok, result} ->
         {:ok,
          %Page{
@@ -478,6 +499,9 @@ defmodule Snodo.Client do
       `:input_handlers`. Defaults to `true`.
     * `:max_input_rounds` - overrides the client's round limit for this
       request.
+    * `:bypass_cache` - when `true`, sends an eligible discovery, list, or
+      resource-read request even if a cached result is available, and does not
+      store its response. Defaults to `false`.
 
   With `:input_handlers` installed, an `input_required` result is answered
   in the calling process. Every entry of `"inputRequests"` is first matched
@@ -531,8 +555,18 @@ defmodule Snodo.Client do
       raise ArgumentError, "subscriptions/listen is a stream; open it with Snodo.Client.listen/3"
     end
 
+    bypass_cache = Keyword.get(opts, :bypass_cache, false)
+
+    unless is_boolean(bypass_cache) do
+      raise ArgumentError, ":bypass_cache must be a boolean"
+    end
+
     with :ok <- check_method(client, method) do
-      send_request(client, method, params, opts, input_plan(client, opts), 0)
+      if client.cache and not bypass_cache and cacheable?(method, opts) do
+        cached_request(client, method, params, opts)
+      else
+        send_request(client, method, params, opts, input_plan(client, opts), 0)
+      end
     end
   end
 
@@ -633,7 +667,8 @@ defmodule Snodo.Client do
       owner: self(),
       ref: ref,
       max_buffer: Keyword.fetch!(opts, :max_buffer),
-      overflow: Keyword.fetch!(opts, :overflow)
+      overflow: Keyword.fetch!(opts, :overflow),
+      cache_namespace: client.cache_namespace
     ]
 
     case module.listen(state, raw, transport_opts) do
@@ -660,7 +695,13 @@ defmodule Snodo.Client do
 
     transport_opts =
       [dialect: client.dialect, timeout: Keyword.get(opts, :timeout, client.timeout)] ++
-        Keyword.take(opts, [:tool, :on_response_headers, :extension]) ++
+        Keyword.take(opts, [
+          :tool,
+          :on_response_headers,
+          :extension,
+          :on_cache_credential,
+          :cache_token
+        ]) ++
         session_options(client) ++ progress_options(progress, opts)
 
     case module.request(state, raw, transport_opts) do
@@ -683,7 +724,7 @@ defmodule Snodo.Client do
 
       opts =
         opts
-        |> Keyword.drop([:input_responses, :request_state])
+        |> Keyword.drop([:input_responses, :request_state, :cache_token])
         |> put_present_option(:input_responses, responses)
         |> put_present_option(:request_state, Map.get(result, "requestState"))
 
@@ -723,6 +764,12 @@ defmodule Snodo.Client do
 
   defp open(module, init_arg, opts, [first | _others] = dialects) do
     settings = settings!(opts)
+
+    settings =
+      if settings.cache,
+        do: Map.put(settings, :cache_namespace, cache_namespace(module, init_arg)),
+        else: settings
+
     handlers = settings.input_handlers
 
     # A transport whose connection outlives one request (stdio) answers the
@@ -737,7 +784,8 @@ defmodule Snodo.Client do
           Map.merge(settings, %{
             transport: {module, state},
             protocol: first.version(),
-            dialect: first
+            dialect: first,
+            cache_variant: cache_variant(module, state)
           })
         )
 
@@ -749,6 +797,7 @@ defmodule Snodo.Client do
   defp settings!(opts) do
     capabilities = Keyword.get(opts, :client_capabilities, %{})
     max_pages = Keyword.get(opts, :max_pages, 1_000)
+    cache = Keyword.get(opts, :cache, false)
     handlers = opts |> Keyword.get(:input_handlers, %{}) |> Input.validate_handlers!()
 
     max_input_rounds =
@@ -762,6 +811,10 @@ defmodule Snodo.Client do
       raise ArgumentError, ":max_pages must be a positive integer, got: #{inspect(max_pages)}"
     end
 
+    unless is_boolean(cache) do
+      raise ArgumentError, ":cache must be a boolean, got: #{inspect(cache)}"
+    end
+
     client_info = Keyword.get_lazy(opts, :client_info, &default_client_info/0)
     validate_client_info!(client_info)
 
@@ -772,6 +825,7 @@ defmodule Snodo.Client do
       probe_timeout:
         timeout!(:probe_timeout, Keyword.get(opts, :probe_timeout, @default_probe_timeout)),
       max_pages: max_pages,
+      cache: cache,
       input_handlers: handlers,
       max_input_rounds: max_input_rounds
     }
@@ -955,13 +1009,13 @@ defmodule Snodo.Client do
 
   defp usable(_client, _kind, items), do: items
 
-  defp list_all(client, kind), do: collect_pages(client, kind, nil, %{}, [])
+  defp list_all(client, kind, opts), do: collect_pages(client, kind, nil, %{}, [], opts)
 
   # A remote server can hand back a cursor it already issued, or a new cursor
   # on every page; following either would never terminate. `seen` holds the
   # cursor of every page after the first.
-  defp collect_pages(client, kind, cursor, seen, pages) do
-    with {:ok, %Page{items: items, next_cursor: next}} <- list_page(client, kind, cursor) do
+  defp collect_pages(client, kind, cursor, seen, pages, opts) do
+    with {:ok, %Page{items: items, next_cursor: next}} <- list_page(client, kind, cursor, opts) do
       pages = [items | pages]
 
       cond do
@@ -983,8 +1037,95 @@ defmodule Snodo.Client do
            )}
 
         true ->
-          collect_pages(client, kind, next, Map.put(seen, next, true), pages)
+          collect_pages(client, kind, next, Map.put(seen, next, true), pages, opts)
       end
     end
   end
+
+  defp cacheable?(method, opts),
+    do: method in @cacheable_methods and Keyword.keys(opts) -- [:bypass_cache, :timeout] == []
+
+  defp cached_request(client, method, params, opts) do
+    base =
+      {client.cache_namespace, client.protocol, client.cache_variant, client.client_capabilities,
+       client.client_info, method, params}
+
+    case Cache.lookup_public(base) do
+      {:hit, result} ->
+        {:ok, result}
+
+      {:miss, generation} ->
+        cached_private_request(client, base, method, params, opts, generation)
+    end
+  end
+
+  defp cached_private_request(client, base, method, params, opts, generation) do
+    case cache_credential(client) do
+      {:ok, credential, token} ->
+        case Cache.lookup_private(base, credential) do
+          {:hit, result} ->
+            {:ok, result}
+
+          {:miss, generation} ->
+            fetch_and_cache(client, base, method, params, opts, credential, token, generation)
+        end
+
+      {:error, %Error{}} = error ->
+        error
+
+      :unknown ->
+        fetch_and_cache(client, base, method, params, opts, nil, nil, generation)
+    end
+  end
+
+  defp fetch_and_cache(client, base, method, params, opts, credential, token, generation) do
+    ref = make_ref()
+
+    report = fn actual ->
+      Process.put(ref, {actual, client.session && client.session.id})
+    end
+
+    {outcome, actual} =
+      try do
+        request_opts =
+          opts
+          |> Keyword.put(:on_cache_credential, report)
+          |> Keyword.put(:cache_token, token)
+
+        outcome = send_request(client, method, params, request_opts, input_plan(client, opts), 0)
+        {outcome, Process.get(ref, credential)}
+      after
+        Process.delete(ref)
+      end
+
+    maybe_cache(outcome, base, if(is_nil(credential), do: nil, else: actual), generation)
+    outcome
+  end
+
+  defp maybe_cache({:ok, %{} = result}, base, actual, generation),
+    do: Cache.put(base, actual, generation, result)
+
+  defp maybe_cache(_outcome, _base, _actual, _generation), do: :ok
+
+  defp cache_namespace(HTTP, url), do: {:http, url}
+
+  defp cache_namespace(Direct, runtime),
+    do: {:direct, :crypto.hash(:sha256, :erlang.term_to_binary(runtime))}
+
+  defp cache_namespace(_module, _init_arg), do: {:client, make_ref()}
+
+  defp cache_variant(HTTP, state), do: HTTP.cache_variant(state)
+  defp cache_variant(_module, _state), do: nil
+
+  defp cache_credential(%__MODULE__{transport: {HTTP, state}, session: session}) do
+    with {:ok, credential, token} <- HTTP.cache_credential(state) do
+      {:ok, {credential, session && session.id}, token}
+    end
+  end
+
+  defp cache_credential(%__MODULE__{transport: {Direct, state}, session: session}) do
+    {:ok, {:crypto.hash(:sha256, :erlang.term_to_binary(state.auth)), session && session.id}, nil}
+  end
+
+  defp cache_credential(%__MODULE__{}), do: :unknown
 end

@@ -10,6 +10,7 @@ defmodule Snodo.Application do
     children = [
       {Task.Supervisor, name: Snodo.Schema.Validator.Cache.Tasks},
       Snodo.Schema.Validator.Cache,
+      Snodo.Client.Cache,
       Snodo.Client.HTTP.Pool
     ]
 
