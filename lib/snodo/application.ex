@@ -9,7 +9,8 @@ defmodule Snodo.Application do
   def start(_type, _args) do
     children = [
       {Task.Supervisor, name: Snodo.Schema.Validator.Cache.Tasks},
-      Snodo.Schema.Validator.Cache
+      Snodo.Schema.Validator.Cache,
+      Snodo.Client.HTTP.Pool
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

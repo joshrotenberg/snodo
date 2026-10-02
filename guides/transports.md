@@ -299,6 +299,23 @@ runs a prepared request and returns a `Response` or a `StreamResponse`. A
 different HTTP server can translate its requests into that shape. `handle/3`
 runs both steps synchronously.
 
+## HTTP client connections
+
+`Snodo.Client.connect({:http, url}, opts)` keeps up to four pooled requests open
+for that client and origin. Extra concurrent requests wait up to their request
+timeout for a free connection. Set `:pool_size` to change the cap (default 4),
+`:pool_idle_timeout` to change how long an unused connection stays open (default
+30,000 ms), and `:pool_max_requests` to retire a connection after a fixed
+number of requests (default 100). Each option requires a positive integer.
+
+The client reuses only HTTP/1.1 responses with a complete `Content-Length`
+body and no `Connection: close` directive. Event streams, responses framed by
+socket close or chunked transfer, malformed responses, and failed requests
+close their sockets. Event streams detach from the pool and use a separate
+socket while they run. `Snodo.Client.close/1` closes idle connections; active
+requests finish on their own sockets. Response-size and page limits apply on
+every request, including those sent over reused connections.
+
 ## Examples
 
 `examples/04_stdio_concurrency.exs`, `05_http_tools.exs`, `21_plug_bandit.exs`

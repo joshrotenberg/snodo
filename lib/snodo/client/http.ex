@@ -2,9 +2,10 @@ defmodule Snodo.Client.HTTP do
   @moduledoc """
   Streamable HTTP transport for `Snodo.Client.connect({:http, url}, opts)`.
 
-  Each request is one HTTP/1.1 `POST` on its own `:gen_tcp` or `:ssl`
-  connection, closed before the request returns, so no connection or process
-  outlives it. The request headers come from the protocol dialect's
+  Requests use a bounded pool of HTTP/1.1 `:gen_tcp` or `:ssl` connections.
+  Fully read, framed responses can return their connection to the pool;
+  streams and responses that run until socket close do not. The request
+  headers come from the protocol dialect's
   `transport_policy/1`. For a request made with `extension: Module`, the
   module's `transport_policy/2` adapts that policy for its exact-versioned
   method. These are the same declarations the server admits requests against:
@@ -88,12 +89,20 @@ defmodule Snodo.Client.HTTP do
       to the request timeout.
     * `:max_response_bytes` - the largest response to accept, default 16 MiB,
       the stdio client's line limit.
+    * `:pool_size` - the most simultaneous pooled requests for this client
+      origin, default 4. Additional requests wait up to their request timeout.
+      Event streams detach from the pool and use a separate socket.
+    * `:pool_idle_timeout` - milliseconds an idle connection may wait for
+      reuse, default 30,000.
+    * `:pool_max_requests` - the most requests sent on one connection before
+      it is retired, default 100.
   """
 
   @behaviour Snodo.Client.Transport
 
   alias Snodo.Client.Challenge
   alias Snodo.Client.Deadline
+  alias Snodo.Client.HTTP.Pool
   alias Snodo.Client.HTTP.Stream, as: SubscriptionStream
   alias Snodo.Client.Transport
   alias Snodo.Envelope
@@ -114,12 +123,19 @@ defmodule Snodo.Client.HTTP do
           ssl: keyword(),
           connect_timeout: timeout() | nil,
           max_response_bytes: pos_integer(),
+          pool_key: term(),
+          pool_size: pos_integer(),
+          pool_idle_timeout: pos_integer(),
+          pool_max_requests: pos_integer(),
           token_provider: {module(), term()} | nil
         }
 
   @sentinel_prefix "=?base64?"
   @sentinel_suffix "?="
   @default_max_response_bytes 16 * 1024 * 1024
+  @default_pool_size 4
+  @default_pool_idle_timeout 30_000
+  @default_pool_max_requests 100
   @socket_options [:binary, active: false, packet: :raw]
   @default_ports %{"http" => 80, "https" => 443}
   # A chunk-size line is a hex number and optional extensions.
@@ -136,6 +152,9 @@ defmodule Snodo.Client.HTTP do
 
     provider = token_provider!(Keyword.get(opts, :token_provider))
     headers = extra_headers!(Keyword.get(opts, :headers, []), provider)
+    pool_size = positive_option!(opts, :pool_size, @default_pool_size)
+    pool_idle_timeout = positive_option!(opts, :pool_idle_timeout, @default_pool_idle_timeout)
+    pool_max_requests = positive_option!(opts, :pool_max_requests, @default_pool_max_requests)
 
     case URI.new(url) do
       {:ok, %URI{scheme: scheme, host: host} = uri}
@@ -155,6 +174,10 @@ defmodule Snodo.Client.HTTP do
            ssl: Keyword.get_lazy(opts, :ssl, fn -> default_ssl(uri) end),
            connect_timeout: Keyword.get(opts, :connect_timeout),
            max_response_bytes: max_response_bytes,
+           pool_key: {scheme, host, uri.port, make_ref()},
+           pool_size: pool_size,
+           pool_idle_timeout: pool_idle_timeout,
+           pool_max_requests: pool_max_requests,
            token_provider: provider
          }}
 
@@ -193,10 +216,11 @@ defmodule Snodo.Client.HTTP do
   def delete_session(state, opts) do
     headers = Keyword.get(opts, :headers, [])
 
-    with :ok <- check_headers(headers),
-         :ok <- check_owned(state, headers) do
-      _outcome = authorized_exchange(state, "DELETE", headers ++ state.headers, nil, opts)
-    end
+    _outcome =
+      with :ok <- check_headers(headers),
+           :ok <- check_owned(state, headers) do
+        authorized_exchange(state, "DELETE", headers ++ state.headers, nil, opts)
+      end
 
     :ok
   end
@@ -218,7 +242,7 @@ defmodule Snodo.Client.HTTP do
   end
 
   @impl Transport
-  def close(_state), do: :ok
+  def close(state), do: Pool.close(state.pool_key)
 
   # Runs in a process linked to `stream`, a `Snodo.Client.HTTP.Stream`. Sends
   # the request, then feeds every decoded event-stream message to `stream` as
@@ -249,7 +273,7 @@ defmodule Snodo.Client.HTTP do
 
         try do
           with :ok <- send_request(socket, state, "POST", headers, JSON.encode!(message)),
-               {:ok, status, response_headers, rest} <- read_head(conn, "", 0),
+               {:ok, status, response_headers, rest, _version} <- read_head(conn, "", 0),
                :none <- challenge(state, status, response_headers) do
             conn = %{conn | body: body_state(response_headers)}
 
@@ -514,6 +538,16 @@ defmodule Snodo.Client.HTTP do
     headers
   end
 
+  defp positive_option!(opts, name, default) do
+    value = Keyword.get(opts, name, default)
+
+    if is_integer(value) and value > 0 do
+      value
+    else
+      raise ArgumentError, ":#{name} must be a positive integer"
+    end
+  end
+
   defp token_provider!(nil), do: nil
 
   defp token_provider!({module, _state} = provider) when is_atom(module) do
@@ -531,44 +565,126 @@ defmodule Snodo.Client.HTTP do
     raise ArgumentError, ":token_provider must be {module, state}, got: #{inspect(other)}"
   end
 
-  # The socket is closed when the exchange ends, whatever the outcome. A nil
-  # message sends no body (DELETE).
+  # A nil message sends no body (DELETE).
   defp exchange(state, method, headers, message, opts) do
     timeout = Keyword.fetch!(opts, :timeout)
-    on_progress = Keyword.get(opts, :on_progress)
 
-    with {:ok, socket} <- open(state, state.connect_timeout || timeout, timeout) do
-      conn = %{
-        socket: socket,
-        deadline: Deadline.new(opts),
-        limit: state.max_response_bytes,
-        id: message && Map.get(message, "id"),
-        on_progress: on_progress,
-        token: if(on_progress, do: get_in(message, ["params", "_meta", "progressToken"])),
-        on_server_request: Keyword.get(opts, :on_server_request),
-        reply: {state, Keyword.get(opts, :headers, []), Keyword.take(opts, [:timeout])},
-        stream: nil,
-        read: 0,
-        body: nil
-      }
-
+    with {:ok, socket, lease} <- checkout_socket(state, timeout) do
       try do
-        with :ok <- send_request(socket, state, method, headers, encode(message)),
-             {:ok, status, response_headers, rest} <- read_head(conn, "", 0) do
-          conn = %{conn | body: body_state(response_headers)}
+        {result, reusable?} =
+          perform_exchange(state, socket, lease, method, headers, message, opts)
 
-          with {:ok, conn} <- read_body(conn, status, response_headers, rest),
-               {:ok, outcome} <- finish(conn) do
-            {:ok, status, response_headers, outcome}
-          else
-            {:done, response} -> {:ok, status, response_headers, {:response, response}}
-            {:error, reason} -> {:error, reason}
-          end
-        end
-      after
-        close_socket(socket)
+        if reusable?, do: Pool.checkin(lease, socket), else: Pool.discard(lease, socket)
+        result
+      catch
+        kind, reason ->
+          Pool.discard(lease, socket)
+          :erlang.raise(kind, reason, __STACKTRACE__)
       end
     end
+  end
+
+  defp checkout_socket(state, timeout) do
+    limits = {state.pool_size, state.pool_idle_timeout, state.pool_max_requests}
+
+    case Pool.checkout(state.pool_key, limits, timeout) do
+      {:ok, socket, lease} ->
+        case set_send_timeout(socket, timeout) do
+          :ok ->
+            {:ok, socket, lease}
+
+          {:error, reason} ->
+            Pool.discard(lease, socket)
+            {:error, reason}
+        end
+
+      {:open, lease} ->
+        case open(state, state.connect_timeout || timeout, timeout) do
+          {:ok, socket} ->
+            {:ok, socket, lease}
+
+          {:error, reason} ->
+            Pool.discard(lease, nil)
+            {:error, reason}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp set_send_timeout({:gen_tcp, socket}, timeout),
+    do: :inet.setopts(socket, send_timeout: timeout)
+
+  defp set_send_timeout({:ssl, socket}, timeout),
+    do: :ssl.setopts(socket, send_timeout: timeout)
+
+  defp perform_exchange(state, socket, lease, method, headers, message, opts) do
+    on_progress = Keyword.get(opts, :on_progress)
+
+    conn = %{
+      socket: socket,
+      deadline: Deadline.new(opts),
+      limit: state.max_response_bytes,
+      id: message && Map.get(message, "id"),
+      on_progress: on_progress,
+      token: if(on_progress, do: get_in(message, ["params", "_meta", "progressToken"])),
+      on_server_request: Keyword.get(opts, :on_server_request),
+      reply: {state, Keyword.get(opts, :headers, []), Keyword.take(opts, [:timeout])},
+      stream: nil,
+      read: 0,
+      body: nil,
+      extra_bytes?: false
+    }
+
+    with :ok <- send_request(socket, state, method, headers, encode(message), "keep-alive"),
+         {:ok, status, response_headers, rest, version} <- read_head(conn, "", 0) do
+      if event_stream?(response_headers), do: Pool.detach(lease)
+      conn = %{conn | body: body_state(response_headers)}
+
+      conn
+      |> read_body(status, response_headers, rest)
+      |> exchange_body_result(status, response_headers, version)
+    else
+      {:error, reason} -> {{:error, reason}, false}
+    end
+  end
+
+  defp exchange_body_result({:ok, conn}, status, headers, version) do
+    case finish(conn) do
+      {:ok, outcome} ->
+        {{:ok, status, headers, outcome}, reusable?(conn, version, status, headers)}
+
+      {:error, reason} ->
+        {{:error, reason}, false}
+    end
+  end
+
+  defp exchange_body_result({:done, response}, status, headers, _version),
+    do: {{:ok, status, headers, {:response, response}}, false}
+
+  defp exchange_body_result({:error, reason}, _status, _headers, _version),
+    do: {{:error, reason}, false}
+
+  defp reusable?(conn, {1, 1}, status, headers) do
+    match?({:length, _length}, framing(status, headers)) and
+      not event_stream?(headers) and not conn.extra_bytes? and
+      not connection_close?(headers)
+  end
+
+  defp reusable?(_conn, _version, _status, _headers), do: false
+
+  defp connection_close?(headers) do
+    Enum.any?(headers, fn
+      {"connection", value} ->
+        value
+        |> String.downcase()
+        |> String.split(",")
+        |> Enum.any?(&(String.trim(&1) == "close"))
+
+      _other ->
+        false
+    end)
   end
 
   # Only the attempt that answered the request is reported, not one that a
@@ -735,7 +851,9 @@ defmodule Snodo.Client.HTTP do
   defp encode(nil), do: ""
   defp encode(message), do: JSON.encode!(message)
 
-  defp send_request({module, socket}, state, method, headers, body) do
+  defp send_request(socket, state, method, headers, body, connection \\ "close")
+
+  defp send_request({module, socket}, state, method, headers, body, connection) do
     head = [
       method,
       " ",
@@ -746,7 +864,9 @@ defmodule Snodo.Client.HTTP do
       Enum.map(headers, fn {name, value} -> [name, ": ", value, "\r\n"] end),
       "content-length: ",
       Integer.to_string(byte_size(body)),
-      "\r\nconnection: close\r\n\r\n"
+      "\r\nconnection: ",
+      connection,
+      "\r\n\r\n"
     ]
 
     module.send(socket, [head, body])
@@ -757,9 +877,9 @@ defmodule Snodo.Client.HTTP do
   # read.
   defp read_head(conn, buffer, consumed) do
     case :erlang.decode_packet(:http_bin, buffer, []) do
-      {:ok, {:http_response, _version, status, _reason}, rest} ->
+      {:ok, {:http_response, version, status, _reason}, rest} ->
         consumed = consumed + byte_size(buffer) - byte_size(rest)
-        read_headers(conn, rest, consumed, status, [])
+        read_headers(conn, rest, consumed, status, [], version)
 
       {:more, _length} ->
         with {:ok, buffer} <- recv_head(conn, buffer, consumed) do
@@ -771,20 +891,20 @@ defmodule Snodo.Client.HTTP do
     end
   end
 
-  defp read_headers(conn, buffer, consumed, status, headers) do
+  defp read_headers(conn, buffer, consumed, status, headers, version) do
     case :erlang.decode_packet(:httph_bin, buffer, []) do
       {:ok, {:http_header, _index, _field, name, value}, rest} ->
         consumed = consumed + byte_size(buffer) - byte_size(rest)
         headers = [{String.downcase(name), value} | headers]
-        read_headers(conn, rest, consumed, status, headers)
+        read_headers(conn, rest, consumed, status, headers, version)
 
       {:ok, :http_eoh, rest} ->
         consumed = consumed + byte_size(buffer) - byte_size(rest)
-        end_of_head(conn, rest, consumed, status, Enum.reverse(headers))
+        end_of_head(conn, rest, consumed, status, Enum.reverse(headers), version)
 
       {:more, _length} ->
         with {:ok, buffer} <- recv_head(conn, buffer, consumed) do
-          read_headers(conn, buffer, consumed, status, headers)
+          read_headers(conn, buffer, consumed, status, headers, version)
         end
 
       _invalid ->
@@ -793,11 +913,11 @@ defmodule Snodo.Client.HTTP do
   end
 
   # An interim 1xx response precedes the final one on the same connection.
-  defp end_of_head(conn, rest, consumed, status, headers) do
+  defp end_of_head(conn, rest, consumed, status, headers, version) do
     cond do
       consumed > conn.limit -> {:error, :too_large}
       status in 100..199 -> read_head(conn, rest, consumed)
-      true -> {:ok, status, headers, rest}
+      true -> {:ok, status, headers, rest, version}
     end
   end
 
@@ -871,8 +991,10 @@ defmodule Snodo.Client.HTTP do
 
   defp content_length(_values), do: :malformed
 
-  defp read_length(conn, data, length) when byte_size(data) >= length,
-    do: feed(conn, binary_part(data, 0, length))
+  defp read_length(conn, data, length) when byte_size(data) >= length do
+    conn = if byte_size(data) > length, do: Map.put(conn, :extra_bytes?, true), else: conn
+    feed(conn, binary_part(data, 0, length))
+  end
 
   defp read_length(conn, data, length) do
     with {:ok, conn} <- feed(conn, data),
