@@ -11,8 +11,11 @@ defmodule Snodo.Schema.Validator.JSV do
   Unknown annotation keywords are otherwise preserved. The safety scan treats
   schema-control and casting keywords conservatively even in annotation data.
 
-  `validate/2` compiles on each call and has no global cache. Applications can
-  retain an immutable root from `compile/1` or `compile/2` and use
+  Server runtimes compile registered tool schemas once and retain them for the
+  runtime's lifetime. Direct `validate/2` calls cache compilation on first use
+  while the `snodo` application is running. That fallback cache holds up to 256
+  schemas and regexes, evicting the oldest entry when full. Applications can
+  also retain an immutable root from `compile/1` or `compile/2` and use
   `validate_compiled/2` in their own validator module for a fixed catalog.
   Neither operation returns transformed data or changes advertised schemas.
 
@@ -25,6 +28,7 @@ defmodule Snodo.Schema.Validator.JSV do
   @behaviour Snodo.Schema.Validator
 
   alias Snodo.JSONValue
+  alias Snodo.Schema.Validator.Cache
   alias Snodo.Schema.Validator.JSV.BuildError
   alias Snodo.Schema.Validator.JSV.Compiled
   alias Snodo.Schema.Validator.JSV.OfflineResolver
@@ -51,7 +55,7 @@ defmodule Snodo.Schema.Validator.JSV do
   @impl true
   @spec validate(term(), map()) :: :ok | {:error, term()}
   def validate(instance, schema) do
-    case compile(schema) do
+    case Cache.fetch({__MODULE__, schema}, fn -> compile(schema) end) do
       {:ok, compiled} -> validate_compiled(instance, compiled)
       {:error, error} -> raise error
     end
@@ -68,6 +72,7 @@ defmodule Snodo.Schema.Validator.JSV do
   Standalone compilation accepts boolean schemas; MCP tool registration still
   requires schema maps. The compiled value should be treated as opaque.
   """
+  @impl true
   @spec compile(map() | boolean(), keyword()) ::
           {:ok, Compiled.t()} | {:error, BuildError.t()}
   def compile(schema, options \\ []) do
@@ -86,6 +91,7 @@ defmodule Snodo.Schema.Validator.JSV do
   end
 
   @doc "Validates an instance using an immutable root; the original value is never replaced."
+  @impl true
   @spec validate_compiled(term(), Compiled.t()) :: :ok | {:error, term()}
   def validate_compiled(instance, %Compiled{root: root}) do
     if JSONValue.valid?(instance) do

@@ -207,6 +207,13 @@ installs a validator:
 | `Snodo.Schema.Validator.Basic` | objects, arrays, primitives, `enum`, `const`, size and numeric bounds |
 | `Snodo.Schema.Validator.JSV` from `snodo_jsv` | full JSON Schema 2020-12 |
 
+Server runtimes compile their registered tool schemas once and retain them for
+the runtime's lifetime. For direct validator calls, Basic compiles each
+regular-expression pattern on first use and JSV compiles each schema on first
+use. These direct calls share a 256-entry fallback cache while the `snodo`
+application is running. The oldest fallback entry is evicted when it fills;
+its next use compiles again. Validation behavior does not change.
+
 A call that fails either check never reaches `call/2`. It gets a result with
 `isError: true` and a message the model can act on, such as
 `Missing required arguments: query` or

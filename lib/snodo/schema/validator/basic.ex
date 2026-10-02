@@ -31,32 +31,45 @@ defmodule Snodo.Schema.Validator.Basic do
   @behaviour Snodo.Schema.Validator
 
   alias Snodo.Schema.Validator.Basic.Error
+  alias Snodo.Schema.Validator.Cache
 
   @json_types ~w(array boolean integer null number object string)
 
   @impl true
   def validate(instance, schema) when is_map(schema) do
-    validate_schema(instance, schema, [])
+    validate_schema(instance, schema, [], %{})
   end
 
   def validate(_instance, _schema) do
     {:error, error([], "schema", "schema must be a map")}
   end
 
-  defp validate_schema(_instance, true, _path), do: :ok
+  @doc "Precompiles the supported `pattern` keywords in a schema."
+  @impl true
+  def compile(schema), do: {:ok, {schema, collect_patterns(schema, %{})}}
 
-  defp validate_schema(_instance, false, path),
+  @doc "Validates with patterns prepared by `compile/1`."
+  @impl true
+  def validate_compiled(instance, {schema, patterns}) when is_map(schema),
+    do: validate_schema(instance, schema, [], patterns)
+
+  def validate_compiled(_instance, {_schema, _patterns}),
+    do: {:error, error([], "schema", "schema must be a map")}
+
+  defp validate_schema(_instance, true, _path, _patterns), do: :ok
+
+  defp validate_schema(_instance, false, path, _patterns),
     do: {:error, error(path, "false", "value is rejected")}
 
-  defp validate_schema(instance, schema, path) when is_map(schema) do
+  defp validate_schema(instance, schema, path, patterns) when is_map(schema) do
     with :ok <- validate_type(instance, schema, path),
          :ok <- validate_const(instance, schema, path),
          :ok <- validate_enum(instance, schema, path) do
-      validate_shape(instance, schema, path)
+      validate_shape(instance, schema, path, patterns)
     end
   end
 
-  defp validate_schema(_instance, _schema, path) do
+  defp validate_schema(_instance, _schema, path, _patterns) do
     {:error, error(path, "schema", "nested schema must be a map or boolean")}
   end
 
@@ -97,26 +110,27 @@ defmodule Snodo.Schema.Validator.Basic do
 
   defp validate_type(_instance, _schema, _path), do: :ok
 
-  defp validate_shape(instance, schema, path) when is_map(instance) and not is_struct(instance),
-    do: validate_object(instance, schema, path)
+  defp validate_shape(instance, schema, path, patterns)
+       when is_map(instance) and not is_struct(instance),
+       do: validate_object(instance, schema, path, patterns)
 
-  defp validate_shape(instance, schema, path) when is_list(instance),
-    do: validate_array(instance, schema, path)
+  defp validate_shape(instance, schema, path, patterns) when is_list(instance),
+    do: validate_array(instance, schema, path, patterns)
 
-  defp validate_shape(instance, schema, path) when is_binary(instance),
-    do: validate_string(instance, schema, path)
+  defp validate_shape(instance, schema, path, patterns) when is_binary(instance),
+    do: validate_string(instance, schema, path, patterns)
 
-  defp validate_shape(instance, schema, path) when is_number(instance),
+  defp validate_shape(instance, schema, path, _patterns) when is_number(instance),
     do: validate_number(instance, schema, path)
 
-  defp validate_shape(_instance, _schema, _path), do: :ok
+  defp validate_shape(_instance, _schema, _path, _patterns), do: :ok
 
-  defp validate_object(instance, schema, path) do
+  defp validate_object(instance, schema, path, patterns) do
     with :ok <- validate_count(instance, schema, path, "minProperties", &map_size/1, :at_least),
          :ok <- validate_count(instance, schema, path, "maxProperties", &map_size/1, :at_most),
          :ok <- validate_required(instance, schema, path),
-         :ok <- validate_properties(instance, schema, path) do
-      validate_additional_properties(instance, schema, path)
+         :ok <- validate_properties(instance, schema, path, patterns) do
+      validate_additional_properties(instance, schema, path, patterns)
     end
   end
 
@@ -137,25 +151,28 @@ defmodule Snodo.Schema.Validator.Basic do
 
   defp validate_required(_instance, _schema, _path), do: :ok
 
-  defp validate_properties(instance, %{"properties" => properties}, path)
+  defp validate_properties(instance, %{"properties" => properties}, path, patterns)
        when is_map(properties) do
     properties
     |> Enum.sort_by(fn {name, _schema} -> name end)
     |> Enum.reduce_while(:ok, fn {name, property_schema}, :ok ->
       case Map.fetch(instance, name) do
-        {:ok, value} -> continue_or_halt(validate_schema(value, property_schema, path ++ [name]))
-        :error -> {:cont, :ok}
+        {:ok, value} ->
+          continue_or_halt(validate_schema(value, property_schema, path ++ [name], patterns))
+
+        :error ->
+          {:cont, :ok}
       end
     end)
   end
 
-  defp validate_properties(_instance, %{"properties" => _invalid}, path) do
+  defp validate_properties(_instance, %{"properties" => _invalid}, path, _patterns) do
     {:error, error(path, "properties", "properties must be a map")}
   end
 
-  defp validate_properties(_instance, _schema, _path), do: :ok
+  defp validate_properties(_instance, _schema, _path, _patterns), do: :ok
 
-  defp validate_additional_properties(instance, schema, path) do
+  defp validate_additional_properties(instance, schema, path, patterns) do
     properties = Map.get(schema, "properties", %{})
     extras = instance |> Map.keys() |> Enum.reject(&Map.has_key?(properties, &1)) |> Enum.sort()
 
@@ -175,7 +192,12 @@ defmodule Snodo.Schema.Validator.Basic do
       additional_schema when is_map(additional_schema) or is_boolean(additional_schema) ->
         Enum.reduce_while(extras, :ok, fn name, :ok ->
           continue_or_halt(
-            validate_schema(Map.fetch!(instance, name), additional_schema, path ++ [name])
+            validate_schema(
+              Map.fetch!(instance, name),
+              additional_schema,
+              path ++ [name],
+              patterns
+            )
           )
         end)
 
@@ -185,11 +207,11 @@ defmodule Snodo.Schema.Validator.Basic do
     end
   end
 
-  defp validate_array(instance, schema, path) do
+  defp validate_array(instance, schema, path, patterns) do
     with :ok <- validate_count(instance, schema, path, "minItems", &length/1, :at_least),
          :ok <- validate_count(instance, schema, path, "maxItems", &length/1, :at_most),
          :ok <- validate_unique_items(instance, schema, path) do
-      validate_items(instance, schema, path)
+      validate_items(instance, schema, path, patterns)
     end
   end
 
@@ -206,25 +228,32 @@ defmodule Snodo.Schema.Validator.Basic do
 
   defp validate_unique_items(_instance, _schema, _path), do: :ok
 
-  defp validate_items(instance, %{"items" => item_schema}, path) do
+  defp validate_items(instance, %{"items" => item_schema}, path, patterns) do
     instance
     |> Enum.with_index()
     |> Enum.reduce_while(:ok, fn {item, index}, :ok ->
-      continue_or_halt(validate_schema(item, item_schema, path ++ [index]))
+      continue_or_halt(validate_schema(item, item_schema, path ++ [index], patterns))
     end)
   end
 
-  defp validate_items(_instance, _schema, _path), do: :ok
+  defp validate_items(_instance, _schema, _path, _patterns), do: :ok
 
-  defp validate_string(instance, schema, path) do
+  defp validate_string(instance, schema, path, patterns) do
     with :ok <- validate_count(instance, schema, path, "minLength", &String.length/1, :at_least),
          :ok <- validate_count(instance, schema, path, "maxLength", &String.length/1, :at_most) do
-      validate_pattern(instance, schema, path)
+      validate_pattern(instance, schema, path, patterns)
     end
   end
 
-  defp validate_pattern(instance, %{"pattern" => pattern}, path) when is_binary(pattern) do
-    case Regex.compile(pattern) do
+  defp validate_pattern(instance, %{"pattern" => pattern}, path, patterns)
+       when is_binary(pattern) do
+    compiled =
+      case Map.fetch(patterns, pattern) do
+        {:ok, value} -> value
+        :error -> Cache.fetch({__MODULE__, :pattern, pattern}, fn -> Regex.compile(pattern) end)
+      end
+
+    case compiled do
       {:ok, regex} ->
         if Regex.match?(regex, instance),
           do: :ok,
@@ -235,11 +264,37 @@ defmodule Snodo.Schema.Validator.Basic do
     end
   end
 
-  defp validate_pattern(_instance, %{"pattern" => _invalid}, path) do
+  defp validate_pattern(_instance, %{"pattern" => _invalid}, path, _patterns) do
     {:error, error(path, "pattern", "pattern must be a string")}
   end
 
-  defp validate_pattern(_instance, _schema, _path), do: :ok
+  defp validate_pattern(_instance, _schema, _path, _patterns), do: :ok
+
+  defp collect_patterns(schema, patterns) when is_map(schema) do
+    patterns =
+      case Map.fetch(schema, "pattern") do
+        {:ok, pattern} when is_binary(pattern) ->
+          Map.put_new_lazy(patterns, pattern, fn -> Regex.compile(pattern) end)
+
+        _other ->
+          patterns
+      end
+
+    properties = Map.get(schema, "properties", %{})
+
+    patterns =
+      if is_map(properties),
+        do:
+          Enum.reduce(properties, patterns, fn {_name, child}, acc ->
+            collect_patterns(child, acc)
+          end),
+        else: patterns
+
+    patterns = collect_patterns(Map.get(schema, "items"), patterns)
+    collect_patterns(Map.get(schema, "additionalProperties"), patterns)
+  end
+
+  defp collect_patterns(_schema, patterns), do: patterns
 
   defp validate_number(instance, schema, path) do
     checks = [
