@@ -1,6 +1,6 @@
 # AGENTS.md: interop
 
-Two independent checks against pinned third-party code. Each directory has a README with details. The root [AGENTS.md](../AGENTS.md) applies here too.
+Three independent checks against pinned third-party code. Each directory has a README with details. The root [AGENTS.md](../AGENTS.md) applies here too.
 
 ## official_client
 
@@ -14,6 +14,19 @@ npm run check             # check.mjs, check_mrtr.mjs, check_progress.mjs
 ```
 
 The `*_fixture.exs` files are the servers under test. A change to wire shapes, transports, MRTR, or progress should keep all three scripts passing. `check_hexpm.mjs` exercises a separate consumer and is not part of `npm run check`.
+
+## official_python
+
+The unmodified official Python `mcp` client (version pinned in `official_python/pyproject.toml`, dependencies locked in `uv.lock`) checks stdio and HTTP across 2026-07-28, 2025-11-25, and 2025-06-18. Modern MRTR elicitation and progress run on both transports.
+
+```sh
+mix compile
+cd interop/official_python
+uv sync --frozen
+uv run --frozen python check.py
+```
+
+The local fixture serves the baseline operations. The MRTR and progress checks reuse the same public server fixtures as the TypeScript client.
 
 ## schema_validation
 

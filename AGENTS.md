@@ -24,7 +24,7 @@ Other directories:
 | `lib/snodo/protocol/` | `V2026_07_28` (default) and the opt-in initialize-era dialects `V2025_11_25` and `V2025_06_18` |
 | `test/compliance/` | Literal protocol vectors |
 | `conformance/` | The official conformance runner, pinned, with reviewed per-check baselines |
-| `interop/` | Checks against the pinned official TypeScript client, and AJV validation of emitted messages |
+| `interop/` | Checks against the pinned official TypeScript and Python clients, and AJV validation of emitted messages |
 | `examples/` | Numbered runnable scripts, each checked by `mix examples` |
 | `guides/` | User documentation, published as ExDoc extras |
 | `docs/history/` | Dated design records |
@@ -33,11 +33,12 @@ Inside the repository each sibling depends on `snodo` by path. `RELEASING.md` ex
 
 ## Setup
 
-Requirements: Elixir 1.18 or later on OTP 27 or later (CI runs 1.18/OTP 27, 1.19/OTP 28, and 1.20/OTP 29), and Node.js 24 for the interop and conformance checks. PostgreSQL is needed only for the live PostgreSQL lane.
+Requirements: Elixir 1.18 or later on OTP 27 or later (CI runs 1.18/OTP 27, 1.19/OTP 28, and 1.20/OTP 29), Node.js 24 for the TypeScript interop and conformance checks, and Python 3.13 with uv 0.12.21 for Python interop. PostgreSQL is needed only for the live PostgreSQL lane.
 
 ```sh
 mix setup                                      # dependencies for the core, the seven siblings, and the conformance fixture
 (cd interop/official_client && npm ci --ignore-scripts)
+(cd interop/official_python && uv sync --frozen)
 ```
 
 Run `mix setup` again after pulling a change to any `mix.lock`. Install Node packages with `npm ci --ignore-scripts`, never `npm install`.
@@ -51,6 +52,7 @@ mix quality                                    # format, compile with warnings a
 MIX_ENV=test mix quality.types                 # Dialyzer across all eight packages
 MIX_ENV=dev mix docs --warnings-as-errors      # documentation build
 mix compile && (cd interop/official_client && npm run check)   # official TypeScript client: baseline, MRTR, progress
+mix compile && (cd interop/official_python && uv run --frozen python check.py) # official Python client
 ```
 
 - `mix quality` includes `mix snodo.contract`, which reports 32 evidence groups. A change that moves that count needs a reason in the pull request.

@@ -163,7 +163,7 @@ mix quality.types    # Dialyzer across all eight packages
 mix snodo.contract   # the protocol contract inventory
 ```
 
-Conformance and interop checks against the official TypeScript client live in
+Conformance and interop checks against the official TypeScript and Python clients live in
 `conformance/` and `interop/`, and run in CI. Releases are made with
 release-please; see
 [RELEASING.md](https://github.com/joshrotenberg/snodo/blob/main/RELEASING.md).
