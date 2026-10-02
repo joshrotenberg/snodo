@@ -238,7 +238,8 @@ defmodule Snodo.Client do
     * `{:http, url}` - posts each request to a Streamable HTTP endpoint. See
       `Snodo.Client.HTTP` for `:headers`, `:token_provider` (a
       `Snodo.Client.TokenProvider` that supplies and refreshes the bearer
-      token), `:ssl`, `:connect_timeout`, and `:max_response_bytes`.
+      token), `:ssl`, `:connect_timeout`, `:max_response_bytes`, and connection
+      pool limits.
     * `{module, init_arg}` - any `Snodo.Client.Transport`.
 
   Options for every target:
