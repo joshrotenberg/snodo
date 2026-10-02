@@ -29,6 +29,7 @@ updates:
       - /integrations/schema_jsv
       - /integrations/oauth
       - /integrations/telemetry
+      - /integrations/proxy
       - /conformance/fixture
     schedule:
       interval: weekly
