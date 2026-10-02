@@ -88,7 +88,7 @@ mix test --repeat-until-failure 100 --max-failures 1   # look for flaky tests; a
 - No compiler warnings, `credo --strict` clean, Dialyzer clean.
 - Public modules and functions carry `@moduledoc` and `@doc`; internal ones use `@moduledoc false` or `@doc false`.
 - Match the surrounding code's naming and comment density. Comments explain why, not what.
-- Tests run `async: true` unless they share global state. When a test waits for another process, give `assert_receive` an explicit timeout; the 100 ms default fails under load (#111). Do not use `Process.sleep` to wait for something to happen.
+- Tests run `async: true` unless they share global state. Each test helper sets `assert_receive_timeout` to 1,000 ms. Give `assert_receive` an explicit timeout when the expected work can take longer. Do not use `Process.sleep` to wait for something to happen.
 - Prose in guides, docs, commit messages, and pull requests is plain and factual: say what changed and why, with no marketing language and no em dashes.
 
 ## Picking up work

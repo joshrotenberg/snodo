@@ -15,7 +15,7 @@ defmodule Snodo.HTTPRequestDeadlineTest do
     def call(_arguments, context) do
       Enum.each(1..100, fn value ->
         :ok = Snodo.Progress.report(context, value)
-        Process.sleep(10)
+        Process.sleep(25)
       end)
 
       {:ok, Snodo.Result.text("must not finish before the deadline")}
@@ -36,7 +36,7 @@ defmodule Snodo.HTTPRequestDeadlineTest do
   end
 
   test "progress reports never restart the original deadline" do
-    port = start_http(request_timeout: 70)
+    port = start_http(request_timeout: 500)
     wire = port |> open_request(progress: true) |> read_all()
     assert wire =~ "HTTP/1.1 200"
     assert wire =~ "notifications/progress"

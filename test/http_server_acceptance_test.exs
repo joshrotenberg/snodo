@@ -272,7 +272,10 @@ defmodule Snodo.Transport.StreamableHTTP.ServerAcceptanceTest do
   end
 
   test "independent HTTP requests share bounded concurrent execution" do
-    runtime = TestFixtures.runtime(tools: [Echo])
+    runtime = TestFixtures.runtime(tools: [Echo, Trapping])
+    token = Integer.to_string(System.unique_integer([:positive]))
+    :yes = :global.register_name({Trapping, token}, self())
+    on_exit(fn -> :global.unregister_name({Trapping, token}) end)
 
     {:ok, server} =
       start_supervised({HTTPServer, runtime: runtime, port: 0, max_concurrency: 2})
@@ -281,8 +284,8 @@ defmodule Snodo.Transport.StreamableHTTP.ServerAcceptanceTest do
 
     slow =
       TestFixtures.request("slow-http", "tools/call", %{
-        "name" => "echo",
-        "arguments" => %{"text" => "slow", "delayMs" => 150}
+        "name" => "trapping",
+        "arguments" => %{"token" => token}
       })
 
     fast =
@@ -300,7 +303,7 @@ defmodule Snodo.Transport.StreamableHTTP.ServerAcceptanceTest do
         result
       end)
 
-    Process.sleep(20)
+    assert_receive {:trapping_entered, worker, _cancellation}, 1_000
 
     fast_task =
       Task.async(fn ->
@@ -310,6 +313,8 @@ defmodule Snodo.Transport.StreamableHTTP.ServerAcceptanceTest do
       end)
 
     assert_receive {:completed, "fast-http"}, 1_000
+    refute_received {:completed, "slow-http"}
+    send(worker, :finish)
     assert_receive {:completed, "slow-http"}, 1_000
     assert Task.await(fast_task).status == 200
     assert Task.await(slow_task).status == 200
