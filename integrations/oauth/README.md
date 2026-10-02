@@ -24,8 +24,8 @@ introspection (RFC 7662), DPoP (RFC 9449), or CORS.
 
 <!-- x-release-please-start-version -->
 ```elixir
-{:snodo_plug, "~> 0.4.0"},
-{:snodo_oauth, "~> 0.4.0"},
+{:snodo_plug, "~> 0.4.1"},
+{:snodo_oauth, "~> 0.4.1"},
 {:bandit, "~> 1.12"}
 ```
 <!-- x-release-please-end -->
