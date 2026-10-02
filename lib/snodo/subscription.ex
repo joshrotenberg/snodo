@@ -6,10 +6,10 @@ defmodule Snodo.Subscription do
   narrowing, lifecycle safety, bounded pulling, and protocol wire shaping.
 
   A subscription outlives its request, so it keeps only what it serves. The
-  source's `open/3` callback receives the full request context; the context
-  stored in the subscription has empty `request_params` and `input_responses`
-  and no `request_state`, and `accepted_filter` holds the notifications it
-  delivers. Filter strings are copied out of the request body, so an open
+  source's `open/3` callback receives the full request context. The context
+  stored in the subscription drops request parameters, metadata, client
+  capabilities, and transport request details. Negotiated extension settings
+  and accepted filter strings are copied out of the request body, so an open
   stream does not keep the body alive.
   """
 
@@ -21,6 +21,7 @@ defmodule Snodo.Subscription do
   alias Snodo.Subscription.Filter
   alias Snodo.Subscription.Source
   alias Snodo.Subscription.Source.Config
+  alias Snodo.Transport.Context, as: TransportContext
 
   @type id :: integer() | String.t()
   @type t :: %__MODULE__{
@@ -326,16 +327,26 @@ defmodule Snodo.Subscription do
     end
   end
 
-  # The worker and the transport each hold a copy of the subscription for as
-  # long as the stream is open. Params other than the filter are not needed
-  # after `open/4`.
+  # The worker and transport hold this context for the stream's lifetime.
+  # Source.open/3 sees the full request first. Later shaping keeps server and
+  # negotiated state without the request's raw metadata or transport details.
   defp retained_context(context) do
     %{
       context
       | request_id: detach(context.request_id),
+        request_method: detach(context.request_method),
+        client_info: nil,
+        client_capabilities: %{},
+        transport: %TransportContext{transport: context.transport.transport},
         request_params: %{},
         input_responses: %{},
-        request_state: nil
+        request_state: nil,
+        cancellation: nil,
+        progress: nil,
+        dispatch_check: nil,
+        metadata: %{},
+        auth: detach(context.auth),
+        extensions: detach(context.extensions)
     }
   end
 
@@ -350,8 +361,17 @@ defmodule Snodo.Subscription do
 
   defp detach(value) when is_list(value), do: Enum.map(value, &detach/1)
 
+  defp detach(%{__struct__: module} = value) when is_atom(module) do
+    fields = value |> Map.from_struct() |> Map.new(fn {key, item} -> {key, detach(item)} end)
+    struct(module, fields)
+  end
+
   defp detach(value) when is_map(value) do
     value |> Map.to_list() |> Map.new(fn {key, item} -> {detach(key), detach(item)} end)
+  end
+
+  defp detach(value) when is_tuple(value) do
+    value |> Tuple.to_list() |> Enum.map(&detach/1) |> List.to_tuple()
   end
 
   defp detach(value), do: value
