@@ -13,6 +13,7 @@ defmodule Snodo.ClientHTTPTest do
   alias Snodo.Protocol.V2026_07_28
   alias Snodo.Subscription.Event
   alias Snodo.Transport.StreamableHTTP.Server, as: HTTPServer
+  alias SnodoTest.MRTR.Choice
   alias SnodoTest.MRTR.Server, as: ChoiceServer
   alias SnodoTest.TestExtensions.HTTPPolicy
   alias SnodoTest.TestFixtures
@@ -42,6 +43,25 @@ defmodule Snodo.ClientHTTPTest do
 
     @impl true
     def refresh(_state, _challenge, _context), do: {:ok, "unused"}
+  end
+
+  defmodule SequenceToken do
+    @moduledoc false
+    @behaviour Snodo.Client.TokenProvider
+
+    @impl true
+    def token(agent, _context) do
+      {:ok,
+       Agent.get_and_update(agent, fn [token | rest] ->
+         {token, if(rest == [], do: [token], else: rest)}
+       end)}
+    end
+
+    @impl true
+    def refresh(agent, _challenge, _context) do
+      Agent.update(agent, fn _state -> ["second"] end)
+      {:ok, "second"}
+    end
   end
 
   defmodule FakeHTTP do
@@ -474,6 +494,147 @@ defmodule Snodo.ClientHTTPTest do
   end
 
   describe "request headers and responses" do
+    test "public cache variants distinguish HTTPS verification settings" do
+      common = %{headers: [], max_response_bytes: 4_096}
+
+      verified = HTTP.cache_variant(Map.put(common, :ssl, verify: :verify_peer))
+      unverified = HTTP.cache_variant(Map.put(common, :ssl, verify: :verify_none))
+
+      refute verified == unverified
+    end
+
+    test "public cache entries respect each client's response size limit" do
+      url =
+        FakeHTTP.start(self(), fn _headers, message ->
+          json(message, %{
+            "resultType" => "complete",
+            "ttlMs" => 5_000,
+            "cacheScope" => "public",
+            "padding" => String.duplicate("x", 1_000)
+          })
+        end)
+
+      large = connect(url, cache: true, max_response_bytes: 4_096)
+      small = connect(url, cache: true, max_response_bytes: 256)
+
+      assert {:ok, _result} = Client.discover(large)
+      assert_receive {:fake_http, _headers, _message}, 1_000
+      assert {:error, %Error{cause: {:max_response_bytes, 256}}} = Client.discover(small)
+      assert_receive {:fake_http, _headers, _message}, 1_000
+
+      :ok = Client.close(large)
+      :ok = Client.close(small)
+    end
+
+    test "input follow-up requests use the provider's current token" do
+      {:ok, agent} = Agent.start_link(fn -> ["first", "second"] end)
+
+      url =
+        FakeHTTP.start(self(), fn headers, message ->
+          if get_in(message, ["params", "inputResponses"]) do
+            json(message, %{
+              "resultType" => "complete",
+              "ttlMs" => 5_000,
+              "cacheScope" => "private",
+              "credential" => headers["authorization"]
+            })
+          else
+            json(message, %{
+              "resultType" => "input_required",
+              "inputRequests" => %{"choice" => Choice.request()},
+              "requestState" => "round-one"
+            })
+          end
+        end)
+
+      client =
+        connect(url,
+          cache: true,
+          token_provider: {SequenceToken, agent},
+          input_handlers: %{form: fn _params -> {:ok, %{"action" => "decline"}} end}
+        )
+
+      assert {:ok, %{"credential" => "Bearer second"}} = Client.discover(client)
+      assert_receive {:fake_http, %{"authorization" => "Bearer first"}, _message}, 1_000
+      assert_receive {:fake_http, %{"authorization" => "Bearer second"}, _message}, 1_000
+      assert {:ok, %{"credential" => "Bearer second"}} = Client.discover(client)
+      refute_received {:fake_http, _headers, _message}
+      :ok = Client.close(client)
+    end
+
+    test "public cache entries keep different noncredential header variants separate" do
+      url =
+        FakeHTTP.start(self(), fn headers, message ->
+          json(message, %{
+            "resultType" => "complete",
+            "ttlMs" => 5_000,
+            "cacheScope" => "public",
+            "tenant" => headers["x-tenant"]
+          })
+        end)
+
+      {:ok, first} =
+        Client.connect({:http, url},
+          protocol: "2026-07-28",
+          cache: true,
+          headers: [{"x-tenant", "first"}]
+        )
+
+      {:ok, second} =
+        Client.connect({:http, url},
+          protocol: "2026-07-28",
+          cache: true,
+          headers: [{"x-tenant", "second"}]
+        )
+
+      assert {:ok, %{"tenant" => "first"}} = Client.discover(first)
+      assert_receive {:fake_http, %{"x-tenant" => "first"}, _message}, 1_000
+      assert {:ok, %{"tenant" => "second"}} = Client.discover(second)
+      assert_receive {:fake_http, %{"x-tenant" => "second"}, _message}, 1_000
+      assert {:ok, %{"tenant" => "first"}} = Client.discover(first)
+      refute_received {:fake_http, _headers, _message}
+
+      :ok = Client.close(first)
+      :ok = Client.close(second)
+    end
+
+    test "private cache entries use the token actually sent on the request" do
+      {:ok, agent} = Agent.start_link(fn -> ["first"] end)
+
+      url =
+        FakeHTTP.start(self(), fn headers, message ->
+          if headers["authorization"] == "Bearer first" do
+            {401, [{"www-authenticate", "Bearer"}], ""}
+          else
+            json(message, %{
+              "resultType" => "complete",
+              "ttlMs" => 5_000,
+              "cacheScope" => "private",
+              "credential" => headers["authorization"]
+            })
+          end
+        end)
+
+      {:ok, client} =
+        Client.connect({:http, url},
+          protocol: "2026-07-28",
+          cache: true,
+          token_provider: {SequenceToken, agent}
+        )
+
+      assert {:ok, %{"credential" => "Bearer second"}} = Client.discover(client)
+      assert_receive {:fake_http, %{"authorization" => "Bearer first"}, _message}, 1_000
+      assert_receive {:fake_http, %{"authorization" => "Bearer second"}, _message}, 1_000
+
+      assert {:ok, %{"credential" => "Bearer second"}} = Client.discover(client)
+      refute_received {:fake_http, _headers, _message}
+
+      Agent.update(agent, fn _state -> ["third"] end)
+      assert {:ok, %{"credential" => "Bearer third"}} = Client.discover(client)
+      assert_receive {:fake_http, %{"authorization" => "Bearer third"}, _message}, 1_000
+      :ok = Client.close(client)
+    end
+
     test "an extension policy mirrors and encodes its routed name" do
       url = FakeHTTP.start(self(), fn _headers, message -> json(message, %{}) end)
       client = connect(url)

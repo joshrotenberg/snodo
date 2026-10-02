@@ -112,6 +112,30 @@ defmodule Snodo.ClientTest do
     client
   end
 
+  test "custom transports do not reuse private results without a credential identity" do
+    client = canned_client(cache: true)
+
+    for credential <- ["first", "second"] do
+      send(
+        self(),
+        {:canned_response,
+         %{
+           "jsonrpc" => "2.0",
+           "id" => 0,
+           "result" => %{
+             "resultType" => "complete",
+             "ttlMs" => 5_000,
+             "cacheScope" => "private",
+             "credential" => credential
+           }
+         }}
+      )
+
+      assert {:ok, %{"credential" => ^credential}} = Client.discover(client)
+      assert_receive {:canned_request, %{"method" => "server/discover"}, _opts}, 1_000
+    end
+  end
+
   @legacy_fixture [
     tools: [Echo, SnodoTest.TestTools.ContextEcho],
     resources: [StaticText],

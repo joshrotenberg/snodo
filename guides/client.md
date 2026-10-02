@@ -145,6 +145,44 @@ pages (1,000 by default) still has a `nextCursor`. `list_page/3` returns one
 {:ok, next} = Snodo.Client.list_page(client, :tools, cursor)
 ```
 
+## Response caching
+
+Pass `cache: true` to `direct/2` or `connect/2` to cache complete
+`server/discover`, list-page, and `resources/read` results. Caching is off by
+default. A result is stored only when it has a positive `ttlMs` and a
+`cacheScope` of `"public"` or `"private"`. It expires `ttlMs` milliseconds
+after the response arrives. The shared cache holds at most 256 results and
+16 MiB; the least recently used entry is removed when either limit is exceeded.
+An individual result larger than 16 MiB is not stored.
+
+Public results can be reused by clients of the same endpoint, protocol, client
+metadata, and noncredential HTTP headers.
+Private results are partitioned by the credentials used for the request and
+the session ID. Stdio clients have separate cache namespaces for their
+separate server processes. Neither raw bearer tokens nor authorization headers
+are kept in cache keys. Custom transports can reuse public results, but private
+results are not stored because the client cannot identify their credentials.
+
+While a client listens for subscriptions, tools, prompts, and resources list
+changes remove the corresponding cached pages. A resource update removes
+cached reads for that URI. Invalidation happens when the event reaches the
+client, even if the subscription owner has not yet demanded it. Without a
+subscription, entries expire by their TTL.
+
+Pass `bypass_cache: true` on a call to send it to the server and leave existing
+entries unchanged. The named discovery and list functions accept an options
+argument; for manual paging, pass it after the cursor:
+
+```elixir
+{:ok, client} = Snodo.Client.connect({:http, url}, cache: true)
+{:ok, tools} = Snodo.Client.list_tools(client)
+{:ok, fresh} = Snodo.Client.list_tools(client, bypass_cache: true)
+{:ok, page} = Snodo.Client.list_page(client, :tools, nil, bypass_cache: true)
+```
+
+Requests with other per-call options, such as custom metadata or progress,
+are sent normally and are not cached.
+
 ## Multi round-trip requests
 
 A server that needs input returns `input_required` with `inputRequests` and,
@@ -403,6 +441,7 @@ transport failure; -32001 when the acknowledgement does not arrive within
 | `:protocol` | all | a version to pin, or a list to allow; defaults to every version the client speaks (see above) |
 | `:probe_timeout` | `connect/2` | milliseconds to wait for the answer to the `server/discover` probe (10,000) |
 | `:max_pages` | all | the most pages a list function requests (1,000) |
+| `:cache` | all | opt in to the bounded response cache (off by default; see above) |
 | `:env`, `:cd` | stdio | environment and working directory for the command |
 | `:max_line_bytes` | stdio | the largest response line to accept (16 MiB); the rest of a longer line is discarded and its request times out |
 | `:max_server_requests` | stdio | the most server-to-client requests whose handlers run at once (16); a request over the limit is answered -32603 |

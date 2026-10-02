@@ -244,6 +244,31 @@ defmodule Snodo.Client.HTTP do
   @impl Transport
   def close(state), do: Pool.close(state.pool_key)
 
+  @doc false
+  def cache_variant(%{headers: headers, max_response_bytes: max_response_bytes, ssl: ssl}) do
+    variant_headers =
+      Enum.reject(headers, fn {name, _value} ->
+        String.downcase(name) in ["authorization", "cookie"]
+      end)
+
+    :crypto.hash(:sha256, :erlang.term_to_binary({variant_headers, max_response_bytes, ssl}))
+  end
+
+  @doc false
+  def cache_credential(%{token_provider: nil, headers: headers, ssl: ssl}),
+    do: {:ok, credential_digest(headers, nil, ssl), nil}
+
+  def cache_credential(%{
+        token_provider: {module, provider},
+        headers: headers,
+        ssl: ssl,
+        url: url
+      }) do
+    with {:ok, token} <- provider_token(module, :token, module.token(provider, %{url: url})) do
+      {:ok, credential_digest(headers, token, ssl), token}
+    end
+  end
+
   # Runs in a process linked to `stream`, a `Snodo.Client.HTTP.Stream`. Sends
   # the request, then feeds every decoded event-stream message to `stream` as
   # `{:mcp_stream_message, message}`, and ends with `{:mcp_stream_end,
@@ -731,12 +756,37 @@ defmodule Snodo.Client.HTTP do
   # One exchange, with the provider's token when there is one. Returns the
   # exchange's outcome, or an error from the provider or from a second
   # challenge.
-  defp authorized_exchange(%{token_provider: nil} = state, method, headers, message, opts),
-    do: exchange(state, method, headers, message, opts)
+  defp authorized_exchange(%{token_provider: nil} = state, method, headers, message, opts) do
+    result = exchange(state, method, headers, message, opts)
+    report_credential(opts, state, nil, result)
+    result
+  end
 
   defp authorized_exchange(state, method, headers, message, opts) do
-    authorized(state, &attempt(state, method, headers, message, opts, &1))
+    attempt = fn token ->
+      result = attempt(state, method, headers, message, opts, token)
+      report_credential(opts, state, token, result)
+      result
+    end
+
+    case Keyword.fetch(opts, :cache_token) do
+      {:ok, token} -> authorized(state, attempt, token)
+      :error -> authorized(state, attempt)
+    end
   end
+
+  defp report_credential(opts, state, token, {:ok, _status, _headers, _outcome}) do
+    if callback = Keyword.get(opts, :on_cache_credential) do
+      callback.(credential_digest(state.headers, token, state.ssl))
+    end
+
+    :ok
+  end
+
+  defp report_credential(_opts, _state, _token, _outcome), do: :ok
+
+  defp credential_digest(headers, token, ssl),
+    do: :crypto.hash(:sha256, :erlang.term_to_binary({headers, token, ssl}))
 
   defp listen_authorized(%{token_provider: nil} = state, headers, message, opts),
     do: SubscriptionStream.open(state, headers, message, opts)
@@ -751,10 +801,17 @@ defmodule Snodo.Client.HTTP do
   # so a server that keeps refusing cannot loop a client through its
   # authorization flow. `attempt` sends with a token and returns
   # `{:challenge, status, challenge}` or the result.
-  defp authorized(%{token_provider: {module, provider}} = state, attempt) do
+  defp authorized(state, attempt, initial_token \\ :fetch)
+
+  defp authorized(%{token_provider: {module, provider}} = state, attempt, initial_token) do
     context = %{url: state.url}
 
-    with {:ok, token} <- provider_token(module, :token, module.token(provider, context)),
+    initial =
+      if initial_token == :fetch,
+        do: provider_token(module, :token, module.token(provider, context)),
+        else: provider_token(module, :token, {:ok, initial_token})
+
+    with {:ok, token} <- initial,
          {:challenge, status, challenge} <- attempt.(token),
          context = Map.merge(context, %{status: status, token: token}),
          {:ok, token} <-

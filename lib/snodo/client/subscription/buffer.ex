@@ -1,5 +1,7 @@
 defmodule Snodo.Client.Subscription.Buffer do
   @moduledoc false
+
+  alias Snodo.Client.Cache
   # The bounded queue behind one `Snodo.Client.Subscription`, kept by the
   # transport process that receives the stream. An event is sent to the owner
   # while the owner has demand and queued otherwise. A full queue discards an
@@ -20,6 +22,7 @@ defmodule Snodo.Client.Subscription.Buffer do
     :max_buffer,
     :overflow,
     :queue,
+    cache_namespace: nil,
     size: 0,
     demand: 0,
     dropped: 0,
@@ -32,6 +35,7 @@ defmodule Snodo.Client.Subscription.Buffer do
           max_buffer: pos_integer(),
           overflow: :drop_oldest | :drop_newest,
           queue: :queue.queue(),
+          cache_namespace: term(),
           size: non_neg_integer(),
           demand: non_neg_integer(),
           dropped: non_neg_integer(),
@@ -46,20 +50,25 @@ defmodule Snodo.Client.Subscription.Buffer do
       ref: ref,
       max_buffer: Keyword.fetch!(opts, :max_buffer),
       overflow: Keyword.fetch!(opts, :overflow),
+      cache_namespace: Keyword.get(opts, :cache_namespace),
       queue: :queue.new()
     }
   end
 
   @doc false
   @spec push(t(), {:notification, String.t(), map()}) :: t()
-  def push(%__MODULE__{closed: nil, demand: demand} = buffer, payload) when demand > 0 do
+  def push(%__MODULE__{closed: nil} = buffer, {:notification, method, params} = payload) do
+    :ok = Cache.invalidate(buffer.cache_namespace, method, params)
+    push_ready(buffer, payload)
+  end
+
+  def push(%__MODULE__{} = buffer, _payload), do: buffer
+
+  defp push_ready(%__MODULE__{demand: demand} = buffer, payload) when demand > 0 do
     buffer |> flush_dropped() |> deliver(payload) |> Map.put(:demand, demand - 1)
   end
 
-  def push(%__MODULE__{closed: nil} = buffer, payload), do: enqueue(buffer, payload)
-
-  # Nothing follows the terminal response.
-  def push(%__MODULE__{} = buffer, _payload), do: buffer
+  defp push_ready(%__MODULE__{} = buffer, payload), do: enqueue(buffer, payload)
 
   @doc false
   @spec demand(t(), pos_integer()) :: t()
