@@ -60,10 +60,10 @@ defmodule Snodo.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => @source_url, "Changelog" => "#{@source_url}/blob/main/CHANGELOG.md"},
-      # lib/mix holds tasks that run this repository's examples and compliance
-      # vectors; they are not useful without the checkout.
+      # The catalog task is useful to applications using the Hex package;
+      # the other lib/mix tasks need this repository's checkout.
       files:
-        ~w(lib/snodo lib/snodo.ex guides mix.exs README.md CHANGELOG.md LICENSE .formatter.exs)
+        ~w(lib/snodo lib/snodo.ex lib/mix/tasks/snodo.catalog.ex guides mix.exs README.md CHANGELOG.md LICENSE .formatter.exs)
     ]
   end
 
