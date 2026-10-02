@@ -156,6 +156,36 @@ must keep it above `:drain_timeout`; a supervisor that kills the listener
 earlier skips the rest of the drain. The release or platform that stops the VM
 must allow for the drain as well.
 
+## Component limits
+
+The opt-in wrappers in `Snodo.Component.Wrap` bound individual tools,
+resources, and prompts after router checks. They apply to direct, stdio, and
+HTTP requests alike. Their defaults are:
+
+| Wrapper | Default | Defined failure |
+|---|---|---|
+| `Timeout` | `timeout: 5_000` ms | `Component timed out` |
+| `Concurrency` | `limit: 32` in-flight callbacks per component and key | `Component concurrency limit reached` |
+| `RateLimit` | `limit: 60` calls per `window_ms: 60_000`, `max_keys: 10_000` per component | `Component rate limit reached` or `Component rate key capacity reached` |
+
+All numeric options must be positive integers; an invalid declaration fails
+compilation. Concurrency and rate wrappers use one shared bucket by default.
+Pass `key: fn context -> ... end` to group by a stable context value such as a
+verified principal. The core application owns the counters. Concurrency
+permits return when a callback finishes or its process exits. Rate buckets
+start with the first call for a key and reset after the configured window;
+expired keys are pruned when capacity is needed. Counts reset if the core
+application restarts. A rejected rate call consumes no callback work, while
+an admitted call counts even if its handler later fails.
+
+The `Timeout` wrapper runs the callback in a supervised task linked to the
+request owner. The shared task supervisor admits at most 1,024 concurrent
+timeout workers and returns `Component timeout worker unavailable` when full.
+It stops a task on timeout or owner termination, but cannot undo external
+side effects. The built-ins return tool `isError` results, or
+JSON-RPC error -32603 for resources and prompts. If the core application is
+not running, they return a defined unavailable error.
+
 ## Plug and Bandit
 
 The `snodo_plug` package provides `Snodo.Transport.Plug` for applications that

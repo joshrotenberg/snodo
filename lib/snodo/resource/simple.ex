@@ -35,9 +35,22 @@ defmodule Snodo.Resource.Simple do
   alias Snodo.Result
 
   defmacro __using__(opts) do
+    {wrap_ast, definition_ast} = Keyword.pop(opts, :wrap, [])
+    Snodo.Component.Wrap.validate_declaration!(wrap_ast, __CALLER__)
+
     quote do
-      use Snodo.Resource, unquote(opts)
+      use Snodo.Resource, unquote(definition_ast)
       @before_compile Snodo.Resource.Simple
+
+      Snodo.Component.Wrap.validate_specs!(unquote(wrap_ast), __ENV__)
+
+      if unquote(wrap_ast != []) do
+        defp __snodo_component_wrap_specs__, do: unquote(wrap_ast)
+      end
+
+      @snodo_component_wrap_ast unquote(Macro.escape(wrap_ast))
+      @snodo_component_wrap_kind :resource
+      @before_compile Snodo.Component.Wrap
     end
   end
 

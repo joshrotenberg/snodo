@@ -11,7 +11,9 @@ defmodule Snodo.Application do
       {Task.Supervisor, name: Snodo.Schema.Validator.Cache.Tasks},
       Snodo.Schema.Validator.Cache,
       Snodo.Client.Cache,
-      Snodo.Client.HTTP.Pool
+      Snodo.Client.HTTP.Pool,
+      {Task.Supervisor, name: Snodo.Component.Wrap.Tasks, max_children: 1_024},
+      Snodo.Component.Wrap.State
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

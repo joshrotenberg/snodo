@@ -51,6 +51,10 @@ defmodule Snodo.Tool do
   resource and prompt icons. `:metadata` becomes `_meta` in `tools/list`.
   Direct implementations may omit these callbacks; the defaults are `nil`,
   `[]`, and `%{}`.
+
+  `use Snodo.Tool` also accepts `wrap:`, a list of `Snodo.Component.Wrap`
+  modules or `{module, options}` tuples. The wrappers run inside `call/2`
+  after router checks.
   """
 
   alias Snodo.Context
@@ -79,50 +83,66 @@ defmodule Snodo.Tool do
     description = Keyword.get(opts, :description)
     icons = Keyword.get(opts, :icons, [])
     metadata = Keyword.get(opts, :metadata, quote(do: %{}))
+    wrap = Keyword.get(opts, :wrap, [])
+    Snodo.Component.Wrap.validate_declaration!(wrap, __CALLER__)
 
     unless is_binary(name) do
       raise ArgumentError, "Snodo.Tool expects :name to be a string literal"
     end
 
-    quote bind_quoted: [
-            name: name,
-            title: title,
-            description: description,
-            icons: icons,
-            metadata: metadata
-          ] do
-      @behaviour Snodo.Tool
+    base =
+      quote bind_quoted: [
+              name: name,
+              title: title,
+              description: description,
+              icons: icons,
+              metadata: metadata
+            ] do
+        @behaviour Snodo.Tool
 
-      import Snodo.Tool,
-        only: [
-          title: 1,
-          description: 1,
-          input_schema: 1,
-          output_schema: 1,
-          annotations: 1,
-          icons: 1,
-          metadata: 1
-        ]
+        import Snodo.Tool,
+          only: [
+            title: 1,
+            description: 1,
+            input_schema: 1,
+            output_schema: 1,
+            annotations: 1,
+            icons: 1,
+            metadata: 1
+          ]
 
-      Module.register_attribute(__MODULE__, :mcp_tool_name, persist: true)
-      Module.register_attribute(__MODULE__, :mcp_tool_title, persist: true)
-      Module.register_attribute(__MODULE__, :mcp_tool_description, persist: true)
-      Module.register_attribute(__MODULE__, :mcp_tool_input_schema, persist: true)
-      Module.register_attribute(__MODULE__, :mcp_tool_output_schema, persist: true)
-      Module.register_attribute(__MODULE__, :mcp_tool_annotations, persist: true)
-      Module.register_attribute(__MODULE__, :mcp_tool_icons, persist: true)
-      Module.register_attribute(__MODULE__, :mcp_tool_metadata, persist: true)
+        Module.register_attribute(__MODULE__, :mcp_tool_name, persist: true)
+        Module.register_attribute(__MODULE__, :mcp_tool_title, persist: true)
+        Module.register_attribute(__MODULE__, :mcp_tool_description, persist: true)
+        Module.register_attribute(__MODULE__, :mcp_tool_input_schema, persist: true)
+        Module.register_attribute(__MODULE__, :mcp_tool_output_schema, persist: true)
+        Module.register_attribute(__MODULE__, :mcp_tool_annotations, persist: true)
+        Module.register_attribute(__MODULE__, :mcp_tool_icons, persist: true)
+        Module.register_attribute(__MODULE__, :mcp_tool_metadata, persist: true)
 
-      @mcp_tool_name name
-      @mcp_tool_title title
-      @mcp_tool_description description
-      @mcp_tool_input_schema %{"type" => "object"}
-      @mcp_tool_output_schema nil
-      @mcp_tool_annotations %{}
-      @mcp_tool_icons icons
-      @mcp_tool_metadata metadata
+        @mcp_tool_name name
+        @mcp_tool_title title
+        @mcp_tool_description description
+        @mcp_tool_input_schema %{"type" => "object"}
+        @mcp_tool_output_schema nil
+        @mcp_tool_annotations %{}
+        @mcp_tool_icons icons
+        @mcp_tool_metadata metadata
 
-      @before_compile Snodo.Tool
+        @before_compile Snodo.Tool
+      end
+
+    quote do
+      unquote(base)
+      Snodo.Component.Wrap.validate_specs!(unquote(wrap), __ENV__)
+
+      if unquote(wrap != []) do
+        defp __snodo_component_wrap_specs__, do: unquote(wrap)
+      end
+
+      @snodo_component_wrap_ast unquote(Macro.escape(wrap))
+      @snodo_component_wrap_kind :tool
+      @before_compile Snodo.Component.Wrap
     end
   end
 

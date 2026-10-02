@@ -63,6 +63,7 @@ defmodule Snodo.Tool.Simple do
 
   The `:title`, `:icons`, and `:metadata` options set the corresponding
   `Snodo.Tool` definition fields. They are validated when the module compiles.
+  `:wrap` applies `Snodo.Component.Wrap` modules around `call/2`.
   """
 
   alias Snodo.JSONValue
@@ -111,7 +112,8 @@ defmodule Snodo.Tool.Simple do
     description = Keyword.get(opts, :description)
     icons = Keyword.get(opts, :icons, [])
     metadata = Keyword.get(opts, :metadata, quote(do: %{}))
-    root_options = Keyword.drop(opts, [:name, :title, :description, :icons, :metadata])
+    wrap = Keyword.get(opts, :wrap, [])
+    root_options = Keyword.drop(opts, [:name, :title, :description, :icons, :metadata, :wrap])
 
     quote do
       use Snodo.Tool,
@@ -119,7 +121,8 @@ defmodule Snodo.Tool.Simple do
         title: unquote(title),
         description: unquote(description),
         icons: unquote(icons),
-        metadata: unquote(metadata)
+        metadata: unquote(metadata),
+        wrap: unquote(wrap)
 
       # Snodo.Tool.Simple.output_schema/1 accepts a do block as well as a map,
       # so it replaces the import of Snodo.Tool.output_schema/1.
