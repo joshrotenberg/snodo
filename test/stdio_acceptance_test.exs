@@ -292,13 +292,21 @@ defmodule Snodo.Transport.StdioAcceptanceTest do
         "arguments" => %{"text" => "still alive"}
       })
 
+    barrier =
+      TestFixtures.request("invalid-cancel-barrier", "tools/call", %{
+        "name" => "trapping",
+        "arguments" => %{"token" => token}
+      })
+
     TestInput.push(input, JSON.encode!(slow) <> "\n")
     assert_receive {:trapping_entered, worker, cancellation}, 1_000
 
     TestInput.push(input, JSON.encode!(invalid_cancel) <> "\n")
-    Process.sleep(20)
+    TestInput.push(input, JSON.encode!(barrier) <> "\n")
+    assert_receive {:trapping_entered, barrier_worker, _barrier_cancellation}, 1_000
     assert Process.alive?(worker)
     refute Snodo.Cancellation.cancelled?(cancellation)
+    send(barrier_worker, :finish)
 
     TestInput.push(input, JSON.encode!(valid_cancel) <> "\n")
     TestInput.push(input, JSON.encode!(reused_id) <> "\n")
@@ -315,7 +323,8 @@ defmodule Snodo.Transport.StdioAcceptanceTest do
       |> String.split("\n", trim: true)
       |> Enum.map(&JSON.decode!/1)
 
-    assert Enum.sort(Enum.map(responses, & &1["id"])) == ["cancel-me", "survives"]
+    assert Enum.sort(Enum.map(responses, & &1["id"])) ==
+             ["cancel-me", "invalid-cancel-barrier", "survives"]
 
     assert %{"result" => reused_result} = Enum.find(responses, &(&1["id"] == "cancel-me"))
     assert reused_result["content"] == [%{"type" => "text", "text" => "id reused"}]
