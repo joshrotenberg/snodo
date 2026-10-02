@@ -29,7 +29,7 @@ mix setup
 (cd interop/official_python && uv sync --frozen)
 ```
 
-This repository builds eight Hex packages: the core `snodo` at the root, and seven siblings under `integrations/` and `extensions/`. `mix setup` fetches dependencies for all of them.
+This repository builds nine Hex packages: the core `snodo` at the root, and eight siblings under `integrations/` and `extensions/`. `mix setup` fetches dependencies for all of them.
 
 ## Making a change
 
@@ -61,7 +61,7 @@ mix compile && (cd interop/official_client && npm run check)
 mix compile && (cd interop/official_python && uv run --frozen python check.py)
 ```
 
-CI also requires the `Hex packaging dry run` check on `main`. It builds the release artifacts for all eight packages.
+CI also requires the `Hex packaging dry run` check on `main`. It builds the release artifacts for all nine packages.
 
 If your change touches a transport or anything on the wire, also run the conformance lanes and the wire-schema check (see [conformance/AGENTS.md](conformance/AGENTS.md) and [interop/AGENTS.md](interop/AGENTS.md)).
 

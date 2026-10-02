@@ -23,6 +23,7 @@ The client speaks all three versions and negotiates one when it connects.
 - **No runtime dependencies** in the core: it uses Elixir's built-in `JSON`
   and OTP. Optional sibling packages add Tasks, Plug, OAuth 2.1 resource
   server support, full JSON Schema validation, and `:telemetry` events.
+  An optional proxy package fronts multiple MCP backends.
 
 ## Packages
 
@@ -33,6 +34,7 @@ The client speaks all three versions and negotiates one when it connects.
 | [`snodo_jsv`](https://hex.pm/packages/snodo_jsv) | Full JSON Schema 2020-12 validation through JSV | [HexDocs](https://hexdocs.pm/snodo_jsv) |
 | [`snodo_oauth`](https://hex.pm/packages/snodo_oauth) | OAuth 2.1 resource server plugs (protected resource metadata, bearer token verification, scope policy) and the client authorization flows for `Snodo.Client` | [HexDocs](https://hexdocs.pm/snodo_oauth) |
 | [`snodo_telemetry`](https://hex.pm/packages/snodo_telemetry) | `Snodo.Instrumentation.Telemetry`, an instrumentation sink that emits `:telemetry` events | [HexDocs](https://hexdocs.pm/snodo_telemetry) |
+| [`snodo_proxy`](https://hex.pm/packages/snodo_proxy) | Aggregating proxy for MCP backends | [HexDocs](https://hexdocs.pm/snodo_proxy) |
 | [`snodo_tasks`](https://hex.pm/packages/snodo_tasks) | The `io.modelcontextprotocol/tasks` extension with an application-owned store and runner | [HexDocs](https://hexdocs.pm/snodo_tasks) |
 | [`snodo_tasks_postgres`](https://hex.pm/packages/snodo_tasks_postgres) | PostgreSQL store for Tasks | [HexDocs](https://hexdocs.pm/snodo_tasks_postgres) |
 | [`snodo_tasks_sqlite`](https://hex.pm/packages/snodo_tasks_sqlite) | SQLite store for Tasks | [HexDocs](https://hexdocs.pm/snodo_tasks_sqlite) |
@@ -159,7 +161,7 @@ in [docs/history](https://github.com/joshrotenberg/snodo/blob/main/docs/history/
 ```sh
 mix setup            # fetch dependencies for every package; rerun after a mix.lock changes
 mix quality          # format, compile, Credo, tests, examples, and every sibling package
-mix quality.types    # Dialyzer across all eight packages
+mix quality.types    # Dialyzer across all nine packages
 mix snodo.contract   # the protocol contract inventory
 ```
 

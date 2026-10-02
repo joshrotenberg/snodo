@@ -4,7 +4,7 @@ Working instructions for coding agents, and a quick reference for people. [CONTR
 
 ## Project
 
-snodo is an Elixir library for Model Context Protocol (MCP) servers and clients. Eight Hex packages are built from this repository and released together at one version:
+snodo is an Elixir library for Model Context Protocol (MCP) servers and clients. Nine Hex packages are built from this repository and released together at one version:
 
 | Package | Directory | Contents |
 |---|---|---|
@@ -13,6 +13,7 @@ snodo is an Elixir library for Model Context Protocol (MCP) servers and clients.
 | `snodo_jsv` | `integrations/schema_jsv` | JSON Schema validator backed by JSV |
 | `snodo_oauth` | `integrations/oauth` | OAuth 2.1 resource server plugs, JWT verification, scope policy, and the client authorization flows (`Snodo.OAuth.Client`) |
 | `snodo_telemetry` | `integrations/telemetry` | Instrumentation sink that emits `:telemetry` events |
+| `snodo_proxy` | `integrations/proxy` | Aggregating proxy for MCP backends |
 | `snodo_tasks` | `extensions/tasks` | Tasks extension, store contract, memory and DETS stores |
 | `snodo_tasks_postgres` | `extensions/tasks_postgres` | PostgreSQL task store |
 | `snodo_tasks_sqlite` | `extensions/tasks_sqlite` | SQLite task store |
@@ -36,7 +37,7 @@ Inside the repository each sibling depends on `snodo` by path. `RELEASING.md` ex
 Requirements: Elixir 1.18 or later on OTP 27 or later (CI runs 1.18/OTP 27, 1.19/OTP 28, and 1.20/OTP 29), Node.js 24 for the TypeScript interop and conformance checks, and Python 3.13 with uv 0.12.21 for Python interop. PostgreSQL is needed only for the live PostgreSQL lane.
 
 ```sh
-mix setup                                      # dependencies for the core, the seven siblings, and the conformance fixture
+mix setup                                      # dependencies for the core, the eight siblings, and the conformance fixture
 (cd interop/official_client && npm ci --ignore-scripts)
 (cd interop/official_python && uv sync --frozen)
 ```
@@ -49,14 +50,14 @@ Run all of these before every push. CI runs the same commands.
 
 ```sh
 mix quality                                    # format, compile with warnings as errors, credo --strict, tests, contract, examples, every sibling
-MIX_ENV=test mix quality.types                 # Dialyzer across all eight packages
+MIX_ENV=test mix quality.types                 # Dialyzer across all nine packages
 MIX_ENV=dev mix docs --warnings-as-errors      # documentation build
 mix compile && (cd interop/official_client && npm run check)   # official TypeScript client: baseline, MRTR, progress
 mix compile && (cd interop/official_python && uv run --frozen python check.py) # official Python client
 ```
 
 - `mix quality` includes `mix snodo.contract`, which reports 32 evidence groups. A change that moves that count needs a reason in the pull request.
-- CI's `Hex packaging dry run` is a required check on `main`. It builds the release artifacts for all eight packages.
+- CI's `Hex packaging dry run` is a required check on `main`. It builds the release artifacts for all nine packages.
 - A change to a transport or to what goes on the wire also runs the conformance lanes ([conformance/AGENTS.md](conformance/AGENTS.md)) and the wire-schema check ([interop/AGENTS.md](interop/AGENTS.md)).
 - CI formats with Elixir 1.18 as well, and its formatter wraps some long lines differently. For each changed core file, with Docker available: `docker run --rm -i -w /tmp elixir:1.18-otp-27 mix format - < FILE | diff FILE -` should print nothing. Sibling files that import Ecto formatter settings can report false differences this way.
 - [repeat-until-failure.yml](.github/workflows/repeat-until-failure.yml) is not a gate. It runs weekly, and by hand, and repeats each package's suite with `mix test --repeat-until-failure N --max-failures 1` three ways: default schedulers, `ERL_FLAGS="+S 2:2"`, and default schedulers with competing CPU load. A failure uploads the log and opens or comments on one issue per package, labeled `flaky`, with the test and the seed. Run it on a branch with `gh workflow run repeat-until-failure.yml --ref <branch> -f repeat=50 -f package=snodo_tasks_sqlite` (`package` defaults to `all`, `repeat` to 20). `repeat` is at most 35 when the core suite runs and 200 otherwise, so the CPU-load variant fits the step timeout.
@@ -81,7 +82,7 @@ mix test --repeat-until-failure 100 --max-failures 1   # look for flaky tests; a
 - `test/compliance/` holds literal protocol messages. Never build requests there with `Snodo.Client` or `Snodo.Test`.
 - Every limit has a default, is documented (`guides/transports.md` or the package README), and fails with a defined error.
 - Conformance baselines are reviewed by hand. A newly passing check fails the gate too, until the baseline is updated on purpose ([conformance/AGENTS.md](conformance/AGENTS.md)).
-- release-please owns the versions in the eight `mix.exs` files, `CHANGELOG.md`, and the install snippets between `x-release-please-start-version` and `x-release-please-end` markers. Do not edit them by hand.
+- release-please owns the versions in the nine `mix.exs` files, `CHANGELOG.md`, and the install snippets between `x-release-please-start-version` and `x-release-please-end` markers. Do not edit them by hand.
 - Records in `docs/history/` stay as written. Add a new dated record rather than editing an old one.
 
 ## Code style

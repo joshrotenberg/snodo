@@ -1,6 +1,6 @@
 # Releasing
 
-The eight packages in this repository share one version and are released
+The nine packages in this repository share one version and are released
 together from one `v<version>` tag:
 
 | Package | Directory |
@@ -11,6 +11,7 @@ together from one `v<version>` tag:
 | `snodo_jsv` | `integrations/schema_jsv` |
 | `snodo_oauth` | `integrations/oauth` |
 | `snodo_telemetry` | `integrations/telemetry` |
+| `snodo_proxy` | `integrations/proxy` |
 | `snodo_tasks_postgres` | `extensions/tasks_postgres` |
 | `snodo_tasks_sqlite` | `extensions/tasks_sqlite` |
 
@@ -25,7 +26,7 @@ released package at the same version instead.
 push to `main` ([release-please.yml](.github/workflows/release-please.yml)):
 
 1. It keeps a release pull request open. The pull request sets the next
-   version in all eight `mix.exs` files (`release-please-config.json` lists the
+   version in all nine `mix.exs` files (`release-please-config.json` lists the
    sibling files, whose `@version` lines sit between
    `x-release-please-start-version` and `x-release-please-end` comments) and
    adds the release's `CHANGELOG.md` entry. Both come from the
@@ -43,9 +44,9 @@ push to `main` ([release-please.yml](.github/workflows/release-please.yml)):
 3. Merging the release pull request tags `v<version>`, creates the GitHub
    release, and runs the `publish-hex` job. That job publishes the core, then
    `snodo_tasks`, `snodo_plug`, `snodo_jsv`, `snodo_oauth`, and
-   `snodo_telemetry`, then the two Tasks stores, waiting for each tier to
+   `snodo_telemetry` and `snodo_proxy`, then the two Tasks stores, waiting for each tier to
    appear in the Hex index. It skips a package whose version is already on
-   Hex, so a failed run can be rerun. It then builds eight tarballs, fetches
+   Hex, so a failed run can be rerun. It then builds nine tarballs, fetches
    the published archives from Hex, and requires byte-for-byte matches before
    attesting the local builds and attaching them to the GitHub release. A
    rerun checks existing release assets instead of replacing them.
@@ -58,7 +59,7 @@ The workflow needs two secrets:
   token: the release pull request's workflows then wait for approval
   (`gh api -X POST repos/joshrotenberg/snodo/actions/runs/<id>/approve` for
   each). A set but invalid token fails the run with "Bad credentials".
-- `HEX_API_KEY`: a Hex API key that can publish the eight packages. The
+- `HEX_API_KEY`: a Hex API key that can publish the nine packages. The
   `publish-hex` job runs in the `hex` environment and passes the key only to
   its publish step. Keep the key as a secret of that environment, and limit the
   environment's deployment branches and tags to `v*` tags.
@@ -104,7 +105,7 @@ each sibling.
 To publish an existing tag again, for example after `publish-hex` failed partway,
 run the workflow by hand. Packages already on Hex are skipped. The job refuses a
 tag that is not `vX.Y.Z`, is not on `main`, or does not match the version in all
-eight `mix.exs` files:
+nine `mix.exs` files:
 
 ```sh
 gh workflow run release-please.yml -f tag=vX.Y.Z
@@ -121,6 +122,7 @@ mix hex.publish
 (cd integrations/schema_jsv && SNODO_HEX=1 mix deps.get && SNODO_HEX=1 mix hex.publish)
 (cd integrations/oauth && SNODO_HEX=1 mix deps.get && SNODO_HEX=1 mix hex.publish)
 (cd integrations/telemetry && SNODO_HEX=1 mix deps.get && SNODO_HEX=1 mix hex.publish)
+(cd integrations/proxy && SNODO_HEX=1 mix deps.get && SNODO_HEX=1 mix hex.publish)
 
 (cd extensions/tasks_postgres && SNODO_HEX=1 mix deps.get && SNODO_HEX=1 mix hex.publish)
 (cd extensions/tasks_sqlite && SNODO_HEX=1 mix deps.get && SNODO_HEX=1 mix hex.publish)

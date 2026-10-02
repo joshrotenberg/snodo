@@ -15,6 +15,7 @@
         "integrations/schema_jsv/mix.exs",
         "integrations/oauth/mix.exs",
         "integrations/telemetry/mix.exs",
+        "integrations/proxy/mix.exs",
         "README.md",
         "guides/getting-started.md",
         "guides/instrumentation.md",
@@ -24,7 +25,8 @@
         "integrations/plug/README.md",
         "integrations/schema_jsv/README.md",
         "integrations/oauth/README.md",
-        "integrations/telemetry/README.md"
+        "integrations/telemetry/README.md",
+        "integrations/proxy/README.md"
       ]
     }
   }

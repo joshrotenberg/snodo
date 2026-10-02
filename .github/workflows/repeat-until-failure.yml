@@ -26,6 +26,7 @@ on:
           - snodo_jsv
           - snodo_oauth
           - snodo_telemetry
+          - snodo_proxy
           - snodo_tasks
           - snodo_tasks_postgres
           - snodo_tasks_sqlite
@@ -62,6 +63,7 @@ jobs:
             {"name": "snodo_jsv", "dir": "integrations/schema_jsv", "max_repeat": 200},
             {"name": "snodo_oauth", "dir": "integrations/oauth", "max_repeat": 200},
             {"name": "snodo_telemetry", "dir": "integrations/telemetry", "max_repeat": 200},
+            {"name": "snodo_proxy", "dir": "integrations/proxy", "max_repeat": 200},
             {"name": "snodo_tasks", "dir": "extensions/tasks", "max_repeat": 200},
             {"name": "snodo_tasks_postgres", "dir": "extensions/tasks_postgres",
              "args": "--include postgres_live", "postgres": true, "max_repeat": 200},
@@ -275,7 +277,7 @@ jobs:
 
           # Only the fixed package and variant names are read, so artifact file
           # names never reach a title, a path, or a command line on their own.
-          packages=(snodo snodo_plug snodo_jsv snodo_oauth snodo_telemetry
+          packages=(snodo snodo_plug snodo_jsv snodo_oauth snodo_telemetry snodo_proxy
                     snodo_tasks snodo_tasks_postgres snodo_tasks_sqlite)
           variants=(default two-schedulers cpu-load)
           open=""
