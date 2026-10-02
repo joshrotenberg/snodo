@@ -34,10 +34,25 @@ dispatch, stdio, the native HTTP listener, and Plug share one decision.
 | Phase | Operations | Effect of a refusal |
 |---|---|---|
 | `:discovery` | `tools/list`, `prompts/list`, `resources/list`, `resources/templates/list` | the component is left out of the list |
-| `:invocation` | `tools/call`, `prompts/get`, `resources/read`, `completion/complete` | the request fails with the policy's own `Snodo.Error`, before argument validation and before any application callback |
+| `:invocation` | `tools/call`, `prompts/get`, `resources/read`, `completion/complete` | by default the request fails with the policy's own `Snodo.Error`, before argument validation and before any application callback |
 
 Filtering happens before paging, so a cursor belongs to the catalog that
 context can see and expires if replayed against a different one.
+
+## Concealing refused components
+
+Set `refusal: :conceal` in the policy options to return the same JSON-RPC error
+as an unknown component when the policy refuses an invocation:
+
+```elixir
+authorization: {MyApp.Policy, [refusal: :conceal]}
+```
+
+Map options with an atom `:refusal` key work too. The policy still receives
+the options unchanged and runs for the refused invocation, so it can record an
+audit event. Discovery filtering and policy faults retain their usual behavior.
+For initialize-era tool calls, the policy decides before the server reports
+that a tool's schema cannot be expressed in that dialect.
 
 For a resource template, `component.uri` is the registered template, while
 `component.requested_uri` is the concrete URI on `resources/read` and on a

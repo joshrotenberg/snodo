@@ -106,8 +106,9 @@ MyApp.Server.runtime(authorization: {MyApp.Policy, catalog: MyApp.Catalog})
 the derived `Snodo.Context`, and the configured options. Return `:ok` or
 `{:error, %Snodo.Error{}}`. The router applies the decision before argument
 validation and before any tool, prompt, resource, or completion callback, so a
-guessed name cannot produce a side effect, and a refusal carries the
-application's own error instead of an unknown-name error.
+guessed name cannot produce a side effect. By default, a refusal carries the
+application's own error; `refusal: :conceal` in the policy options makes it
+answer like an unknown component.
 
 Keep the following in mind when writing a policy:
 

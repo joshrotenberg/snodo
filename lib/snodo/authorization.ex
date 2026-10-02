@@ -10,7 +10,10 @@ defmodule Snodo.Authorization do
 
   Configure a runtime with `authorization: MyApp.Policy` or
   `authorization: {MyApp.Policy, options}`; the second element is passed back
-  unchanged on every call. An unconfigured runtime performs no extra work.
+  unchanged on every call. Set `refusal: :conceal` in a keyword list or map of
+  options to make refused invocations answer like unknown components. The
+  policy still receives its original options and can record the refusal.
+  An unconfigured runtime performs no extra work.
 
       defmodule MyApp.Policy do
         @behaviour Snodo.Authorization
@@ -35,9 +38,10 @@ defmodule Snodo.Authorization do
   response, so the client never learns the name exists.
 
   `:invocation` covers `tools/call`, `prompts/get`, `resources/read`, and
-  `completion/complete`. A refusal is returned to the client as the
-  application's own `Snodo.Error`, which keeps a boundary violation distinct from
-  an unknown name and gives the policy the one place to record an audit event.
+  `completion/complete`. By default, a refusal is returned to the client as
+  the application's own `Snodo.Error`. With `refusal: :conceal`, the client
+  receives the same error as for an unknown component. In either case, the
+  policy has the one place to record an audit event.
   `Snodo.Context.request_method` names the exact operation being refused.
 
   The policy runs once per listed component during discovery and once per
@@ -67,8 +71,9 @@ defmodule Snodo.Authorization do
   Decides whether `context` may discover or invoke `component`.
 
   Return `:ok` to allow, or `{:error, %Snodo.Error{}}` to refuse. The error is
-  returned verbatim during `:invocation` and only hides the component during
-  `:discovery`.
+  returned verbatim during `:invocation` by default, or replaced by the
+  corresponding unknown-component error with `refusal: :conceal`. A refusal
+  hides the component during `:discovery`.
   """
   @callback authorize(phase(), Component.t(), Context.t(), term()) ::
               :ok | {:error, Error.t()}
@@ -95,6 +100,16 @@ defmodule Snodo.Authorization do
   def normalize!(_invalid) do
     raise ArgumentError, "authorization must be a module or a {module, options} tuple"
   end
+
+  @doc false
+  @spec conceal?(config()) :: boolean()
+  def conceal?({_module, %{refusal: :conceal}}), do: true
+
+  def conceal?({_module, options}) when is_list(options) do
+    Keyword.keyword?(options) and Keyword.get(options, :refusal) == :conceal
+  end
+
+  def conceal?(_authorization), do: false
 
   @doc false
   @spec decide(config(), phase(), Component.t(), Context.t()) :: decision()
