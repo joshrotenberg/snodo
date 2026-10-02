@@ -6,6 +6,9 @@ defmodule Snodo.Prompt do
   than JSON Schema. Required arguments are checked by the router before
   `render/2` runs. A prompt returns one or more user/assistant messages through
   `Snodo.Result.prompt_get/2`.
+
+  `wrap:` applies `Snodo.Component.Wrap` modules to `render/2` and, when
+  defined, `complete/2` after router checks.
   """
 
   alias Snodo.Completion
@@ -26,16 +29,39 @@ defmodule Snodo.Prompt do
   @optional_callbacks complete: 2
 
   defmacro __using__(opts_ast) do
-    opts = literal_options!(__CALLER__, opts_ast)
+    {wrap_ast, definition_ast} = pop_wrap(opts_ast)
+    Snodo.Component.Wrap.validate_declaration!(wrap_ast, __CALLER__)
+    opts = literal_options!(__CALLER__, definition_ast)
     definition = compile_definition!(__CALLER__, opts)
+
+    wrap_hook =
+      if wrap_ast == [] do
+        quote(do: :ok)
+      else
+        quote do
+          Snodo.Component.Wrap.validate_specs!(unquote(wrap_ast), __ENV__)
+          defp __snodo_component_wrap_specs__, do: unquote(wrap_ast)
+          @snodo_component_wrap_ast unquote(Macro.escape(wrap_ast))
+          @snodo_component_wrap_kind :prompt
+          @before_compile Snodo.Component.Wrap
+        end
+      end
 
     quote do
       @behaviour Snodo.Prompt
 
       @impl Snodo.Prompt
       def definition, do: unquote(Macro.escape(definition))
+
+      unquote(wrap_hook)
     end
   end
+
+  defp pop_wrap(opts) when is_list(opts) do
+    if Keyword.keyword?(opts), do: Keyword.pop(opts, :wrap, []), else: {[], opts}
+  end
+
+  defp pop_wrap(opts), do: {[], opts}
 
   @doc "Returns and validates the protocol-neutral definition for a prompt module."
   @spec definition(module()) :: Definition.t()

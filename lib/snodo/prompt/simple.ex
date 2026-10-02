@@ -18,7 +18,7 @@ defmodule Snodo.Prompt.Simple do
 
   `argument/2` accepts `:required`, `:description`, and `:title`. The module
   accepts every other `Snodo.Prompt` option (`:name`, `:title`, `:description`,
-  `:completion_arguments`, `:icons`, `:metadata`) and its definition is
+  `:completion_arguments`, `:icons`, `:metadata`, `:wrap`) and its definition is
   validated at compile time by the same checks `use Snodo.Prompt` runs.
 
   `render/2` may return:
@@ -39,6 +39,9 @@ defmodule Snodo.Prompt.Simple do
   @argument_keys %{required: "required", description: "description", title: "title"}
 
   defmacro __using__(opts) do
+    {wrap_ast, definition_ast} = Keyword.pop(opts, :wrap, [])
+    Snodo.Component.Wrap.validate_declaration!(wrap_ast, __CALLER__)
+
     quote do
       @behaviour Snodo.Prompt
 
@@ -47,11 +50,21 @@ defmodule Snodo.Prompt.Simple do
       Module.register_attribute(__MODULE__, :mcp_prompt_simple_arguments, accumulate: true)
 
       @mcp_prompt_simple_options Snodo.Prompt.Simple.validate_options!(
-                                   unquote(opts),
+                                   unquote(definition_ast),
                                    __ENV__
                                  )
 
       @before_compile Snodo.Prompt.Simple
+
+      Snodo.Component.Wrap.validate_specs!(unquote(wrap_ast), __ENV__)
+
+      if unquote(wrap_ast != []) do
+        defp __snodo_component_wrap_specs__, do: unquote(wrap_ast)
+      end
+
+      @snodo_component_wrap_ast unquote(Macro.escape(wrap_ast))
+      @snodo_component_wrap_kind :prompt
+      @before_compile Snodo.Component.Wrap
     end
   end
 

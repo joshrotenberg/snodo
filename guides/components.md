@@ -302,6 +302,47 @@ modules and includes a generic tool restricted to the same declared
 operations. The generic tool is an example prototype, not part of the
 declaration API.
 
+## Per-component wrappers
+
+Tools, resources, and prompts can declare `wrap:` in a module's `use` options
+or in an inline `Snodo.Server` declaration. Declare the list and its options
+with literals or module attributes; runtime expressions are rejected so the
+validated wrapper configuration stays fixed. The first wrapper runs outermost:
+
+```elixir
+tool "lookup",
+  wrap: [
+    {Snodo.Component.Wrap.Timeout, timeout: 2_000},
+    {Snodo.Component.Wrap.Concurrency, limit: 4},
+    {Snodo.Component.Wrap.RateLimit,
+     limit: 30, window_ms: 60_000,
+     key: fn context -> context.auth && context.auth["principal"] end}
+  ] do
+  argument "query", :string, required: true
+
+  @impl true
+  def call(%{"query" => query}, _context), do: {:ok, search(query)}
+end
+```
+
+A custom wrapper implements the `call/4` callback of `Snodo.Component.Wrap`:
+it receives the
+request context, the callback's arguments, a continuation, and keyword options.
+Call `next.(context, arguments)` to continue, or return a handler result to
+stop the chain. The options include `:component`, `:kind`, `:operation`, and
+`:slot`; these keys are reserved. A wrapper that changes arguments must check
+the new values itself, because the router validated only the original request.
+The wrappers run after lookup, authorization, and input validation. They apply
+to `call/2`, `read/2`, and `render/2`, and to a resource or prompt's explicitly
+defined `complete/2` callback.
+
+The built-ins return `Snodo.Result.error/1` for a tool refusal and a typed
+`Snodo.Error` with code -32603 for a resource or prompt refusal. They do not
+change router-wide execution or transport limits. A timed-out callback runs
+in a linked task and is stopped when its deadline or request owner ends; a
+timeout cannot undo side effects that already happened. See
+[Transports](transports.md#component-limits) for defaults and state lifetime.
+
 ## Resources
 
 A resource has an exact `:uri` or a `:uri_template`. A template in the
