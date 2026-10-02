@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.4.1](https://github.com/joshrotenberg/snodo/compare/v0.4.0...v0.4.1) (2026-10-02)
+
+
+### Features
+
+* add aggregating proxy package ([#243](https://github.com/joshrotenberg/snodo/issues/243)) ([6a3f69c](https://github.com/joshrotenberg/snodo/commit/6a3f69c7e301460d62f76d24fa8b2462cc648f04))
+* add per-component middleware ([#242](https://github.com/joshrotenberg/snodo/issues/242)) ([5b36942](https://github.com/joshrotenberg/snodo/commit/5b36942acc33413cbb11eebdb0efc80d6c716538))
+* cache Snodo.Client responses from server hints ([#240](https://github.com/joshrotenberg/snodo/issues/240)) ([15ebbf6](https://github.com/joshrotenberg/snodo/commit/15ebbf6b715de2293843eba63d656741d8da5b07))
+* experiment with generated GenServer tools ([#241](https://github.com/joshrotenberg/snodo/issues/241)) ([2ece745](https://github.com/joshrotenberg/snodo/commit/2ece74576822dd5633217c8fa8c0935e0b482cb1))
+* expose requested URI to resource-template policies ([#225](https://github.com/joshrotenberg/snodo/issues/225)) ([fd71e57](https://github.com/joshrotenberg/snodo/commit/fd71e57ea8d76181c95f474bc13e2688d3d0f0c1))
+* expose W3C trace context to handlers and instrumentation ([#233](https://github.com/joshrotenberg/snodo/issues/233)) ([9d52692](https://github.com/joshrotenberg/snodo/commit/9d52692381aac1a29e29850ddad9b2739d9726ed))
+* optionally conceal authorization refusals ([#231](https://github.com/joshrotenberg/snodo/issues/231)) ([2991c45](https://github.com/joshrotenberg/snodo/commit/2991c456e7ecfcd184632286b6be6b9c73ff7bff))
+* render MCP catalogs as Markdown ([#235](https://github.com/joshrotenberg/snodo/issues/235)) ([326f6e0](https://github.com/joshrotenberg/snodo/commit/326f6e06671566018110d4e7ecba529b54b81811))
+* send extension routing headers from the HTTP client ([#214](https://github.com/joshrotenberg/snodo/issues/214)) ([50be287](https://github.com/joshrotenberg/snodo/commit/50be287c5f410c396c60177ee7c479a9c262df24))
+* support OAuth on the native HTTP listener ([#222](https://github.com/joshrotenberg/snodo/issues/222)) ([90fc323](https://github.com/joshrotenberg/snodo/commit/90fc3233faff4f3cce32f4dbcb617ecd6d23842e))
+
+
+### Bug Fixes
+
+* bound method in dispatch instrumentation ([#226](https://github.com/joshrotenberg/snodo/issues/226)) ([67c5876](https://github.com/joshrotenberg/snodo/commit/67c58766d3d6905c89d7275784049624c0b77e94))
+* close Plug streams when their executor exits ([#228](https://github.com/joshrotenberg/snodo/issues/228)) ([3377fc3](https://github.com/joshrotenberg/snodo/commit/3377fc3ad67f33c4a1980d49d3d95e0720408cdf))
+* close subscription sources across handoff races ([#232](https://github.com/joshrotenberg/snodo/issues/232)) ([bc4b943](https://github.com/joshrotenberg/snodo/commit/bc4b943a4e34d5bc534228a0d06ee8481ebc06bd))
+* count only HTTP headers against the header limit ([#212](https://github.com/joshrotenberg/snodo/issues/212)) ([306d719](https://github.com/joshrotenberg/snodo/commit/306d7196c1fce3a26a4c034656ed76ec032cf571))
+* reject duplicate keys in JSON objects ([#224](https://github.com/joshrotenberg/snodo/issues/224)) ([0c0d1b8](https://github.com/joshrotenberg/snodo/commit/0c0d1b8708dd15b069c4f07b48914575a84a2dc9))
+* release request-only data from open subscriptions ([#230](https://github.com/joshrotenberg/snodo/issues/230)) ([2e9a08e](https://github.com/joshrotenberg/snodo/commit/2e9a08eac1ca4bc35e26dd48237fe3b94963d525))
+* warn on public native HTTP binds ([#223](https://github.com/joshrotenberg/snodo/issues/223)) ([7035549](https://github.com/joshrotenberg/snodo/commit/70355499015b81fe9b378c3edff33ff705d13cca))
+
+
+### Performance Improvements
+
+* reuse compiled validation schemas ([#238](https://github.com/joshrotenberg/snodo/issues/238)) ([70e5e4f](https://github.com/joshrotenberg/snodo/commit/70e5e4fbe54b2e176deae49034a7fa0505042eab))
+* reuse HTTP connections in Snodo.Client ([#239](https://github.com/joshrotenberg/snodo/issues/239)) ([11b0b9f](https://github.com/joshrotenberg/snodo/commit/11b0b9f028d9b3dbe57f53cebd506a1d1b640edd))
+
 ## [0.4.0](https://github.com/joshrotenberg/snodo/compare/v0.3.2...v0.4.0) (2026-10-01)
 
 
