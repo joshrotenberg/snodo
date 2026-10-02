@@ -45,13 +45,24 @@ runtime =
 
 The callback is synchronous, matching `:telemetry.execute/3`; applications
 should keep it fast and hand expensive work to another process. Callback
-faults are caught so they cannot change the observed operation's result. No
-event includes request params, auth data, work input, access values, task
-results/errors, or input responses.
+faults are caught so they cannot change the observed operation's result. Events
+do not include arbitrary request params, auth data, work input, access values,
+task results/errors, or input responses. Dispatch events may include the
+validated trace fields described below.
 
 Dispatch `method` metadata contains the incoming method only when it is a
 string of at most 128 bytes. A missing, non-string, or longer method is
 reported as `:invalid` before the request envelope is validated.
+
+When request `_meta` contains a valid W3C `traceparent`, dispatch events include
+it as `:traceparent` metadata and include `:tracestate` when that value is valid.
+Handlers read the same extracted fields with string keys from
+`context.trace_context`; when it contains `"traceparent"`, this map can be passed
+as a client's `:trace_context` option. The original values remain in
+`context.metadata`. Malformed values do not reject the request and are omitted
+from the extracted fields. A `traceparent` over 512 bytes, or a `tracestate`
+over 512 bytes or 32 members, is omitted too.
+Do not use these identifiers as metric tags; their values vary per request.
 
 Durations use the VM's native monotonic time unit. Convert them with
 `System.convert_time_unit(duration, :native, desired_unit)`.
@@ -60,7 +71,7 @@ Durations use the VM's native monotonic time unit. Convert them with
 
 | Event | Measurements | Metadata |
 |---|---|---|
-| `[:snodo, :server, :dispatch, :start]` | `system_time` | `method`, `request_id`, `transport` |
+| `[:snodo, :server, :dispatch, :start]` | `system_time` | `method`, `request_id`, `transport`, optional `traceparent` and `tracestate` |
 | `[:snodo, :server, :dispatch, :stop]` | `duration` | start metadata plus `outcome`; errors add `error_code` |
 | `[:snodo, :server, :dispatch, :exception]` | `duration` | start metadata plus `kind` and bounded `reason_class` |
 | `[:snodo, :subscription, :open]` | current `subscriptions` | `request_id`, `transport`, sorted `filter_keys` |

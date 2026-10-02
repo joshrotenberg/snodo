@@ -410,11 +410,18 @@ defmodule Snodo.Server do
   end
 
   defp dispatch_metadata(raw, transport) do
+    metadata =
+      case raw do
+        %{"params" => %{"_meta" => request_metadata}} -> request_metadata
+        _other -> %{}
+      end
+
     %{
       method: instrumented_method(raw),
       request_id: readable_id(raw),
       transport: transport.transport
     }
+    |> Map.merge(Snodo.TraceContext.instrumentation_metadata(metadata))
   end
 
   defp instrumented_method(%{"method" => method})

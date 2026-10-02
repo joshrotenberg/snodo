@@ -2,9 +2,11 @@ defmodule Snodo.Protocol.Legacy do
   @moduledoc false
 
   alias Snodo.Authorization
+
   alias Snodo.{Context, Envelope, Error, Progress, Prompt, Resource, Result, Router, Tool}
   alias Snodo.Protocol.Profile
   alias Snodo.Protocol.Profile.Method
+  alias Snodo.TraceContext
   alias Snodo.Transport.Context, as: TransportContext
   alias Snodo.Transport.Policy
 
@@ -169,7 +171,8 @@ defmodule Snodo.Protocol.Legacy do
         client_info: if(initialize?, do: envelope.params["clientInfo"]),
         client_capabilities:
           if(initialize?, do: Map.get(envelope.params, "capabilities", %{}), else: %{}),
-        metadata: Map.get(envelope.params, "_meta", %{})
+        metadata: Map.get(envelope.params, "_meta", %{}),
+        trace_context: TraceContext.from_metadata(Map.get(envelope.params, "_meta", %{}))
       }
 
       {:ok,

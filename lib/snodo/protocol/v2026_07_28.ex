@@ -20,6 +20,7 @@ defmodule Snodo.Protocol.V2026_07_28 do
   alias Snodo.Server.Runtime
   alias Snodo.Subscription.Event, as: SubscriptionEvent
   alias Snodo.Tool.Definition
+  alias Snodo.TraceContext
   alias Snodo.Transport.Context, as: TransportContext
   alias Snodo.Transport.Policy
 
@@ -313,7 +314,8 @@ defmodule Snodo.Protocol.V2026_07_28 do
         input_responses: Map.get(envelope.params, "inputResponses", %{}),
         cancellation: envelope.transport.metadata[:cancellation],
         extensions: negotiated_extensions(client_capabilities, runtime.capabilities),
-        metadata: metadata
+        metadata: metadata,
+        trace_context: TraceContext.from_metadata(metadata)
       }
 
       sink =

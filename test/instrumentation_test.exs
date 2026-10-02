@@ -70,6 +70,38 @@ defmodule Snodo.InstrumentationTest do
                      %{method: ^method}}
   end
 
+  test "dispatch includes bounded valid trace context and ignores malformed fields" do
+    runtime = TestFixtures.runtime(instrumentation: {TestInstrumentationSink, self()})
+    parent = "00-0af7651916cd43dd8448eb211c80319c-00f067aa0ba902b7-01"
+    state = "rojo=00f067aa0ba902b7"
+
+    assert {:ok, %{"result" => _result}} =
+             Snodo.Test.dispatch(runtime,
+               protocol: "2026-07-28",
+               method: "tools/list",
+               params: %{"_meta" => %{"traceparent" => parent, "tracestate" => state}}
+             )
+
+    assert_receive {:instrumentation, [:snodo, :server, :dispatch, :start], _start,
+                    %{traceparent: ^parent, tracestate: ^state}}
+
+    assert_receive {:instrumentation, [:snodo, :server, :dispatch, :stop], _stop,
+                    %{traceparent: ^parent, tracestate: ^state}}
+
+    assert {:ok, %{"result" => _result}} =
+             Snodo.Test.dispatch(runtime,
+               protocol: "2026-07-28",
+               method: "tools/list",
+               params: %{"_meta" => %{"traceparent" => "bad", "tracestate" => state}}
+             )
+
+    assert_receive {:instrumentation, [:snodo, :server, :dispatch, :start], _start,
+                    invalid_metadata}
+
+    refute Map.has_key?(invalid_metadata, :traceparent)
+    refute Map.has_key?(invalid_metadata, :tracestate)
+  end
+
   test "dispatch errors and streams have explicit terminal outcomes" do
     {:ok, hub} =
       start_supervised(
