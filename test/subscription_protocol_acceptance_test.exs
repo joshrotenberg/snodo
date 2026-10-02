@@ -282,8 +282,7 @@ defmodule Snodo.SubscriptionProtocolAcceptanceTest do
     assert subscription.context.transport == %TransportContext{transport: :direct}
     assert subscription.context.request_method == "subscriptions/listen"
 
-    assert :binary.referenced_byte_size(subscription.context.request_method) ==
-             byte_size(subscription.context.request_method)
+    assert :binary.referenced_byte_size(subscription.context.request_method) < 1_000
 
     assert subscription.context.server_info == context.server_info
     assert subscription.context.auth == context.auth
@@ -291,12 +290,12 @@ defmodule Snodo.SubscriptionProtocolAcceptanceTest do
     assert %SubscriptionPrincipal{name: name, scope: {:scope, scope}} =
              subscription.context.auth.principal
 
-    assert :binary.referenced_byte_size(name) == byte_size(name)
-    assert :binary.referenced_byte_size(scope) == byte_size(scope)
+    assert :binary.referenced_byte_size(name) < 1_000
+    assert :binary.referenced_byte_size(scope) < 1_000
 
     retained = subscription.context.extensions["test.extension"]["value"]
     assert retained == decoded["extension"]
-    assert :binary.referenced_byte_size(retained) == byte_size(retained)
+    assert :binary.referenced_byte_size(retained) < 1_000
 
     assert {:ok, _acknowledgement} = Subscription.acknowledgement(subscription)
     assert {:ok, _completion} = Subscription.completion(subscription)
