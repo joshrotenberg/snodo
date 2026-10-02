@@ -43,7 +43,8 @@ defmodule Snodo.Transport.Plug.Stream do
   @impl true
   def init({subscription, owner, lease, {executor, pool, limit}}) do
     case acquire_slot(executor, pool, limit) do
-      :ok ->
+      {:ok, executor_pid} ->
+        executor_monitor = Process.monitor(executor_pid)
         lease_monitor = Process.monitor(lease)
         {worker, worker_monitor} = Subscription.start_worker(subscription, self())
 
@@ -52,6 +53,7 @@ defmodule Snodo.Transport.Plug.Stream do
            subscription: subscription,
            owner: owner,
            lease: lease,
+           executor_monitor: executor_monitor,
            lease_monitor: lease_monitor,
            worker: worker,
            worker_monitor: worker_monitor,
@@ -86,6 +88,10 @@ defmodule Snodo.Transport.Plug.Stream do
 
   def handle_info({:DOWN, monitor, :process, _pid, _reason}, %{lease_monitor: monitor} = state) do
     {:stop, :normal, state}
+  end
+
+  def handle_info({:DOWN, monitor, :process, _pid, _reason}, %{executor_monitor: monitor} = state) do
+    {:stop, :normal, %{state | close_reason: {:error, :executor_unavailable}}}
   end
 
   def handle_info({:DOWN, monitor, :process, _pid, reason}, %{worker_monitor: monitor} = state) do
@@ -170,7 +176,7 @@ defmodule Snodo.Transport.Plug.Stream do
     do: Conn.chunk(conn, ["event: message\r\ndata: ", JSON.encode!(message), "\r\n\r\n"])
 
   defp acquire_slot(executor, pool, limit) do
-    Executor.acquire_slot(executor, pool, limit)
+    Executor.acquire_slot_with_executor(executor, pool, limit)
   catch
     :exit, _reason -> {:error, :unavailable}
   end
