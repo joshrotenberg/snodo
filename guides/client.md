@@ -412,6 +412,10 @@ transport failure; -32001 when the acknowledgement does not arrive within
 | `:max_buffer`, `:overflow` | `listen/3` | the subscription's buffer bound (100) and overflow policy (`:drop_oldest`) |
 
 `request/4` and `listen/3` also accept `:meta` for extra `_meta` entries.
+Pass `trace_context: %{"traceparent" => value, "tracestate" => value}` on a
+call to send W3C trace fields through `_meta`. `tracestate` is optional; the
+client checks the values and rejects malformed ones with `ArgumentError`.
+The named option wins over duplicate keys in `:meta`.
 
 ## Transport behavior
 

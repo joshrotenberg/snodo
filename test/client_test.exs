@@ -1142,6 +1142,28 @@ defmodule Snodo.ClientTest do
       assert message["params"]["_meta"]["io.modelcontextprotocol/clientInfo"] == info
     end
 
+    test "per-call trace context overrides raw metadata and is sent in _meta" do
+      client = canned_client()
+      parent = "00-0af7651916cd43dd8448eb211c80319c-00f067aa0ba902b7-01"
+      state = "rojo=00f067aa0ba902b7"
+
+      assert {:ok, _result} =
+               Client.call_tool(client, "anything", %{},
+                 meta: %{"traceparent" => "invalid"},
+                 trace_context: %{"traceparent" => parent, "tracestate" => state}
+               )
+
+      assert_receive {:canned_request, message, _opts}, 1_000
+      assert get_in(message, ["params", "_meta", "traceparent"]) == parent
+      assert get_in(message, ["params", "_meta", "tracestate"]) == state
+
+      assert_raise ArgumentError, ~r/:trace_context must/, fn ->
+        Client.call_tool(client, "anything", %{}, trace_context: %{"traceparent" => "bad"})
+      end
+
+      refute_receive {:canned_request, _message, _opts}, 100
+    end
+
     test ":client_info must name the client and its version" do
       for invalid <- [
             %{"name" => "x"},

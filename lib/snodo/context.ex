@@ -12,6 +12,11 @@ defmodule Snodo.Context do
 
   `dispatch_check` is set by `Snodo.Server` while extension middleware runs; use
   it through `Snodo.Extension.check_dispatch/3`.
+
+  `trace_context` contains valid W3C `traceparent` and `tracestate` values from
+  request `_meta` with string keys. When it contains `"traceparent"`, pass it as
+  a client's `:trace_context` option to forward those values. `metadata`
+  retains the original request values.
   """
 
   alias Snodo.Transport.Context, as: TransportContext
@@ -38,6 +43,7 @@ defmodule Snodo.Context do
           dispatch_check:
             (term(), map(), t() -> :ok | {:ok, Snodo.Result.t()} | {:error, Snodo.Error.t()})
             | nil,
+          trace_context: Snodo.TraceContext.t(),
           metadata: map()
         }
 
@@ -62,6 +68,7 @@ defmodule Snodo.Context do
     server_capabilities: %{},
     extensions: %{},
     extension_options: %{},
+    trace_context: %{},
     metadata: %{}
   ]
 end

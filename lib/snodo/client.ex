@@ -91,6 +91,7 @@ defmodule Snodo.Client do
   alias Snodo.Error
   alias Snodo.Protocol.Profile
   alias Snodo.Server.Runtime
+  alias Snodo.TraceContext
   alias Snodo.Transport.ParamHeaders
 
   require Logger
@@ -449,6 +450,8 @@ defmodule Snodo.Client do
       `{:input_required, result}`. Sent as `requestState`.
     * `:meta` - extra `_meta` entries. These win over the dialect's metadata
       and over `params["_meta"]`.
+    * `:trace_context` - a map with a valid W3C `"traceparent"` and optional
+      `"tracestate"`. These keys are sent in `_meta` and win over `:meta`.
     * `:progress` - a function of one argument, or a pid, to receive the
       server's progress notifications for this request. The client sends the
       request ID as `_meta.progressToken`; a `"progressToken"` in `:meta` or
@@ -579,6 +582,7 @@ defmodule Snodo.Client do
     * `:timeout` - overrides the client's request timeout for the wait for
       the acknowledgement. A direct client has no timeout.
     * `:meta` - extra `_meta` entries, as for `request/4`.
+    * `:trace_context` - W3C trace fields, as for `request/4`.
 
   Raises `ArgumentError` for a custom transport without `listen/3`.
   """
@@ -845,6 +849,7 @@ defmodule Snodo.Client do
       |> put_client_info(client)
       |> Map.merge(Map.get(params, "_meta", %{}))
       |> Map.merge(Keyword.get(opts, :meta, %{}))
+      |> Map.merge(trace_context_metadata!(opts))
 
     params
     |> put_present("inputResponses", Keyword.get(opts, :input_responses))
@@ -856,6 +861,13 @@ defmodule Snodo.Client do
   # is left out rather than sent as an empty object.
   defp put_metadata(params, metadata) when metadata == %{}, do: Map.delete(params, "_meta")
   defp put_metadata(params, metadata), do: Map.put(params, "_meta", metadata)
+
+  defp trace_context_metadata!(opts) do
+    case Keyword.fetch(opts, :trace_context) do
+      {:ok, value} -> TraceContext.client_metadata!(value)
+      :error -> %{}
+    end
+  end
 
   # Only stateless dialects carry client info on every request.
   defp put_client_info(metadata, %__MODULE__{dialect: dialect, client_info: info}) do
