@@ -1,6 +1,7 @@
 defmodule Snodo.Protocol.Legacy do
   @moduledoc false
 
+  alias Snodo.Authorization
   alias Snodo.{Context, Envelope, Error, Progress, Prompt, Resource, Result, Router, Tool}
   alias Snodo.Protocol.Profile
   alias Snodo.Protocol.Profile.Method
@@ -40,6 +41,8 @@ defmodule Snodo.Protocol.Legacy do
       defdelegate resolve_operation(envelope), to: Legacy
       @impl true
       defdelegate validate_operation(operation, params, context), to: Legacy
+      @doc false
+      defdelegate validate_tool_schema(tool, version), to: Legacy
       @impl true
       defdelegate validate_result(operation, result, context), to: Legacy
       @impl true
@@ -140,7 +143,13 @@ defmodule Snodo.Protocol.Legacy do
     with :ok <- validate_version(envelope, protocol.version()),
          :ok <- validate_progress(envelope.params),
          :ok <- validate_unsupported_params(envelope.params),
-         :ok <- validate_expressible_tool(envelope, runtime.router, protocol.version()) do
+         :ok <-
+           validate_expressible_tool(
+             envelope,
+             runtime.router,
+             protocol.version(),
+             runtime.authorization
+           ) do
       initialize? = envelope.method == "initialize"
 
       context = %Context{
@@ -168,27 +177,39 @@ defmodule Snodo.Protocol.Legacy do
     end
   end
 
-  # A tool hidden from legacy tools/list is refused before it runs, the same
-  # way as an unknown tool.
+  # The default preserves the initialize-era error before policy dispatch.
+  # Concealment defers it until the router has checked authorization.
   defp validate_expressible_tool(
          %Envelope{method: "tools/call", params: %{"name" => name}},
          %Router{tools: tools},
-         version
+         version,
+         authorization
        )
        when is_binary(name) do
-    with {:ok, module} <- Map.fetch(tools, name),
-         false <- expressible?(Tool.definition(module)) do
-      {:error,
-       Error.invalid_params(
-         "Tool #{name} is not available on #{version}: " <>
-           "its input and output schemas must be JSON objects"
-       )}
+    if Authorization.conceal?(authorization) do
+      :ok
     else
-      _available -> :ok
+      case Map.fetch(tools, name) do
+        {:ok, module} -> validate_tool_schema(Tool.definition(module), version)
+        :error -> :ok
+      end
     end
   end
 
-  defp validate_expressible_tool(_envelope, _router, _version), do: :ok
+  defp validate_expressible_tool(_envelope, _router, _version, _authorization), do: :ok
+
+  @doc false
+  def validate_tool_schema(tool, version) do
+    if expressible?(tool) do
+      :ok
+    else
+      {:error,
+       Error.invalid_params(
+         "Tool #{tool.name} is not available on #{version}: " <>
+           "its input and output schemas must be JSON objects"
+       )}
+    end
+  end
 
   @doc false
   # Names of the tools whose schemas an initialize-era dialect cannot express.

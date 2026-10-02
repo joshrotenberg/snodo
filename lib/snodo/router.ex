@@ -219,7 +219,8 @@ defmodule Snodo.Router do
       `Snodo.Error` produce `{:ok, result}` with a `Snodo.Result.error/2`
       result.
     * An `Snodo.Error` returned by a component, or by the authorization
-      policy in the `:invocation` phase, is returned unchanged.
+      policy in the `:invocation` phase, is returned unchanged unless the
+      policy opts into concealing refusals as unknown components.
     * A component that raises, exits, or returns an invalid value is a
       -32603 error.
 
@@ -295,7 +296,15 @@ defmodule Snodo.Router do
       )
       when is_binary(name) and is_map(params) do
     with {:ok, prompt} <- fetch_prompt(router, name),
-         :ok <- authorize_invocation(context, authorization(opts), :prompt, prompt),
+         :ok <-
+           authorize_invocation(
+             context,
+             authorization(opts),
+             :prompt,
+             prompt,
+             nil,
+             {:prompt, name}
+           ),
          {:ok, arguments} <- fetch_prompt_arguments(params),
          :ok <- validate_required_prompt_arguments(prompt.definition(), arguments) do
       invoke_prompt(prompt, arguments, context)
@@ -311,7 +320,15 @@ defmodule Snodo.Router do
       )
       when is_binary(uri) and is_map(params) do
     with {:ok, {resource, variables}} <- resolve_resource(router, uri),
-         :ok <- authorize_invocation(context, authorization(opts), :resource, resource, uri) do
+         :ok <-
+           authorize_invocation(
+             context,
+             authorization(opts),
+             :resource,
+             resource,
+             uri,
+             {:resource, uri}
+           ) do
       invoke_resource(resource, Map.merge(params, variables), context)
     end
   end
@@ -379,11 +396,28 @@ defmodule Snodo.Router do
     validator = Keyword.get(opts, :schema_validator, Passthrough)
 
     with {:ok, tool} <- fetch_tool(router, name),
-         :ok <- authorize_invocation(context, authorization(opts), :tool, tool),
+         :ok <-
+           authorize_invocation(
+             context,
+             authorization(opts),
+             :tool,
+             tool,
+             nil,
+             {:tool, name}
+           ),
+         :ok <- validate_tool_schema(tool, context),
          {:ok, arguments} <- fetch_arguments(params),
          :ok <- validate_required_arguments(tool.input_schema(), arguments),
          :ok <- validate_input(validator, arguments, tool.input_schema()) do
       {:ok, tool, arguments}
+    end
+  end
+
+  defp validate_tool_schema(tool, %Context{protocol: protocol, protocol_version: version}) do
+    if function_exported?(protocol, :validate_tool_schema, 2) do
+      protocol.validate_tool_schema(Tool.definition(tool), version)
+    else
+      :ok
     end
   end
 
@@ -417,11 +451,20 @@ defmodule Snodo.Router do
     end
   end
 
-  defp authorize_invocation(context, authorization, kind, module, requested_uri \\ nil)
+  defp authorize_invocation(context, authorization, kind, module, requested_uri),
+    do: authorize_invocation(context, authorization, kind, module, requested_uri, nil)
 
-  defp authorize_invocation(%Context{}, nil, _kind, _module, _requested_uri), do: :ok
+  defp authorize_invocation(%Context{}, nil, _kind, _module, _requested_uri, _concealed_target),
+    do: :ok
 
-  defp authorize_invocation(%Context{} = context, authorization, kind, module, requested_uri) do
+  defp authorize_invocation(
+         %Context{} = context,
+         authorization,
+         kind,
+         module,
+         requested_uri,
+         concealed_target
+       ) do
     component = component(kind, module)
 
     component =
@@ -430,17 +473,44 @@ defmodule Snodo.Router do
         else: component
 
     case Authorization.decide(authorization, :invocation, component, context) do
-      :ok -> :ok
-      {:refused, %Error{} = error} -> {:error, error}
-      {:fault, %Error{} = error} -> {:error, error}
+      :ok ->
+        :ok
+
+      {:refused, %Error{} = error} ->
+        if Authorization.conceal?(authorization) and concealed_target != nil,
+          do: {:error, concealed_error(concealed_target)},
+          else: {:error, error}
+
+      {:fault, %Error{} = error} ->
+        {:error, error}
     end
   end
 
-  defp authorize_completion_target({:prompt, prompt}, context, authorization),
-    do: authorize_invocation(context, authorization, :prompt, prompt)
+  defp authorize_completion_target({:prompt, prompt}, context, authorization) do
+    name = prompt.definition().name
 
-  defp authorize_completion_target({:resource_template, resource}, context, authorization),
-    do: authorize_invocation(context, authorization, :resource, resource)
+    authorize_invocation(
+      context,
+      authorization,
+      :prompt,
+      prompt,
+      nil,
+      {:completion_prompt, name}
+    )
+  end
+
+  defp authorize_completion_target({:resource_template, resource}, context, authorization) do
+    uri_template = resource.definition().uri_template
+
+    authorize_invocation(
+      context,
+      authorization,
+      :resource,
+      resource,
+      nil,
+      {:completion_resource_template, uri_template}
+    )
+  end
 
   # The first argument names which definition accessor to use. The definition
   # struct itself decides between a direct resource and a resource template.
@@ -463,16 +533,41 @@ defmodule Snodo.Router do
   defp fetch_tool(%__MODULE__{tools: tools}, name) do
     case Map.fetch(tools, name) do
       {:ok, tool} -> {:ok, tool}
-      :error -> {:error, Error.invalid_params("Unknown tool: #{name}")}
+      :error -> {:error, unknown_tool(name)}
     end
   end
 
   defp fetch_prompt(%__MODULE__{prompts: prompts}, name) do
     case Map.fetch(prompts, name) do
       {:ok, prompt} -> {:ok, prompt}
-      :error -> {:error, Error.invalid_params("Unknown prompt: #{name}")}
+      :error -> {:error, unknown_prompt(name)}
     end
   end
+
+  defp unknown_tool(name), do: Error.invalid_params("Unknown tool: #{name}")
+  defp unknown_prompt(name), do: Error.invalid_params("Unknown prompt: #{name}")
+
+  defp unknown_resource(uri),
+    do: Error.invalid_params("Resource not found", %{"uri" => uri})
+
+  defp unknown_completion_prompt(name),
+    do: Error.invalid_params("Unknown completion prompt: #{name}")
+
+  defp unknown_completion_resource_template(uri_template),
+    do:
+      Error.invalid_params("Unknown completion resource template", %{
+        "uri" => uri_template
+      })
+
+  defp concealed_error({:tool, name}), do: unknown_tool(name)
+  defp concealed_error({:prompt, name}), do: unknown_prompt(name)
+  defp concealed_error({:resource, uri}), do: unknown_resource(uri)
+
+  defp concealed_error({:completion_prompt, name}),
+    do: unknown_completion_prompt(name)
+
+  defp concealed_error({:completion_resource_template, uri_template}),
+    do: unknown_completion_resource_template(uri_template)
 
   defp fetch_completion_target(
          %__MODULE__{prompts: prompts},
@@ -480,7 +575,7 @@ defmodule Snodo.Router do
        ) do
     case Map.fetch(prompts, name) do
       {:ok, prompt} -> {:ok, {:prompt, prompt}}
-      :error -> {:error, Error.invalid_params("Unknown completion prompt: #{name}")}
+      :error -> {:error, unknown_completion_prompt(name)}
     end
   end
 
@@ -493,10 +588,7 @@ defmodule Snodo.Router do
         {:ok, {:resource_template, resource}}
 
       :error ->
-        {:error,
-         Error.invalid_params("Unknown completion resource template", %{
-           "uri" => uri_template
-         })}
+        {:error, unknown_completion_resource_template(uri_template)}
     end
   end
 
@@ -663,7 +755,7 @@ defmodule Snodo.Router do
       {:ok, templates} ->
         case Enum.uniq_by(direct ++ templates, &elem(&1, 0)) do
           [route] -> {:ok, route}
-          [] -> {:error, Error.invalid_params("Resource not found", %{"uri" => uri})}
+          [] -> {:error, unknown_resource(uri)}
           _many -> {:error, Error.internal("Multiple resource routes matched the requested URI")}
         end
 

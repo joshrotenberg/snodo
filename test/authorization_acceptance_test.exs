@@ -21,9 +21,11 @@ defmodule Snodo.AuthorizationAcceptanceTest do
   alias SnodoTest.TestAuthorization.ProbeTemplate
   alias SnodoTest.TestAuthorization.ProbeTool
   alias SnodoTest.TestAuthorization.Raising
+  alias SnodoTest.TestCompletions.PackagePrompt
   alias SnodoTest.TestFixtures
   alias SnodoTest.TestPrompts.PackageAnalysis
   alias SnodoTest.TestResources.StaticText
+  alias SnodoTest.TestTools.ComplexSchema
   alias SnodoTest.TestTools.Echo
 
   @protocol "2026-07-28"
@@ -361,6 +363,93 @@ defmodule Snodo.AuthorizationAcceptanceTest do
     end
   end
 
+  test "concealed refusals answer like unknown components on every dialect" do
+    protocols = [V2026_07_28, V2025_11_25, V2025_06_18]
+    capabilities = %{"tools" => %{}, "prompts" => %{}, "resources" => %{}, "completions" => %{}}
+
+    options = %{
+      owner: self(),
+      allowed: %{"alpha" => MapSet.new([{:tool, "echo"}])},
+      refusal: :conceal
+    }
+
+    concealed =
+      runtime(%{},
+        tools: [Echo, ProbeTool, ComplexSchema],
+        protocols: protocols,
+        capabilities: capabilities,
+        authorization: {Policy, options}
+      )
+
+    unknown =
+      TestFixtures.runtime(
+        tools: [],
+        prompts: [PackagePrompt],
+        resources: [],
+        protocols: protocols,
+        capabilities: capabilities
+      )
+
+    cases = [
+      {"tools/call", %{"name" => "probe_tool"}, {:tool, "probe_tool"}},
+      {"tools/call", %{"name" => "complex_schema"}, {:tool, "complex_schema"}},
+      {"prompts/get", %{"name" => "probe_prompt"}, {:prompt, "probe_prompt"}},
+      {"resources/read", %{"uri" => "probe://static"}, {:resource, "probe_static"}},
+      {"resources/read", %{"uri" => "probe://items/7"}, {:resource_template, "probe_item"}},
+      {"completion/complete",
+       %{
+         "ref" => %{"type" => "ref/prompt", "name" => "probe_prompt"},
+         "argument" => %{"name" => "topic", "value" => "r"}
+       }, {:prompt, "probe_prompt"}},
+      {"completion/complete",
+       %{
+         "ref" => %{"type" => "ref/resource", "uri" => "probe://items/{id}"},
+         "argument" => %{"name" => "id", "value" => "1"}
+       }, {:resource_template, "probe_item"}}
+    ]
+
+    for version <- [@protocol, "2025-11-25", "2025-06-18"],
+        {method, params, component} <- cases do
+      concealed_error = response_for(concealed, version, "alpha", method, params)["error"]
+      unknown_error = response_for(unknown, version, "alpha", method, params)["error"]
+
+      assert concealed_error == unknown_error
+      assert concealed_error["code"] == -32_602
+      assert_received {:authorization_refused, "alpha", ^component, ^method}
+      refute_received {:authorization_refused, "alpha", ^component, ^method}
+    end
+
+    refute_received {:probe, _callback}
+  end
+
+  test "keyword options can conceal a refusal without concealing policy faults" do
+    capabilities = %{"tools" => %{}}
+
+    concealed =
+      TestFixtures.runtime(
+        tools: [Echo],
+        capabilities: capabilities,
+        authorization: {DenyAll, [refusal: :conceal]}
+      )
+
+    unknown = TestFixtures.runtime(tools: [], capabilities: capabilities)
+    params = %{"name" => "echo", "arguments" => %{"text" => "hi"}}
+
+    assert dispatch(concealed, "alpha", "tools/call", params)["error"] ==
+             dispatch(unknown, "alpha", "tools/call", params)["error"]
+
+    for policy <- [Raising, InvalidDecision] do
+      faulty =
+        TestFixtures.runtime(
+          tools: [Echo],
+          capabilities: capabilities,
+          authorization: {policy, [refusal: :conceal]}
+        )
+
+      assert dispatch(faulty, "alpha", "tools/call", params)["error"]["code"] == -32_603
+    end
+  end
+
   test "a policy fault fails the operation instead of silently emptying a catalog" do
     for policy <- [Raising, InvalidDecision] do
       runtime = TestFixtures.runtime(tools: [Echo, ProbeTool], authorization: policy)
@@ -516,6 +605,14 @@ defmodule Snodo.AuthorizationAcceptanceTest do
 
     raw = %{"jsonrpc" => "2.0", "id" => 1, "method" => method, "params" => params}
     Server.dispatch(runtime, raw, transport)
+  end
+
+  defp response_for(runtime, @protocol, principal, method, params),
+    do: dispatch(runtime, principal, method, params)
+
+  defp response_for(runtime, version, principal, method, params) do
+    {:ok, response} = legacy(runtime, version, principal, method, params)
+    response
   end
 
   defp stdio_input do
