@@ -375,7 +375,9 @@ defmodule Snodo.Transport.Stdio do
     runtime = state.runtime
     output = state.output
     sink = Progress.sink(self())
-    transport = transport_context(state, message, %{progress_sink: sink})
+
+    transport =
+      transport_context(state, message, %{progress_sink: sink, subscription_owner: self()})
 
     work = fn cancellation ->
       route_raw_io_to_stderr(output)
@@ -631,8 +633,8 @@ defmodule Snodo.Transport.Stdio do
   end
 
   defp start_acknowledged_subscription(state, subscription, acknowledgement) do
-    # The worker closes the source if the coordinator exits, so it starts
-    # before the acknowledgement write, which can wait up to `:write_timeout`.
+    # The guard already watches the coordinator before this handoff. Start the
+    # worker before the acknowledgement write, which can wait up to `:write_timeout`.
     {worker, monitor} = Subscription.start_worker(subscription, self())
 
     case write_progress(state.writer, acknowledgement) do

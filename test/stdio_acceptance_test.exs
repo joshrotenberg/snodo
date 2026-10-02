@@ -8,6 +8,7 @@ defmodule Snodo.Transport.StdioAcceptanceTest do
   alias SnodoTest.SubscriptionWorker
   alias SnodoTest.TestFixtures
   alias SnodoTest.TestInput
+  alias SnodoTest.TestInstrumentationSink
   alias SnodoTest.TestSubscriptionHub
   alias SnodoTest.TestSubscriptionSource
   alias SnodoTest.TestTools.Echo
@@ -386,7 +387,7 @@ defmodule Snodo.Transport.StdioAcceptanceTest do
   # The coordinator's executor and its task supervisor go down with it.
   @tag capture_log: true
   test "a killed coordinator stops its subscription worker and closes the source" do
-    hub = start_supervised!(Hub)
+    hub = start_supervised!({Hub, instrumentation: {TestInstrumentationSink, self()}})
 
     runtime =
       TestFixtures.runtime(
@@ -421,7 +422,10 @@ defmodule Snodo.Transport.StdioAcceptanceTest do
       assert_receive {:DOWN, ^monitor, :process, ^pid, :shutdown}, 1_000
     end
 
-    # The worker closes the source before it exits.
+    assert_receive {:instrumentation, [:snodo, :subscription, :close], %{subscriptions: 0},
+                    %{reason: :disconnected}},
+                   1_000
+
     assert Hub.stats(hub).subscriptions == 0
   end
 

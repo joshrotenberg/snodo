@@ -30,6 +30,7 @@ defmodule Snodo.Subscription do
           context: Context.t(),
           source: Config.t(),
           handle: term(),
+          guard: pid(),
           accepted_filter: map(),
           extension_registry: ExtensionRegistry.t(),
           extension_filters: %{optional(String.t()) => map()}
@@ -41,6 +42,7 @@ defmodule Snodo.Subscription do
     :context,
     :source,
     :handle,
+    :guard,
     :accepted_filter,
     :extension_registry,
     :extension_filters
@@ -51,6 +53,7 @@ defmodule Snodo.Subscription do
     :context,
     :source,
     :handle,
+    :guard,
     :accepted_filter,
     :extension_registry,
     :extension_filters
@@ -60,12 +63,15 @@ defmodule Snodo.Subscription do
   Opens `source` for the notifications in `requested_filter` that the server
   supports, and returns the opened subscription.
 
-  Serve it with `start_worker/2`.
+  Serve it with `start_worker/2`. A source guard starts before the opened
+  subscription is returned. Transports that supply an owner to `open/5` are
+  protected during the handoff; direct callers can hand ownership to the
+  worker later.
   """
   @spec open(Config.t(), map(), Context.t()) :: {:ok, t()} | {:error, Error.t()}
   def open(%Config{} = source, requested_filter, %Context{} = context)
       when is_map(requested_filter) do
-    open(source, requested_filter, context, ExtensionRegistry.empty())
+    open(source, requested_filter, context, ExtensionRegistry.empty(), nil)
   end
 
   @doc false
@@ -78,6 +84,20 @@ defmodule Snodo.Subscription do
         %ExtensionRegistry{} = extension_registry
       )
       when is_map(requested_filter) do
+    open(source, requested_filter, context, extension_registry, nil)
+  end
+
+  @doc false
+  @spec open(Config.t(), map(), Context.t(), ExtensionRegistry.t(), pid() | nil) ::
+          {:ok, t()} | {:error, Error.t()}
+  def open(
+        %Config{} = source,
+        requested_filter,
+        %Context{} = context,
+        %ExtensionRegistry{} = extension_registry,
+        owner
+      )
+      when is_map(requested_filter) and (is_pid(owner) or is_nil(owner)) do
     core_filter = supported_filter(requested_filter, context.server_capabilities)
 
     with {:ok, extension_filter, extension_filters} <-
@@ -90,6 +110,8 @@ defmodule Snodo.Subscription do
          {:ok, supported_filter} <- merge_supported_filters(core_filter, extension_filter),
          supported_filter = detach(supported_filter),
          {:ok, accepted_filter, handle} <- source_open(source, supported_filter, context) do
+      guard = spawn(fn -> guard_source(source, handle, owner) end)
+
       case validate_accepted_filter(accepted_filter, supported_filter) do
         :ok ->
           accepted_filter = detach(accepted_filter)
@@ -102,13 +124,14 @@ defmodule Snodo.Subscription do
              context: context,
              source: source,
              handle: handle,
+             guard: guard,
              accepted_filter: accepted_filter,
              extension_registry: extension_registry,
              extension_filters: project_extension_filters(accepted_filter, extension_filters)
            }}
 
         {:error, %Error{} = error} ->
-          :ok = safe_close(source, handle, {:error, error})
+          :ok = close_guard(guard, {:error, error})
           {:error, error}
       end
     else
@@ -178,13 +201,13 @@ defmodule Snodo.Subscription do
   `{:mcp_subscription, worker, outcome}` where the outcome is `{:ok, event}`,
   `:closed`, or `{:error, reason}`.
 
-  The worker monitors `owner`. If `owner` exits for any reason before it calls
-  `stop_worker/2`, the worker closes the source handle with
-  `{:disconnected, {:owner_down, reason}}` and exits, so a killed transport
-  process does not leave the source open.
+  When `open/5` received an owner, the guard watches it during the handoff.
+  This call hands the guard to `owner` before starting the pull worker. If the
+  owner exits, the guard closes the source and the worker stops its puller.
   """
   @spec start_worker(t(), pid()) :: {pid(), reference()}
   def start_worker(%__MODULE__{} = subscription, owner) when is_pid(owner) do
+    transfer_guard(subscription.guard, owner)
     spawn_monitor(fn -> run_worker(subscription, owner) end)
   end
 
@@ -198,8 +221,8 @@ defmodule Snodo.Subscription do
   @doc """
   Stops a worker and removes its process monitor.
 
-  The worker exits without closing the source handle; the owner closes it with
-  `close/2`.
+  The worker exits without closing the source handle; the subscription guard
+  handles `close/2` and owner exit.
   """
   @spec stop_worker(pid(), reference()) :: :ok
   def stop_worker(worker, monitor) when is_pid(worker) and is_reference(monitor) do
@@ -208,32 +231,76 @@ defmodule Snodo.Subscription do
     :ok
   end
 
-  @doc "Closes the application-owned source handle with an explicit reason."
+  @doc "Closes the application-owned source handle once with an explicit reason."
   @spec close(t(), Source.close_reason()) :: :ok
-  def close(%__MODULE__{source: source, handle: handle}, reason) do
-    safe_close(source, handle, reason)
+  def close(%__MODULE__{guard: guard}, reason), do: close_guard(guard, reason)
+
+  defp close_guard(guard, reason) do
+    monitor = Process.monitor(guard)
+    send(guard, {:subscription_guard_close, reason})
+
+    receive do
+      {:DOWN, ^monitor, :process, ^guard, _reason} -> :ok
+    end
   end
 
   # A source's `next/2` may block until an event arrives, so a linked puller
-  # calls it while the worker watches the owner. The owner's `stop_worker/2`
-  # exit signal reaches the worker before the owner's DOWN can, so a stopped
-  # worker never closes the handle a second time.
+  # calls it while the worker watches the owner. The guard alone closes the
+  # source, so an owner exit between close/2 and stop_worker/2 cannot close it
+  # a second time.
   defp run_worker(subscription, owner) do
     owner_monitor = Process.monitor(owner)
     worker = self()
     puller = spawn_link(fn -> pull_loop(subscription, owner, worker) end)
-    watch_owner(subscription.source, subscription.handle, owner_monitor, puller)
+    watch_owner(owner_monitor, puller)
   end
 
-  defp watch_owner(source, handle, owner_monitor, puller) do
+  defp watch_owner(owner_monitor, puller) do
     receive do
       :mcp_subscription_continue ->
         send(puller, :mcp_subscription_continue)
-        watch_owner(source, handle, owner_monitor, puller)
+        watch_owner(owner_monitor, puller)
+
+      {:DOWN, ^owner_monitor, :process, _owner, _reason} ->
+        exit(:shutdown)
+    end
+  end
+
+  defp guard_source(source, handle, owner) do
+    owner_monitor = if is_pid(owner), do: Process.monitor(owner), else: nil
+    watch_guard(source, handle, owner_monitor)
+  end
+
+  defp watch_guard(source, handle, owner_monitor) do
+    receive do
+      {:subscription_guard, from, reference, {:transfer, owner}} ->
+        new_monitor = Process.monitor(owner)
+        if owner_monitor, do: Process.demonitor(owner_monitor, [:flush])
+        send(from, {:subscription_guard, reference})
+        watch_guard(source, handle, new_monitor)
+
+      {:subscription_guard_close, reason} ->
+        :ok = safe_close(source, handle, reason)
 
       {:DOWN, ^owner_monitor, :process, _owner, reason} ->
         :ok = safe_close(source, handle, {:disconnected, {:owner_down, reason}})
-        exit(:shutdown)
+    end
+  end
+
+  defp transfer_guard(guard, owner), do: call_guard(guard, {:transfer, owner})
+
+  defp call_guard(guard, request) do
+    reference = make_ref()
+    monitor = Process.monitor(guard)
+    send(guard, {:subscription_guard, self(), reference, request})
+
+    receive do
+      {:subscription_guard, ^reference} ->
+        Process.demonitor(monitor, [:flush])
+        :ok
+
+      {:DOWN, ^monitor, :process, ^guard, _reason} ->
+        :ok
     end
   end
 

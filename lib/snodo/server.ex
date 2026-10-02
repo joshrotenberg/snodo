@@ -658,7 +658,8 @@ defmodule Snodo.Server do
              source,
              requested_filter,
              context,
-             runtime.extension_registry
+             runtime.extension_registry,
+             Map.get(context.transport.metadata, :subscription_owner)
            ) do
       {:ok, Result.subscription(subscription)}
     end

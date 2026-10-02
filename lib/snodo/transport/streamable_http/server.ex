@@ -420,6 +420,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
         prepared = with_auth(prepared, auth, opts.request_gate)
         sink = Progress.sink(self())
         prepared = put_in(prepared.transport.metadata[:progress_sink], sink)
+        prepared = put_in(prepared.transport.metadata[:subscription_owner], self())
         opts = Map.merge(opts, %{progress: Progress.state(sink), progress_started?: false})
 
         work = fn cancellation ->
@@ -929,8 +930,8 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
          %StreamResponse{subscription: subscription} = response,
          server_ref
        ) do
-    # The worker closes the source if this process exits, so it starts before
-    # the first write, which can block for the socket's send timeout.
+    # The guard already watches this process before the handoff. Start the
+    # worker before the first write, which can block for the socket's send timeout.
     {worker, monitor} = Subscription.start_worker(subscription, self())
 
     case Subscription.acknowledgement(subscription) do

@@ -148,10 +148,10 @@ five seconds) and configure equivalent write bounds for another HTTP adapter.
 Each admitted request gets a short-lived reply owner. Request return, timeout,
 or Plug-process death tears it down and cancels abandoned work. This is necessary
 because a Bandit connection process may serve multiple requests. An opened
-subscription gets a lifecycle guard tied to that request owner: it closes the
-source and stops its blocked pull worker if the owner dies, including the race
-between execution completion and stream handoff. If the guard itself exits for
-any reason, its source worker closes the source and stops.
+subscription has a source guard that watches the request lease until the stream
+process takes ownership. It closes the source if either owner exits, including
+during the handoff. The pull worker stops when its stream owner exits. Explicit
+close and owner exit pass through the source guard, so the source closes once.
 
 SSE sends acknowledgement first, then one notification per completed source pull,
 and a terminal response on graceful completion. It only requests the next event

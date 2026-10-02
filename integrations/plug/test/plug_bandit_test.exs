@@ -8,6 +8,17 @@ defmodule Snodo.Transport.PlugBanditTest do
   alias SnodoTest.PlugFixtures.Probe
   alias SnodoTest.PlugFixtures.Tool
 
+  defmodule HubObserver do
+    @moduledoc false
+    @behaviour Snodo.Instrumentation
+
+    @impl true
+    def handle_event(name, measurements, metadata, owner) do
+      send(owner, {:hub_event, name, measurements, metadata})
+      :ok
+    end
+  end
+
   @protocol "2026-07-28"
   @version_key "io.modelcontextprotocol/protocolVersion"
   @capabilities_key "io.modelcontextprotocol/clientCapabilities"
@@ -535,7 +546,9 @@ defmodule Snodo.Transport.PlugBanditTest do
   end
 
   test "a killed stream process stops its subscription worker and closes the source" do
-    %{port: port, hub: hub, executor: executor} = server(subscription_keepalive_ms: 20)
+    %{port: port, hub: hub, executor: executor} =
+      server(subscription_keepalive_ms: 20, hub_instrumentation: {HubObserver, self()})
+
     socket = open_stream(port, "killed")
     [stream] = slot_holders(executor)
     worker = :sys.get_state(stream).worker
@@ -550,7 +563,10 @@ defmodule Snodo.Transport.PlugBanditTest do
       assert_receive {:DOWN, ^monitor, :process, ^pid, :shutdown}, 1_000
     end
 
-    # The worker closes the source before it exits.
+    assert_receive {:hub_event, [:snodo, :subscription, :close], %{subscriptions: 0},
+                    %{reason: :disconnected}},
+                   1_000
+
     assert Hub.stats(hub).subscriptions == 0
     :gen_tcp.close(socket)
   end
@@ -766,7 +782,13 @@ defmodule Snodo.Transport.PlugBanditTest do
   end
 
   defp server(opts \\ []) do
-    hub = start_supervised!(Hub)
+    hub_options =
+      case Keyword.get(opts, :hub_instrumentation) do
+        nil -> []
+        instrumentation -> [instrumentation: instrumentation]
+      end
+
+    hub = start_supervised!({Hub, hub_options})
     executor_name = Keyword.get(opts, :executor_name)
     executor_opts = Keyword.take(opts, [:max_concurrency, :max_queue])
 
@@ -777,7 +799,10 @@ defmodule Snodo.Transport.PlugBanditTest do
     runtime_opts = [:protocols, :capabilities, :tools, :authorization]
 
     transport_opts =
-      Keyword.drop(opts, [:max_concurrency, :max_queue, :executor_name] ++ runtime_opts)
+      Keyword.drop(
+        opts,
+        [:max_concurrency, :max_queue, :executor_name, :hub_instrumentation] ++ runtime_opts
+      )
 
     runtime = PlugFixtures.runtime(hub, Keyword.take(opts, runtime_opts))
 

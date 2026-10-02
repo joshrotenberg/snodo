@@ -40,6 +40,48 @@ defmodule Snodo.SubscriptionHubTest do
     def close(observer, reason, _options), do: send(observer, {:source_closed, reason})
   end
 
+  defmodule BlockingCloseSource do
+    @behaviour Snodo.Subscription.Source
+
+    @impl true
+    def open(filter, _context, observer), do: {:ok, filter, observer}
+
+    @impl true
+    def next(_observer, _options) do
+      receive do
+        :blocking_source_never_sent -> :closed
+      end
+    end
+
+    @impl true
+    def close(observer, reason, _options) do
+      send(observer, {:source_closing, self(), reason})
+
+      receive do
+        :finish_close -> send(observer, {:source_closed, reason})
+      end
+    end
+  end
+
+  defmodule BlockingOpenSource do
+    @behaviour Snodo.Subscription.Source
+
+    @impl true
+    def open(filter, _context, observer) do
+      send(observer, {:source_opening, self()})
+
+      receive do
+        :finish_open -> {:ok, filter, observer}
+      end
+    end
+
+    @impl true
+    def next(_observer, _options), do: :closed
+
+    @impl true
+    def close(observer, reason, _options), do: send(observer, {:source_closed, reason})
+  end
+
   test "broadcasts only to matching listeners and supplies pending pulls" do
     {:ok, hub} = start_supervised({Hub, max_buffer: 2})
     runtime = runtime(hub)
@@ -196,7 +238,7 @@ defmodule Snodo.SubscriptionHubTest do
     assert :ok = Subscription.stop_worker(cancelled_worker, cancelled_monitor)
   end
 
-  test "a worker closes its source and exits when its owner exits" do
+  test "an owner exit closes the source and stops its worker" do
     subscription = listen(recording_runtime(), "orphaned", %{"toolsListChanged" => true})
     test = self()
 
@@ -224,7 +266,103 @@ defmodule Snodo.SubscriptionHubTest do
     refute_received {:source_closed, _reason}
   end
 
-  test "a stopped worker leaves closing the source to its owner" do
+  test "an owner exit before worker handoff closes the opened source once" do
+    owner = spawn(fn -> Process.sleep(:infinity) end)
+
+    assert {:stream, subscription} =
+             MCPTest.dispatch(recording_runtime(),
+               id: "before-worker",
+               protocol: "2026-07-28",
+               method: "subscriptions/listen",
+               params: %{"notifications" => %{"toolsListChanged" => true}},
+               transport_metadata: %{subscription_owner: owner}
+             )
+
+    guard_monitor = Process.monitor(subscription.guard)
+    Process.exit(owner, :kill)
+
+    assert_receive {:source_closed, {:disconnected, {:owner_down, _reason}}}, 1_000
+    assert_receive {:DOWN, ^guard_monitor, :process, _guard, :normal}, 1_000
+    assert :ok = Subscription.close(subscription, :cancelled)
+    refute_received {:source_closed, _reason}
+  end
+
+  test "an owner exit during source open closes the handle when open returns" do
+    owner = spawn(fn -> Process.sleep(:infinity) end)
+
+    runtime =
+      TestFixtures.runtime(
+        capabilities: %{"tools" => %{"listChanged" => true}},
+        subscription_source: {BlockingOpenSource, self()}
+      )
+
+    open_task =
+      Task.async(fn ->
+        MCPTest.dispatch(runtime,
+          id: "during-open",
+          protocol: "2026-07-28",
+          method: "subscriptions/listen",
+          params: %{"notifications" => %{"toolsListChanged" => true}},
+          transport_metadata: %{subscription_owner: owner}
+        )
+      end)
+
+    assert_receive {:source_opening, source_process}, 1_000
+    owner_monitor = Process.monitor(owner)
+    Process.exit(owner, :kill)
+    assert_receive {:DOWN, ^owner_monitor, :process, ^owner, :killed}, 1_000
+    send(source_process, :finish_open)
+
+    assert {:stream, subscription} = Task.await(open_task, 1_000)
+    assert_receive {:source_closed, {:disconnected, {:owner_down, :noproc}}}, 1_000
+    assert :ok = Subscription.close(subscription, :cancelled)
+    refute_received {:source_closed, _reason}
+  end
+
+  test "a killed owner during close cannot close the source twice" do
+    test = self()
+
+    owner =
+      spawn(fn ->
+        receive do
+          {:close, subscription} ->
+            {worker, monitor} = Subscription.start_worker(subscription, self())
+            send(test, {:worker_started, worker})
+            :ok = Subscription.close(subscription, :complete)
+            :ok = Subscription.stop_worker(worker, monitor)
+        end
+      end)
+
+    runtime =
+      TestFixtures.runtime(
+        capabilities: %{"tools" => %{"listChanged" => true}},
+        subscription_source: {BlockingCloseSource, self()}
+      )
+
+    assert {:stream, subscription} =
+             MCPTest.dispatch(runtime,
+               id: "close-race",
+               protocol: "2026-07-28",
+               method: "subscriptions/listen",
+               params: %{"notifications" => %{"toolsListChanged" => true}},
+               transport_metadata: %{subscription_owner: owner}
+             )
+
+    guard_monitor = Process.monitor(subscription.guard)
+    send(owner, {:close, subscription})
+    assert_receive {:worker_started, worker}, 1_000
+    [{^worker, worker_monitor}] = SubscriptionWorker.monitor_confirmed([worker])
+    assert_receive {:source_closing, guard, :complete}, 1_000
+    Process.exit(owner, :kill)
+    send(guard, :finish_close)
+
+    assert_receive {:source_closed, :complete}, 1_000
+    assert_receive {:DOWN, ^guard_monitor, :process, ^guard, :normal}, 1_000
+    assert_receive {:DOWN, ^worker_monitor, :process, ^worker, :shutdown}, 1_000
+    refute_received {:source_closing, _guard, _reason}
+  end
+
+  test "an explicit close uses the guard before its worker stops" do
     subscription = listen(recording_runtime(), "stopped", %{"toolsListChanged" => true})
     test = self()
 
@@ -252,7 +390,7 @@ defmodule Snodo.SubscriptionHubTest do
       assert_receive {:DOWN, ^monitor, :process, ^pid, _reason}, 1_000
     end
 
-    # A close by the worker would reach this process before the worker's DOWN.
+    # The guard's close callback must run only once.
     refute_received {:source_closed, _reason}
   end
 
