@@ -19,13 +19,14 @@ To propose something new, open an issue with the feature request or bug report f
 
 ## Setting up
 
-You need Elixir 1.18 or later on OTP 27 or later, and Node.js 24 for the interop and conformance checks. PostgreSQL is only needed for the live tests of `snodo_tasks_postgres`.
+You need Elixir 1.18 or later on OTP 27 or later, Node.js 24 for the TypeScript interop and conformance checks, and Python 3.13 with uv 0.12.21 for Python interop. PostgreSQL is only needed for the live tests of `snodo_tasks_postgres`.
 
 ```sh
 git clone https://github.com/joshrotenberg/snodo.git
 cd snodo
 mix setup
 (cd interop/official_client && npm ci --ignore-scripts)
+(cd interop/official_python && uv sync --frozen)
 ```
 
 This repository builds eight Hex packages: the core `snodo` at the root, and seven siblings under `integrations/` and `extensions/`. `mix setup` fetches dependencies for all of them.
@@ -57,6 +58,7 @@ mix quality
 MIX_ENV=test mix quality.types
 MIX_ENV=dev mix docs --warnings-as-errors
 mix compile && (cd interop/official_client && npm run check)
+mix compile && (cd interop/official_python && uv run --frozen python check.py)
 ```
 
 CI also requires the `Hex packaging dry run` check on `main`. It builds the release artifacts for all eight packages.
