@@ -24,6 +24,7 @@ defmodule Snodo.Server.Runtime do
           capabilities: map(),
           instrumentation: Instrumentation.Config.t() | nil,
           schema_validator: module(),
+          compiled_schemas: map(),
           instructions: String.t() | nil,
           discovery_cache: cache_policy(),
           tools_cache: cache_policy(),
@@ -47,6 +48,7 @@ defmodule Snodo.Server.Runtime do
     :subscription_source,
     :authorization,
     :instructions,
+    compiled_schemas: %{},
     discovery_cache: %{ttl_ms: 0, scope: "private"},
     tools_cache: %{ttl_ms: 0, scope: "private"},
     prompts_cache: %{ttl_ms: 0, scope: "private"},
@@ -132,6 +134,7 @@ defmodule Snodo.Server.Runtime do
     ExtensionRegistry.validate_advertisement!(extension_registry, capabilities)
     _validated_instructions = validate_instructions!(instructions)
     validate_schema_validator!(schema_validator)
+    compiled_schemas = prepare_schemas(router, schema_validator)
     warn_inexpressible_legacy_tools(router, protocols)
 
     caches = %{
@@ -148,6 +151,7 @@ defmodule Snodo.Server.Runtime do
       server_info: server_info,
       capabilities: capabilities,
       schema_validator: schema_validator,
+      compiled_schemas: compiled_schemas,
       extension_registry: extension_registry,
       instrumentation: instrumentation,
       subscription_source: subscription_source,
@@ -159,6 +163,26 @@ defmodule Snodo.Server.Runtime do
       resources_cache: caches.resources_cache,
       pagination: Pagination.new(Keyword.get(opts, :pagination, []))
     }
+  end
+
+  defp prepare_schemas(router, validator) do
+    if function_exported?(validator, :compile, 1) and
+         function_exported?(validator, :validate_compiled, 2) do
+      router
+      |> Router.list_tools()
+      |> Enum.flat_map(&[&1.input_schema, &1.output_schema])
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+      |> Map.new(fn schema -> {schema, prepare_schema(validator, schema)} end)
+    else
+      %{}
+    end
+  end
+
+  defp prepare_schema(validator, schema) do
+    validator.compile(schema)
+  catch
+    kind, reason -> {:raised, kind, reason, __STACKTRACE__}
   end
 
   # A policy filters lists and refuses reads per principal, so a public cache

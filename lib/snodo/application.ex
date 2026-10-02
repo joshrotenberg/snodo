@@ -8,8 +8,8 @@ defmodule Snodo.Application do
   @impl true
   def start(_type, _args) do
     children = [
-      # Starts a worker by calling: Snodo.Worker.start_link(arg)
-      # {Snodo.Worker, arg}
+      {Task.Supervisor, name: Snodo.Schema.Validator.Cache.Tasks},
+      Snodo.Schema.Validator.Cache
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

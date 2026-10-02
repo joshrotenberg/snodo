@@ -342,10 +342,11 @@ defmodule Snodo.Router do
       )
       when is_binary(name) and is_map(params) and is_list(opts) do
     validator = Keyword.get(opts, :schema_validator, Passthrough)
+    compiled_schemas = Keyword.get(opts, :compiled_schemas, %{})
 
     with {:ok, tool, arguments} <- check_tool_call(router, name, params, context, opts),
          {:ok, result} <- invoke(tool, arguments, context),
-         :ok <- validate_output(validator, result, tool.output_schema()) do
+         :ok <- validate_output(validator, compiled_schemas, result, tool.output_schema()) do
       {:ok, result}
     else
       # Invalid arguments are a tool execution error the model can read and
@@ -394,6 +395,7 @@ defmodule Snodo.Router do
 
   defp check_tool_call(router, name, params, context, opts) do
     validator = Keyword.get(opts, :schema_validator, Passthrough)
+    compiled_schemas = Keyword.get(opts, :compiled_schemas, %{})
 
     with {:ok, tool} <- fetch_tool(router, name),
          :ok <-
@@ -408,7 +410,7 @@ defmodule Snodo.Router do
          :ok <- validate_tool_schema(tool, context),
          {:ok, arguments} <- fetch_arguments(params),
          :ok <- validate_required_arguments(tool.input_schema(), arguments),
-         :ok <- validate_input(validator, arguments, tool.input_schema()) do
+         :ok <- validate_input(validator, compiled_schemas, arguments, tool.input_schema()) do
       {:ok, tool, arguments}
     end
   end
@@ -974,8 +976,8 @@ defmodule Snodo.Router do
       {:error, Error.internal("Tool terminated unexpectedly", {kind, reason, __STACKTRACE__})}
   end
 
-  defp validate_input(validator, arguments, schema) do
-    case run_validator(validator, arguments, schema) do
+  defp validate_input(validator, compiled_schemas, arguments, schema) do
+    case run_validator(validator, compiled_schemas, arguments, schema) do
       :ok ->
         :ok
 
@@ -987,31 +989,39 @@ defmodule Snodo.Router do
     end
   end
 
-  defp validate_output(_validator, %Result{kind: :error}, _schema), do: :ok
-  defp validate_output(_validator, %Result{kind: :input_required}, _schema), do: :ok
-  defp validate_output(_validator, %Result{}, nil), do: :ok
+  defp validate_output(_validator, _compiled_schemas, %Result{kind: :error}, _schema), do: :ok
 
-  defp validate_output(validator, %Result{kind: :structured, value: value}, schema) do
-    validate_output_instance(validator, value, schema)
+  defp validate_output(_validator, _compiled_schemas, %Result{kind: :input_required}, _schema),
+    do: :ok
+
+  defp validate_output(_validator, _compiled_schemas, %Result{}, nil), do: :ok
+
+  defp validate_output(
+         validator,
+         compiled_schemas,
+         %Result{kind: :structured, value: value},
+         schema
+       ) do
+    validate_output_instance(validator, compiled_schemas, value, schema)
   end
 
-  defp validate_output(validator, %Result{kind: :raw, value: value}, schema)
+  defp validate_output(validator, compiled_schemas, %Result{kind: :raw, value: value}, schema)
        when is_map(value) do
     case Map.fetch(value, "structuredContent") do
       {:ok, structured} ->
-        validate_output_instance(validator, structured, schema)
+        validate_output_instance(validator, compiled_schemas, structured, schema)
 
       :error ->
         {:error, Error.internal("Tool omitted structured output required by output schema")}
     end
   end
 
-  defp validate_output(_validator, %Result{}, _schema) do
+  defp validate_output(_validator, _compiled_schemas, %Result{}, _schema) do
     {:error, Error.internal("Tool omitted structured output required by output schema")}
   end
 
-  defp validate_output_instance(validator, value, schema) do
-    case run_validator(validator, value, schema) do
+  defp validate_output_instance(validator, compiled_schemas, value, schema) do
+    case run_validator(validator, compiled_schemas, value, schema) do
       :ok ->
         :ok
 
@@ -1023,16 +1033,25 @@ defmodule Snodo.Router do
     end
   end
 
-  defp run_validator(validator, value, schema) do
-    case validator.validate(value, schema) do
-      :ok -> :ok
-      {:error, reason} -> {:invalid, reason}
-      other -> {:validator_error, {:invalid_return, other}}
+  defp run_validator(validator, compiled_schemas, value, schema) do
+    case Map.fetch(compiled_schemas, schema) do
+      {:ok, {:ok, compiled}} -> classify_validation(validator.validate_compiled(value, compiled))
+      {:ok, {:error, reason}} -> {:validator_error, {:compile_error, reason}}
+      {:ok, {:raised, kind, reason, stacktrace}} -> :erlang.raise(kind, reason, stacktrace)
+      :error -> classify_validation(validator.validate(value, schema))
     end
   rescue
     exception -> {:validator_error, {exception, __STACKTRACE__}}
   catch
     kind, reason -> {:validator_error, {kind, reason, __STACKTRACE__}}
+  end
+
+  defp classify_validation(result) do
+    case result do
+      :ok -> :ok
+      {:error, reason} -> {:invalid, reason}
+      other -> {:validator_error, {:invalid_return, other}}
+    end
   end
 
   # A model needs the location and the rule to correct its call. Basic

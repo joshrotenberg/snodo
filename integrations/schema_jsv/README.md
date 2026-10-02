@@ -105,9 +105,13 @@ separate boundary.
 
 ## Compiling a fixed catalog once
 
-The default `validate/2` compiles each supplied schema on each call. This is a
-correctness-first path with no global state or unbounded cache. For a fixed
-catalog, an application can retain compiled roots in an ordinary module:
+Server runtimes compile their registered tool input and output schemas once and
+retain them for the runtime's lifetime. Build errors are stored but still raise
+only when validation runs. Direct `validate/2` calls compile each supplied
+schema on first use and reuse it while it remains in Snodo's 256-entry fallback
+cache. The fallback evicts the oldest entry when full. For a fixed catalog that
+needs an explicit compilation policy, an application can retain compiled roots
+in an ordinary module:
 
 ```elixir
 defmodule MyApp.SchemaValidator do
@@ -132,8 +136,8 @@ and output schemas that need the same policy; the fallback above deliberately
 uses the default policy. `compile/1` and `compile/2` return
 `{:ok, compiled} | {:error, BuildError.t()}`. Compiled values are opaque immutable
 roots; do not fabricate or modify them. Recompile them when schemas or backend
-versions change. A catalog cache, if later needed, must have application-owned
-bounds and a lifecycle.
+versions change. The fallback cache lives with the `snodo` application and is
+not used when it is stopped.
 
 Validation of attacker-controlled data is still work: put input-size, execution,
 and concurrency limits at the transport/application boundary. This package has

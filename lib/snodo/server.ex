@@ -573,6 +573,7 @@ defmodule Snodo.Server do
     fn operation, params, %Snodo.Context{} = context ->
       Router.check(runtime.router, operation, params, %{context | dispatch_check: nil},
         schema_validator: runtime.schema_validator,
+        compiled_schemas: runtime.compiled_schemas,
         authorization: runtime.authorization
       )
     end
@@ -682,6 +683,7 @@ defmodule Snodo.Server do
     with {:ok, %Result{} = result} <-
            Router.dispatch(runtime.router, operation, params, context,
              schema_validator: runtime.schema_validator,
+             compiled_schemas: runtime.compiled_schemas,
              authorization: runtime.authorization
            ),
          {:ok, %Result{} = result} <- apply_list_cache_policy(result, runtime, operation),
@@ -701,6 +703,7 @@ defmodule Snodo.Server do
     with {:ok, %Result{} = result} <-
            Router.dispatch(runtime.router, operation, params, context,
              schema_validator: runtime.schema_validator,
+             compiled_schemas: runtime.compiled_schemas,
              authorization: runtime.authorization
            ) do
       apply_cache_policy(result, runtime.resources_cache, "Resource")
@@ -714,6 +717,7 @@ defmodule Snodo.Server do
   defp execute(%Runtime{} = runtime, _protocol, operation, params, context) do
     Router.dispatch(runtime.router, operation, params, context,
       schema_validator: runtime.schema_validator,
+      compiled_schemas: runtime.compiled_schemas,
       authorization: runtime.authorization
     )
   end
