@@ -104,6 +104,16 @@ defmodule Snodo.Server.Executor do
   """
   @spec acquire_slot(server(), term(), pos_integer(), pid()) :: :ok | {:error, :exhausted}
   def acquire_slot(server, pool, limit, owner \\ self()) do
+    case acquire_slot_with_executor(server, pool, limit, owner) do
+      {:ok, _executor} -> :ok
+      {:error, :exhausted} = error -> error
+    end
+  end
+
+  @doc false
+  @spec acquire_slot_with_executor(server(), term(), pos_integer(), pid()) ::
+          {:ok, pid()} | {:error, :exhausted}
+  def acquire_slot_with_executor(server, pool, limit, owner \\ self()) do
     unless is_integer(limit) and limit > 0 do
       raise ArgumentError, "slot limit must be a positive integer"
     end
@@ -217,7 +227,7 @@ defmodule Snodo.Server.Executor do
           slot_counts: Map.put(state.slot_counts, pool, taken + 1)
       }
 
-      {:reply, :ok, state}
+      {:reply, {:ok, self()}, state}
     end
   end
 

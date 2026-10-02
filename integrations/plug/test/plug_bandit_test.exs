@@ -510,6 +510,30 @@ defmodule Snodo.Transport.PlugBanditTest do
     :gen_tcp.close(fourth)
   end
 
+  @tag capture_log: true
+  test "a stream closes when its supervised executor restarts" do
+    name = :snodo_plug_restart_test_executor
+
+    %{port: port, hub: hub, executor: executor} =
+      server(max_subscriptions: 1, executor_name: name, subscription_keepalive_ms: 20)
+
+    first = open_stream(port, "before-restart")
+    [stream] = slot_holders(executor)
+    stream_monitor = Process.monitor(stream)
+
+    Process.exit(executor, :kill)
+
+    assert_receive {:DOWN, ^stream_monitor, :process, ^stream, :normal}, 1_000
+    assert eventually(fn -> Hub.stats(hub).subscriptions == 0 end)
+    assert eventually(fn -> Process.whereis(name) not in [nil, executor] end)
+
+    second = open_stream(port, "after-restart")
+    assert {503, _error} = rpc(port, subscription("over-limit"))
+
+    :gen_tcp.close(first)
+    :gen_tcp.close(second)
+  end
+
   test "a killed stream process stops its subscription worker and closes the source" do
     %{port: port, hub: hub, executor: executor} = server(subscription_keepalive_ms: 20)
     socket = open_stream(port, "killed")
@@ -743,14 +767,22 @@ defmodule Snodo.Transport.PlugBanditTest do
 
   defp server(opts \\ []) do
     hub = start_supervised!(Hub)
+    executor_name = Keyword.get(opts, :executor_name)
     executor_opts = Keyword.take(opts, [:max_concurrency, :max_queue])
+
+    executor_opts =
+      if executor_name, do: Keyword.put(executor_opts, :name, executor_name), else: executor_opts
+
     executor = start_supervised!({Executor, executor_opts})
     runtime_opts = [:protocols, :capabilities, :tools, :authorization]
-    transport_opts = Keyword.drop(opts, [:max_concurrency, :max_queue] ++ runtime_opts)
+
+    transport_opts =
+      Keyword.drop(opts, [:max_concurrency, :max_queue, :executor_name] ++ runtime_opts)
+
     runtime = PlugFixtures.runtime(hub, Keyword.take(opts, runtime_opts))
 
     plug_opts =
-      [runtime: runtime, executor: executor, observer: self()] ++ transport_opts
+      [runtime: runtime, executor: executor_name || executor, observer: self()] ++ transport_opts
 
     listener =
       start_supervised!(
