@@ -12,6 +12,7 @@ defmodule Snodo.WireDecoderPropertyTest do
   alias Snodo.Result
   alias Snodo.Transport.Context, as: TransportContext
   alias Snodo.Transport.Stdio.Framing
+  alias Snodo.Transport.Stdio.Reader
   alias Snodo.Transport.StreamableHTTP.Server, as: HTTPServer
   alias SnodoTest.TestFixtures
 
@@ -68,6 +69,52 @@ defmodule Snodo.WireDecoderPropertyTest do
             ) do
         [json, "\n"] = Framing.encode_message(message)
         assert Framing.decode_line([prefix, json, ending, "\n"]) == {:ok, message}
+      end
+    end
+  end
+
+  describe "Snodo.Transport.Stdio.Reader" do
+    property "chunking does not change the framed events" do
+      check all(
+              max_line_bytes <- integer(1..64),
+              input <- stdio_input(max_line_bytes),
+              chunks <- stdio_chunks(input)
+            ) do
+        assert reader_events(chunks, max_line_bytes) ==
+                 reader_events([input], max_line_bytes)
+      end
+    end
+
+    property "events match the newline and byte-limit model" do
+      check all(
+              max_line_bytes <- integer(1..64),
+              input <- stdio_input(max_line_bytes),
+              chunks <- stdio_chunks(input)
+            ) do
+        assert reader_events(chunks, max_line_bytes) == reference_lines(input, max_line_bytes)
+      end
+    end
+
+    property "the held buffer never exceeds the byte limit" do
+      check all(
+              max_line_bytes <- integer(1..64),
+              input <- stdio_input(max_line_bytes),
+              chunks <- stdio_chunks(input)
+            ) do
+        Enum.reduce(chunks, Reader.new_buffer(), fn chunk, buffer ->
+          {_events, next_buffer} = Reader.split(buffer, chunk, max_line_bytes)
+
+          case next_buffer do
+            {data, size} ->
+              assert size <= max_line_bytes
+              assert byte_size(IO.iodata_to_binary(data)) == size
+
+            :discarding ->
+              :ok
+          end
+
+          next_buffer
+        end)
       end
     end
   end
@@ -221,6 +268,67 @@ defmodule Snodo.WireDecoderPropertyTest do
       list_of(binary(), max_length: 4),
       map(json_value(), &[JSON.encode_to_iodata!(&1), "\r\n"])
     ])
+  end
+
+  # Lines around the limit exercise both the newline-inclusive bound and EOF.
+  defp stdio_input(max_line_bytes) do
+    lengths = Enum.uniq([0, 1, max_line_bytes - 1, max_line_bytes, max_line_bytes + 1])
+
+    near_limit =
+      gen all(
+            line_lengths <- list_of(member_of(lengths), max_length: 8),
+            final_newline <- boolean()
+          ) do
+        input = Enum.map_join(line_lengths, "\n", &:binary.copy("x", &1))
+        if final_newline and line_lengths != [], do: input <> "\n", else: input
+      end
+
+    one_of([binary(max_length: 256), near_limit])
+  end
+
+  # Cuts at a newline's start or end bias splits toward newline boundaries.
+  defp stdio_chunks(input) do
+    size = byte_size(input)
+
+    newline_cuts =
+      input
+      |> :binary.matches("\n")
+      |> Enum.flat_map(fn {at, 1} -> [at, at + 1] end)
+
+    boundary_cuts = Enum.uniq([0, size | newline_cuts])
+    cut = frequency([{1, integer(0..size)}, {3, member_of(boundary_cuts)}])
+
+    gen all(cuts <- list_of(cut, max_length: 20)) do
+      [0, size | cuts]
+      |> Enum.sort()
+      |> Enum.chunk_every(2, 1, :discard)
+      |> Enum.map(fn [first, last] -> binary_part(input, first, last - first) end)
+    end
+  end
+
+  defp reader_events(chunks, max_line_bytes) do
+    {events, buffer} =
+      Enum.reduce(chunks, {[], Reader.new_buffer()}, fn chunk, {events, buffer} ->
+        {next_events, next_buffer} = Reader.split(buffer, chunk, max_line_bytes)
+        {events ++ next_events, next_buffer}
+      end)
+
+    events ++ Reader.flush(buffer)
+  end
+
+  defp reference_lines(input, max_line_bytes) do
+    {final, terminated} = input |> :binary.split("\n", [:global]) |> List.pop_at(-1)
+
+    events =
+      Enum.map(terminated, fn line ->
+        if byte_size(line) + 1 <= max_line_bytes, do: {:line, line <> "\n"}, else: :too_long
+      end)
+
+    case final do
+      "" -> events
+      line when byte_size(line) <= max_line_bytes -> events ++ [{:line, line}]
+      _long -> events ++ [:too_long]
+    end
   end
 
   # Decoded JSON terms shaped like JSON-RPC messages, with each member either
