@@ -1,8 +1,9 @@
 # Tools, resources, and prompts
 
 A server is a module that uses `Snodo.Server` and declares components. Each
-component is a module, written by hand or generated from an inline block. The
-router registers modules either way, so the forms can be mixed in one server.
+component is a module, written by hand or generated from an inline block or
+an explicit GenServer declaration. The router registers modules either way,
+so the forms can be mixed in one server.
 
 | Form | Tool | Resource | Prompt |
 |---|---|---|---|
@@ -253,6 +254,54 @@ are not printable ASCII, or that have leading or trailing whitespace, arrive
 base64-encoded as `=?base64?...?=`. Integers compare numerically. Stdio and
 direct dispatch have no headers and ignore the annotation.
 
+## GenServer tools
+
+`Snodo.Tool.GenServer` generates ordinary tool modules from explicit call and
+cast declarations inside a `Snodo.Server`. Each declaration fixes a registered
+GenServer target, provides an input schema, and builds an application message
+from protocol-native string-keyed arguments. Call declarations also encode
+the reply as a JSON object. The generated modules register through the same
+server DSL as handwritten tools:
+
+```elixir
+defmodule MyServer do
+  use Snodo.Server, name: "counter", version: "1.0.0"
+  import Snodo.Tool.GenServer
+
+  genserver_call "counter_add",
+    target: MyApp.Counter,
+    input_schema: %{
+      "type" => "object",
+      "properties" => %{"by" => %{"type" => "integer"}},
+      "required" => ["by"],
+      "additionalProperties" => false
+    },
+    message: fn %{"by" => by} -> {:add, by} end,
+    encode_reply: fn count -> %{"value" => count} end,
+    timeout: 5_000
+
+  genserver_cast "counter_notify",
+    target: MyApp.Counter,
+    input_schema: %{"type" => "object", "additionalProperties" => false},
+    message: :notify
+end
+```
+
+The target and operations come from server code. Input is checked with the
+dependency-free `Snodo.Schema.Validator.Basic` subset before the message is
+built, even if the server has no validator installed. Unsupported assertion
+keywords, such as `oneOf`, fail compilation. A call has a 5,000 ms
+timeout by default. An invalid input, missing target, timeout, failed message
+builder, or non-JSON reply becomes a tool error result. A cast returns
+`%{"sent" => true}` when `GenServer.cast/2` accepts the message. An absent
+target is a tool error. The target can stop after the availability check, so
+success does not confirm that it received or processed the message.
+
+`examples/28_genserver_tools.exs` compares manual tools with the generated
+modules and includes a generic tool restricted to the same declared
+operations. The generic tool is an example prototype, not part of the
+declaration API.
+
 ## Resources
 
 A resource has an exact `:uri` or a `:uri_template`. A template in the
@@ -447,4 +496,5 @@ result carries `ttlMs` and `cacheScope` from the `*_cache:` options.
 
 `examples/01_direct_tools.exs` (raw tools), `02_structured_schema.exs`,
 `12_resources.exs`, `13_prompts.exs`, `14_completions.exs`,
-`15_pagination.exs`, and `25_inline_components.exs`.
+`15_pagination.exs`, `25_inline_components.exs`, and
+`28_genserver_tools.exs`.
