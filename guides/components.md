@@ -33,6 +33,23 @@ accepts the same options as overrides. Other options: `protocols:` (see
 `prompts_cache:`, `resources_cache:`, `capabilities:`, `extensions:`,
 `subscription_source:`, `instrumentation:`, and `authorization:`.
 
+## Generate a catalog document
+
+`mix snodo.catalog` writes Markdown for the catalog visible to a client. Use a
+compiled server module with `runtime/0`, or connect to a running Streamable
+HTTP MCP endpoint:
+
+```sh
+mix snodo.catalog --server MyServer --output catalog.md
+mix snodo.catalog --url http://127.0.0.1:4000/mcp --output catalog.md
+```
+
+Omit `--output` to write to stdout. The document includes tools and their input
+and output schemas, resources and URI templates, prompts and arguments, and
+component annotations. Its coverage section counts components and arguments
+without descriptions and names each gap. Both modes use `Snodo.Client`, so
+pagination and the server's selected protocol version determine what appears.
+
 ## Tools
 
 A project that uses the DSL can add `import_deps: [:snodo]` to its
