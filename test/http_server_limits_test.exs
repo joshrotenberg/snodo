@@ -5,6 +5,7 @@ defmodule Snodo.Transport.StreamableHTTP.ServerLimitsTest do
   alias Snodo.Transport.StreamableHTTP.Server, as: HTTPServer
   alias SnodoTest.SubscriptionWorker
   alias SnodoTest.TestFixtures
+  alias SnodoTest.TestInstrumentationSink
   alias SnodoTest.TestSubscriptionHub
   alias SnodoTest.TestSubscriptionSource
 
@@ -211,7 +212,7 @@ defmodule Snodo.Transport.StreamableHTTP.ServerLimitsTest do
   end
 
   test "a killed connection stops its subscription worker and closes the source" do
-    hub = start_supervised!(Hub)
+    hub = start_supervised!({Hub, instrumentation: {TestInstrumentationSink, self()}})
     runtime = subscription_runtime(Hub.source(hub))
     {:ok, server} = start_supervised({HTTPServer, runtime: runtime, port: 0})
     {_ip, port, _path} = HTTPServer.address(server)
@@ -231,7 +232,10 @@ defmodule Snodo.Transport.StreamableHTTP.ServerLimitsTest do
       assert_receive {:DOWN, ^monitor, :process, ^pid, :shutdown}, 1_000
     end
 
-    # The worker closes the source before it exits.
+    assert_receive {:instrumentation, [:snodo, :subscription, :close], %{subscriptions: 0},
+                    %{reason: :disconnected}},
+                   1_000
+
     assert Hub.stats(hub).subscriptions == 0
     :gen_tcp.close(socket)
   end

@@ -101,8 +101,8 @@ defmodule Snodo.Transport.Plug.Stream do
 
   @impl true
   def terminate(_reason, state) do
-    :ok = Subscription.stop_worker(state.worker, state.worker_monitor)
     :ok = Subscription.close(state.subscription, state.close_reason)
+    :ok = Subscription.stop_worker(state.worker, state.worker_monitor)
   end
 
   defp loop(conn, stream, monitor, subscription, keepalive_ms) do

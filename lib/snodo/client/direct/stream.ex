@@ -50,7 +50,12 @@ defmodule Snodo.Client.Direct.Stream do
 
   @impl GenServer
   def handle_call(:open, _from, %{subscription: nil} = state) do
-    case Server.dispatch(state.runtime, state.message, state.transport) do
+    transport = %{
+      state.transport
+      | metadata: Map.put(state.transport.metadata, :subscription_owner, self())
+    }
+
+    case Server.dispatch(state.runtime, state.message, transport) do
       {:stream, %Subscription{} = subscription} ->
         start_stream(state, subscription)
 

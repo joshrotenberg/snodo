@@ -144,6 +144,7 @@ defmodule Snodo.Transport.Plug do
     lease = Lease.start(owner)
     sink = Progress.sink(owner)
     prepared = install_progress(prepared, sink)
+    prepared = put_in(prepared.transport.metadata[:subscription_owner], lease)
     key = request_key(conn, opts, prepared.raw["id"])
 
     work = fn cancellation ->
