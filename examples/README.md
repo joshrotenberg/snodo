@@ -17,6 +17,8 @@ ordinary multi-round elicitation and signed state for tools, resources, and
 prompts. Examples 21/22 demonstrate the optional Plug/Bandit and JSV integration
 packages; neither adds dependencies to the core. Example 23 returns to core and
 applies one application-owned authorization policy to discovery and invocation.
+Example 27 forwards subscription events through an OTP process group to local
+hubs, using the same bridge on each directly connected node.
 Run a core example as a walkthrough:
 
 ```sh
@@ -31,8 +33,8 @@ mix run examples/01_direct_tools.exs --check
 
 Or run the complete no-external-service set, with every script launched in a
 fresh Elixir VM. The root task delegates examples 07–09, 17, and 26 to Tasks and example
-11 to the SQLite sibling; examples 12–16, 18–20, and 23 remain in core. Examples
-21/22 run in their integration packages. All 25 default scripts run without
+11 to the SQLite sibling; examples 12–16, 18–20, 23–25, and 27 remain in core. Examples
+21/22 run in their integration packages. All 26 default scripts run without
 external services:
 
 ```sh
@@ -102,6 +104,7 @@ not have that requirement.
 | [`24_client_transports.exs`](24_client_transports.exs) | One `Snodo.Client` API in process, over a stdio subprocess, and over the native HTTP listener; identical results and error decoding |
 | [`25_inline_components.exs`](25_inline_components.exs) | Inline tool, resource template, and prompt blocks next to a module tool; plain return values; generated module names |
 | [`26_tasks_client.exs`](26_tasks_client.exs) | `Snodo.Extensions.Tasks.Client` over `Snodo.Client`: per-request extension declaration, task-augmented call, input answered by the client's form handler, `tasks/get`, `tasks/cancel`, typed status and outcome |
+| [`27_distributed_subscriptions.exs`](27_distributed_subscriptions.exs) | OTP `:pg` fanout to two local hubs, per-hub filtering, application-owned bridge process |
 
 The unnumbered stdio files remain interoperability and subprocess acceptance
 fixtures. DETS in example 08 is deliberately a local single-node reference
@@ -142,3 +145,7 @@ Example 23 configures one policy module on the immutable runtime, serves three
 different effective catalogs from it, and proves that a guessed call keeps the
 application's own error, records an audit event, and never reaches the handler.
 The library supplies no roles, credentials, or refusal code.
+Example 27 checks the bridge with two hubs in one VM. When that bridge and its
+`:pg` scope run on each directly connected Erlang node, group membership
+includes remote bridges and the same messages reach their local hubs. It does
+not provide replay across node splits or restarts.
