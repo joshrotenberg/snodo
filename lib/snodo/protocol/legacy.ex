@@ -166,8 +166,12 @@ defmodule Snodo.Protocol.Legacy do
         session: nil,
         server_info: implementation(runtime.server_info, protocol.version()),
         server_capabilities:
-          Map.new(runtime.capabilities, fn {key, _value} -> {key, %{}} end)
-          |> Map.take(["tools", "prompts", "resources", "completions"]),
+          runtime.capabilities
+          |> Map.take(["tools", "prompts", "resources", "completions", "experimental"])
+          |> Map.new(fn
+            {"experimental", value} -> {"experimental", value}
+            {key, _value} -> {key, %{}}
+          end),
         client_info: if(initialize?, do: envelope.params["clientInfo"]),
         client_capabilities:
           if(initialize?, do: Map.get(envelope.params, "capabilities", %{}), else: %{}),
