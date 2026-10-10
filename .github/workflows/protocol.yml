@@ -43,7 +43,7 @@ jobs:
           npm run check --prefix interop/schema_validation 2>&1 | tee tmp/schema-validation/check.log
       - name: Preserve independent schema evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: protocol-wire-schema
           path: tmp/schema-validation/
@@ -82,7 +82,7 @@ jobs:
         run: npm run check
       - name: Preserve raw failures and separate conformance score
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: protocol-conformance
           path: tmp/conformance/server/
@@ -123,7 +123,7 @@ jobs:
         run: node run.mjs ${{ matrix.lane }}
       - name: Preserve raw results and separate score
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: protocol-conformance-${{ matrix.lane }}
           path: tmp/conformance/${{ matrix.lane }}/
@@ -162,7 +162,7 @@ jobs:
         run: npm run check:client
       - name: Preserve raw client results and separate client score
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: protocol-conformance-client
           path: tmp/conformance/client/
@@ -199,7 +199,7 @@ jobs:
         run: npm run check:client:2025-11-25
       - name: Preserve raw client results and separate client score
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: protocol-conformance-client-2025-11-25
           path: tmp/conformance/client-2025-11-25/
