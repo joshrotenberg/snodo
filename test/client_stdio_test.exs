@@ -138,6 +138,38 @@ defmodule Snodo.ClientStdioTest do
     assert {:ok, _result} = Client.call_tool(client, "echo", %{"text" => "still serving"})
   end
 
+  test "a caller that exits cancels its request on the server" do
+    client = connect()
+    test = self()
+
+    caller =
+      spawn(fn ->
+        send(test, :calling)
+        Client.call_tool(client, "park", %{}, timeout: :infinity)
+      end)
+
+    assert_receive :calling, 1_000
+
+    assert eventually(fn ->
+             {:ok, %{"structuredContent" => %{"alive" => alive}}} =
+               Client.call_tool(client, "parked")
+
+             alive == 1
+           end)
+
+    Process.exit(caller, :kill)
+
+    assert eventually(fn ->
+             {:ok, %{"structuredContent" => %{"alive" => alive}}} =
+               Client.call_tool(client, "parked")
+
+             alive == 0
+           end)
+
+    {_transport, connection} = client.transport
+    assert eventually(fn -> :sys.get_state(connection).pending == %{} end)
+  end
+
   describe "progress" do
     test "notifications reach the progress function in order before the result" do
       client = connect()
