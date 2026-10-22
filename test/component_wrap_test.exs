@@ -161,6 +161,19 @@ defmodule Snodo.ComponentWrapTest do
     end
   end
 
+  defmodule ProgressTimeoutTool do
+    use Snodo.Tool,
+      name: "progress_timeout_tool",
+      wrap: [{Snodo.Component.Wrap.Timeout, timeout: 5_000}]
+
+    @impl true
+    def call(_arguments, context) do
+      :ok = Snodo.Progress.report(context, 1, total: 2)
+      :ok = Snodo.Progress.report(context, 2, total: 2)
+      {:ok, Snodo.Result.text("reported")}
+    end
+  end
+
   defmodule LongTimeoutTool do
     use Snodo.Tool,
       name: "long_timeout_tool",
@@ -217,6 +230,7 @@ defmodule Snodo.ComponentWrapTest do
     tool(Snodo.ComponentWrapTest.ConcurrencyTool)
     tool(Snodo.ComponentWrapTest.TimeoutTool)
     tool(Snodo.ComponentWrapTest.LongTimeoutTool)
+    tool(Snodo.ComponentWrapTest.ProgressTimeoutTool)
     tool(Snodo.ComponentWrapTest.RefusedTool)
     resource(Snodo.ComponentWrapTest.Resource)
     resource(Snodo.ComponentWrapTest.CompletionResource)
@@ -384,6 +398,16 @@ defmodule Snodo.ComponentWrapTest do
     assert_receive {:entered, second_pid}, 1_000
     send(second_pid, :continue)
     assert {:ok, _result} = Task.await(second, 1_000)
+  end
+
+  test "a callback under the timeout wrapper can report progress" do
+    client = client(self())
+
+    assert {:ok, %{"content" => [%{"text" => "reported"}]}} =
+             Client.call_tool(client, "progress_timeout_tool", %{}, progress: self())
+
+    assert_received {:snodo_progress, %{"progress" => 1, "total" => 2}}
+    assert_received {:snodo_progress, %{"progress" => 2, "total" => 2}}
   end
 
   test "timeout stops the callback and returns a defined tool error" do
