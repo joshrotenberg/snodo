@@ -14,7 +14,7 @@ defmodule MyApp.Policy do
 
   def authorize(_phase, _component, _context, _options), do: :ok
 
-  defp admin?(%{"role" => "admin"}), do: true
+  defp admin?(%{role: :admin}), do: true
   defp admin?(_auth), do: false
 end
 
@@ -25,6 +25,22 @@ defmodule MyApp.Server do
     authorization: {MyApp.Policy, []}
 end
 ```
+
+## Where the identity comes from
+
+`context.auth` is exactly the value the transport assigned; `snodo` does not
+convert its keys. Policies and wrapper keys must read the shape your transport
+produces:
+
+| Transport | `context.auth` |
+|---|---|
+| `snodo_plug` | `conn.assigns[:mcp_auth]`, set by your authentication Plug, for example `%{principal: user.id, role: :admin}` |
+| `snodo_oauth` (the Bearer plug, or `Snodo.OAuth.ResourceServer.Native` as a request gate) | `%{principal: claims["sub"], client_id: claims["client_id"], scopes: [...], claims: claims}` |
+| Native HTTP listener | whatever its `:request_gate` returns; `nil` without a gate |
+| Direct client | the client's `:auth` option |
+| stdio | `nil`; the transport carries no caller identity |
+
+Request headers and JSON never supply identity.
 
 ## Where it applies
 

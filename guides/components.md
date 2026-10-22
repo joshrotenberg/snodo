@@ -316,7 +316,7 @@ tool "lookup",
     {Snodo.Component.Wrap.Concurrency, limit: 4},
     {Snodo.Component.Wrap.RateLimit,
      limit: 30, window_ms: 60_000,
-     key: fn context -> context.auth && context.auth["principal"] end}
+     key: fn context -> context.auth[:principal] end}
   ] do
   argument "query", :string, required: true
 
@@ -324,6 +324,13 @@ tool "lookup",
   def call(%{"query" => query}, _context), do: {:ok, search(query)}
 end
 ```
+
+`context.auth` is exactly the value the transport assigned, so the key function
+must read that shape: `snodo_plug` passes `conn.assigns[:mcp_auth]` through and
+`snodo_oauth`'s Bearer plug assigns an atom-keyed map with `:principal`. See
+[Authorization](authorization.md#where-the-identity-comes-from). Every caller
+for which the key function returns `nil` shares one bucket, so an anonymous
+caller and a misread key both land there.
 
 A custom wrapper implements the `call/4` callback of `Snodo.Component.Wrap`:
 it receives the
