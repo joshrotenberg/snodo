@@ -3,6 +3,7 @@ defmodule Snodo.Transport.PlugBanditTest do
 
   alias Snodo.Server.Executor
   alias Snodo.Subscription.Hub
+  alias Snodo.Transport.Plug, as: TransportPlug
   alias SnodoTest.PlugFixtures
   alias SnodoTest.PlugFixtures.Policy
   alias SnodoTest.PlugFixtures.Probe
@@ -221,7 +222,7 @@ defmodule Snodo.Transport.PlugBanditTest do
 
     for value <- [0, -1, :infinity] do
       assert_raise ArgumentError, ":body_timeout must be a positive integer", fn ->
-        Snodo.Transport.Plug.init(runtime: runtime, executor: self(), body_timeout: value)
+        TransportPlug.init(runtime: runtime, executor: self(), body_timeout: value)
       end
     end
   end
@@ -252,6 +253,34 @@ defmodule Snodo.Transport.PlugBanditTest do
     assert Snodo.Cancellation.cancelled?(token)
     assert read_all(pending) =~ "HTTP/1.1 204"
     assert {200, _result} = rpc(port, request("server/discover", %{}))
+  end
+
+  test "cross-request cancellation works when init/1 runs on every request" do
+    %{port: port} = server(init_per_request: true)
+    pending = connect(port)
+
+    send_rpc(
+      pending,
+      request("tools/call", %{"name" => "inspect_context", "arguments" => %{"wait" => true}}, 79),
+      auth: :alpha
+    )
+
+    assert_receive {:tool_entered, 79, _worker, token}, 1_000
+    assert {202, nil} = rpc(port, cancellation(79), auth: :alpha)
+    assert eventually(fn -> Snodo.Cancellation.cancelled?(token) end)
+    assert read_all(pending) =~ "HTTP/1.1 204"
+  end
+
+  test "the Plug instance is stable across init/1 calls and can be set" do
+    runtime = PlugFixtures.runtime(start_supervised!(Hub))
+    opts = [runtime: runtime, executor: :executor_a]
+
+    assert TransportPlug.init(opts).instance == TransportPlug.init(opts).instance
+
+    refute TransportPlug.init(opts).instance ==
+             TransportPlug.init([path: "/other"] ++ opts).instance
+
+    assert %{instance: :tenant_a} = TransportPlug.init([instance: :tenant_a] ++ opts)
   end
 
   test "malformed cancellation cannot cancel an authenticated execution" do

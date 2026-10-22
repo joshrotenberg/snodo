@@ -187,6 +187,9 @@ scope "/" do
 end
 ```
 
+`forward` compiles its options into the router, so this form suits a runtime
+made only of data; for a runtime that holds functions, use the wrapper Plug in
+the [transports guide](https://hexdocs.pm/snodo/transports.html#phoenix-endpoint).
 The route path must equal the path the metadata plug derives from
 `resource:` (or its `path:` option), since the plug also compares
 `conn.request_path`. Keep `Plug.Parsers` away from `/mcp`, as the
