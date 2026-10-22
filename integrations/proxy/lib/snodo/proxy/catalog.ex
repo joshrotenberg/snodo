@@ -9,7 +9,6 @@ defmodule Snodo.Proxy.Catalog do
             prompts: %{},
             resources: %{},
             resource_templates: %{},
-            resource_names: %{},
             lists: %{tools: [], prompts: [], resources: [], resource_templates: []}
 
   @doc false
@@ -144,10 +143,10 @@ defmodule Snodo.Proxy.Catalog do
           kind == :resource and MapSet.member?(backend.subscribed_uris, original_uri)
         )
 
-      with {:ok, names} <- put_unique(current.resource_names, public_name, entry),
-           {:ok, entry} <- maybe_compile_template(entry),
+      # Resources are identified by URI; their names may repeat.
+      with {:ok, entry} <- maybe_compile_template(entry),
            {:ok, entries} <- put_unique(Map.fetch!(current, field), public_uri, entry) do
-        {:ok, current |> Map.put(:resource_names, names) |> Map.put(field, entries)}
+        {:ok, Map.put(current, field, entries)}
       end
     else
       {:error, :invalid_definition}
