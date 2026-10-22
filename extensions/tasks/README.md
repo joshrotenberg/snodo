@@ -483,12 +483,10 @@ task's outcome is `{:ok, result}` with the final `CallToolResult` map,
 `{:cancelled, status}`.
 
 Over Streamable HTTP, `tasks/get`, `tasks/update`, and `tasks/cancel` need an
-`Mcp-Name` header mirrored from `params.taskId`. `Snodo.Client`'s HTTP
-transport derives its headers from the core protocol dialect, which does not
-include the extension's methods, so it does not send that header yet and the
-server answers -32020. Task creation and `subscriptions/listen` work over
-HTTP; the task methods, and `await/3`, work over `Snodo.Client.direct/2` and
-stdio.
+`Mcp-Name` header mirrored from `params.taskId`. The client selects the Tasks
+transport policy for those methods, so the HTTP transport sends the mirrored
+header automatically. The task methods and `await/3` work over direct, stdio,
+and HTTP clients.
 
 ## Remaining boundaries
 
