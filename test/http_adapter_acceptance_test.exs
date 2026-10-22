@@ -2,6 +2,7 @@ defmodule Snodo.Transport.StreamableHTTP.AdapterAcceptanceTest do
   use ExUnit.Case, async: true
 
   alias Snodo.Transport.StreamableHTTP
+  alias Snodo.Transport.StreamableHTTP.AdapterAcceptanceTest.AdminOnlyRouted
   alias Snodo.Transport.StreamableHTTP.Request
   alias Snodo.Transport.StreamableHTTP.Response
   alias Snodo.Transport.StreamableHTTP.StreamResponse
@@ -17,6 +18,19 @@ defmodule Snodo.Transport.StreamableHTTP.AdapterAcceptanceTest do
   alias SnodoTest.TestTools.Structured
 
   @protocol "2026-07-28"
+
+  defmodule AdminOnlyRouted do
+    @behaviour Snodo.Authorization
+
+    @impl true
+    def authorize(phase, component, context, options) do
+      send(Keyword.fetch!(options, :observer), {:authorize, phase, component.name})
+
+      if component.name != "routed" or context.auth == %{role: :admin},
+        do: :ok,
+        else: {:error, Snodo.Error.authorization(-32_003, "Not permitted")}
+    end
+  end
 
   @tag mcp_contract: ["subscriptions-http-adapter"]
   test "returns a long-lived SSE descriptor only for subscriptions/listen" do
@@ -115,6 +129,55 @@ defmodule Snodo.Transport.StreamableHTTP.AdapterAcceptanceTest do
                  {"Mcp-Param-Region", "a"},
                  {"Mcp-Param-Verbose", "True"}
                ])
+    end
+
+    test "a concealed tool's header failure answers like an unknown tool" do
+      policy = {AdminOnlyRouted, refusal: :conceal, observer: self()}
+      runtime = TestFixtures.runtime(tools: [Routed], authorization: policy)
+      arguments = %{"region" => "Hello"}
+
+      # Refused and concealed: the same answer as a tool that does not exist.
+      assert {400, refused} = routed_as(runtime, nil, "routed", arguments)
+      assert_received {:authorize, :invocation, "routed"}
+      refute_received {:authorize, _phase, _name}
+
+      assert {400, absent} = routed_as(runtime, nil, "absent", arguments)
+      assert refused == put_in(absent, ["error", "message"], "Unknown tool: routed")
+
+      # Allowed: the header failure is reported, and the handler does not run.
+      assert {400, %{"error" => %{"code" => -32_020}}} =
+               routed_as(runtime, %{role: :admin}, "routed", arguments)
+
+      assert_received {:authorize, :invocation, "routed"}
+      refute_received {:authorize, _phase, _name}
+
+      # Without concealment the header failure is reported as before.
+      runtime =
+        TestFixtures.runtime(
+          tools: [Routed],
+          authorization: {AdminOnlyRouted, observer: self()}
+        )
+
+      assert {400, %{"error" => %{"code" => -32_020}}} =
+               routed_as(runtime, nil, "routed", arguments)
+    end
+
+    # As the transports do: admit, attach the caller's identity, then execute.
+    defp routed_as(runtime, auth, name, arguments) do
+      raw =
+        TestFixtures.request("routed", "tools/call", %{"name" => name, "arguments" => arguments})
+
+      response =
+        case StreamableHTTP.prepare(runtime, request(raw)) do
+          {:ok, prepared} ->
+            prepared = put_in(prepared.transport.metadata[:auth], auth)
+            StreamableHTTP.execute(runtime, prepared)
+
+          {:response, response} ->
+            response
+        end
+
+      {response.status, JSON.decode!(response.body)}
     end
 
     test "treats a value without the full sentinel as a literal", %{runtime: runtime} do
