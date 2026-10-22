@@ -705,8 +705,10 @@ defmodule Snodo.Server do
              schema_validator: runtime.schema_validator,
              compiled_schemas: runtime.compiled_schemas,
              authorization: runtime.authorization
-           ) do
-      apply_cache_policy(result, runtime.resources_cache, "Resource")
+           ),
+         {:ok, %Result{} = result} <-
+           apply_cache_policy(result, runtime.resources_cache, "Resource") do
+      {:ok, uncached_after_input(result, context)}
     end
   end
 
@@ -758,6 +760,16 @@ defmodule Snodo.Server do
     else
       {:error, Error.internal("#{label} returned invalid cache metadata")}
     end
+  end
+
+  # A result reached by answering input requests depends on those answers, so
+  # it must not be served again for the original request.
+  defp uncached_after_input(%Result{kind: :input_required} = result, _context), do: result
+
+  defp uncached_after_input(%Result{} = result, %Snodo.Context{} = context) do
+    if is_binary(context.request_state) or context.input_responses != %{},
+      do: %{result | metadata: Map.put(result.metadata, :ttl_ms, 0)},
+      else: result
   end
 
   defp apply_list_cache_policy(result, runtime, :tools_list),

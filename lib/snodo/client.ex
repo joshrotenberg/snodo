@@ -721,6 +721,7 @@ defmodule Snodo.Client do
     with :ok <- check_rounds(plan, round, result),
          {:ok, responses} <- Input.answer(plan.handlers, result) do
       if map_size(responses) == 0, do: Process.sleep(@state_only_pacing_ms)
+      if on_round = Keyword.get(opts, :on_input_round), do: on_round.()
 
       opts =
         opts
@@ -1085,20 +1086,29 @@ defmodule Snodo.Client do
       Process.put(ref, {actual, client.session && client.session.id})
     end
 
-    {outcome, actual} =
+    # A result reached by answering input requests depends on those answers,
+    # so it is not cached under the original request.
+    input_round = make_ref()
+
+    {outcome, actual, answered?} =
       try do
         request_opts =
           opts
           |> Keyword.put(:on_cache_credential, report)
           |> Keyword.put(:cache_token, token)
+          |> Keyword.put(:on_input_round, fn -> Process.put(input_round, true) end)
 
         outcome = send_request(client, method, params, request_opts, input_plan(client, opts), 0)
-        {outcome, Process.get(ref, credential)}
+        {outcome, Process.get(ref, credential), Process.get(input_round, false)}
       after
         Process.delete(ref)
+        Process.delete(input_round)
       end
 
-    maybe_cache(outcome, base, if(is_nil(credential), do: nil, else: actual), generation)
+    unless answered? do
+      maybe_cache(outcome, base, if(is_nil(credential), do: nil, else: actual), generation)
+    end
+
     outcome
   end
 
