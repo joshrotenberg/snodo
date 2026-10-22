@@ -6,6 +6,7 @@ defmodule Snodo.ClientListenTest do
   alias Snodo.Client.Subscription.Buffer
   alias Snodo.Error
   alias Snodo.Subscription.Event
+  alias SnodoTest.SubscriptionWorker
   alias SnodoTest.TestExtensions.Watch
   alias SnodoTest.TestFixtures
   alias SnodoTest.TestSubscriptionHub
@@ -265,7 +266,7 @@ defmodule Snodo.ClientListenTest do
         end)
 
       assert_receive {:listening, %Subscription{id: id, pid: pid}}, 1_000
-      monitor = Process.monitor(pid)
+      [{^pid, monitor}] = SubscriptionWorker.monitor_confirmed([pid])
       Process.exit(owner, :kill)
 
       assert_receive {:subscription_closed, ^id, {:disconnected, {:owner_down, :killed}}}, 1_000
