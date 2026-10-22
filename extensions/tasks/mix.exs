@@ -74,6 +74,7 @@ defmodule Snodo.Extensions.Tasks.MixProject do
         "snodo.example ../../examples/26_tasks_client.exs"
       ],
       quality: [
+        "hex.audit",
         "format --check-formatted",
         "compile --warnings-as-errors",
         "credo --strict",

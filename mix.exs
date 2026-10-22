@@ -129,6 +129,7 @@ defmodule Snodo.MixProject do
         "cmd --cd conformance/fixture mix deps.get"
       ],
       quality: [
+        "hex.audit",
         "format --check-formatted",
         "compile --warnings-as-errors",
         "credo --strict",
@@ -142,7 +143,8 @@ defmodule Snodo.MixProject do
         "cmd --cd integrations/schema_jsv mix quality",
         "cmd --cd integrations/oauth mix quality",
         "cmd --cd integrations/telemetry mix quality",
-        "cmd --cd integrations/proxy mix quality"
+        "cmd --cd integrations/proxy mix quality",
+        "cmd --cd conformance/fixture mix hex.audit"
       ],
       "quality.types": [
         "dialyzer --format short --list-unused-filters",

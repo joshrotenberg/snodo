@@ -74,6 +74,7 @@ defmodule Snodo.Extensions.Tasks.SQLite.MixProject do
         "snodo.example ../../examples/11_tasks_sqlite.exs"
       ],
       quality: [
+        "hex.audit",
         "format --check-formatted",
         "compile --warnings-as-errors",
         "credo --strict",

@@ -57,7 +57,7 @@ defmodule Snodo.OAuth.MixProject do
       # The integration tests drive Snodo.Transport.Plug on a real Bandit
       # listener. Neither is needed at runtime.
       {:snodo_plug, path: "../plug", only: [:dev, :test]},
-      {:bandit, "~> 1.12.5", only: [:dev, :test]},
+      {:bandit, "~> 1.13", only: [:dev, :test]},
       {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.40", only: :dev, runtime: false}
@@ -67,6 +67,7 @@ defmodule Snodo.OAuth.MixProject do
   defp aliases do
     [
       quality: [
+        "hex.audit",
         "format --check-formatted",
         "compile --warnings-as-errors",
         "credo --strict",

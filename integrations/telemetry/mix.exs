@@ -61,6 +61,7 @@ defmodule Snodo.Instrumentation.Telemetry.MixProject do
   defp aliases do
     [
       quality: [
+        "hex.audit",
         "format --check-formatted",
         "compile --warnings-as-errors",
         "credo --strict",

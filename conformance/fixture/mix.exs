@@ -15,7 +15,7 @@ defmodule SnodoConformanceFixture.MixProject do
         {:snodo_tasks, path: "../../extensions/tasks"},
         {:snodo_plug, path: "../../integrations/plug"},
         {:snodo_oauth, path: "../../integrations/oauth"},
-        {:bandit, "~> 1.12.5"}
+        {:bandit, "~> 1.13"}
       ]
     ]
   end

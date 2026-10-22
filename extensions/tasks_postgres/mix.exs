@@ -73,6 +73,7 @@ defmodule Snodo.Extensions.Tasks.Postgres.MixProject do
         "snodo.example ../../examples/10_tasks_postgres.exs"
       ],
       quality: [
+        "hex.audit",
         "format --check-formatted",
         "compile --warnings-as-errors",
         "credo --strict",
