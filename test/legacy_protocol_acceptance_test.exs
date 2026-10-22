@@ -123,6 +123,41 @@ defmodule Snodo.LegacyProtocolAcceptanceTest do
     end
   end
 
+  test "legacy initialize retains explicit experimental capability values" do
+    for version <- ["2025-06-18", "2025-11-25"],
+        experimental <- [
+          %{},
+          %{"claude/channel" => %{}},
+          %{"claude/channel" => %{"nested" => %{"enabled" => true}, "max" => 2}}
+        ] do
+      configured =
+        runtime(
+          capabilities: %{
+            "tools" => %{"listChanged" => false},
+            "prompts" => %{},
+            "resources" => %{},
+            "experimental" => experimental
+          }
+        )
+
+      assert {:ok, %{"result" => result}} =
+               Server.dispatch(configured, initialization(version), %TransportContext{})
+
+      assert result["capabilities"]["experimental"] == experimental
+      # The unsupported standard capability settings must not be advertised.
+      assert result["capabilities"]["tools"] == %{}
+      assert result["capabilities"]["prompts"] == %{}
+      assert result["capabilities"]["resources"] == %{}
+    end
+
+    for version <- ["2025-06-18", "2025-11-25"] do
+      assert {:ok, %{"result" => result}} =
+               Server.dispatch(runtime(), initialization(version), %TransportContext{})
+
+      refute Map.has_key?(result["capabilities"], "experimental")
+    end
+  end
+
   test "malformed initialize and version conflicts fail without creating session state" do
     for params <- [%{}, %{"protocolVersion" => "2025-11-25"}, %{"protocolVersion" => 1}] do
       assert {:ok, %{"error" => %{"code" => -32_602}}} =
