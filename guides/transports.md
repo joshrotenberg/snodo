@@ -261,6 +261,45 @@ scope "/" do
 end
 ```
 
+Phoenix's `forward` evaluates its options when the router compiles and calls
+`Snodo.Transport.Plug.init/1` with them on every request. That works for a
+runtime made only of data, as above. Refer to processes by registered name, not
+pid: `subscription_source: Snodo.Subscription.Hub.source(MyApp.SubscriptionHub)` with
+the hub started as `{Snodo.Subscription.Hub, name: MyApp.SubscriptionHub}`, because a pid
+in the options would be the one from compile time. A runtime that holds a
+function (an authorization option, a Tasks `scope:` function) cannot be
+compiled into the router at all. For such a runtime, build the options once at
+startup and forward to a small Plug that reads them:
+
+```elixir
+defmodule MyAppWeb.MCPPlug do
+  @behaviour Plug
+
+  # Call from MyApp.Application.start/2 before starting the supervisor.
+  def configure do
+    opts =
+      Snodo.Transport.Plug.init(
+        runtime: MyApp.MCPServer.runtime(),
+        executor: MyApp.SnodoExecutor,
+        path: "/mcp"
+      )
+
+    :persistent_term.put(__MODULE__, opts)
+  end
+
+  @impl true
+  def init(opts), do: opts
+
+  @impl true
+  def call(conn, _opts),
+    do: Snodo.Transport.Plug.call(conn, :persistent_term.get(__MODULE__))
+end
+```
+
+```elixir
+forward "/mcp", MyAppWeb.MCPPlug
+```
+
 Phoenix's `forward` removes the `/mcp` prefix from `conn.path_info` and adds it
 to `conn.script_name`, but leaves `conn.request_path` as `/mcp`.
 `Snodo.Transport.Plug` compares `path:` with `conn.request_path`, so keep the

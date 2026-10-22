@@ -13,6 +13,12 @@ defmodule Snodo.Transport.Plug do
   value; applications must distinguish authenticated client instances in this
   scope. Anonymous requests cannot cancel each other by guessing request IDs.
 
+  `init/1` may run once at compile time or on every request (Phoenix's
+  `forward` does the latter), so the options must not hold a function or a pid
+  that has to outlive compilation. Cancellation keys also carry an `:instance`,
+  which defaults to `{executor, path}` and keeps two mounts that share an
+  executor apart; set it explicitly when two mounts share both.
+
   Portable Plug APIs only reveal a disconnect when a write fails. So that a
   client disconnect cancels a silent handler, as the 2026-07-28 cancellation
   rules require, a request still running after `:disconnect_probe_ms` (default
@@ -78,11 +84,15 @@ defmodule Snodo.Transport.Plug do
       raise ArgumentError, ":path must be an absolute HTTP path without query or fragment"
     end
 
+    executor = Keyword.fetch!(opts, :executor)
+
     %{
       runtime: runtime,
-      executor: Keyword.fetch!(opts, :executor),
+      executor: executor,
       path: path,
-      instance: make_ref(),
+      # Part of every cancellation key. It must not change between init/1
+      # calls, because Phoenix's forward calls init/1 on each request.
+      instance: Keyword.get(opts, :instance, {executor, path}),
       auth_assign: atom_option!(opts, :auth_assign, :mcp_auth),
       cancellation_scope_assign:
         atom_option!(opts, :cancellation_scope_assign, :mcp_cancellation_scope),

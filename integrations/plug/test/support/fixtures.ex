@@ -59,9 +59,17 @@ defmodule SnodoTest.PlugFixtures.Endpoint do
   @moduledoc false
   @behaviour Plug
 
+  alias Snodo.Transport.Plug, as: TransportPlug
+
   @impl true
   def init(opts) do
-    {Keyword.fetch!(opts, :observer), Snodo.Transport.Plug.init(Keyword.delete(opts, :observer))}
+    observer = Keyword.fetch!(opts, :observer)
+    opts = Keyword.delete(opts, :observer)
+
+    # Phoenix's forward calls the forwarded Plug's init/1 on every request.
+    if Keyword.get(opts, :init_per_request, false),
+      do: {observer, {:per_request, Keyword.delete(opts, :init_per_request)}},
+      else: {observer, TransportPlug.init(opts)}
   end
 
   @impl true
@@ -77,8 +85,11 @@ defmodule SnodoTest.PlugFixtures.Endpoint do
         _other -> conn
       end
 
-    Snodo.Transport.Plug.call(conn, opts)
+    TransportPlug.call(conn, plug_opts(opts))
   end
+
+  defp plug_opts({:per_request, opts}), do: TransportPlug.init(opts)
+  defp plug_opts(opts), do: opts
 
   defp authenticate(conn, principal, observer) do
     conn
