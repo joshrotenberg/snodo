@@ -190,6 +190,7 @@ defmodule Snodo.Client.Stdio do
        owner: Process.monitor(owner),
        pending: %{},
        tokens: %{},
+       callers: %{},
        subscriptions: %{},
        subscription_refs: %{},
        subscription_owners: %{},
@@ -258,18 +259,23 @@ defmodule Snodo.Client.Stdio do
     end
   end
 
-  def handle_call({:request, %{"id" => id} = message, reply_to, opts}, _from, state) do
+  def handle_call({:request, %{"id" => id} = message, reply_to, opts}, {caller, _tag}, state) do
     case write(state.port, message) do
       :ok ->
         token =
           if Keyword.has_key?(opts, :on_progress),
             do: get_in(message, ["params", "_meta", "progressToken"])
 
+        # A caller that exits will never read the answer, so the request is
+        # cancelled then rather than left running until its timeout.
+        monitor = Process.monitor(caller)
+
         entry =
-          %{reply_to: reply_to, token: token, deadline: Deadline.new(opts)}
+          %{reply_to: reply_to, token: token, deadline: Deadline.new(opts), monitor: monitor}
           |> start_timer(id)
 
         state = put_in(state, [:pending, id], entry)
+        state = put_in(state, [:callers, monitor], id)
         state = if token, do: put_in(state, [:tokens, token], id), else: state
         {:reply, :ok, state}
 
@@ -378,6 +384,17 @@ defmodule Snodo.Client.Stdio do
 
   def handle_info({:server_response, _response}, state), do: {:noreply, state}
 
+  def handle_info({:DOWN, monitor, :process, _caller, _reason}, state)
+      when is_map_key(state.callers, monitor) do
+    id = Map.fetch!(state.callers, monitor)
+
+    _result =
+      if is_nil(state.closed), do: write(state.port, cancellation(id, "The client exited"))
+
+    {_entry, state} = pop_pending(state, id)
+    {:noreply, state}
+  end
+
   def handle_info({:DOWN, monitor, :process, _owner, _reason}, state)
       when is_map_key(state.subscription_owners, monitor) do
     {:noreply, cancel_subscription(state, Map.fetch!(state.subscription_owners, monitor))}
@@ -422,6 +439,7 @@ defmodule Snodo.Client.Stdio do
   defp server_gone(state, error) do
     for {_id, entry} <- state.pending do
       cancel_timer(entry)
+      Process.demonitor(entry.monitor, [:flush])
       deliver(entry, {:response, {:error, error}})
     end
 
@@ -430,7 +448,7 @@ defmodule Snodo.Client.Stdio do
         end_subscription(state, id, {:error, error})
       end)
 
-    %{state | pending: %{}, tokens: %{}, closed: error}
+    %{state | pending: %{}, tokens: %{}, callers: %{}, closed: error}
   end
 
   # Once a line passes the limit, its remaining chunks are dropped as they
@@ -658,7 +676,15 @@ defmodule Snodo.Client.Stdio do
 
       {entry, pending} ->
         cancel_timer(entry)
-        {entry, %{state | pending: pending, tokens: Map.delete(state.tokens, entry.token)}}
+        Process.demonitor(entry.monitor, [:flush])
+
+        {entry,
+         %{
+           state
+           | pending: pending,
+             tokens: Map.delete(state.tokens, entry.token),
+             callers: Map.delete(state.callers, entry.monitor)
+         }}
     end
   end
 
