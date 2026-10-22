@@ -278,7 +278,7 @@ defmodule Snodo.SubscriptionHubTest do
                transport_metadata: %{subscription_owner: owner}
              )
 
-    guard_monitor = Process.monitor(subscription.guard)
+    [{_guard, guard_monitor}] = SubscriptionWorker.monitor_confirmed([subscription.guard])
     Process.exit(owner, :kill)
 
     assert_receive {:source_closed, {:disconnected, {:owner_down, _reason}}}, 1_000

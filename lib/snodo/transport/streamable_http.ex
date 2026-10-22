@@ -15,6 +15,7 @@ defmodule Snodo.Transport.StreamableHTTP do
   translate them without changing protocol code.
   """
 
+  alias Snodo.Authorization
   alias Snodo.Envelope
   alias Snodo.Error
   alias Snodo.Extension.Registry, as: ExtensionRegistry
@@ -79,15 +80,18 @@ defmodule Snodo.Transport.StreamableHTTP do
              runtime.capabilities,
              base_policy
            ),
-         policy = with_tool_parameter_mirrors(policy, runtime, envelope),
-         :ok <- validate_policy(request, raw, policy, envelope.id) do
+         :ok <- validate_policy(request, raw, policy, envelope.id),
+         tool_mirrors = tool_parameter_mirrors(policy, runtime, envelope),
+         {:ok, deferred} <-
+           validate_tool_mirrors(request, raw, tool_mirrors, runtime, envelope.id) do
       {:ok,
        %Prepared{
          raw: raw,
          transport: transport,
          protocol: protocol,
          kind: envelope.kind,
-         policy: policy
+         policy: %{policy | mirrored_headers: Map.merge(policy.mirrored_headers, tool_mirrors)},
+         deferred_error: deferred
        }}
     else
       :response_object ->
@@ -105,7 +109,17 @@ defmodule Snodo.Transport.StreamableHTTP do
 
   @doc "Executes one admitted request; transports may supply a cancellation token."
   @spec execute(Runtime.t(), Prepared.t(), term() | nil) :: Response.t() | StreamResponse.t()
-  def execute(%Runtime{} = runtime, %Prepared{} = prepared, cancellation \\ nil) do
+  def execute(runtime, prepared, cancellation \\ nil)
+
+  def execute(
+        %Runtime{} = runtime,
+        %Prepared{deferred_error: {:http_error, _, _, _}} = prepared,
+        _
+      ) do
+    deferred_response(runtime, prepared)
+  end
+
+  def execute(%Runtime{} = runtime, %Prepared{} = prepared, cancellation) do
     transport = %{
       prepared.transport
       | metadata: Map.put(prepared.transport.metadata, :cancellation, cancellation)
@@ -308,8 +322,8 @@ defmodule Snodo.Transport.StreamableHTTP do
 
   # Mirrors for the `x-mcp-header` arguments of the called tool. An unknown
   # tool adds none; dispatch reports it.
-  defp with_tool_parameter_mirrors(
-         %Policy{tool_parameter_headers?: true} = policy,
+  defp tool_parameter_mirrors(
+         %Policy{tool_parameter_headers?: true},
          %Runtime{router: router},
          %Envelope{params: %{"name" => name}}
        )
@@ -317,16 +331,56 @@ defmodule Snodo.Transport.StreamableHTTP do
     with {:ok, tool} <- Map.fetch(router.tools, name),
          {:ok, [_first | _rest] = annotations} <-
            ParamHeaders.annotations(Tool.definition(tool).input_schema) do
-      %{
-        policy
-        | mirrored_headers: Map.merge(policy.mirrored_headers, ParamHeaders.mirrors(annotations))
-      }
+      ParamHeaders.mirrors(annotations)
     else
-      _none -> policy
+      _none -> %{}
     end
   end
 
-  defp with_tool_parameter_mirrors(policy, _runtime, _envelope), do: policy
+  defp tool_parameter_mirrors(_policy, _runtime, _envelope), do: %{}
+
+  # A tool parameter header names an argument of one specific tool, so its
+  # failure would reveal a tool the policy conceals. That failure waits for
+  # execute/3, where the caller's identity is known.
+  defp validate_tool_mirrors(_request, _raw, mirrors, _runtime, _id) when mirrors == %{},
+    do: {:ok, nil}
+
+  defp validate_tool_mirrors(request, raw, mirrors, runtime, id) do
+    case validate_mirrors(request.headers, raw, mirrors, id) do
+      :ok ->
+        {:ok, nil}
+
+      {:http_error, _status, _error, _id} = failure ->
+        if Authorization.conceal?(runtime.authorization), do: {:ok, failure}, else: failure
+    end
+  end
+
+  # Asks the policy about the called tool once, as dispatch would, and answers
+  # a refusal exactly as an unknown tool. The handler is not run.
+  defp deferred_response(runtime, %Prepared{deferred_error: deferred} = prepared) do
+    {:http_error, status, error, id} = deferred
+    %{"params" => %{"name" => name}} = prepared.raw
+    protocol = prepared.protocol
+
+    with {:ok, envelope} <- protocol.decode_request(prepared.raw, prepared.transport),
+         {:ok, context} <- protocol.build_context(envelope, runtime) do
+      component = %Authorization.Component{kind: :tool, name: name}
+
+      case Authorization.decide(runtime.authorization, :invocation, component, context) do
+        :ok ->
+          error_response(status, error, id)
+
+        {:refused, _error} ->
+          unknown = Error.invalid_params("Unknown tool: #{name}")
+          error_response(status_for(unknown), unknown, id)
+
+        {:fault, %Error{} = fault} ->
+          error_response(status_for(fault), fault, id)
+      end
+    else
+      _invalid -> error_response(status, error, id)
+    end
+  end
 
   defp validate_policy(%Request{} = request, raw, %Policy{} = policy, id) do
     with :ok <- validate_allowed_method(request.method, policy),

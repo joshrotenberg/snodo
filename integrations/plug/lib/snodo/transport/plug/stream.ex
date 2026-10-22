@@ -17,8 +17,7 @@ defmodule Snodo.Transport.Plug.Stream do
     monitor = Process.monitor(stream)
 
     try do
-      conn =
-        conn |> Conn.merge_resp_headers(response.headers) |> Conn.send_chunked(response.status)
+      conn = open_response(conn, response)
 
       case Subscription.acknowledgement(response.subscription) do
         {:ok, message} ->
@@ -39,6 +38,13 @@ defmodule Snodo.Transport.Plug.Stream do
       stop(stream, :disconnected)
     end
   end
+
+  # A request that waited past the disconnect probe already has an open event
+  # stream with the same status and content type; keep writing to it.
+  defp open_response(%Conn{state: :chunked} = conn, _response), do: conn
+
+  defp open_response(conn, response),
+    do: conn |> Conn.merge_resp_headers(response.headers) |> Conn.send_chunked(response.status)
 
   @impl true
   def init({subscription, owner, lease, {executor, pool, limit}}) do

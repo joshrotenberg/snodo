@@ -121,7 +121,8 @@ defmodule Snodo.OAuth.Client.Flow do
       _other when is_map(current) and is_binary(current.refresh_token) ->
         case refresh_grant(ctx, as_metadata, target, current) do
           {:ok, token} -> {:ok, token}
-          {:error, _reason} -> grant(ctx, as_metadata, target, nil, [])
+          {:refused, _reason} -> grant(ctx, as_metadata, target, nil, [])
+          {:error, _reason} = error -> error
         end
 
       _other ->
@@ -508,8 +509,11 @@ defmodule Snodo.OAuth.Client.Flow do
   end
 
   # A refresh keeps the refresh token and the scopes when the response
-  # carries none. A refusal drops the stored token; the caller authorizes
-  # again from the start.
+  # carries none. Only invalid_grant says the refresh token itself is no
+  # longer good: that drops the stored token, and the caller authorizes again
+  # from the start. Any other failure (a 5xx, a timeout, a refused connection)
+  # keeps the stored token, so the next request refreshes again instead of
+  # sending the user through an interactive login.
   defp refresh_grant(ctx, as_metadata, target, current) do
     with {:ok, identity} <- identity(ctx, as_metadata) do
       fields = [
@@ -523,8 +527,11 @@ defmodule Snodo.OAuth.Client.Flow do
           token = %{token | refresh_token: token.refresh_token || current.refresh_token}
           store_token(ctx, token)
 
-        {:error, _reason} = error ->
+        {:error, {:token_endpoint, 400, %{"error" => "invalid_grant"}} = reason} ->
           _deleted = store(ctx, :token, {:delete, ctx.resource})
+          {:refused, reason}
+
+        {:error, _reason} = error ->
           error
       end
     end

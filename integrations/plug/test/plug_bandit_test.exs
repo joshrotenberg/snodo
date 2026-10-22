@@ -367,6 +367,27 @@ defmodule Snodo.Transport.PlugBanditTest do
              rpc(port, body, auth: :alpha)
   end
 
+  test "a listen request queued past the disconnect probe still opens its stream" do
+    %{port: port, executor: executor} =
+      server(max_concurrency: 1, max_queue: 1, disconnect_probe_ms: 50)
+
+    assert {:ok, _reference} =
+             Executor.submit(
+               executor,
+               :external_blocker,
+               fn _token -> Process.sleep(:infinity) end,
+               timeout: :infinity
+             )
+
+    socket = connect(port)
+    send_rpc(socket, subscription("queued-listen"))
+    assert read_until(socket, ": keepalive") =~ "HTTP/1.1 200"
+
+    assert :ok = Executor.cancel(executor, :external_blocker)
+    assert read_until(socket, "notifications/subscriptions/acknowledged") =~ "queued-listen"
+    :ok = :gen_tcp.close(socket)
+  end
+
   test "queue wait is included in the finite request deadline" do
     %{port: port, executor: executor} =
       server(max_concurrency: 1, max_queue: 1, request_timeout: 60)
@@ -559,7 +580,7 @@ defmodule Snodo.Transport.PlugBanditTest do
 
     first = open_stream(port, "before-restart")
     [stream] = slot_holders(executor)
-    stream_monitor = Process.monitor(stream)
+    [{^stream, stream_monitor}] = monitor_confirmed([stream])
 
     Process.exit(executor, :kill)
 
