@@ -314,7 +314,7 @@ MCP_PORT=3001 mix run ../fixture_server.exs
 ```
 
 ```sh
-npx -y @modelcontextprotocol/conformance@0.2.0-alpha.11 server \
+npx -y @modelcontextprotocol/conformance@0.2.0-alpha.12 server \
   --url http://127.0.0.1:3001/mcp \
   --requirements 2026-07-28 \
   --output-dir conformance-results
