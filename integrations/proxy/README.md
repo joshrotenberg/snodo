@@ -73,7 +73,14 @@ Clients can request an aggregate `proxy/health` status if they negotiate the
 marks the backend degraded.
 
 The proxy forwards tool progress and multi round-trip input responses in the
-original request. It forwards backend list changes and resource update
+original request. Each request to a `2026-07-28` backend carries the frontend
+caller's client capabilities, so a backend input request reaches a caller that
+declared the matching capability and is refused for one that did not. An
+initialize-era backend fixes its capabilities at `initialize` from
+`client_options:`, so callers' capabilities are not forwarded to it. List
+results are never cached (`ttlMs: 0`, `cacheScope: "private"`). With an
+authorization policy configured, forwarded reads are always private, because
+the proxy filters by caller. It forwards backend list changes and resource update
 notifications through its subscription hub. Resource links in tool and prompt
 content are rewritten when the target is in the merged catalog. Resource
 subscriptions are admitted only for exact catalog entries accepted by the

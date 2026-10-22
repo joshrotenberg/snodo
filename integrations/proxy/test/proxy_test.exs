@@ -100,6 +100,33 @@ defmodule Snodo.ProxyTest do
     end
   end
 
+  defmodule BackendInput do
+    use Snodo.Server, name: "backend-input", version: "1.0.0"
+
+    tool "ask" do
+      @impl true
+      def call(_arguments, _context) do
+        request =
+          Snodo.Elicitation.form("Name?", %{
+            "type" => "object",
+            "properties" => %{"name" => %{"type" => "string"}}
+          })
+
+        {:ok, Snodo.Result.input_required(input_requests: %{"name" => request})}
+      end
+    end
+
+    resource "cached", uri: "test://input/cached" do
+      @impl true
+      def read(_params, _context) do
+        {:ok,
+         Snodo.Result.resource_read(Snodo.Resource.text("test://input/cached", "cached"),
+           metadata: %{ttl_ms: 5_000, cache_scope: "public"}
+         )}
+      end
+    end
+  end
+
   defmodule BackendRenamed do
     use Snodo.Server, name: "backend-renamed", version: "1.0.0"
 
@@ -136,6 +163,13 @@ defmodule Snodo.ProxyTest do
     def authorize(_phase, %{name: "a.private"}, _context, _options),
       do: {:error, Error.authorization(-32_003, "Blocked")}
 
+    def authorize(_phase, _component, _context, _options), do: :ok
+  end
+
+  defmodule AllowAll do
+    @behaviour Snodo.Authorization
+
+    @impl true
     def authorize(_phase, _component, _context, _options), do: :ok
   end
 
@@ -267,6 +301,86 @@ defmodule Snodo.ProxyTest do
 
     assert {:ok, %{"content" => [%{"text" => "resumed"}]}} =
              Client.call_tool(client, "a.continuation", %{}, request_state: "resume")
+  end
+
+  test "backend input requests reach a frontend caller that declared the capability" do
+    proxy =
+      start_supervised!(
+        {Proxy, backends: [[id: "input", target: {:direct, BackendInput.runtime()}]]}
+      )
+
+    {:ok, capable} =
+      Client.direct(Proxy.runtime(proxy),
+        client_capabilities: %{"elicitation" => %{"form" => %{}}}
+      )
+
+    assert {:input_required,
+            %{"inputRequests" => %{"name" => %{"method" => "elicitation/create"}}}} =
+             Client.call_tool(capable, "input.ask")
+
+    {:ok, incapable} = Client.direct(Proxy.runtime(proxy))
+    assert {:error, %Error{code: -32_021}} = Client.call_tool(incapable, "input.ask")
+  end
+
+  test "list, forwarded, and health results carry the 2026-07-28 result fields" do
+    legacy = BackendInput.runtime(protocols: [Snodo.Protocol.V2025_11_25])
+
+    proxy =
+      start_supervised!(
+        {Proxy,
+         backends: [
+           [id: "a", target: {:direct, BackendA.runtime()}],
+           [id: "legacy", target: {:direct, legacy}]
+         ]}
+      )
+
+    {:ok, client} =
+      Client.direct(Proxy.runtime(proxy),
+        client_capabilities: %{"extensions" => %{Snodo.Proxy.Extension.id() => %{}}}
+      )
+
+    for method <- ["tools/list", "prompts/list", "resources/list", "resources/templates/list"] do
+      assert {:ok, %{"resultType" => "complete", "ttlMs" => 0, "cacheScope" => "private"}} =
+               Client.request(client, method, %{}),
+             method
+    end
+
+    assert {:ok, %{"resultType" => "complete", "content" => [%{"text" => "a:hi"}]}} =
+             Client.request(client, "tools/call", %{
+               "name" => "a.echo",
+               "arguments" => %{"value" => "hi"}
+             })
+
+    # The initialize-era backend returns no resultType, ttlMs, or cacheScope.
+    assert {:ok,
+            %{
+              "resultType" => "complete",
+              "ttlMs" => 0,
+              "cacheScope" => "private",
+              "contents" => [%{"text" => "cached"}]
+            }} = Client.read_resource(client, "mcp-proxy://legacy/test://input/cached")
+
+    assert {:ok, %{"resultType" => "complete", "status" => "up"}} =
+             Client.request(client, "proxy/health", %{})
+  end
+
+  test "an authorization policy makes a backend's public cache scope private" do
+    proxy =
+      start_supervised!(
+        {Proxy, backends: [[id: "input", target: {:direct, BackendInput.runtime()}]]}
+      )
+
+    uri = "mcp-proxy://input/test://input/cached"
+
+    {:ok, open} = Client.direct(Proxy.runtime(proxy))
+
+    assert {:ok, %{"ttlMs" => 5_000, "cacheScope" => "public"}} =
+             Client.read_resource(open, uri)
+
+    {:ok, filtered} = Client.direct(Proxy.runtime(proxy, authorization: AllowAll))
+
+    assert {:ok, %{"ttlMs" => 5_000, "cacheScope" => "private"}} =
+             Client.read_resource(filtered, uri)
   end
 
   test "backend list changes and resource updates reach proxy listeners" do
