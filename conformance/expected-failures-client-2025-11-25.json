@@ -371,6 +371,21 @@
         "SUCCESS",
         "SUCCESS",
         "SUCCESS"
+      ],
+      "resource-parameter-in-authorization": [
+        "SUCCESS"
+      ],
+      "resource-parameter-in-token": [
+        "SUCCESS"
+      ],
+      "resource-parameter-valid-uri": [
+        "SUCCESS"
+      ],
+      "resource-parameter-consistency": [
+        "SUCCESS"
+      ],
+      "resource-parameter-matches-prm": [
+        "SUCCESS"
       ]
     },
     "auth/metadata-var1": {
@@ -436,6 +451,21 @@
         "SUCCESS",
         "SUCCESS",
         "SUCCESS"
+      ],
+      "resource-parameter-in-authorization": [
+        "SUCCESS"
+      ],
+      "resource-parameter-in-token": [
+        "SUCCESS"
+      ],
+      "resource-parameter-valid-uri": [
+        "SUCCESS"
+      ],
+      "resource-parameter-consistency": [
+        "SUCCESS"
+      ],
+      "resource-parameter-matches-prm": [
+        "SUCCESS"
       ]
     },
     "auth/metadata-var2": {
@@ -500,6 +530,21 @@
         "SUCCESS",
         "SUCCESS",
         "SUCCESS",
+        "SUCCESS"
+      ],
+      "resource-parameter-in-authorization": [
+        "SUCCESS"
+      ],
+      "resource-parameter-in-token": [
+        "SUCCESS"
+      ],
+      "resource-parameter-valid-uri": [
+        "SUCCESS"
+      ],
+      "resource-parameter-consistency": [
+        "SUCCESS"
+      ],
+      "resource-parameter-matches-prm": [
         "SUCCESS"
       ]
     },
@@ -567,6 +612,21 @@
         "SUCCESS",
         "SUCCESS",
         "SUCCESS",
+        "SUCCESS"
+      ],
+      "resource-parameter-in-authorization": [
+        "SUCCESS"
+      ],
+      "resource-parameter-in-token": [
+        "SUCCESS"
+      ],
+      "resource-parameter-valid-uri": [
+        "SUCCESS"
+      ],
+      "resource-parameter-consistency": [
+        "SUCCESS"
+      ],
+      "resource-parameter-matches-prm": [
         "SUCCESS"
       ]
     },
@@ -1052,6 +1112,9 @@
       ],
       "resource-parameter-consistency": [
         "SUCCESS"
+      ],
+      "resource-parameter-matches-prm": [
+        "SUCCESS"
       ]
     },
     "auth/token-endpoint-auth-none": {
@@ -1130,6 +1193,9 @@
       ],
       "resource-parameter-consistency": [
         "SUCCESS"
+      ],
+      "resource-parameter-matches-prm": [
+        "SUCCESS"
       ]
     },
     "auth/token-endpoint-auth-post": {
@@ -1207,6 +1273,9 @@
         "SUCCESS"
       ],
       "resource-parameter-consistency": [
+        "SUCCESS"
+      ],
+      "resource-parameter-matches-prm": [
         "SUCCESS"
       ]
     },
@@ -1330,9 +1399,19 @@
     },
     "sse-retry": {
       "incoming-request": [
+        "INFO",
+        "INFO",
+        "INFO",
         "INFO"
       ],
       "outgoing-response": [
+        "INFO",
+        "INFO"
+      ],
+      "outgoing-sse-event": [
+        "INFO"
+      ],
+      "outgoing-stream-close": [
         "INFO"
       ],
       "client-sse-graceful-reconnect": [

@@ -816,6 +816,21 @@
         "SUCCESS",
         "SUCCESS",
         "SUCCESS"
+      ],
+      "resource-parameter-in-authorization": [
+        "SUCCESS"
+      ],
+      "resource-parameter-in-token": [
+        "SUCCESS"
+      ],
+      "resource-parameter-valid-uri": [
+        "SUCCESS"
+      ],
+      "resource-parameter-consistency": [
+        "SUCCESS"
+      ],
+      "resource-parameter-matches-prm": [
+        "SUCCESS"
       ]
     },
     "auth/metadata-issuer-mismatch": {
@@ -914,6 +929,21 @@
         "SUCCESS",
         "SUCCESS",
         "SUCCESS"
+      ],
+      "resource-parameter-in-authorization": [
+        "SUCCESS"
+      ],
+      "resource-parameter-in-token": [
+        "SUCCESS"
+      ],
+      "resource-parameter-valid-uri": [
+        "SUCCESS"
+      ],
+      "resource-parameter-consistency": [
+        "SUCCESS"
+      ],
+      "resource-parameter-matches-prm": [
+        "SUCCESS"
       ]
     },
     "auth/metadata-var2": {
@@ -978,6 +1008,21 @@
       "valid-bearer-token": [
         "SUCCESS",
         "SUCCESS",
+        "SUCCESS"
+      ],
+      "resource-parameter-in-authorization": [
+        "SUCCESS"
+      ],
+      "resource-parameter-in-token": [
+        "SUCCESS"
+      ],
+      "resource-parameter-valid-uri": [
+        "SUCCESS"
+      ],
+      "resource-parameter-consistency": [
+        "SUCCESS"
+      ],
+      "resource-parameter-matches-prm": [
         "SUCCESS"
       ]
     },
@@ -1045,6 +1090,21 @@
       "valid-bearer-token": [
         "SUCCESS",
         "SUCCESS",
+        "SUCCESS"
+      ],
+      "resource-parameter-in-authorization": [
+        "SUCCESS"
+      ],
+      "resource-parameter-in-token": [
+        "SUCCESS"
+      ],
+      "resource-parameter-valid-uri": [
+        "SUCCESS"
+      ],
+      "resource-parameter-consistency": [
+        "SUCCESS"
+      ],
+      "resource-parameter-matches-prm": [
         "SUCCESS"
       ]
     },
@@ -1687,6 +1747,9 @@
       ],
       "resource-parameter-consistency": [
         "SUCCESS"
+      ],
+      "resource-parameter-matches-prm": [
+        "SUCCESS"
       ]
     },
     "auth/token-endpoint-auth-none": {
@@ -1765,6 +1828,9 @@
       ],
       "resource-parameter-consistency": [
         "SUCCESS"
+      ],
+      "resource-parameter-matches-prm": [
+        "SUCCESS"
       ]
     },
     "auth/token-endpoint-auth-post": {
@@ -1842,6 +1908,9 @@
         "SUCCESS"
       ],
       "resource-parameter-consistency": [
+        "SUCCESS"
+      ],
+      "resource-parameter-matches-prm": [
         "SUCCESS"
       ]
     },
@@ -1951,6 +2020,7 @@
         "SUCCESS"
       ],
       "sep-2243-x-mcp-header-primitive-only": [
+        "SUCCESS",
         "SUCCESS",
         "SUCCESS",
         "SUCCESS"

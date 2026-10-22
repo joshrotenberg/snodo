@@ -1,38 +1,5 @@
 {
-  "failures": [
-    {
-      "key": "tasks-lifecycle:wire-schema-valid",
-      "reason": "alpha.11 validates the extension-defined flat task result against core CallToolResult; Tasks-specific assertions pass. Preserve the runner failure until extension unions are supported."
-    },
-    {
-      "key": "tasks-capability-negotiation:wire-schema-valid",
-      "reason": "alpha.11 validates the extension-defined flat task result against core CallToolResult; Tasks-specific assertions pass. Preserve the runner failure until extension unions are supported."
-    },
-    {
-      "key": "tasks-wire-fields:wire-schema-valid",
-      "reason": "alpha.11 validates the extension-defined flat task result against core CallToolResult; Tasks-specific assertions pass. Preserve the runner failure until extension unions are supported."
-    },
-    {
-      "key": "tasks-request-state-removal:wire-schema-valid",
-      "reason": "alpha.11 validates the extension-defined flat task result against core CallToolResult; Tasks-specific assertions pass. Preserve the runner failure until extension unions are supported."
-    },
-    {
-      "key": "tasks-mrtr-input:wire-schema-valid",
-      "reason": "alpha.11 validates the extension-defined flat task result against core CallToolResult; Tasks-specific assertions pass. Preserve the runner failure until extension unions are supported."
-    },
-    {
-      "key": "tasks-request-headers:wire-schema-valid",
-      "reason": "alpha.11 validates the extension-defined flat task result against core CallToolResult; Tasks-specific assertions pass. Preserve the runner failure until extension unions are supported."
-    },
-    {
-      "key": "tasks-dispatch-and-envelope:wire-schema-valid",
-      "reason": "alpha.11 validates the extension-defined flat task result against core CallToolResult; Tasks-specific assertions pass. Preserve the runner failure until extension unions are supported."
-    },
-    {
-      "key": "tasks-mrtr-composition:wire-schema-valid",
-      "reason": "alpha.11 validates the extension-defined flat task result against core CallToolResult; Tasks-specific assertions pass. Preserve the runner failure until extension unions are supported."
-    }
-  ],
+  "failures": [],
   "exclusions": [],
   "checkInventory": {
     "caching": {
@@ -223,7 +190,7 @@
       "sep-2663-tasks-methods-non-declaring": ["SUCCESS"],
       "sep-2663-server-rejects-undeclared-client": ["SUCCESS"],
       "tasks-per-request-meta-opt-in": ["SUCCESS"],
-      "wire-schema-valid": ["FAILURE"]
+      "wire-schema-valid": ["SUCCESS"]
     },
     "tasks-dispatch-and-envelope": {
       "sep-2663-tasks-result-removed-method-not-found": ["SUCCESS"],
@@ -234,7 +201,7 @@
       "tasks-result-type-complete-on-non-task-responses": ["SUCCESS"],
       "sep-2663-durable-create-strong-consistency": ["SUCCESS"],
       "sep-2663-tasks-get-invalid-task-id-32602": ["SUCCESS"],
-      "wire-schema-valid": ["FAILURE"]
+      "wire-schema-valid": ["SUCCESS"]
     },
     "tasks-lifecycle": {
       "tasks-sync-tool-call": ["SUCCESS"],
@@ -245,29 +212,29 @@
       "sep-2663-tasks-get-status-failed": ["SUCCESS"],
       "sep-2663-cancel-ack-empty-result": ["SUCCESS"],
       "tasks-cancel-terminal-idempotent-ack": ["SUCCESS"],
-      "wire-schema-valid": ["FAILURE"]
+      "wire-schema-valid": ["SUCCESS"]
     },
     "tasks-mrtr-composition": {
       "sep-2663-mrtr-synchronous-before-task-creation": ["SUCCESS"],
-      "wire-schema-valid": ["FAILURE"]
+      "wire-schema-valid": ["SUCCESS"]
     },
     "tasks-mrtr-input": {
       "sep-2663-tasks-get-status-input-required": ["SUCCESS"],
       "tasks-mrtr-tasks-update-resumes": ["SUCCESS"],
       "tasks-mrtr-partial-fulfillment": ["SUCCESS"],
-      "wire-schema-valid": ["FAILURE"]
+      "wire-schema-valid": ["SUCCESS"]
     },
     "tasks-request-headers": {
       "tasks-headers-tolerate-mcp-method-on-tools-call": ["SUCCESS"],
       "sep-2663-routing-headers-accepted-on-tasks-get": ["SUCCESS"],
       "tasks-headers-reject-mismatched-method": ["SUCCESS"],
       "sep-2663-server-rejects-mismatched-mcp-name-on-tasks-get": ["SUCCESS"],
-      "wire-schema-valid": ["FAILURE"]
+      "wire-schema-valid": ["SUCCESS"]
     },
     "tasks-request-state-removal": {
       "tasks-create-result-no-request-state": ["SUCCESS"],
       "tasks-get-detailed-no-request-state": ["SUCCESS"],
-      "wire-schema-valid": ["FAILURE"]
+      "wire-schema-valid": ["SUCCESS"]
     },
     "tasks-required-task-error": {
       "sep-2663-server-returns-missing-capability-when-required": ["SUCCESS"],
@@ -281,7 +248,7 @@
       "tasks-wire-field-renames": ["SUCCESS"],
       "tasks-no-early-ttl-expiry": ["SUCCESS"],
       "tasks-no-related-task-meta-on-inlined-result": ["SUCCESS"],
-      "wire-schema-valid": ["FAILURE"]
+      "wire-schema-valid": ["SUCCESS"]
     },
     "tools-call-audio": {
       "tools-call-audio": ["SUCCESS"],
@@ -314,6 +281,7 @@
     "tools-list": {
       "tools-list": ["SUCCESS"],
       "tools-name-format": ["SUCCESS"],
+      "tools-list-deterministic-order": ["SUCCESS"],
       "wire-schema-valid": ["SUCCESS"]
     }
   }
