@@ -5,12 +5,14 @@ defmodule Snodo.Component.Wrap.Timeout do
   `timeout: 5_000` is the default. On expiry, the task is stopped and the
   component returns a defined failure. The callback runs in a task process,
   so its `self()` is different from the request process. The task is linked to
-  its request owner and stops if that process ends.
+  its request owner and stops if that process ends. Progress reports from the
+  callback work as they do without the wrapper.
   """
 
   @behaviour Snodo.Component.Wrap
 
   alias Snodo.Component.Wrap
+  alias Snodo.Progress
 
   @default_timeout 5_000
 
@@ -34,7 +36,12 @@ defmodule Snodo.Component.Wrap.Timeout do
     timeout = Keyword.get(options, :timeout, @default_timeout)
     kind = Keyword.fetch!(options, :kind)
 
-    case start_task(fn -> next.(context, arguments) end) do
+    worker = self()
+
+    # The worker waits in Task.yield/2, so the task may report progress.
+    run = fn -> next.(Progress.handoff(context, worker, self()), arguments) end
+
+    case start_task(run) do
       {:ok, task} -> wait_task(task, timeout, kind)
       :error -> Wrap.reject(kind, "Component timeout worker unavailable")
     end

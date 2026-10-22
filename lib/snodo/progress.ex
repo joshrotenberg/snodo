@@ -75,6 +75,18 @@ defmodule Snodo.Progress do
 
   def bind(_no_sink, %Context{}), do: nil
 
+  @doc false
+  # Moves the binding from the worker `from` to `to`, so a callback the worker
+  # runs in another process, such as `Snodo.Component.Wrap.Timeout`'s task,
+  # can report. The worker waits while that process runs, so one process
+  # reports at a time. A binding that `from` does not hold is left as it is.
+  @spec handoff(context, pid(), pid()) :: context when context: Context.t() | term()
+  def handoff(%Context{progress: %__MODULE__{producer: from} = binding} = context, from, to)
+      when is_pid(to),
+      do: %{context | progress: %{binding | producer: to}}
+
+  def handoff(context, _from, _to), do: context
+
   @doc "Reports increasing progress, optionally including numeric total and a human-readable message."
   @spec report(Context.t(), number(), keyword()) :: result()
   def report(context, value, options \\ [])
