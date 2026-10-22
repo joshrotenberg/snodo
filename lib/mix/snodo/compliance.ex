@@ -57,8 +57,8 @@ defmodule Snodo.Compliance do
     "input-required-result-validate-input"
   ]
 
-  # The newest retained server-lane summary, `conformance/results/<date>-alpha.11-summary.json`.
-  @official_summary_pattern ~r/\A\d{4}-\d{2}-\d{2}-alpha\.11-summary\.json\z/
+  # The newest retained server-lane summary, `conformance/results/<date>-alpha.12-summary.json`.
+  @official_summary_pattern ~r/\A\d{4}-\d{2}-\d{2}-alpha\.12-summary\.json\z/
 
   @internal_contracts [
     "profile-manifest",
@@ -158,7 +158,7 @@ defmodule Snodo.Compliance do
 
   @doc """
   Reads the newest retained official server-lane summary from `dir`, a file
-  named `<date>-alpha.11-summary.json`, and checks that it is for the pinned
+  named `<date>-alpha.12-summary.json`, and checks that it is for the pinned
   `2026-07-28` requirement set.
   """
   @spec latest_official_summary!(Path.t()) :: map()

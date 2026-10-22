@@ -438,7 +438,7 @@ defmodule Snodo.Compliance.ProfileAndInspectorTest do
     assert report["evidence"]["officialPass"] == summary["score"]["passedScenarioIds"]
     official = report["officialServerConformance"]
 
-    # The frozen alpha.11 runner's 37 required scenarios all pass. That is the
+    # The frozen alpha.12 runner's 37 required scenarios all pass. That is the
     # runner's own score, not a claim of full protocol conformance.
     assert %{
              "status" => "complete",
@@ -479,7 +479,7 @@ defmodule Snodo.Compliance.ProfileAndInspectorTest do
     newest =
       results
       |> File.ls!()
-      |> Enum.filter(&Regex.match?(~r/\A\d{4}-\d{2}-\d{2}-alpha\.11-summary\.json\z/, &1))
+      |> Enum.filter(&Regex.match?(~r/\A\d{4}-\d{2}-\d{2}-alpha\.12-summary\.json\z/, &1))
       |> Enum.max()
 
     assert String.starts_with?(newest, summary["runDate"])
