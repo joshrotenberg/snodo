@@ -25,11 +25,13 @@ defmodule Snodo.OAuth.Client.Flow do
   def run(ctx) do
     ctx = Map.put(ctx, :owner_monitor, Process.monitor(ctx.owner))
 
+    metadata_url = metadata_url(ctx.trigger) || remembered_metadata_url(ctx.current)
+
     with :ok <- check_scheme(ctx.trigger),
-         {:ok, prm, resource} <- discover_resource(ctx),
+         {:ok, prm, resource} <- discover_resource(ctx, metadata_url),
          {:ok, issuer} <- issuer(prm, ctx),
          {:ok, as_metadata} <- Discovery.authorization_server(ctx.config.http, issuer) do
-      obtain(ctx, as_metadata, %{resource: resource, prm: prm})
+      obtain(ctx, as_metadata, %{resource: resource, prm: prm, resource_metadata: metadata_url})
     end
     |> finish()
   rescue
@@ -39,19 +41,26 @@ defmodule Snodo.OAuth.Client.Flow do
   end
 
   defp finish({:ok, token}), do: {:ok, token}
+  defp finish(:await_challenge), do: {:ok, nil}
   defp finish({:error, %Error{} = error}), do: {:error, error}
   defp finish({:error, reason}), do: {:error, error(reason)}
 
-  # The challenge names the metadata document; without one the well-known
-  # locations are tried. A server without one is only usable when the
-  # application configured the authorization server.
-  defp discover_resource(ctx) do
-    case Discovery.protected_resource(ctx.config.http, ctx.resource, metadata_url(ctx.trigger)) do
+  # The challenge names the metadata document, or a stored token remembers the
+  # one a challenge named; otherwise the well-known locations are tried. A
+  # server without one is usable when the application configured the
+  # authorization server. Without a challenge, a server may publish its
+  # metadata only in WWW-Authenticate: the run then ends without a token, the
+  # request goes out without one, and the server's challenge names it.
+  defp discover_resource(ctx, metadata_url) do
+    case Discovery.protected_resource(ctx.config.http, ctx.resource, metadata_url) do
       {:ok, prm} ->
         {:ok, prm, prm["resource"]}
 
       {:error, :no_protected_resource_metadata} when is_binary(ctx.config.authorization_server) ->
         {:ok, nil, ctx.resource}
+
+      {:error, :no_protected_resource_metadata} when not is_tuple(ctx.trigger) ->
+        :await_challenge
 
       {:error, :no_protected_resource_metadata} ->
         {:error, {:no_protected_resource_metadata, ctx.resource}}
@@ -63,6 +72,9 @@ defmodule Snodo.OAuth.Client.Flow do
 
   defp metadata_url({:challenge, _status, %{resource_metadata: url}}) when is_binary(url), do: url
   defp metadata_url(_trigger), do: nil
+
+  defp remembered_metadata_url(%{resource_metadata: url}) when is_binary(url), do: url
+  defp remembered_metadata_url(_current), do: nil
 
   defp issuer(prm, ctx) do
     case prm && Discovery.issuer(prm) do
@@ -535,7 +547,8 @@ defmodule Snodo.OAuth.Client.Flow do
          refresh_token: string(body["refresh_token"]),
          scopes: granted_scopes(body["scope"], requested_scopes),
          issuer: as_metadata["issuer"],
-         resource: target.resource
+         resource: target.resource,
+         resource_metadata: target.resource_metadata
        }}
     end
   end
