@@ -50,7 +50,7 @@ const { leg } = lane;
 const revision = lane.revision ?? lane.specVersion;
 const requirementSet = lane.revision ? requirementSets[lane.revision] : null;
 const artifact = leg === "server" ? /^server-(.+)-\d{4}-\d{2}-\d{2}T/ : /^(.+)-\d{4}-\d{2}-\d{2}T/;
-const pinned = "0.2.0-alpha.12";
+const pinned = "0.2.0-alpha.11";
 // MCP_CONFORMANCE_RUNNER points the scheduled canary at another runner build
 // (the alpha dist-tag or upstream main). The pinned lane never sets it.
 const canary = process.env.MCP_CONFORMANCE_RUNNER !== undefined;
