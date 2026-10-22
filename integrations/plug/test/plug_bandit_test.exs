@@ -559,7 +559,7 @@ defmodule Snodo.Transport.PlugBanditTest do
 
     first = open_stream(port, "before-restart")
     [stream] = slot_holders(executor)
-    stream_monitor = Process.monitor(stream)
+    [{^stream, stream_monitor}] = monitor_confirmed([stream])
 
     Process.exit(executor, :kill)
 

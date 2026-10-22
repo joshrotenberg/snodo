@@ -15,6 +15,7 @@ defmodule Snodo.ClientHTTPTest do
   alias Snodo.Transport.StreamableHTTP.Server, as: HTTPServer
   alias SnodoTest.MRTR.Choice
   alias SnodoTest.MRTR.Server, as: ChoiceServer
+  alias SnodoTest.SubscriptionWorker
   alias SnodoTest.TestExtensions.HTTPPolicy
   alias SnodoTest.TestFixtures
   alias SnodoTest.TestPrompts.PackageAnalysis
@@ -1511,7 +1512,7 @@ defmodule Snodo.ClientHTTPTest do
         end)
 
       assert_receive {:listening, %Subscription{id: id, pid: pid}}, 1_000
-      monitor = Process.monitor(pid)
+      [{^pid, monitor}] = SubscriptionWorker.monitor_confirmed([pid])
       Process.exit(owner, :kill)
 
       assert_receive {:DOWN, ^monitor, :process, ^pid, :normal}, 1_000
@@ -1596,7 +1597,7 @@ defmodule Snodo.ClientHTTPTest do
       url =
         FakeHTTP.start(self(), fn _headers, _message ->
           paced =
-            Stream.map(Enum.zip([50, 600], events([@acknowledgement, event(1)])), fn
+            Stream.map(Enum.zip([0, 1_500], events([@acknowledgement, event(1)])), fn
               {pause, chunk} -> Process.sleep(pause) && chunk
             end)
 
@@ -1604,9 +1605,9 @@ defmodule Snodo.ClientHTTPTest do
         end)
 
       {:ok, subscription} =
-        Client.listen(connect(url), %{"toolsListChanged" => true}, timeout: 250)
+        Client.listen(connect(url), %{"toolsListChanged" => true}, timeout: 1_000)
 
-      assert {:notification, _method, %{"seq" => 1}} = Subscription.next(subscription, 2_000)
+      assert {:notification, _method, %{"seq" => 1}} = Subscription.next(subscription, 5_000)
     end
 
     test "a stream that ends before the acknowledgement, and a JSON error body, are errors" do

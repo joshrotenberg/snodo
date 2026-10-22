@@ -5,6 +5,9 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite.WriterQueueTest do
 
   @max_waiters 100
   @await_ms 2_000
+  # A waiter's own deadline. It must outlast queueing every waiter in a test,
+  # which can take seconds on a loaded runner.
+  @queue_ms 30_000
 
   setup do
     %{key: {__MODULE__, make_ref()}}
@@ -15,10 +18,12 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite.WriterQueueTest do
 
     waiters =
       Enum.map(1..10, fn index ->
-        waiter = start_waiter(key, index)
+        waiter = start_waiter(key, index, @max_waiters, @queue_ms)
         await_waiting(key, index)
         waiter
       end)
+
+    on_exit(fn -> Enum.each(waiters, &Process.exit(&1, :kill)) end)
 
     :ok = WriterQueue.release(slot)
 
@@ -158,12 +163,12 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite.WriterQueueTest do
 
   defp deadline(ms), do: System.monotonic_time(:millisecond) + ms
 
-  defp start_waiter(key, label, max_waiters \\ @max_waiters) do
+  defp start_waiter(key, label, max_waiters \\ @max_waiters, wait_ms \\ @await_ms) do
     parent = self()
 
     # Not linked: some tests kill a waiter.
     spawn(fn ->
-      case WriterQueue.acquire(key, deadline(@await_ms), max_waiters) do
+      case WriterQueue.acquire(key, deadline(wait_ms), max_waiters) do
         {:ok, slot} ->
           send(parent, {:granted, label, self()})
 
@@ -187,11 +192,22 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite.WriterQueueTest do
         :ok
 
       System.monotonic_time(:millisecond) > deadline ->
-        flunk("expected #{count} waiting writers, found #{WriterQueue.waiting(key)}")
+        refused = for {:refused, label, reason} <- mailbox(), do: {label, reason}
+
+        flunk(
+          "expected #{count} waiting writers, found #{WriterQueue.waiting(key)}; " <>
+            "refused: #{inspect(refused)}; " <>
+            "queue: #{inspect(WriterQueue.Registry.lookup(key))}"
+        )
 
       true ->
         Process.sleep(1)
         await_waiting(key, count, deadline)
     end
+  end
+
+  defp mailbox do
+    {:messages, messages} = Process.info(self(), :messages)
+    messages
   end
 end

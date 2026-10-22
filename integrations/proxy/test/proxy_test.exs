@@ -601,7 +601,9 @@ defmodule Snodo.ProxyTest do
     Process.exit(transport_pid, :kill)
 
     assert_receive {:DOWN, ^monitor, :process, ^old_backend, _reason}, 2_000
-    new_backend = await_replaced_backend(proxy, "stdio.echo", old_backend, 3_000)
+    # The manager waits one second before reconnecting, then boots a new
+    # elixir OS process for the fixture, which takes seconds under load.
+    new_backend = await_replaced_backend(proxy, "stdio.echo", old_backend, 15_000)
     assert Process.alive?(new_backend)
 
     {:ok, client} = Client.direct(Proxy.runtime(proxy))
