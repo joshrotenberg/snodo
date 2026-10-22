@@ -46,7 +46,7 @@ defmodule Snodo.Proxy.Extension do
       |> Enum.all?(fn {_id, %{status: status}} -> status == :up end)
 
     status = if healthy?, do: "up", else: "degraded"
-    {:ok, Result.wire(%{"status" => status})}
+    {:ok, Result.wire(%{"resultType" => "complete", "status" => status})}
   end
 
   @impl true
@@ -89,7 +89,16 @@ defmodule Snodo.Proxy.Extension do
       {:ok, visible} ->
         key = list_key(kind)
         visible = Enum.sort_by(visible, &Map.fetch!(&1, sort_key(kind)))
-        {:ok, Result.wire(%{key => visible})}
+
+        # The merged catalog changes with every backend, so lists are never
+        # cached across requests or callers.
+        {:ok,
+         Result.wire(%{
+           key => visible,
+           "resultType" => "complete",
+           "ttlMs" => 0,
+           "cacheScope" => "private"
+         })}
 
       {:error, error} ->
         {:error, error}
@@ -101,9 +110,9 @@ defmodule Snodo.Proxy.Extension do
          :ok <- authorize(entry, context),
          {:ok, arguments} <- tool_arguments(params) do
       entry.client
-      |> Client.call_tool(entry.original, arguments, request_options(context))
+      |> Client.call_tool(entry.original, arguments, request_options(entry, context))
       |> rewrite_content_uris(:tool, entry.id, Manager.catalog(proxy))
-      |> forward_result()
+      |> forward_result(:tool, context)
     else
       {:invalid_arguments, message} -> {:ok, Result.error(message)}
       {:error, error} -> {:error, error}
@@ -115,9 +124,9 @@ defmodule Snodo.Proxy.Extension do
          :ok <- authorize(entry, context),
          {:ok, arguments} <- prompt_arguments(params) do
       entry.client
-      |> Client.get_prompt(entry.original["name"], arguments, request_options(context))
+      |> Client.get_prompt(entry.original["name"], arguments, request_options(entry, context))
       |> rewrite_content_uris(:prompt, entry.id, Manager.catalog(proxy))
-      |> forward_result()
+      |> forward_result(:prompt, context)
     end
   end
 
@@ -126,9 +135,9 @@ defmodule Snodo.Proxy.Extension do
       {:ok, entry, original_uri} ->
         with :ok <- authorize(entry, context, uri) do
           entry.client
-          |> Client.read_resource(original_uri, request_options(context))
+          |> Client.read_resource(original_uri, request_options(entry, context))
           |> rewrite_content_uris(:resource, entry.id, Manager.catalog(proxy))
-          |> forward_result()
+          |> forward_result(:resource, context)
         end
 
       :error ->
@@ -201,12 +210,29 @@ defmodule Snodo.Proxy.Extension do
     end
   end
 
-  defp forward_result({:ok, result}) when is_map(result), do: {:ok, Result.wire(result)}
+  # Initialize-era backends return results without the 2026-07-28 fields the
+  # frontend must send, so fill them in. A backend's public cache scope does
+  # not hold once the proxy filters by caller, so a policy forces it private.
+  defp forward_result({:ok, result}, kind, context) when is_map(result) do
+    result =
+      result
+      |> Map.put_new("resultType", "complete")
+      |> cache_fields(kind, authorization(context))
 
-  defp forward_result({:input_required, result}) when is_map(result),
-    do: {:ok, Result.wire(result)}
+    {:ok, Result.wire(result)}
+  end
 
-  defp forward_result({:error, %Error{} = error}), do: {:error, error}
+  defp forward_result({:input_required, result}, _kind, _context) when is_map(result),
+    do: {:ok, Result.wire(Map.put_new(result, "resultType", "input_required"))}
+
+  defp forward_result({:error, %Error{} = error}, _kind, _context), do: {:error, error}
+
+  defp cache_fields(result, :resource, authorization) do
+    result = result |> Map.put_new("ttlMs", 0) |> Map.put_new("cacheScope", "private")
+    if is_nil(authorization), do: result, else: Map.put(result, "cacheScope", "private")
+  end
+
+  defp cache_fields(result, _kind, _authorization), do: result
 
   defp rewrite_content_uris({status, result}, kind, id, catalog)
        when status in [:ok, :input_required] and is_map(result) do
@@ -258,8 +284,14 @@ defmodule Snodo.Proxy.Extension do
 
   defp rewrite_uri(content, _id, _catalog), do: content
 
-  defp request_options(context) do
+  # The backend dialect decides whether capabilities travel per request: a
+  # 2026-07-28 backend receives the frontend caller's capabilities, while an
+  # initialize-era backend fixed its capabilities at initialize and gets none.
+  defp request_options(entry, context) do
+    capabilities = entry.client.dialect.request_metadata(context.client_capabilities)
+
     []
+    |> maybe_put(:meta, capabilities, capabilities != %{})
     |> maybe_put(:trace_context, context.trace_context, context.trace_context != %{})
     |> maybe_put(:request_state, context.request_state, is_binary(context.request_state))
     |> maybe_put(:input_responses, context.input_responses, context.input_responses != %{})
