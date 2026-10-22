@@ -16,7 +16,11 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   Connection and stream bounds, each a positive integer:
 
     * `:max_connections` - the most connections open at once, default 1,024. A
-      connection accepted at the limit is closed without being read.
+      connection accepted at the limit is closed without being read. Keep it
+      below the process's open file limit (`ulimit -n`), which also covers
+      files, ports, and outbound sockets. If accepting fails because
+      descriptors or buffers run out, the listener logs a warning and retries
+      every 100 ms instead of stopping.
     * `:head_timeout` - milliseconds from accept until the request head must be
       complete, default 10,000. `:read_timeout` (default 5,000) still bounds
       each read; this deadline bounds the whole head, so a client that sends it
@@ -98,6 +102,10 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   @header_name_pattern ~r/\A[!#$%&'*+\-.^_`|~0-9A-Za-z]+\z/
   @default_max_subscriptions 256
   @default_drain_timeout 5_000
+  # Accept errors that clear once descriptors or buffers are freed. The
+  # acceptor waits and retries instead of stopping the listener.
+  @temporary_accept_errors [:emfile, :enfile, :enobufs, :econnaborted]
+  @accept_backoff_ms 100
   # The supervisor's default worker shutdown, kept for the work after a drain.
   @shutdown_margin 5_000
 
@@ -206,6 +214,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
         supervisor: connection_supervisor,
         max_connections: max_connections,
         connections: 0,
+        accept_error: nil,
         opts: connection_opts
       }
 
@@ -322,15 +331,42 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     case :gen_tcp.accept(state.listen_socket) do
       {:ok, socket} ->
         accepted_at = System.monotonic_time(:millisecond)
-        state = reap_connections(state)
+        state = state |> recovered() |> reap_connections()
         accept_loop(admit_connection(state, socket, accepted_at))
 
       {:error, :closed} ->
         :ok
 
+      {:error, reason} when reason in @temporary_accept_errors ->
+        accept_loop(back_off(state, reason))
+
       {:error, reason} ->
         exit({:accept_failed, reason})
     end
+  end
+
+  # Waits before retrying a temporary accept error, counting connections that
+  # end meanwhile. One warning marks the start of each episode.
+  defp back_off(%{accept_error: nil} = state, reason) do
+    Logger.warning(
+      "Native HTTP listener cannot accept connections (#{inspect(reason)}); " <>
+        "retrying every #{@accept_backoff_ms} ms. Check :max_connections " <>
+        "against the open file limit."
+    )
+
+    back_off(%{state | accept_error: reason}, reason)
+  end
+
+  defp back_off(state, _reason) do
+    Process.sleep(@accept_backoff_ms)
+    reap_connections(state)
+  end
+
+  defp recovered(%{accept_error: nil} = state), do: state
+
+  defp recovered(state) do
+    Logger.info("Native HTTP listener is accepting connections again.")
+    %{state | accept_error: nil}
   end
 
   # The acceptor monitors every connection process it starts, so the DOWN
