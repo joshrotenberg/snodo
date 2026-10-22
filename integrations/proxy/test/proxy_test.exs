@@ -8,6 +8,7 @@ defmodule Snodo.ProxyTest do
   alias Snodo.Client.Subscription
   alias Snodo.Error
   alias Snodo.Proxy
+  alias Snodo.Proxy.Extension
   alias Snodo.Proxy.Manager
   alias Snodo.Subscription.Event
   alias Snodo.Subscription.Hub
@@ -336,7 +337,7 @@ defmodule Snodo.ProxyTest do
 
     {:ok, client} =
       Client.direct(Proxy.runtime(proxy),
-        client_capabilities: %{"extensions" => %{Snodo.Proxy.Extension.id() => %{}}}
+        client_capabilities: %{"extensions" => %{Extension.id() => %{}}}
       )
 
     for method <- ["tools/list", "prompts/list", "resources/list", "resources/templates/list"] do
@@ -533,13 +534,47 @@ defmodule Snodo.ProxyTest do
     assert Enum.any?(tools, &(&1["name"] == "a.echo"))
   end
 
+  test "the manager keeps answering while a backend hangs during connect" do
+    proxy =
+      start_supervised!({Proxy, backends: [[id: "a", target: {:direct, BackendA.runtime()}]]})
+
+    # A listener that accepts connections into its backlog and never answers.
+    {:ok, silent} = :gen_tcp.listen(0, [:binary, active: false, ip: {127, 0, 0, 1}])
+    {:ok, port} = :inet.port(silent)
+    on_exit(fn -> :gen_tcp.close(silent) end)
+
+    adding =
+      Task.async(fn ->
+        Proxy.add_backend(proxy, id: "silent", target: {:http, "http://127.0.0.1:#{port}/mcp"})
+      end)
+
+    # Give the add time to reach the backend's connect.
+    Process.sleep(200)
+
+    {elapsed_us, health} = :timer.tc(fn -> Proxy.health(proxy) end)
+    assert %{"a" => %{status: :up}} = health
+    refute Map.has_key?(health, "silent")
+    assert elapsed_us < 1_000_000
+
+    {:ok, client} =
+      Client.direct(Proxy.runtime(proxy),
+        client_capabilities: %{"extensions" => %{Extension.id() => %{}}}
+      )
+
+    assert {:ok, %{"status" => "up"}} = Client.request(client, "proxy/health", %{})
+    assert :ok = Proxy.remove_backend(proxy, "a")
+    assert {:ok, []} = Client.list_tools(client)
+
+    Task.shutdown(adding, :brutal_kill)
+  end
+
   test "public health omits backend IDs and errors" do
     proxy =
       start_supervised!({Proxy, backends: [[id: "a", target: {:direct, BackendA.runtime()}]]})
 
     {:ok, client} =
       Client.direct(Proxy.runtime(proxy),
-        client_capabilities: %{"extensions" => %{Snodo.Proxy.Extension.id() => %{}}}
+        client_capabilities: %{"extensions" => %{Extension.id() => %{}}}
       )
 
     assert {:ok, %{"status" => "up"} = health} = Client.request(client, "proxy/health", %{})

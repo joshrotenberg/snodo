@@ -45,6 +45,11 @@ defmodule Snodo.Proxy.Manager do
 
     state = %{
       backends: %{},
+      # Backends being added: pid => {id, config, from}. They join `backends`
+      # once they report a catalog that fits.
+      adding: %{},
+      # Refreshes waiting on a backend: ref => {id, pid, from}.
+      refreshes: %{},
       catalog: %Catalog{},
       catalog_key: catalog_key,
       backend_supervisor: Keyword.fetch!(opts, :backend_supervisor),
@@ -54,10 +59,12 @@ defmodule Snodo.Proxy.Manager do
       max_catalog_items: max_catalog_items
     }
 
+    # The initial backends are part of starting the proxy, so start_link/1
+    # waits for them as it always has.
     opts
     |> Keyword.fetch!(:backends)
     |> Enum.reduce_while({:ok, state}, fn backend, {:ok, current} ->
-      case add_backend(current, backend) do
+      case add_initial_backend(current, backend) do
         {:ok, next} -> {:cont, {:ok, next}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
@@ -75,6 +82,8 @@ defmodule Snodo.Proxy.Manager do
         status =
           cond do
             not is_pid(backend.pid) or not Process.alive?(backend.pid) -> :down
+            # Reconnecting: the backend has not reported a catalog yet.
+            is_nil(backend.snapshot) -> :down
             not is_nil(backend.error) -> :degraded
             true -> :up
           end
@@ -85,9 +94,12 @@ defmodule Snodo.Proxy.Manager do
     {:reply, health, state}
   end
 
-  def handle_call({:add, backend}, _from, state) do
-    case add_backend(state, backend) do
-      {:ok, next} -> {:reply, :ok, next}
+  def handle_call({:add, backend}, from, state) do
+    with {:ok, config} <- normalize_backend(backend),
+         :ok <- available(state, config.id),
+         {:ok, pid} <- start_backend(state, config.id, config) do
+      {:noreply, %{state | adding: Map.put(state.adding, pid, {config.id, config, from})}}
+    else
       {:error, reason} -> {:reply, {:error, reason}, state}
     end
   end
@@ -106,37 +118,92 @@ defmodule Snodo.Proxy.Manager do
     end
   end
 
-  def handle_call({:refresh, id}, _from, state) do
-    case refresh_backend(state, id) do
-      {:ok, next} -> {:reply, :ok, next}
-      {:error, reason, next} -> {:reply, {:error, reason}, next}
-    end
-  end
-
-  defp refresh_backend(state, id) do
+  def handle_call({:refresh, id}, from, state) do
     case Map.get(state.backends, id) do
-      %{pid: pid} when is_pid(pid) ->
-        refresh_active_backend(state, id, pid)
+      %{pid: pid, snapshot: snapshot} when is_pid(pid) and not is_nil(snapshot) ->
+        ref = make_ref()
+        :ok = Backend.refresh(pid, ref)
+        {:noreply, %{state | refreshes: Map.put(state.refreshes, ref, {id, pid, from})}}
 
-      _missing_or_down ->
-        {:error, :not_found, state}
-    end
-  end
-
-  defp refresh_active_backend(state, id, pid) do
-    case Backend.refresh(pid) do
-      {:ok, snapshot} ->
-        case replace_snapshot(state, id, snapshot) do
-          {:ok, next} -> {:ok, next}
-          {:error, reason} -> {:error, reason, put_error(state, id, reason)}
-        end
-
-      {:error, reason} ->
-        {:error, reason, put_error(state, id, reason)}
+      _missing_down_or_connecting ->
+        {:reply, {:error, :not_found}, state}
     end
   end
 
   @impl true
+  def handle_info({:backend_ready, id, pid, snapshot}, state)
+      when is_map_key(state.adding, pid) do
+    {{^id, config, from}, adding} = Map.pop!(state.adding, pid)
+    state = %{state | adding: adding}
+
+    case join_backend(state, id, pid, config, snapshot) do
+      {:ok, next} ->
+        GenServer.reply(from, :ok)
+        {:noreply, next}
+
+      {:error, reason} ->
+        GenServer.reply(from, {:error, reason})
+        {:noreply, state}
+    end
+  end
+
+  def handle_info({:backend_ready, id, pid, snapshot}, state) do
+    case Map.get(state.backends, id) do
+      %{pid: ^pid} ->
+        case replace_snapshot(state, id, snapshot) do
+          {:ok, next} -> {:noreply, next}
+          {:error, reason} -> {:noreply, put_error(state, id, reason)}
+        end
+
+      _stale ->
+        {:noreply, state}
+    end
+  end
+
+  # The backend exits :normal after this message; its DOWN finds nothing.
+  def handle_info({:backend_failed, _id, pid, reason}, state)
+      when is_map_key(state.adding, pid) do
+    {{_id, _config, from}, adding} = Map.pop!(state.adding, pid)
+    GenServer.reply(from, {:error, reason})
+    {:noreply, %{state | adding: adding}}
+  end
+
+  def handle_info({:backend_failed, id, pid, reason}, state) do
+    case Map.get(state.backends, id) do
+      %{pid: ^pid} = backend ->
+        backends = Map.put(state.backends, id, %{backend | pid: nil, error: reason})
+        Process.send_after(self(), {:reconnect, id}, @reconnect_ms)
+        {:noreply, %{state | backends: backends}}
+
+      _stale ->
+        {:noreply, state}
+    end
+  end
+
+  def handle_info({:backend_refreshed, id, pid, ref, result}, state)
+      when is_map_key(state.refreshes, ref) do
+    {{^id, ^pid, from}, refreshes} = Map.pop!(state.refreshes, ref)
+    state = %{state | refreshes: refreshes}
+
+    {reply, state} =
+      case {Map.get(state.backends, id), result} do
+        {%{pid: ^pid}, {:ok, snapshot}} ->
+          case replace_snapshot(state, id, snapshot) do
+            {:ok, next} -> {:ok, next}
+            {:error, reason} -> {{:error, reason}, put_error(state, id, reason)}
+          end
+
+        {%{pid: ^pid}, {:error, reason}} ->
+          {{:error, reason}, put_error(state, id, reason)}
+
+        _removed_or_replaced ->
+          {{:error, :not_found}, state}
+      end
+
+    GenServer.reply(from, reply)
+    {:noreply, state}
+  end
+
   def handle_info({:backend_catalog, id, pid, snapshot, method}, state) do
     case Map.get(state.backends, id) do
       %{pid: ^pid} ->
@@ -180,7 +247,16 @@ defmodule Snodo.Proxy.Manager do
     {:noreply, state}
   end
 
+  def handle_info({:DOWN, _ref, :process, pid, reason}, state)
+      when is_map_key(state.adding, pid) do
+    {{_id, _config, from}, adding} = Map.pop!(state.adding, pid)
+    GenServer.reply(from, {:error, reason})
+    {:noreply, %{state | adding: adding}}
+  end
+
   def handle_info({:DOWN, _ref, :process, pid, reason}, state) do
+    state = fail_refreshes(state, pid, reason)
+
     case Enum.find(state.backends, fn {_id, backend} -> backend.pid == pid end) do
       {id, backend} ->
         error = if reason == :normal, do: backend.error || reason, else: reason
@@ -197,12 +273,14 @@ defmodule Snodo.Proxy.Manager do
     end
   end
 
+  # The old snapshot was dropped when the backend went down; the new one is
+  # installed when the restarted backend reports it.
   def handle_info({:reconnect, id}, state) do
     case Map.get(state.backends, id) do
-      %{pid: nil, config: config} ->
-        case restart_backend(state, id, config) do
-          {:ok, next} ->
-            {:noreply, next}
+      %{pid: nil, config: config} = backend ->
+        case start_backend(state, id, config) do
+          {:ok, pid} ->
+            {:noreply, %{state | backends: Map.put(state.backends, id, %{backend | pid: pid})}}
 
           {:error, reason} ->
             Process.send_after(self(), {:reconnect, id}, @reconnect_ms)
@@ -216,14 +294,25 @@ defmodule Snodo.Proxy.Manager do
 
   def handle_info(_message, state), do: {:noreply, state}
 
-  defp add_backend(state, raw_backend) do
+  defp add_initial_backend(state, raw_backend) do
     with {:ok, config} <- normalize_backend(raw_backend),
-         :ok <- available(state, config.id) do
-      restart_backend(state, config.id, config)
+         :ok <- available(state, config.id),
+         {:ok, pid} <- start_backend(state, config.id, config) do
+      receive do
+        {:backend_ready, _id, ^pid, snapshot} ->
+          join_backend(state, config.id, pid, config, snapshot)
+
+        {:backend_failed, _id, ^pid, reason} ->
+          {:error, reason}
+
+        {:DOWN, _ref, :process, ^pid, reason} ->
+          {:error, reason}
+      end
     end
   end
 
-  defp restart_backend(state, id, config) do
+  # The backend connects after it starts, so starting it never blocks.
+  defp start_backend(state, id, config) do
     child =
       {Backend,
        [
@@ -236,20 +325,33 @@ defmodule Snodo.Proxy.Manager do
        ]}
 
     with {:ok, pid} <- DynamicSupervisor.start_child(state.backend_supervisor, child) do
-      snapshot = Backend.snapshot(pid)
-      backend = %{pid: pid, snapshot: snapshot, config: config, error: nil}
-      backends = Map.put(state.backends, id, backend)
-
-      case build_catalog(backends, state.max_catalog_items) do
-        {:ok, catalog} ->
-          _ref = Process.monitor(pid)
-          {:ok, install_catalog(state, backends, catalog)}
-
-        {:error, reason} ->
-          :ok = DynamicSupervisor.terminate_child(state.backend_supervisor, pid)
-          {:error, reason}
-      end
+      _ref = Process.monitor(pid)
+      {:ok, pid}
     end
+  end
+
+  defp join_backend(state, id, pid, config, snapshot) do
+    backend = %{pid: pid, snapshot: snapshot, config: config, error: nil}
+    backends = Map.put(state.backends, id, backend)
+
+    case build_catalog(backends, state.max_catalog_items) do
+      {:ok, catalog} ->
+        {:ok, install_catalog(state, backends, catalog)}
+
+      {:error, reason} ->
+        :ok = DynamicSupervisor.terminate_child(state.backend_supervisor, pid)
+        {:error, reason}
+    end
+  end
+
+  defp fail_refreshes(state, pid, reason) do
+    {failed, refreshes} =
+      Map.split_with(state.refreshes, fn {_ref, {_id, waiting_on, _from}} ->
+        waiting_on == pid
+      end)
+
+    Enum.each(failed, fn {_ref, {_id, _pid, from}} -> GenServer.reply(from, {:error, reason}) end)
+    %{state | refreshes: refreshes}
   end
 
   defp replace_snapshot(state, id, snapshot) do
@@ -271,11 +373,13 @@ defmodule Snodo.Proxy.Manager do
   end
 
   defp available(state, id) do
+    adding_ids = for {_pid, {adding_id, _config, _from}} <- state.adding, do: adding_id
+
     cond do
-      Map.has_key?(state.backends, id) ->
+      Map.has_key?(state.backends, id) or id in adding_ids ->
         {:error, {:duplicate_backend, id}}
 
-      map_size(state.backends) >= state.max_backends ->
+      map_size(state.backends) + map_size(state.adding) >= state.max_backends ->
         {:error, {:backend_limit, state.max_backends}}
 
       true ->
