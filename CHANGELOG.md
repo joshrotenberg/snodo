@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.4.2](https://github.com/joshrotenberg/snodo/compare/v0.4.1...v0.4.2) (2026-10-22)
+
+
+### Bug Fixes
+
+* **client:** cancel a stdio request when its caller exits (closes [#273](https://github.com/joshrotenberg/snodo/issues/273)) ([#322](https://github.com/joshrotenberg/snodo/issues/322)) ([8a95efe](https://github.com/joshrotenberg/snodo/commit/8a95efea3d3b2ffd2ab5b76aaabce1d444363239))
+* **conformance:** keep the patched transitive versions in the runner lockfile ([2a03dd2](https://github.com/joshrotenberg/snodo/commit/2a03dd2564b8b6476034a423de732328f86a454c))
+* do not cache complete results reached through input round trips (closes [#284](https://github.com/joshrotenberg/snodo/issues/284)) ([#326](https://github.com/joshrotenberg/snodo/issues/326)) ([1e17626](https://github.com/joshrotenberg/snodo/commit/1e176262fffd003fc64d62934acdf0d2286a457a))
+* keep progress reporting working inside the Timeout component wrapper (closes [#272](https://github.com/joshrotenberg/snodo/issues/272)) ([#325](https://github.com/joshrotenberg/snodo/issues/325)) ([b3b6613](https://github.com/joshrotenberg/snodo/commit/b3b66138a6abf155a73788c7f299b015ad2b7cdb))
+* keep the native HTTP listener accepting after emfile (closes [#268](https://github.com/joshrotenberg/snodo/issues/268)) ([#316](https://github.com/joshrotenberg/snodo/issues/316)) ([b8f2b6d](https://github.com/joshrotenberg/snodo/commit/b8f2b6d71b513bc504d938dcecdb9c694a432cef))
+* keep x-mcp-header mirror checks from revealing concealed tools (closes [#276](https://github.com/joshrotenberg/snodo/issues/276)) ([#318](https://github.com/joshrotenberg/snodo/issues/318)) ([493cc51](https://github.com/joshrotenberg/snodo/commit/493cc512079101e412f0a0145949e89caa9fb19c))
+* **oauth:** keep the refresh token when the token endpoint fails transiently (closes [#270](https://github.com/joshrotenberg/snodo/issues/270)) ([#320](https://github.com/joshrotenberg/snodo/issues/320)) ([38ef518](https://github.com/joshrotenberg/snodo/commit/38ef518478513a4f8cfd96848337fb8260b5029a))
+* **oauth:** remember the protected resource metadata URL from WWW-Authenticate (closes [#271](https://github.com/joshrotenberg/snodo/issues/271)) ([#321](https://github.com/joshrotenberg/snodo/issues/321)) ([a80590c](https://github.com/joshrotenberg/snodo/commit/a80590cba54eaf40e06516c9d9b3351655b47ed6))
+* **plug:** keep the Plug instance stable across init/1 and document Phoenix forward (closes [#283](https://github.com/joshrotenberg/snodo/issues/283)) ([#313](https://github.com/joshrotenberg/snodo/issues/313)) ([1bb360e](https://github.com/joshrotenberg/snodo/commit/1bb360e0f1993c8b96395d7ca27d952e00165616))
+* **plug:** open a listen stream on a response the disconnect probe already started (closes [#269](https://github.com/joshrotenberg/snodo/issues/269)) ([#317](https://github.com/joshrotenberg/snodo/issues/317)) ([b1dcf70](https://github.com/joshrotenberg/snodo/commit/b1dcf705343adc92623fe49f880e570c9cf32f63))
+* **protocol:** retain experimental capabilities in legacy initialize ([#252](https://github.com/joshrotenberg/snodo/issues/252)) ([7d6f28a](https://github.com/joshrotenberg/snodo/commit/7d6f28a81f7491dbfcb28728850f825d610f5e6e)), closes [#250](https://github.com/joshrotenberg/snodo/issues/250)
+* **proxy:** accept backends that list resources with the same name (closes [#275](https://github.com/joshrotenberg/snodo/issues/275)) ([#323](https://github.com/joshrotenberg/snodo/issues/323)) ([c54b2a4](https://github.com/joshrotenberg/snodo/commit/c54b2a4a1e6907f62b9d01fc9bc3e1a2eb831ff9))
+* **proxy:** forward caller capabilities and complete 2026-07-28 result fields (closes [#266](https://github.com/joshrotenberg/snodo/issues/266), closes [#267](https://github.com/joshrotenberg/snodo/issues/267)) ([#312](https://github.com/joshrotenberg/snodo/issues/312)) ([3f4d94c](https://github.com/joshrotenberg/snodo/commit/3f4d94caac16ce91d167f123b52e557484794c5c))
+* **proxy:** keep the manager responsive while backends connect or refresh (closes [#274](https://github.com/joshrotenberg/snodo/issues/274)) ([#324](https://github.com/joshrotenberg/snodo/issues/324)) ([b22b196](https://github.com/joshrotenberg/snodo/commit/b22b196bf1eb12dfa90d8512638615c316044155))
+
+
+### Reverts
+
+* undo the alpha.12 runner pin pushed to main by mistake ([#264](https://github.com/joshrotenberg/snodo/issues/264)) ([0f30b79](https://github.com/joshrotenberg/snodo/commit/0f30b792156f37a0970a683c603cce9c261286dd))
+
 ## [0.4.1](https://github.com/joshrotenberg/snodo/compare/v0.4.0...v0.4.1) (2026-10-02)
 
 

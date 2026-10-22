@@ -98,7 +98,7 @@ application-written bridge.
 
 <!-- x-release-please-start-version -->
 ```elixir
-{:snodo_telemetry, "~> 0.4.1"}
+{:snodo_telemetry, "~> 0.4.2"}
 ```
 <!-- x-release-please-end -->
 
