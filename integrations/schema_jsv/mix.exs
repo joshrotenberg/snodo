@@ -63,6 +63,7 @@ defmodule Snodo.Schema.Validator.JSV.MixProject do
         "snodo.example ../../examples/22_full_schema_validation.exs"
       ],
       quality: [
+        "hex.audit",
         "format --check-formatted",
         "compile --warnings-as-errors",
         "credo --strict",
