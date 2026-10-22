@@ -446,6 +446,9 @@ transport failure; -32001 when the acknowledgement does not arrive within
 | `:max_line_bytes` | stdio | the largest response line to accept (16 MiB); the rest of a longer line is discarded and its request times out |
 | `:max_server_requests` | stdio | the most server-to-client requests whose handlers run at once (16); a request over the limit is answered -32603 |
 | `:headers`, `:ssl`, `:connect_timeout` | HTTP | extra headers, `:ssl` options (peers are verified against the OS trust store by default), connect timeout |
+| `:pool_size` | HTTP | the most simultaneous pooled requests to the server's origin (4); more wait up to their request timeout |
+| `:pool_idle_timeout` | HTTP | milliseconds an idle pooled connection stays open (30,000) |
+| `:pool_max_requests` | HTTP | the most requests sent on one connection before it is replaced (100) |
 | `:token_provider` | HTTP | a `Snodo.Client.TokenProvider` as `{module, state}` that supplies the bearer token (see [Authorization](#authorization)) |
 | `:max_response_bytes` | HTTP | the largest response to accept (16 MiB), checked as it arrives; a larger response closes the connection and returns -32000 |
 | `:max_buffer`, `:overflow` | `listen/3` | the subscription's buffer bound (100) and overflow policy (`:drop_oldest`) |
@@ -472,8 +475,11 @@ The named option wins over duplicate keys in `:meta`.
   ID in each notification's `_meta`, and monitors each subscription's owner.
   When the server exits, or `close/1` stops the connection, open subscriptions
   end with `{:closed, {:error, ...}}` (-32000).
-- **HTTP.** One HTTP/1.1 POST per request, on a `:gen_tcp` or `:ssl`
-  connection that closes when the request returns. The headers the
+- **HTTP.** Each request is an HTTP/1.1 POST on a pooled `:gen_tcp` or `:ssl`
+  connection: up to `:pool_size` requests run at once, idle connections are
+  reused until `:pool_idle_timeout`, and a connection is replaced after
+  `:pool_max_requests` requests (see
+  [Transports](transports.md#http-client-connections)). The headers the
   protocol requires (`MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`, and
   `Mcp-Param-*` for `x-mcp-header` arguments) come from
   the dialect's transport policy, the same declaration the server checks. JSON
@@ -492,10 +498,6 @@ The named option wins over duplicate keys in `:meta`.
   passes the limit. An event stream that answers a request counts as one
   body, notifications included; a subscription stream is checked one event at
   a time. The error has `cause: {:max_response_bytes, limit}`.
-- **Direct.** A subscription is dispatched in a process of its own, which
-  serves the server-side subscription as a server transport would and closes
-  the source when the stream ends. `close/1` on the client does not affect
-  open subscriptions.
 
   On an initialize-era session the requests carry `MCP-Protocol-Version` and
   `Mcp-Session-Id` instead of the 2026-07-28 headers, `notifications/initialized`
@@ -513,6 +515,10 @@ The named option wins over duplicate keys in `:meta`.
   search = Enum.find(tools, &(&1["name"] == "search"))
   {:ok, result} = Snodo.Client.call_tool(client, search, %{"region" => "eu", "query" => "json"})
   ```
+- **Direct.** A subscription is dispatched in a process of its own, which
+  serves the server-side subscription as a server transport would and closes
+  the source when the stream ends. `close/1` on the client does not affect
+  open subscriptions.
 
 ## Authorization
 

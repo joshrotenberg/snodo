@@ -144,17 +144,29 @@ Over stdio, for clients that launch the server as a subprocess:
 :ok = Snodo.Transport.Stdio.serve(Greeter.runtime())
 ```
 
-Over HTTP, supervised in an application:
+Over HTTP, supervised in an application. `use Snodo.Server` defines a
+`child_spec/1` that starts the server's transports under one supervisor and
+gives each the server's runtime:
 
 ```elixir
 children = [
-  {Snodo.Transport.StreamableHTTP.Server, runtime: Greeter.runtime(), port: 4000}
+  {Greeter, transports: [{Snodo.Transport.StreamableHTTP.Server, port: 4000}]}
 ]
 ```
 
-The endpoint is `http://127.0.0.1:4000/mcp`. For an existing Plug or Phoenix
-application, use `snodo_plug` instead. See [Transports](transports.md).
-For a Phoenix endpoint, follow the [router and Bandit setup](transports.md#phoenix-endpoint).
+The endpoint is `http://127.0.0.1:4000/mcp`. Other options to the child are
+runtime overrides, as for `Greeter.runtime/1`, and `:supervisor_name` names
+the supervisor.
+
+Which HTTP transport to use:
+
+- The native listener above has no dependencies. Use it for a standalone
+  server or a local tool. It serves plaintext HTTP/1.1 and binds to loopback
+  by default; put it behind a TLS reverse proxy if other hosts reach it.
+- Inside an existing Plug or Phoenix application, or when you want Bandit's
+  TLS and connection controls, use `snodo_plug`. See
+  [Transports](transports.md), and for Phoenix the
+  [router and Bandit setup](transports.md#phoenix-endpoint).
 
 The same client connects to either:
 

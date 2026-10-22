@@ -3,8 +3,15 @@ defmodule Snodo.Server do
   Dialect-driven direct dispatch and a declarative server builder.
 
   `use Snodo.Server` builds `router/0`, `protocols/0`, `runtime/1`, and
-  `child_spec/1` from the components the module declares. A component is
-  either an existing module or an inline block:
+  `child_spec/1` from the components the module declares. `child_spec/1`
+  starts `Snodo.Server.Supervisor` with the `:transports` option, giving each
+  transport this server's runtime; its other options are runtime overrides:
+
+      children = [
+        {EchoServer, transports: [{Snodo.Transport.StreamableHTTP.Server, port: 4000}]}
+      ]
+
+  A component is either an existing module or an inline block:
 
       defmodule EchoServer do
         use Snodo.Server, name: "echo-server", version: "0.1.0"

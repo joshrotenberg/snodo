@@ -70,6 +70,14 @@ children = [
 ]
 ```
 
+Or through the server's generated child spec, which supplies the runtime:
+
+```elixir
+children = [
+  {MyServer, transports: [{Snodo.Transport.StreamableHTTP.Server, port: 4000}]}
+]
+```
+
 A dependency-free listener that binds to `127.0.0.1` by default and serves
 `POST /mcp`. It answers one request per connection:
 

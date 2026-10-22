@@ -21,9 +21,12 @@ The dependency direction is one-way toward the core. Installing an integration
 does not silently start a listener, migrate a database, enable a protocol version,
 or replace the application's validator.
 
-For an HTTP application, choose the [Plug/Bandit integration](https://hexdocs.pm/snodo_plug)
-and [JSV backend](https://hexdocs.pm/snodo_jsv). The native HTTP listener
-remains useful for an embedded endpoint, examples, and independent acceptance.
+Inside a Plug or Phoenix application, or when you want Bandit's TLS and
+connection controls, choose the [Plug/Bandit integration](https://hexdocs.pm/snodo_plug);
+pair either HTTP transport with the [JSV backend](https://hexdocs.pm/snodo_jsv)
+for full JSON Schema validation. The dependency-free native HTTP listener suits
+a standalone server or local tool; it serves plaintext HTTP/1.1, so put it
+behind a TLS reverse proxy if other hosts reach it.
 Stdio needs neither Plug nor Bandit. `Basic` is still available when its documented
 subset is sufficient; it is not the recommended full-vocabulary validator.
 
