@@ -754,6 +754,37 @@ defmodule Snodo.OAuth.ClientTest do
                Fake.events(fake.world, :token)
     end
 
+    test "keeps the refresh token when the token endpoint fails transiently" do
+      fake = Fake.start(refresh_tokens: true, expires_in: 1)
+      oauth = start_oauth(fake)
+      client = connect(fake, oauth)
+
+      assert {:ok, _tools} = Client.list_tools(client)
+      [first_refresh_token] = Enum.map(tokens(fake), &("refresh-" <> &1))
+
+      Fake.put_config(fake.world, :on_token, fn _body, _auth, _world ->
+        {:error, 503, %{"error" => "temporarily_unavailable"}}
+      end)
+
+      assert {:error, %Error{cause: {:token_endpoint, 503, _body}}} = Client.list_tools(client)
+      assert [_one] = Fake.events(fake.world, :authorize)
+
+      Fake.put_config(fake.world, :on_token, nil)
+      assert {:ok, _tools} = Client.list_tools(client)
+
+      assert [
+               %{body: %{"grant_type" => "authorization_code"}},
+               %{
+                 body: %{"grant_type" => "refresh_token", "refresh_token" => ^first_refresh_token}
+               },
+               %{
+                 body: %{"grant_type" => "refresh_token", "refresh_token" => ^first_refresh_token}
+               }
+             ] = Fake.events(fake.world, :token)
+
+      assert [_one] = Fake.events(fake.world, :authorize)
+    end
+
     test "forget/1 drops the token" do
       fake = Fake.start()
       oauth = start_oauth(fake)
