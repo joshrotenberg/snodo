@@ -6,9 +6,12 @@ defmodule Snodo.OAuth.Client.TokenStore do
 
       %{access_token: "...", token_type: "bearer", expires_at: 1_700_000_000 | nil,
         refresh_token: "..." | nil, scopes: ["mcp:read"], issuer: "https://auth.example.com",
-        resource: "https://mcp.example.com/mcp"}
+        resource: "https://mcp.example.com/mcp",
+        resource_metadata: "https://mcp.example.com/prm" | nil}
 
-  `expires_at` is Unix seconds. The client calls the store from its own
+  `expires_at` is Unix seconds. `resource_metadata` is the protected resource
+  metadata URL a `WWW-Authenticate` challenge named, kept so a refresh can
+  find the document; a value stored without it still works. The client calls the store from its own
   process only. The default, `Snodo.OAuth.Client.TokenStore.Memory`, keeps the
   entries in the client's state and forgets them when it stops; a store
   that persists tokens must protect them as the credentials they are.

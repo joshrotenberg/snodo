@@ -785,6 +785,21 @@ defmodule Snodo.OAuth.ClientTest do
       assert [_one] = Fake.events(fake.world, :authorize)
     end
 
+    test "a refresh uses the metadata URL a challenge named" do
+      fake = Fake.start(refresh_tokens: true, expires_in: 1, prm_path: "/custom/prm")
+      oauth = start_oauth(fake)
+      client = connect(fake, oauth)
+
+      assert {:ok, _tools} = Client.list_tools(client)
+      assert {:ok, _tools} = Client.list_tools(client)
+
+      assert [%{body: %{"grant_type" => "authorization_code"}}, %{body: refresh}] =
+               Fake.events(fake.world, :token)
+
+      assert refresh["grant_type"] == "refresh_token"
+      assert [_one] = Fake.events(fake.world, :authorize)
+    end
+
     test "forget/1 drops the token" do
       fake = Fake.start()
       oauth = start_oauth(fake)
@@ -868,6 +883,27 @@ defmodule Snodo.OAuth.ClientTest do
       assert body["grant_type"] == "client_credentials"
       assert body["resource"] == fake.mcp_url
       refute Map.has_key?(body, "scope")
+    end
+
+    test "finds metadata named only in WWW-Authenticate before the first token" do
+      fake =
+        Fake.start(
+          registration: false,
+          grant_types_supported: ["client_credentials"],
+          token_endpoint_auth_methods_supported: ["client_secret_basic"],
+          prm_path: "/custom/prm"
+        )
+
+      assert {_oauth, {:ok, _tools}} =
+               list_tools(fake,
+                 grant: :client_credentials,
+                 client_id: "cc-client",
+                 client_secret: "cc-secret"
+               )
+
+      # One unauthenticated attempt earns the challenge that names the document.
+      assert [%{status: 401}] = Fake.events(fake.world, :refused)
+      assert [%{body: %{"grant_type" => "client_credentials"}}] = Fake.events(fake.world, :token)
     end
 
     test "binds no listener and keeps credentials out of the process status" do
