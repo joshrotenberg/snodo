@@ -10,8 +10,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: compatibility-${{ github.ref }}
-  # Superseded pull request runs are cancelled; every push to main runs to the end.
+  # A pull request shares one group per ref, and a newer push cancels the older
+  # run. Pushes to main get one group per commit: GitHub keeps only one pending
+  # run per group and cancels the older pending one even without
+  # cancel-in-progress, so a shared group would drop queued main runs.
+  group: compatibility-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
