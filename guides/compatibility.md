@@ -38,7 +38,7 @@ wire correctness and the SDK's callback scheduling limitation are recorded
 [separately](https://github.com/joshrotenberg/snodo/blob/main/interop/official_client/PROGRESS.md).
 
 [`protocol.yml`](https://github.com/joshrotenberg/snodo/blob/main/.github/workflows/protocol.yml) adds independent jobs:
-the exact frozen alpha.11 conformance runner's server and client legs, the same
+the exact frozen alpha.12 conformance runner's server and client legs, the same
 server fixture through the Plug adapter, the initialize-era dialects at
 2025-11-25 and 2025-06-18, each with a strict per-check regression baseline, and
 AJV validation of representative real emitted messages against a

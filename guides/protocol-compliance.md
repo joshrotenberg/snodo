@@ -17,7 +17,7 @@ code and reports:
 | Released-client interop | A real official TypeScript client can discover, list, call, cancel, and call again over stdio | Passing with client 2.1.0 |
 | Target application acceptance | The real Hex.pm server's catalog, tool outcomes, prompts, and resource reads work with seeded domain responses over stdio and HTTP | Passing with client 2.0.0; [scope and commands](https://github.com/joshrotenberg/snodo/blob/main/docs/history/target-application-findings.md) |
 | MRTR client acceptance | Ordinary tool/resource/prompt elicitation, signed state, automatic retries, and URL consent work over stdio and HTTP | Passing with client 2.1.0; [scope and commands](interactive-operations.md) |
-| Official server requirements | The implementation passes the frozen upstream scenarios for the released revision | 37/37 exercised whole scenarios pass on the frozen alpha.11 runner (2026-09-29); the runner's score, not full revision conformance |
+| Official server requirements | The implementation passes the frozen upstream scenarios for the released revision | 37/37 exercised whole scenarios pass on the frozen alpha.12 runner (2026-10-22); the runner's score, not full revision conformance |
 | Ordinary progress | Correlated progress precedes normal/error/MRTR terminal messages; cancellation and no-token behavior are checked over stdio and HTTP | Passing wire and controlled client checks; [SDK callback caveat](https://github.com/joshrotenberg/snodo/blob/main/interop/official_client/PROGRESS.md) |
 | Independent wire-schema corpus | Representative real emissions validate against named definitions and concrete result, input-request, and error branches in the pinned official schema using AJV | 99 emissions across direct/stdio/HTTP; 99 negative mutations and 9 unit controls; not every possible message |
 
@@ -250,28 +250,30 @@ security, the Tasks boundary, and the empty-input-map SDK caveat.
 
 The native Streamable HTTP fixture has been exercised by the frozen official
 server runner. All 37 required scenarios were attempted. The score is
-**37/37 exercised whole scenarios passed** in the 2026-09-29 run. All 37 have
+**37/37 exercised whole scenarios passed** in the 2026-10-22 run on the
+alpha.12 runner, the same score as the 2026-09-29 alpha.11 run. All 37 have
 semantic successes and no failure, warning, or skipped checks. The five
 scenarios that failed on 2026-09-26 needed the deprecated sampling and roots
 input requests, which the fixture now serves. This is the frozen runner's
 score for its own 37 scenarios, not full conformance to the revision.
 
-The required checks total 119 `SUCCESS`, 0 `FAILURE`, 0 `SKIPPED`, 0 `WARNING`,
-and 1 `INFO`. The subscription checks in `server-stateless` run against a
+The required checks total 120 `SUCCESS`, 0 `FAILURE`, 0 `SKIPPED`, 0 `WARNING`,
+and 1 `INFO`; alpha.12 adds the passing `tools-list-deterministic-order` check.
+The subscription checks in `server-stateless` run against a
 fixture subscription hub. Three pending, not-scored scenarios pass completely:
 `json-schema-2020-12` (8/8), `http-header-validation` (14/14), and
 `http-custom-header-server-validation` (10/10). The exact
 pass list, raw no-failure list, and exclusion reasons are checked in as both
-[JSON](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-09-29-alpha.11-summary.json) and
-[Markdown](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-09-29-alpha.11-summary.md), with
-[per-check outcomes](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-09-29-alpha.11-checks.json).
-The September 26, September 14, and August 25 summaries are retained as
-historical evidence, not current scores.
+[JSON](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-10-22-alpha.12-summary.json) and
+[Markdown](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-10-22-alpha.12-summary.md), with
+[per-check outcomes](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-10-22-alpha.12-checks.json).
+The September 29, September 26, September 14, and August 25 alpha.11 summaries
+are retained as historical evidence, not current scores.
 
 The runner's client leg measures `Snodo.Client` separately, through a harness
 that drives it against each scenario server, with `Snodo.OAuth.Client` from
-`snodo_oauth` as the token provider. The 2026-09-30 run passes 31 of 32
-required client scenarios, including all 25 that cover OAuth: metadata
+`snodo_oauth` as the token provider. The 2026-10-22 alpha.12 run passes 31 of
+32 required client scenarios, as the 2026-09-30 alpha.11 run did, including all 25 that cover OAuth: metadata
 discovery, client identity, PKCE, scope selection and step-up, resource
 indicators, and the `iss` checks. The one other is excluded from the score
 because a 2026-07-28 client sends no `initialize`. The harness installs input
@@ -280,7 +282,7 @@ and `roots` capabilities and `request-metadata` passes whole, as it did on
 2026-09-29 when 7 of 32 passed. DPoP, enterprise-managed authorization, and
 workload identity federation are not implemented; their unscored scenarios
 stay in the baseline. A second client lane pins `Snodo.Client` to 2025-11-25
-and runs the frozen 2025-11-25 client set: the 2026-09-30 run passes 16 of 18
+and runs the frozen 2025-11-25 client set: the 2026-10-22 run passes 16 of 18
 required scenarios, `initialize`, `tools_call`, and all 14 that cover OAuth,
 up from 2 of 18 on 2026-09-29. The elicitation scenario depends on the
 standalone `GET` event stream, which the client does not open, and the
@@ -301,8 +303,8 @@ See the
 The frozen `2026-07-28` requirement manifest contains 37 scored server
 scenarios. The manifest declares `conformance@0.2.0-alpha.10` as its historical
 anchor, but was added retrospectively and first shipped with the alpha.11
-runner. This project vendors the alpha.11 artifact from commit `c321dd3` and
-verifies its exact SHA-256
+runner. This project vendors the alpha.11 artifact from commit `c321dd3`, which
+alpha.12 ships unchanged, and verifies its exact SHA-256
 `ae2f4f6210fd729e2e318edd5bbfa31a43cee0bc608e48052fa26dbf1d939b57`
 before every core contract run. The combined frozen fixture includes Tasks and
 the Plug adapter, so start it from the `conformance/fixture` Mix project, then
@@ -314,7 +316,7 @@ MCP_PORT=3001 mix run ../fixture_server.exs
 ```
 
 ```sh
-npx -y @modelcontextprotocol/conformance@0.2.0-alpha.11 server \
+npx -y @modelcontextprotocol/conformance@0.2.0-alpha.12 server \
   --url http://127.0.0.1:3001/mcp \
   --requirements 2026-07-28 \
   --output-dir conformance-results
@@ -361,6 +363,11 @@ visible and claims only the 35 Tasks assertions:
 - [human-readable Tasks summary](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-07-28-tasks-alpha.11-summary.md)
 - [machine-readable Tasks summary](https://github.com/joshrotenberg/snodo/blob/main/conformance/results/2026-07-28-tasks-alpha.11-summary.json)
 
+The alpha.12 runner accepts the flat Tasks result. In the 2026-10-22 run of the
+combined server lane, the same 35 Tasks-specific assertions pass, the
+status-notification assertion is still skipped, and all nine generic
+wire-schema checks pass.
+
 ## Independent full-schema engine lane
 
 [`interop/schema_validation`](https://github.com/joshrotenberg/snodo/blob/main/interop/schema_validation/README.md) pins the
@@ -396,8 +403,6 @@ prose requirement in JSON Schema.
    operational soak before making a production-readiness claim. The
    deterministic Memory contention/Runner harness is a common correctness
    baseline, not database capacity evidence.
-   Retain the generic Tasks wire-schema failures until the official runner can
-   validate extension result unions.
 5. Add property/adversarial wire generation, a transport matrix, more official
    SDKs, and differential structural checks as separate lanes.
 

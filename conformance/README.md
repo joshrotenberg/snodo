@@ -12,14 +12,20 @@ own score and baseline: `server`, `client`, `client-2025-11-25`, and the
 
 ## Latest external measurement
 
-The frozen alpha.11 runner passes **37/37 exercised whole required scenarios**
-on 2026-09-29, up from 32/37 on 2026-09-26 and 22/37 on August 25. All 37
-required scenarios and 13 unscored extension/pending scenarios were attempted.
-This is the frozen runner's own score for its 37 scenarios. It is not full
-protocol conformance: the runner does not cover every requirement of the
-revision, and a green lane means "matches the reviewed baseline".
+The frozen alpha.12 runner passes **37/37 exercised whole required scenarios**
+on 2026-10-22, the same score the alpha.11 runner gave on 2026-09-29, up from
+32/37 on 2026-09-26 and 22/37 on August 25. All 37 required scenarios and 13
+unscored extension/pending scenarios were attempted. This is the frozen
+runner's own score for its 37 scenarios. It is not full protocol conformance:
+the runner does not cover every requirement of the revision, and a green lane
+means "matches the reviewed baseline".
 
-Required checks: **119 success, 0 failure, 0 skipped, 0 warning, 1 info**.
+Required checks: **120 success, 0 failure, 0 skipped, 0 warning, 1 info**.
+alpha.12 adds `tools-list-deterministic-order`, which passes, and accepts the
+flat Tasks result in its `wire-schema-valid` checks, which alpha.11 rejected.
+Its 2025-11-25 and 2026-07-28 requirement manifests are byte-identical to
+alpha.11's.
+
 Since 2026-09-26, the fixture serves the deprecated (SEP-2577) sampling and
 roots input requests through `Snodo.Sampling` and `Snodo.Roots`: the tools
 `test_input_required_result_sampling`, `test_input_required_result_list_roots`,
@@ -29,9 +35,10 @@ diagnostic `test_missing_capability`, which the dialect refuses with `-32021`
 when the client has not declared `sampling`. Six checks that failed now pass,
 and the runner reaches three `-complete` checks it could not emit before.
 
-- [Current human-readable report](results/2026-09-29-alpha.11-summary.md)
-- [Current machine-readable report](results/2026-09-29-alpha.11-summary.json)
-- [Retained per-check outcomes](results/2026-09-29-alpha.11-checks.json)
+- [Current human-readable report](results/2026-10-22-alpha.12-summary.md)
+- [Current machine-readable report](results/2026-10-22-alpha.12-summary.json)
+- [Retained per-check outcomes](results/2026-10-22-alpha.12-checks.json)
+- [Historical September 29 alpha.11 report](results/2026-09-29-alpha.11-summary.md)
 - [Historical September 26 report](results/2026-09-26-alpha.11-summary.md)
 - [Historical September 14 report](results/2026-09-14-alpha.11-summary.md)
 - [Historical August 25 report](results/2026-07-28-alpha.11-summary.md)
@@ -74,7 +81,7 @@ The frozen manifest is vendored at
 runner verify SHA-256
 `ae2f4f6210fd729e2e318edd5bbfa31a43cee0bc608e48052fa26dbf1d939b57`.
 The managed runner additionally verifies the installed manifest is byte-identical.
-The npm lockfile pins alpha.11 and its transitive dependencies; use `npm ci`,
+The npm lockfile pins alpha.12 and its transitive dependencies; use `npm ci`,
 not a moving `npx` dependency resolution, for comparable runs.
 
 [Protocol CI](../.github/workflows/protocol.yml) runs this lane and uploads raw
@@ -103,7 +110,7 @@ check inventory are updated in a reviewed change.
 
 [expected-failures.json](expected-failures.json) is a reviewed,
 `scenario:check-id` regression baseline, not a conformance waiver. It covers
-required and unscored failures separately by their exact keys. Where alpha.11
+required and unscored failures separately by their exact keys. Where the runner
 repeats a check ID for parameterized cases, the report preserves each occurrence
 with a numbered suffix.
 
@@ -121,10 +128,11 @@ A failure-free scenario counts only when it has semantic successes and no
 warnings or skipped checks; a schema-only success cannot stand in for a fixture.
 
 The official runner exits **0** since 2026-09-29: its exit code follows the
-scored scenarios, and the eight unscored Tasks wire-schema failures stay in the
-baseline as failures. The managed lane exits **0** only when every check matches
-the reviewed baseline; the report retains the runner exit code, failures, and
-the **37/37** score. Never call a passing regression gate full protocol
+scored scenarios. Under alpha.11 the eight unscored Tasks wire-schema failures
+stayed in the baseline as failures; alpha.12 passes them, and the server
+baseline has no expected failures. The managed lane exits **0** only when every
+check matches the reviewed baseline; the report retains the runner exit code,
+failures, and the **37/37** score. Never call a passing regression gate full protocol
 conformance.
 
 ## Manual runner
@@ -153,10 +161,11 @@ The managed lane runs `--requirements 2026-07-28`, never a moving `--suite all`.
 ## Tasks and pending scenarios
 
 Tasks is extension-only: its scenarios do not increase the 37-scenario core score.
-The fresh run retains all **35 Tasks-specific assertions passing**, the upstream
-status-notification check skipped, and eight generic wire-schema failures.
-Those failures validate the extension-defined flat `CreateTaskResult` against
-the core `CallToolResult`, which requires `content`; they are not erased.
+The 2026-10-22 alpha.12 run retains all **35 Tasks-specific assertions
+passing** and the upstream status-notification check skipped. All nine generic
+wire-schema checks pass. Under alpha.11, eight of them failed because the runner
+validated the extension-defined flat `CreateTaskResult` against the core
+`CallToolResult`, which requires `content`.
 
 The pending JSON Schema, standard HTTP-header, and custom-header server
 validation probes pass 8/8, 14/14, and 10/10 checks. The custom-header scenario
@@ -167,7 +176,7 @@ validation.
 ## Additional server lanes
 
 - `server-plug` runs the same 2026-07-28 fixture through `Snodo.Transport.Plug`
-  on Bandit instead of the native listener. On 2026-09-29 it matched the native
+  on Bandit instead of the native listener. On 2026-10-22 it matched the native
   lane check for check (37/37), so it shares `expected-failures.json`: any
   difference between the two listeners fails one of the gates.
 - `server-2025-11-25` enables the initialize-era dialects next to 2026-07-28 on
@@ -187,9 +196,11 @@ validation.
   [expected-failures-2025-06-18.json](expected-failures-2025-06-18.json) still
   gates every change.
 
-Results: [Plug](results/2026-09-29-plug-alpha.11-summary.md),
-[2025-11-25](results/2026-09-26-2025-11-25-alpha.11-summary.md),
-[2025-06-18](results/2026-09-26-2025-06-18-alpha.11-summary.md).
+Results: [Plug](results/2026-10-22-plug-alpha.12-summary.md),
+[2025-11-25](results/2026-10-22-2025-11-25-alpha.12-summary.md),
+[2025-06-18](results/2026-10-22-2025-06-18-alpha.12-summary.md). Under alpha.12
+the 2025-06-18 lane no longer runs `tools-list:tools-name-format`, the Plug lane
+changes exactly as the native lane does, and the 2025-11-25 lane is unchanged.
 
 ## Client leg
 
@@ -209,14 +220,18 @@ client's loopback listener, and takes pre-registered or client-credentials
 settings from the scenario context. The runner scores the traffic its scenario
 server records.
 
-The 2026-09-30 run passes **31/32** whole required scenarios, up from 7/32 on
-2026-09-29: every required `auth/*` scenario (metadata discovery at each
+The 2026-10-22 alpha.12 run passes **31/32** whole required scenarios, as the
+alpha.11 run did on 2026-09-30, up from 7/32 on 2026-09-29: every required `auth/*` scenario (metadata discovery at each
 location, client ID metadata documents, dynamic client registration and
 pre-registration, each token endpoint authentication method, scope selection
 and step-up, the retry limit, resource indicators and the resource mismatch
 check, `offline_access`, authorization server migration, and the `iss` checks)
 and every non-auth scenario except `http-standard-headers`. Required checks:
-405 success, 0 failure, 2 skipped, 0 warning. The unscored
+429 success, 0 failure, 2 skipped, 0 warning. alpha.12 adds 24 passing checks:
+`resource-parameter-*` checks in the `auth/metadata-*` and
+`auth/token-endpoint-auth-*` scenarios, and a fourth
+`sep-2243-x-mcp-header-primitive-only` occurrence in
+`http-invalid-tool-headers`. The unscored
 `auth/client-credentials-basic`, `auth/client-credentials-jwt`, and
 `json-schema-2020-12-preservation` scenarios pass as well. The 2026-09-29 run,
 before `Snodo.OAuth.Client` existed, passed 7/32; `request-metadata` passes
@@ -225,9 +240,10 @@ kinds, so the client declares the deprecated `sampling` and `roots`
 capabilities. The first run on 2026-09-26, before `Snodo.Client` sent
 `Mcp-Param-*` headers, passed 4/32.
 
-- [Client report](results/2026-09-30-client-alpha.11-summary.md)
-- [Client machine-readable report](results/2026-09-30-client-alpha.11-summary.json)
-- [Client per-check outcomes](results/2026-09-30-client-alpha.11-checks.json)
+- [Client report](results/2026-10-22-client-alpha.12-summary.md)
+- [Client machine-readable report](results/2026-10-22-client-alpha.12-summary.json)
+- [Client per-check outcomes](results/2026-10-22-client-alpha.12-checks.json)
+- [Historical September 30 alpha.11 client report](results/2026-09-30-client-alpha.11-summary.md)
 - [Historical September 29 client report](results/2026-09-29-client-alpha.11-summary.md)
 - [Historical September 26 client report](results/2026-09-26-client-alpha.11-summary.md)
 
@@ -256,10 +272,13 @@ which pins `Snodo.Client` to it, so the client opens every scenario with
 afterwards. The 2026-07-28 lane pins 2026-07-28 the same way and sends no
 probe, so its traffic is unchanged.
 
-The 2026-09-30 run passes **16/18** required scenarios: `initialize`,
-`tools_call`, and all 14 required `auth/*` scenarios, with `Snodo.OAuth.Client`
-as the token provider on the `initialize` request and every request after it.
-Required checks: 209 success, 7 failure, 0 skipped, 0 warning, 306 info. The
+The 2026-10-22 alpha.12 run passes **16/18** required scenarios, as the
+alpha.11 run did on 2026-09-30: `initialize`, `tools_call`, and all 14 required
+`auth/*` scenarios, with `Snodo.OAuth.Client` as the token provider on the
+`initialize` request and every request after it. Required checks: 232 success,
+7 failure, 0 skipped, 0 warning, 312 info. alpha.12 adds 23 passing
+`resource-parameter-*` checks and records six more `INFO` traffic entries in
+`sse-retry`. The
 unscored `auth/client-credentials-basic`, `auth/client-credentials-jwt`, and
 `json-schema-2020-12-preservation` scenarios pass as well. The 2026-09-29 run,
 before `Snodo.OAuth.Client` existed, passed 2/18.
@@ -280,8 +299,9 @@ pins every check of all 25 scenarios. The gaps:
   does not speak, so the client closes the connection. The scenario also needs
   reconnection on the standalone `GET` stream.
 
-- [2025-11-25 client report](results/2026-09-30-client-2025-11-25-alpha.11-summary.md)
-- [2025-11-25 client machine-readable report](results/2026-09-30-client-2025-11-25-alpha.11-summary.json)
+- [2025-11-25 client report](results/2026-10-22-client-2025-11-25-alpha.12-summary.md)
+- [2025-11-25 client machine-readable report](results/2026-10-22-client-2025-11-25-alpha.12-summary.json)
+- [Historical September 30 alpha.11 2025-11-25 client report](results/2026-09-30-client-2025-11-25-alpha.11-summary.md)
 - [Historical September 29 2025-11-25 client report](results/2026-09-29-client-2025-11-25-alpha.11-summary.md)
 
 See [protocol-compliance.md](../guides/protocol-compliance.md) for architecture and

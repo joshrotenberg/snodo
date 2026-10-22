@@ -138,7 +138,7 @@ test("the client leg scores only its own required and unscored scenarios", () =>
   assert.throws(() => summarize(legs, results, baseline, "authorization"));
 });
 
-async function frozenEvidence(results = "2026-09-29-alpha.11-checks.json", baseline = "expected-failures.json",
+async function frozenEvidence(results = "2026-10-22-alpha.12-checks.json", baseline = "expected-failures.json",
   revision = "2026-07-28") {
   const json = async (file) => JSON.parse(await readFile(new URL(file, import.meta.url), "utf8"));
   return {
@@ -157,10 +157,10 @@ test("the complete frozen check inventory passes and its score is the runner's, 
   assert.equal(report.score.passedScenarios, 37);
   assert.equal(report.score.status, "complete");
   assert.equal(report.regression.unexpectedFailures.length, 0);
-  assert.equal(evidence.baseline.failures.length, 8);
+  assert.equal(evidence.baseline.failures.length, 0);
 });
 
-test("the Tasks lifecycle success-to-skipped regression is caught despite its expected wire failure", async () => {
+test("the Tasks lifecycle success-to-skipped regression is caught though the scenario is unscored", async () => {
   const evidence = await frozenEvidence();
   for (const check of evidence.results["tasks-lifecycle"]) {
     if (check.status === "SUCCESS") check.status = "SKIPPED";
@@ -168,7 +168,7 @@ test("the Tasks lifecycle success-to-skipped regression is caught despite its ex
   const report = summarize(evidence.manifest, evidence.results, evidence.baseline);
   assert.equal(report.regression.passed, false);
   assert.deepEqual(report.regression.unexpectedFailures, []);
-  assert.equal(report.regression.checkStatusDrift.length, 8);
+  assert.equal(report.regression.checkStatusDrift.length, 9);
   assert.equal(report.score.passedScenarios, 37);
 });
 
@@ -189,7 +189,7 @@ test("a sampling or roots check that fails again is a new failure, not a stale b
 });
 
 test("the frozen client check inventory passes without waiving its partial score", async () => {
-  const evidence = await frozenEvidence("2026-09-30-client-alpha.11-checks.json", "expected-failures-client.json");
+  const evidence = await frozenEvidence("2026-10-22-client-alpha.12-checks.json", "expected-failures-client.json");
   assert.equal(Object.keys(evidence.baseline.checkInventory).length, 39);
   const report = summarize(evidence.manifest, evidence.results, evidence.baseline, "client");
   assert.equal(report.regression.passed, true);
@@ -202,7 +202,7 @@ test("the frozen client check inventory passes without waiving its partial score
 });
 
 test("a regression in the Mcp-Param checks fails the client gate", async () => {
-  const evidence = await frozenEvidence("2026-09-30-client-alpha.11-checks.json", "expected-failures-client.json");
+  const evidence = await frozenEvidence("2026-10-22-client-alpha.12-checks.json", "expected-failures-client.json");
   for (const check of evidence.results["http-custom-headers"]) {
     if (check.id !== "sep-2243-client-omit-null") check.status = "FAILURE";
   }
@@ -213,7 +213,7 @@ test("a regression in the Mcp-Param checks fails the client gate", async () => {
 });
 
 test("a client that stops declaring sampling or roots is drift, not an allowed skip", async () => {
-  const evidence = await frozenEvidence("2026-09-30-client-alpha.11-checks.json", "expected-failures-client.json");
+  const evidence = await frozenEvidence("2026-10-22-client-alpha.12-checks.json", "expected-failures-client.json");
   for (const check of evidence.results["request-metadata"]) {
     if (check.id.startsWith("sep-2575-client-declares-")) check.status = "SKIPPED";
   }
@@ -225,7 +225,7 @@ test("a client that stops declaring sampling or roots is drift, not an allowed s
 });
 
 test("an auth check that regresses to a warning fails the client gate", async () => {
-  const evidence = await frozenEvidence("2026-09-30-client-alpha.11-checks.json", "expected-failures-client.json");
+  const evidence = await frozenEvidence("2026-10-22-client-alpha.12-checks.json", "expected-failures-client.json");
   for (const check of evidence.results["auth/scope-step-up"]) {
     if (check.id === "sep-2350-scope-union-on-reauth") check.status = "WARNING";
   }
@@ -237,7 +237,7 @@ test("an auth check that regresses to a warning fails the client gate", async ()
 });
 
 test("the frozen 2025-11-25 lane inventory passes without waiving its partial score", async () => {
-  const evidence = await frozenEvidence("2026-09-26-2025-11-25-alpha.11-checks.json",
+  const evidence = await frozenEvidence("2026-10-22-2025-11-25-alpha.12-checks.json",
     "expected-failures-2025-11-25.json", "2025-11-25");
   const report = summarize(evidence.manifest, evidence.results, evidence.baseline);
   assert.equal(report.regression.passed, true);
@@ -248,7 +248,7 @@ test("the frozen 2025-11-25 lane inventory passes without waiving its partial sc
 
 test("the 2025-06-18 lane scores nothing, and its inventory still gates", async () => {
   const json = async (file) => JSON.parse(await readFile(new URL(file, import.meta.url), "utf8"));
-  const results = await json("../results/2026-09-26-2025-06-18-alpha.11-checks.json");
+  const results = await json("../results/2026-10-22-2025-06-18-alpha.12-checks.json");
   const baseline = await json("../expected-failures-2025-06-18.json");
   const manifest = { server: [], not_scored: Object.keys(results).map((scenario) =>
     ({ scenario, leg: "server", reason: "no frozen requirement set for 2025-06-18" })) };
