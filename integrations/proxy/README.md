@@ -46,8 +46,9 @@ Internal manager or hub restarts keep the same proxy PID.
 
 Backend IDs contain letters, digits, `_`, or `-` and start with a letter.
 Names default to `<id>.<backend-name>`; set `prefix:` on a backend to change
-that. The proxy rejects duplicate names and exact URI collisions when a backend
-is added. Resource URIs
+that. The proxy rejects duplicate tool and prompt names and exact URI
+collisions when a backend is added; resources and templates are identified by
+URI, so their names may repeat. Resource URIs
 are always exposed as `mcp-proxy://<id>/<original-uri>` to preserve ownership,
 including for resource templates. A caller must use the advertised URI when
 reading through the proxy. The prefix does not change the backend's own name
