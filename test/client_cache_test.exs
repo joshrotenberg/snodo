@@ -22,6 +22,30 @@ defmodule Snodo.ClientCacheTest do
     end
   end
 
+  defmodule GatedResource do
+    use Snodo.Resource, uri: "test://cached/gated", name: "gated_item"
+
+    @impl true
+    def read(%{"uri" => uri}, context) do
+      request =
+        Snodo.Elicitation.form("Name?", %{
+          "type" => "object",
+          "properties" => %{"name" => %{"type" => "string"}}
+        })
+
+      case Snodo.Elicitation.response(context, "name", request) do
+        :missing ->
+          {:ok, Snodo.Result.input_required(input_requests: %{"name" => request})}
+
+        {:ok, %{"content" => %{"name" => name}}} ->
+          {:ok,
+           Snodo.Result.resource_read(Snodo.Resource.text(uri, name),
+             metadata: %{ttl_ms: 5_000, cache_scope: "public"}
+           )}
+      end
+    end
+  end
+
   defp runtime(opts) do
     TestFixtures.runtime([instrumentation: {TestInstrumentationSink, self()}] ++ opts)
   end
@@ -40,6 +64,24 @@ defmodule Snodo.ClientCacheTest do
   defp refute_dispatched(method) do
     refute_received {:instrumentation, [:snodo, :server, :dispatch, :start], _measurements,
                      %{method: ^method}}
+  end
+
+  test "a read answered through input requests is not cached" do
+    test = self()
+
+    form = fn _request ->
+      send(test, :asked)
+      {:ok, %{"action" => "accept", "content" => %{"name" => "Ada"}}}
+    end
+
+    client = client(runtime(resources: [GatedResource]), input_handlers: %{form: form})
+
+    for _read <- 1..2 do
+      assert {:ok, %{"contents" => [%{"text" => "Ada"}], "ttlMs" => 0}} =
+               Client.read_resource(client, "test://cached/gated")
+
+      assert_received :asked
+    end
   end
 
   test "public discovery results are shared, expire, and can be bypassed" do

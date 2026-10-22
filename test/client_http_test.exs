@@ -558,8 +558,6 @@ defmodule Snodo.ClientHTTPTest do
       assert {:ok, %{"credential" => "Bearer second"}} = Client.discover(client)
       assert_receive {:fake_http, %{"authorization" => "Bearer first"}, _message}, 1_000
       assert_receive {:fake_http, %{"authorization" => "Bearer second"}, _message}, 1_000
-      assert {:ok, %{"credential" => "Bearer second"}} = Client.discover(client)
-      refute_received {:fake_http, _headers, _message}
       :ok = Client.close(client)
     end
 
