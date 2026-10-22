@@ -16,62 +16,68 @@ defmodule Snodo.Proxy.Backend do
   @doc false
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts)
 
-  @doc false
-  def snapshot(pid), do: GenServer.call(pid, :snapshot)
+  # The manager never waits on a backend. A backend connects after start and
+  # reports {:backend_ready, id, pid, snapshot} or {:backend_failed, id, pid,
+  # reason}; a refresh is answered with {:backend_refreshed, id, pid, ref,
+  # result}.
 
   @doc false
-  def refresh(pid), do: GenServer.call(pid, :refresh, :infinity)
+  def refresh(pid, ref), do: GenServer.cast(pid, {:refresh, ref})
 
   @impl true
   def init(opts) do
+    state = %{
+      id: Keyword.fetch!(opts, :id),
+      prefix: Keyword.fetch!(opts, :prefix),
+      manager: Keyword.fetch!(opts, :manager),
+      client: nil,
+      catalog: nil,
+      health_interval_ms: Keyword.fetch!(opts, :health_interval_ms),
+      listener: nil,
+      resource_listeners: %{}
+    }
+
     target = Keyword.fetch!(opts, :target)
     client_options = Keyword.get(opts, :client_options, [])
+    {:ok, state, {:continue, {:connect, target, client_options}}}
+  end
 
-    case connect(target, client_options) do
-      {:ok, client} ->
-        case fetch_catalog(client) do
-          {:ok, catalog} ->
-            listener = maybe_listen(client, @listen_filter)
-            resource_listeners = open_resource_listeners(client, catalog)
-            health_interval_ms = Keyword.fetch!(opts, :health_interval_ms)
-            Process.send_after(self(), :health_check, health_interval_ms)
+  @impl true
+  def handle_continue({:connect, target, client_options}, state) do
+    with {:ok, client} <- connect(target, client_options),
+         {:ok, catalog} <- fetch_catalog_or_close(client) do
+      state = %{
+        state
+        | client: client,
+          catalog: catalog,
+          listener: maybe_listen(client, @listen_filter),
+          resource_listeners: open_resource_listeners(client, catalog)
+      }
 
-            {:ok,
-             %{
-               id: Keyword.fetch!(opts, :id),
-               prefix: Keyword.fetch!(opts, :prefix),
-               manager: Keyword.fetch!(opts, :manager),
-               client: client,
-               catalog: catalog,
-               health_interval_ms: health_interval_ms,
-               listener: listener,
-               resource_listeners: resource_listeners
-             }}
-
-          {:error, reason} ->
-            safe_close(client)
-            {:stop, reason}
-        end
-
+      Process.send_after(self(), :health_check, state.health_interval_ms)
+      send(state.manager, {:backend_ready, state.id, self(), snapshot_state(state)})
+      {:noreply, state}
+    else
       {:error, reason} ->
-        {:stop, reason}
+        send(state.manager, {:backend_failed, state.id, self(), reason})
+        {:stop, :normal, state}
     end
   end
 
   @impl true
-  def handle_call(:snapshot, _from, state) do
-    {:reply, snapshot_state(state), state}
-  end
+  def handle_cast({:refresh, ref}, state) do
+    {reply, state} =
+      case fetch_catalog(state.client) do
+        {:ok, catalog} ->
+          state = update_catalog(state, catalog)
+          {{:ok, snapshot_state(state)}, state}
 
-  def handle_call(:refresh, _from, state) do
-    case fetch_catalog(state.client) do
-      {:ok, catalog} ->
-        state = update_catalog(state, catalog)
-        {:reply, {:ok, snapshot_state(state)}, state}
+        {:error, reason} ->
+          {{:error, reason}, state}
+      end
 
-      {:error, reason} ->
-        {:reply, {:error, reason}, state}
-    end
+    send(state.manager, {:backend_refreshed, state.id, self(), ref, reply})
+    {:noreply, state}
   end
 
   @impl true
@@ -158,12 +164,23 @@ defmodule Snodo.Proxy.Backend do
   def terminate(_reason, state) do
     if state.listener, do: safe_close(state.listener)
     close_resource_listeners(state.resource_listeners)
-    safe_close(state.client)
+    if state.client, do: safe_close(state.client)
     :ok
   end
 
   defp connect({:direct, %Runtime{} = runtime}, opts), do: Client.direct(runtime, opts)
   defp connect(target, opts), do: Client.connect(target, opts)
+
+  defp fetch_catalog_or_close(client) do
+    case fetch_catalog(client) do
+      {:ok, catalog} ->
+        {:ok, catalog}
+
+      {:error, reason} ->
+        safe_close(client)
+        {:error, reason}
+    end
+  end
 
   defp fetch_catalog(client) do
     with {:ok, tools} <- optional_list(Client.list_tools(client)),
