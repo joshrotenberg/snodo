@@ -40,6 +40,20 @@ jobs:
         with:
           elixir-version: ${{ matrix.elixir }}
           otp-version: ${{ matrix.otp }}
+      # Building PLTs takes most of the type analysis step: dialyxir's core PLT
+      # in ~/.mix and one PLT per package. Restore them keyed on the toolchain
+      # and the repository's lockfiles (hashed before deps/ exists); dialyxir
+      # updates a restored PLT that is out of date.
+      - name: Restore Dialyzer PLTs
+        if: matrix.lane == 'current'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.mix/dialyxir_*
+            **/priv/plts
+          key: plts-${{ runner.os }}-otp${{ matrix.otp }}-elixir${{ matrix.elixir }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            plts-${{ runner.os }}-otp${{ matrix.otp }}-elixir${{ matrix.elixir }}-
       - name: Install package managers
         run: |
           mix local.hex --force
