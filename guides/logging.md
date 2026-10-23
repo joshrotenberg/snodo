@@ -91,4 +91,24 @@ before the request returns. Over stdio a message goes to one of the requests
 in flight on the connection, which need not be the one whose handler logged
 when several are in flight.
 
-`Snodo.Proxy` does not forward a backend's log messages.
+`:on_log` can also be set per request, as an option to `Snodo.Client.request/4`
+and the functions built on it. It replaces the client's function for that
+request, and `on_log: nil` drops the request's messages.
+
+```elixir
+{:ok, _result} =
+  Snodo.Client.call_tool(client, "import", %{},
+    log_level: :debug,
+    on_log: fn params -> send(self(), {:import_log, params}) end
+  )
+```
+
+## Proxy
+
+`Snodo.Proxy` advertises `"logging"` and forwards a backend's
+`notifications/message` to the caller of the original request, before its
+result. The caller's level is passed to a 2026-07-28 backend, and each message
+is logged again on the caller's request with `log/4`, so messages below the
+caller's level are dropped and a request without a level gets none. An
+initialize-era backend sets its level per connection with `logging/setLevel`,
+which the proxy does not send.

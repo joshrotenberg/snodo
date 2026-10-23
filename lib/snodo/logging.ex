@@ -93,6 +93,13 @@ defmodule Snodo.Logging do
   def bind(_sink, %Context{}, _level), do: nil
 
   @doc false
+  # The lowest level the request in `context` asked for, or nil when it asked
+  # for none or the runtime does not advertise "logging". A proxy forwards it.
+  @spec level(Context.t()) :: level() | nil
+  def level(%Context{logging: %__MODULE__{level: level}}), do: level
+  def level(%Context{}), do: nil
+
+  @doc false
   # Called by Snodo.Progress.accept/3 in the transport owner.
   @spec notification(map()) :: {:ok, map()} | {:error, atom()}
   def notification(%{"level" => level, "data" => _data} = fields) when is_binary(level) do
