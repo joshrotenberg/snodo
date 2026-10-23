@@ -77,7 +77,11 @@ defmodule Snodo.Server.Runtime do
       registered, plus `"completions"` when a registered prompt or resource
       template supports completion.
     * `:extensions` - `Snodo.Extension` modules or `{module, options}`
-      tuples. Defaults to `[]`.
+      tuples, and `{:declared, id, settings}` for an extension that adds no
+      methods: it is advertised under `capabilities["extensions"][id]` with
+      `settings` (an explicit entry there wins) and negotiates to the
+      client's settings, which `Snodo.Context.extension_settings/2` returns.
+      Defaults to `[]`.
     * `:instructions` - a string returned in `server/discover` and
       `initialize` results, or `nil` (the default).
     * `:schema_validator` - a `Snodo.Schema.Validator` module. Defaults to
@@ -119,7 +123,12 @@ defmodule Snodo.Server.Runtime do
       |> ExtensionRegistry.new(protocol_registry)
 
     server_info = Keyword.fetch!(opts, :server_info)
-    capabilities = Keyword.get(opts, :capabilities, default_capabilities(router))
+
+    capabilities =
+      opts
+      |> Keyword.get(:capabilities, default_capabilities(router))
+      |> advertise_declared(ExtensionRegistry.declared(extension_registry))
+
     instructions = Keyword.get(opts, :instructions)
     schema_validator = Keyword.get(opts, :schema_validator, Passthrough)
     subscription_source = opts |> Keyword.get(:subscription_source) |> Source.normalize!()
@@ -164,6 +173,17 @@ defmodule Snodo.Server.Runtime do
       pagination: Pagination.new(Keyword.get(opts, :pagination, []))
     }
   end
+
+  defp advertise_declared(capabilities, declared) when declared == %{}, do: capabilities
+
+  defp advertise_declared(capabilities, declared) when is_map(capabilities) do
+    Map.update(capabilities, "extensions", declared, fn
+      advertised when is_map(advertised) -> Map.merge(declared, advertised)
+      invalid -> invalid
+    end)
+  end
+
+  defp advertise_declared(capabilities, _declared), do: capabilities
 
   defp prepare_schemas(router, validator) do
     if function_exported?(validator, :compile, 1) and

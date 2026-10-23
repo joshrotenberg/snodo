@@ -35,7 +35,8 @@ defmodule Snodo.Extension.Registry do
   @extension_id ~r/^(?:(?:[A-Za-z](?:[A-Za-z0-9-]*[A-Za-z0-9])?)(?:\.(?:[A-Za-z](?:[A-Za-z0-9-]*[A-Za-z0-9])?))*\/)(?:[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)$/
 
   @type extension_options :: keyword() | map()
-  @type entry :: module() | {module(), extension_options()}
+  @type entry ::
+          module() | {module(), extension_options()} | {:declared, String.t(), map()}
   @type dispatch_result :: {:ok, Result.t()} | {:error, Error.t()}
   @type continuation :: (Context.t() -> dispatch_result())
 
@@ -79,6 +80,16 @@ defmodule Snodo.Extension.Registry do
       |> Map.new(fn id -> {id, Map.fetch!(registry.options_by_id, id)} end)
 
     %{context | extension_options: options}
+  end
+
+  @doc false
+  # The server settings of declared extensions, keyed by id, for the runtime
+  # to advertise.
+  @spec declared(t()) :: %{optional(String.t()) => map()}
+  def declared(%__MODULE__{} = registry) do
+    for {id, Snodo.Extension.Declared} <- registry.by_id,
+        into: %{},
+        do: {id, Map.fetch!(registry.options_by_id, id)}
   end
 
   @doc false
@@ -304,6 +315,34 @@ defmodule Snodo.Extension.Registry do
       :error ->
         capabilities
     end
+  end
+
+  # A declared extension has no methods: it is advertised with its server
+  # settings, negotiates to the client's settings, and applies to every
+  # enabled protocol version.
+  defp register(%__MODULE__{} = registry, {:declared, id, settings}, protocol_registry) do
+    validate_id!(id)
+
+    unless is_map(settings) and not is_struct(settings) and JSONValue.valid?(settings) do
+      raise ArgumentError, "declared extension #{inspect(id)} settings must be a JSON object"
+    end
+
+    if Map.has_key?(registry.by_id, id) do
+      raise ArgumentError, "duplicate extension id #{inspect(id)}"
+    end
+
+    %{
+      registry
+      | by_id: Map.put(registry.by_id, id, Snodo.Extension.Declared),
+        options_by_id: Map.put(registry.options_by_id, id, settings),
+        versions_by_id:
+          Map.put(
+            registry.versions_by_id,
+            id,
+            MapSet.new(ProtocolRegistry.versions(protocol_registry))
+          ),
+        ordered_ids: registry.ordered_ids ++ [id]
+    }
   end
 
   defp register(%__MODULE__{} = registry, entry, protocol_registry) do

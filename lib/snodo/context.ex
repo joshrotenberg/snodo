@@ -71,4 +71,17 @@ defmodule Snodo.Context do
     trace_context: %{},
     metadata: %{}
   ]
+
+  @doc """
+  Returns the negotiated settings for extension `id`, or `nil` when the
+  extension was not negotiated for this request.
+
+  For an extension declared with `{:declared, id, settings}` these are the
+  settings the client sent for `id`, so a handler can tell whether the client
+  supports the extension and fall back when it does not. For a
+  `Snodo.Extension` module they are what its `negotiate/2` returned.
+  """
+  @spec extension_settings(t(), String.t()) :: map() | nil
+  def extension_settings(%__MODULE__{extensions: extensions}, id) when is_binary(id),
+    do: Map.get(extensions, id)
 end

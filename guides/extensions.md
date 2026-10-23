@@ -24,6 +24,48 @@ lookup, authorization, and argument checks as a direct call.
 
 See `examples/06_custom_extension.exs`.
 
+## Declared extensions
+
+Some extensions add no methods: the server advertises them, reads what the
+client declared, and attaches the extension's `_meta` to tools, resources, or
+results. Declare one with its server settings instead of writing a module:
+
+```elixir
+use Snodo.Server,
+  name: "my-server",
+  version: "1.0.0",
+  extensions: [{:declared, "com.example/charts", %{"version" => "1"}}]
+```
+
+The runtime advertises the id under `capabilities["extensions"]` with those
+settings; an entry you put there yourself wins. In a handler,
+`Snodo.Context.extension_settings/2` returns the settings the client sent for
+the id, or `nil` when the client did not declare it, so the handler can fall
+back to plain content:
+
+```elixir
+tool "sales_chart" do
+  @impl true
+  def call(_arguments, context) do
+    case Snodo.Context.extension_settings(context, "com.example/charts") do
+      nil ->
+        {:ok, "Q3 sales: 120, 140, 180"}
+
+      _client_settings ->
+        {:ok,
+         Snodo.Result.text("Q3 sales: 120, 140, 180",
+           metadata: %{"com.example/charts" => %{"kind" => "bar", "series" => [120, 140, 180]}}
+         )}
+    end
+  end
+end
+```
+
+For a published extension such as MCP Apps (`io.modelcontextprotocol/ui`),
+attach the `_meta` keys its specification defines. A declared extension has no
+routes, middleware, or negotiation callback; write a `Snodo.Extension` module
+when you need any of those.
+
 ## Tasks
 
 `snodo_tasks` implements the `io.modelcontextprotocol/tasks` extension on those
