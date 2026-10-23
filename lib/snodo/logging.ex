@@ -96,7 +96,9 @@ defmodule Snodo.Logging do
   # Called by Snodo.Progress.accept/3 in the transport owner.
   @spec notification(map()) :: {:ok, map()} | {:error, atom()}
   def notification(%{"level" => level, "data" => _data} = fields) when is_binary(level) do
-    if Map.has_key?(@level_names, level) and Map.keys(fields) -- ["level", "data", "logger"] == [],
+    known? = Map.keys(fields) -- ["level", "data", "logger"] == []
+
+    if Map.has_key?(@level_names, level) and known?,
       do: {:ok, %{"jsonrpc" => "2.0", "method" => "notifications/message", "params" => fields}},
       else: {:error, :invalid_log}
   end
