@@ -38,6 +38,11 @@ const lanes = {
     baseline: "expected-failures-client-2025-11-25.json" },
   "server-plug": { leg: "server", revision: "2026-07-28", baseline: "expected-failures.json",
     fixture: { profile: "latest", transport: "plug" } },
+  // The same fixture behind Snodo.Proxy. Its baseline differs from the native
+  // one where the proxy changes behavior by design (rewritten resource URIs,
+  // Tasks and completion not routed).
+  "server-proxy": { leg: "server", revision: "2026-07-28", baseline: "expected-failures-proxy.json",
+    fixture: { profile: "latest", transport: "proxy" } },
   "server-2025-11-25": { leg: "server", revision: "2025-11-25",
     baseline: "expected-failures-2025-11-25.json", fixture: { profile: "legacy", transport: "native" } },
   "server-2025-06-18": { leg: "server", specVersion: "2025-06-18",

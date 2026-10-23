@@ -6,6 +6,7 @@
     "check:client": "node run.mjs client",
     "check:client:2025-11-25": "node run.mjs client-2025-11-25",
     "check:plug": "node run.mjs server-plug",
+    "check:proxy": "node run.mjs server-proxy",
     "check:2025-11-25": "node run.mjs server-2025-11-25",
     "check:2025-06-18": "node run.mjs server-2025-06-18",
     "test": "node --test test/*.test.mjs"

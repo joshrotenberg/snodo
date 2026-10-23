@@ -7,8 +7,9 @@
 # MCP_FIXTURE_PROFILE picks the runtime: "latest" (default) is the combined
 # 2026-07-28 fixture with Tasks, input_required, and subscriptions; "legacy"
 # enables the initialize-era dialects next to 2026-07-28. MCP_FIXTURE_TRANSPORT
-# picks the listener: "native" (default) or "plug" for Snodo.Transport.Plug
-# on Bandit.
+# picks the listener: "native" (default), "plug" for Snodo.Transport.Plug
+# on Bandit, or "proxy", which serves the runtime as a direct backend of
+# Snodo.Proxy on the native listener.
 
 unless Code.ensure_loaded?(Snodo.Extensions.Tasks) and Code.ensure_loaded?(Snodo.Transport.Plug) do
   raise "start the fixture from conformance/fixture so :snodo_tasks and :snodo_plug are available"
@@ -79,8 +80,28 @@ runtime =
       {:ok, {_ip, bound}} = ThousandIsland.listener_info(listener)
       {fn -> Supervisor.stop(listener) end, "http://127.0.0.1:#{bound}/mcp"}
 
+    "proxy" ->
+      # An empty prefix keeps tool and prompt names as the scenarios expect;
+      # resource URIs are still rewritten to mcp-proxy://fixture/...
+      {:ok, proxy} =
+        Snodo.Proxy.start_link(
+          backends: [[id: "fixture", prefix: "", target: {:direct, runtime}]]
+        )
+
+      {:ok, server} =
+        Snodo.Transport.StreamableHTTP.Server.start_link(
+          runtime: Snodo.Proxy.runtime(proxy),
+          ip: {127, 0, 0, 1},
+          port: port,
+          path: "/mcp",
+          max_concurrency: 32,
+          max_queue: 256
+        )
+
+      {fn -> GenServer.stop(server) end, Snodo.Transport.StreamableHTTP.Server.url(server)}
+
     other ->
-      raise "MCP_FIXTURE_TRANSPORT must be native or plug, got: #{inspect(other)}"
+      raise "MCP_FIXTURE_TRANSPORT must be native, plug, or proxy, got: #{inspect(other)}"
   end
 
 if System.get_env("MCP_CONFORMANCE_MANAGED") == "1" do

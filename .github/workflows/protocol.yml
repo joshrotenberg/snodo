@@ -97,7 +97,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lane: [server-plug, server-2025-11-25, server-2025-06-18]
+        lane: [server-plug, server-proxy, server-2025-11-25, server-2025-06-18]
     env:
       MIX_ENV: dev
     steps:
