@@ -181,7 +181,8 @@ argument; for manual paging, pass it after the cursor:
 ```
 
 Requests with other per-call options, such as custom metadata or progress,
-are sent normally and are not cached.
+are sent normally and are not cached. `examples/31_client_cache.exs` shows a
+cached read, a bypassed one, and a client without the cache.
 
 ## Multi round-trip requests
 

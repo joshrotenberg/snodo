@@ -304,8 +304,9 @@ declaration API.
 
 ## Per-component wrappers
 
-Tools, resources, and prompts can declare `wrap:` in a module's `use` options
-or in an inline `Snodo.Server` declaration. Declare the list and its options
+Wrappers are per-component middleware. Tools, resources, and prompts can
+declare `wrap:` in a module's `use` options or in an inline `Snodo.Server`
+declaration. Declare the list and its options
 with literals or module attributes; runtime expressions are rejected so the
 validated wrapper configuration stays fixed. The first wrapper runs outermost:
 
@@ -544,5 +545,5 @@ result carries `ttlMs` and `cacheScope` from the `*_cache:` options.
 
 `examples/01_direct_tools.exs` (raw tools), `02_structured_schema.exs`,
 `12_resources.exs`, `13_prompts.exs`, `14_completions.exs`,
-`15_pagination.exs`, `25_inline_components.exs`, and
-`28_genserver_tools.exs`.
+`15_pagination.exs`, `25_inline_components.exs`, `28_genserver_tools.exs`,
+and `30_component_wrappers.exs` (wrappers, including a custom one).

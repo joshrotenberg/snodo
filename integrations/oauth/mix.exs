@@ -40,7 +40,7 @@ defmodule Snodo.OAuth.MixProject do
   end
 
   def cli do
-    [preferred_envs: [quality: :test, "quality.types": :dev]]
+    [preferred_envs: [quality: :test, "quality.types": :dev, "example.oauth": :dev]]
   end
 
   # :inets supplies the JWKS fetcher's HTTP client; :ssl and :public_key
@@ -71,8 +71,10 @@ defmodule Snodo.OAuth.MixProject do
         "format --check-formatted",
         "compile --warnings-as-errors",
         "credo --strict",
-        "test --warnings-as-errors --raise"
+        "test --warnings-as-errors --raise",
+        "example.oauth"
       ],
+      "example.oauth": ["run ../../examples/33_oauth_resource_server.exs --check"],
       "quality.types": ["dialyzer --force-check --format short --list-unused-filters"]
     ]
   end
