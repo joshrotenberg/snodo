@@ -38,6 +38,7 @@ defmodule Snodo.Context do
           input_responses: map(),
           cancellation: term() | nil,
           progress: Snodo.Progress.t() | nil,
+          logging: Snodo.Logging.t() | nil,
           extensions: map(),
           extension_options: %{optional(String.t()) => keyword() | map()},
           dispatch_check:
@@ -61,6 +62,7 @@ defmodule Snodo.Context do
     :request_state,
     :cancellation,
     :progress,
+    :logging,
     :dispatch_check,
     client_capabilities: %{},
     request_params: %{},

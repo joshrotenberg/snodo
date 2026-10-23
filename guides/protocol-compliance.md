@@ -12,7 +12,7 @@ code and reports:
 | Evidence lane | What it proves | Current status |
 |---|---|---|
 | Exact protocol profile | Which core methods exist in the pinned revision and which capabilities, methods, transports, and limitations this build implements | Complete catalog; implemented slice explicit |
-| Core internal contract | Literal wire requests plus HTTP and generic extension acceptance obey the declared core slice | 32 evidence groups passing |
+| Core internal contract | Literal wire requests plus HTTP and generic extension acceptance obey the declared core slice | 33 evidence groups passing |
 | Tasks package contract | The independent child package obeys its Tasks wire, lifecycle, subscriptions, HTTP, descriptor, durable-store, and recovery contract | 10 evidence groups passing |
 | Released-client interop | A real official TypeScript client can discover, list, call, cancel, and call again over stdio | Passing with client 2.1.0 |
 | Target application acceptance | The real Hex.pm server's catalog, tool outcomes, prompts, and resource reads work with seeded domain responses over stdio and HTTP | Passing with client 2.0.0; [scope and commands](https://github.com/joshrotenberg/snodo/blob/main/docs/history/target-application-findings.md) |
@@ -293,10 +293,10 @@ for the remaining gaps.
 
 Three more server lanes run in CI. The same fixture served through
 `Snodo.Transport.Plug` on Bandit matches the native listener check for check.
-The initialize-era dialects pass 21 of 30 required scenarios of the frozen
-2025-11-25 set, and 21 of 27 unscored 2025-06-18 scenarios. The remaining
-failures are logging, server-initiated sampling and elicitation,
-`resources/subscribe`, and SSE sessions, which that slice does not implement.
+The initialize-era dialects pass 23 of 30 required scenarios of the frozen
+2025-11-25 set, and 23 of 27 unscored 2025-06-18 scenarios. The remaining
+failures are server-initiated sampling and elicitation, `resources/subscribe`,
+and SSE sessions, which that slice does not implement.
 See the
 [additional server lanes](https://github.com/joshrotenberg/snodo/blob/main/conformance/README.md#additional-server-lanes).
 

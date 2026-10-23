@@ -1,14 +1,6 @@
 {
   "failures": [
     {
-      "key": "logging-set-level:logging-set-level",
-      "reason": "The initialize-era slice does not implement logging/setLevel or notifications/message."
-    },
-    {
-      "key": "tools-call-with-logging:tools-call-with-logging",
-      "reason": "The initialize-era slice does not implement logging/setLevel or notifications/message."
-    },
-    {
       "key": "tools-call-sampling:tools-call-sampling",
       "reason": "Server-initiated sampling needs a session, which the initialize-era slice does not keep; the fixture has no such tool."
     },
@@ -100,7 +92,7 @@
     },
     "logging-set-level": {
       "logging-set-level": [
-        "FAILURE"
+        "SUCCESS"
       ],
       "wire-schema-valid": [
         "SUCCESS"
@@ -303,7 +295,7 @@
     },
     "tools-call-with-logging": {
       "tools-call-with-logging": [
-        "FAILURE"
+        "SUCCESS"
       ],
       "wire-schema-valid": [
         "SUCCESS"

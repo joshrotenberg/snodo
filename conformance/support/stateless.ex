@@ -39,14 +39,20 @@ end
 defmodule SnodoTest.Conformance.Stateless.Logging do
   @moduledoc false
 
-  # Snodo has no server logging API: notifications/message is deprecated in
-  # 2026-07-28 and never sent, with or without a requested log level.
+  # Logs at every level. A 2026-07-28 request without
+  # `_meta["io.modelcontextprotocol/logLevel"]` must receive none of them.
   use Snodo.Tool,
     name: "test_logging_tool",
-    description: "Completes without logging; Snodo never sends notifications/message"
+    description: "Logs at every level; a request without a log level receives none"
 
   @impl true
-  def call(_arguments, _context), do: {:ok, Snodo.Result.text("Completed without logging")}
+  def call(_arguments, context) do
+    for level <- Snodo.Logging.levels() do
+      :ok = Snodo.Logging.log(context, level, "#{level} message", logger: "conformance")
+    end
+
+    {:ok, Snodo.Result.text("Logged at every level")}
+  end
 end
 
 defmodule SnodoTest.Conformance.Stateless.StreamingElicitation do

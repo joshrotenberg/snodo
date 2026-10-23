@@ -19,7 +19,7 @@ The client speaks all three versions and negotiates one when it connects.
 - **A client** that calls any MCP server in process, over stdio, or over HTTP.
 - **The 2026-07-28 surface:** discovery, tools, resources and templates,
   prompts, completion, pagination, `subscriptions/listen`, progress,
-  cancellation, and multi round-trip requests with elicitation.
+  logging, cancellation, and multi round-trip requests with elicitation.
 - **No runtime dependencies** in the core: it uses Elixir's built-in `JSON`
   and OTP. Optional sibling packages add Tasks, Plug, OAuth 2.1 resource
   server support, full JSON Schema validation, and `:telemetry` events.

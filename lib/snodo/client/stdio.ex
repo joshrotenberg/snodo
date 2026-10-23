@@ -45,6 +45,12 @@ defmodule Snodo.Client.Stdio do
   dropped. If the progress function raises, the request is cancelled on the
   server.
 
+  A `notifications/message` carries no request ID, so it goes to one of the
+  requests in flight that were made with `on_log:`, and the process waiting
+  on it calls the log function. With several such requests in flight, that
+  need not be the request whose handler logged. A message that arrives while
+  no such request is in flight is dropped.
+
   A `subscriptions/listen` request opened with `Snodo.Client.listen/3` shares
   the connection with ordinary requests. The connection process correlates
   the acknowledgement, the events, and the terminal response by the
@@ -115,13 +121,13 @@ defmodule Snodo.Client.Stdio do
   # returns, so a late message cannot reach the caller's mailbox.
   @impl Transport
   def request(pid, message, opts) when is_pid(pid) and is_map(message) do
-    on_progress = Keyword.get(opts, :on_progress)
+    callbacks = {Keyword.get(opts, :on_progress), Keyword.get(opts, :on_log)}
     reply_to = Process.alias()
     monitor = Process.monitor(pid)
 
     try do
       case submit(pid, {:request, message, reply_to, opts}) do
-        :ok -> await(pid, message["id"], reply_to, monitor, on_progress)
+        :ok -> await(pid, message["id"], reply_to, monitor, callbacks)
         {:error, %Error{}} = error -> error
       end
     after
@@ -271,7 +277,13 @@ defmodule Snodo.Client.Stdio do
         monitor = Process.monitor(caller)
 
         entry =
-          %{reply_to: reply_to, token: token, deadline: Deadline.new(opts), monitor: monitor}
+          %{
+            reply_to: reply_to,
+            token: token,
+            log?: Keyword.has_key?(opts, :on_log),
+            deadline: Deadline.new(opts),
+            monitor: monitor
+          }
           |> start_timer(id)
 
         state = put_in(state, [:pending, id], entry)
@@ -484,6 +496,9 @@ defmodule Snodo.Client.Stdio do
       when is_map_key(state.tokens, token) ->
         progress(state, state.tokens[token], params)
 
+      {:ok, %{"method" => "notifications/message", "params" => params}} when is_map(params) ->
+        log(state, params)
+
       # Other notifications and lines that are not JSON-RPC are dropped.
       _other ->
         state
@@ -669,6 +684,15 @@ defmodule Snodo.Client.Stdio do
     end
   end
 
+  defp log(state, params) do
+    case Enum.find(state.pending, fn {_id, entry} -> Map.get(entry, :log?, false) end) do
+      {_id, entry} -> deliver(entry, {:log, params})
+      nil -> :ok
+    end
+
+    state
+  end
+
   defp pop_pending(state, id) do
     case Map.pop(state.pending, id) do
       {nil, _pending} ->
@@ -697,11 +721,15 @@ defmodule Snodo.Client.Stdio do
       {:error, Transport.connection_error("The stdio connection is closed", reason)}
   end
 
-  defp await(pid, id, reply_to, monitor, on_progress) do
+  defp await(pid, id, reply_to, monitor, {on_progress, on_log} = callbacks) do
     receive do
       {^reply_to, {:progress, params}} ->
-        run_progress(pid, id, reply_to, on_progress, params)
-        await(pid, id, reply_to, monitor, on_progress)
+        run_callback(pid, id, reply_to, on_progress, params)
+        await(pid, id, reply_to, monitor, callbacks)
+
+      {^reply_to, {:log, params}} ->
+        run_callback(pid, id, reply_to, on_log, params)
+        await(pid, id, reply_to, monitor, callbacks)
 
       {^reply_to, {:response, response}} ->
         response
@@ -711,8 +739,8 @@ defmodule Snodo.Client.Stdio do
     end
   end
 
-  defp run_progress(pid, id, reply_to, on_progress, params) do
-    on_progress.(params)
+  defp run_callback(pid, id, reply_to, callback, params) do
+    callback.(params)
   catch
     kind, reason ->
       GenServer.cast(pid, {:abandon, id, reply_to})

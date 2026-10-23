@@ -56,7 +56,7 @@ defmodule Snodo.ClientStdioTest do
     assert {:ok, tools} = Client.list_tools(client)
 
     assert Enum.map(tools, & &1["name"]) |> Enum.sort() ==
-             ~w(choice complete consent echo emit fail halt large mixed park parked roots sample subscriptions ticks)
+             ~w(choice complete consent echo emit fail halt large log mixed park parked roots sample subscriptions ticks)
 
     assert {:ok, %{"content" => [%{"text" => "over stdio"}]}} =
              Client.call_tool(client, "echo", %{"text" => "over stdio"})
@@ -379,13 +379,58 @@ defmodule Snodo.ClientStdioTest do
     assert_receive {:DOWN, ^connection_ref, :process, ^connection, _reason}, 5_000
   end
 
+  describe "log messages" do
+    @describetag mcp_contract: ["server-logging"]
+
+    test "a 2026-07-28 request receives the messages at or above its level" do
+      client = connect(on_log: self(), log_level: :info)
+      assert {:ok, %{"content" => [%{"text" => "logged"}]}} = Client.call_tool(client, "log")
+
+      assert_received {:snodo_log, %{"level" => "info", "data" => "info message"} = info}
+      assert info["logger"] == "fixture"
+      assert_received {:snodo_log, %{"level" => "warning"}}
+      refute_received {:snodo_log, _params}
+
+      # A request without a level gets none.
+      assert {:ok, _result} = Client.call_tool(client, "log", %{}, log_level: nil)
+      refute_received {:snodo_log, _params}
+    end
+
+    test "logging/setLevel holds for the rest of an initialize-era connection" do
+      client = connect([on_log: self()], ["--initialize-era"])
+
+      # Before setLevel the server applies its default, :info.
+      assert {:ok, _result} = Client.call_tool(client, "log")
+      assert_received {:snodo_log, %{"level" => "info"}}
+      assert_received {:snodo_log, %{"level" => "warning"}}
+      refute_received {:snodo_log, _params}
+
+      assert :ok = Client.set_log_level(client, :debug)
+      assert {:ok, _result} = Client.call_tool(client, "log")
+      assert_received {:snodo_log, %{"level" => "debug"}}
+      assert_received {:snodo_log, %{"level" => "info"}}
+      assert_received {:snodo_log, %{"level" => "warning"}}
+
+      assert :ok = Client.set_log_level(client, :warning)
+      assert {:ok, _result} = Client.call_tool(client, "log")
+      assert_received {:snodo_log, %{"level" => "warning"}}
+      refute_received {:snodo_log, _params}
+    end
+
+    test "a client without on_log drops the messages" do
+      client = connect(log_level: :debug)
+      assert {:ok, %{"content" => [%{"text" => "logged"}]}} = Client.call_tool(client, "log")
+      refute_received {:snodo_log, _params}
+    end
+  end
+
   describe "initialize-era servers" do
     test "a snodo server with only the legacy dialects is initialized after the probe fails" do
       client = connect([], ["--initialize-era"])
 
       assert %Client{protocol: "2025-11-25", session: %Session{id: nil} = session} = client
       assert session.server_info == %{"name" => "client-stdio-fixture", "version" => "0.1.0"}
-      assert session.server_capabilities == %{"tools" => %{}}
+      assert session.server_capabilities == %{"tools" => %{}, "logging" => %{}}
 
       assert {:ok, tools} = Client.list_tools(client)
       assert Enum.any?(tools, &(&1["name"] == "echo"))

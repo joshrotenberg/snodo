@@ -33,7 +33,8 @@ defmodule Snodo.Server.Runtime do
           pagination: Pagination.t(),
           subscription_source: Source.Config.t() | nil,
           extension_registry: ExtensionRegistry.t(),
-          authorization: Authorization.config()
+          authorization: Authorization.config(),
+          log_level: Snodo.Logging.level()
         }
 
   @enforce_keys [:router, :protocol_registry, :server_info, :capabilities]
@@ -53,7 +54,8 @@ defmodule Snodo.Server.Runtime do
     tools_cache: %{ttl_ms: 0, scope: "private"},
     prompts_cache: %{ttl_ms: 0, scope: "private"},
     resources_cache: %{ttl_ms: 0, scope: "private"},
-    pagination: %Pagination{}
+    pagination: %Pagination{},
+    log_level: :info
   ]
 
   @doc """
@@ -101,6 +103,11 @@ defmodule Snodo.Server.Runtime do
       hint lets a shared cache serve one principal's result to another.
     * `:pagination` - `[page_size: pos_integer]`. Defaults to a page size
       of 100.
+    * `:log_level` - the least severe `Snodo.Logging` level sent to an
+      initialize-era client that has not set one with `logging/setLevel`.
+      Defaults to `:info`. It applies only when the `"logging"` capability is
+      advertised, and not to 2026-07-28, where a request without a level gets
+      no log messages.
 
   A missing required option raises `KeyError`. An invalid value raises
   `ArgumentError`, including a capability an enabled protocol profile does
@@ -170,8 +177,15 @@ defmodule Snodo.Server.Runtime do
       tools_cache: caches.tools_cache,
       prompts_cache: caches.prompts_cache,
       resources_cache: caches.resources_cache,
-      pagination: Pagination.new(Keyword.get(opts, :pagination, []))
+      pagination: Pagination.new(Keyword.get(opts, :pagination, [])),
+      log_level: log_level!(Keyword.get(opts, :log_level, :info))
     }
+  end
+
+  defp log_level!(level) do
+    if level in Snodo.Logging.levels(),
+      do: level,
+      else: raise(ArgumentError, ":log_level must be one of #{inspect(Snodo.Logging.levels())}")
   end
 
   defp advertise_declared(capabilities, declared) when declared == %{}, do: capabilities

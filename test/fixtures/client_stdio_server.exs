@@ -114,6 +114,19 @@ defmodule SnodoTest.ClientStdioFixture.Subscriptions do
   end
 end
 
+defmodule SnodoTest.ClientStdioFixture.Log do
+  use Snodo.Tool, name: "log", description: "Logs one message at each of debug, info, and warning"
+
+  @impl true
+  def call(_arguments, context) do
+    for level <- [:debug, :info, :warning] do
+      :ok = Snodo.Logging.log(context, level, "#{level} message", logger: "fixture")
+    end
+
+    {:ok, Snodo.Result.text("logged")}
+  end
+end
+
 {:ok, _agent} = Agent.start_link(fn -> [] end, name: :client_stdio_parked)
 {:ok, hub} = SnodoTest.TestSubscriptionHub.start_link()
 true = Process.register(hub, :client_stdio_hub)
@@ -130,6 +143,7 @@ router =
       SnodoTest.ClientStdioFixture.Complete,
       SnodoTest.ClientStdioFixture.Fail,
       SnodoTest.ClientStdioFixture.Subscriptions,
+      SnodoTest.ClientStdioFixture.Log,
       SnodoTest.TestTools.Ticks,
       SnodoTest.MRTR.Tool,
       SnodoTest.MRTR.UrlTool,
@@ -150,13 +164,15 @@ router =
        [
          capabilities: %{
            "tools" => %{"listChanged" => true},
-           "resources" => %{"subscribe" => true}
+           "resources" => %{"subscribe" => true},
+           "logging" => %{}
          },
          subscription_source: {SnodoTest.TestSubscriptionSource, hub}
        ]}
 
     ["--initialize-era"] ->
-      {[Snodo.Protocol.V2025_11_25, Snodo.Protocol.V2025_06_18], []}
+      {[Snodo.Protocol.V2025_11_25, Snodo.Protocol.V2025_06_18],
+       [capabilities: %{"tools" => %{}, "logging" => %{}}]}
 
     other ->
       raise "unexpected arguments: #{inspect(other)}"

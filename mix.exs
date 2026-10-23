@@ -80,6 +80,7 @@ defmodule Snodo.MixProject do
         "guides/application-stack.md",
         "guides/interactive-operations.md",
         "guides/subscriptions.md",
+        "guides/logging.md",
         "guides/authorization.md",
         "guides/extensions.md",
         "guides/instrumentation.md",

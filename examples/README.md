@@ -111,6 +111,7 @@ not have that requirement.
 | [`31_client_cache.exs`](31_client_cache.exs) | `Snodo.Client` response cache: a cached second read, `bypass_cache: true`, and a client without the cache |
 | [`32_proxy.exs`](32_proxy.exs) | `snodo_proxy`: two backends merged with prefixed names, routed calls, rewritten resource URIs, health, and removing a backend |
 | [`33_oauth_resource_server.exs`](33_oauth_resource_server.exs) | `snodo_oauth` resource server on the native listener: static JWKS key, JWT verification, the verified principal in a tool, 401 without a token, 403 without the scope |
+| [`34_server_logging.exs`](34_server_logging.exs) | `Snodo.Logging.log/4` from a tool, a client's `:log_level` and `:on_log`, no messages without a level on 2026-07-28, and the runtime's `:log_level` for an initialize-era client |
 
 The unnumbered stdio files remain interoperability and subprocess acceptance
 fixtures. DETS in example 08 is deliberately a local single-node reference
