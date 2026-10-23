@@ -137,14 +137,91 @@ The assertions also accept what `Snodo.Test.dispatch/2` returns.
 
 ## Serve it
 
-Over stdio, for clients that launch the server as a subprocess:
+### Over stdio
 
+An MCP host such as Claude Code, Claude Desktop, or Codex launches a stdio
+server as a subprocess and talks to it on stdin and stdout. The smallest
+runnable server is a script that installs `snodo` itself:
+
+<!-- x-release-please-start-version -->
 ```elixir
-# greeter.exs, or a release command
+# greeter.exs
+Mix.install([{:snodo, "~> 0.4.2"}])
+
+defmodule Greeter do
+  use Snodo.Server,
+    name: "greeter",
+    version: "0.1.0",
+    protocols: [
+      Snodo.Protocol.V2026_07_28,
+      Snodo.Protocol.V2025_11_25,
+      Snodo.Protocol.V2025_06_18
+    ]
+
+  tool "greet", description: "Create a greeting" do
+    argument "name", :string, required: true
+
+    @impl true
+    def call(%{"name" => name}, _context), do: {:ok, "Hello, #{name}!"}
+  end
+end
+
 :ok = Snodo.Transport.Stdio.serve(Greeter.runtime())
 ```
+<!-- x-release-please-end -->
 
-Over HTTP, supervised in an application. `use Snodo.Server` defines a
+Run it with `-noinput`, which lets the transport bound each input line (see
+[Transports](transports.md#stdio)):
+
+```sh
+elixir --erl -noinput greeter.exs
+```
+
+The first run downloads and compiles `snodo`; later runs reuse the
+`Mix.install` cache.
+
+`protocols:` enables the initialize-era versions next to 2026-07-28, because
+hosts differ: some probe with 2026-07-28, others still send `initialize` with
+2025-11-25 or 2025-06-18. See
+[Initialize-era compatibility](initialize-era-clients.md).
+
+In a Mix project, compile first so compiler output never reaches the host's
+stdout, then serve the module from the project directory:
+
+```sh
+mix compile
+elixir --erl -noinput -S mix run --no-compile -e "Snodo.Transport.Stdio.serve(MyApp.MCPServer.runtime())"
+```
+
+A release can do the same from a command that starts the application and then
+calls `Snodo.Transport.Stdio.serve/2`; put `-noinput` in `vm.args`.
+
+### Registering with a host
+
+Hosts start the command themselves, from their own working directory, so use
+absolute paths. With Claude Code:
+
+```sh
+claude mcp add greeter -- elixir --erl -noinput /path/to/greeter.exs
+```
+
+Hosts that read a JSON configuration, such as Claude Desktop's
+`claude_desktop_config.json`, take the same command and arguments:
+
+```json
+{
+  "mcpServers": {
+    "greeter": {
+      "command": "elixir",
+      "args": ["--erl", "-noinput", "/path/to/greeter.exs"]
+    }
+  }
+}
+```
+
+### Over HTTP
+
+In an application, supervise the server. `use Snodo.Server` defines a
 `child_spec/1` that starts the server's transports under one supervisor and
 gives each the server's runtime:
 
@@ -171,7 +248,7 @@ Which HTTP transport to use:
 The same client connects to either:
 
 ```elixir
-{:ok, client} = Snodo.Client.connect({:stdio, "elixir", ["greeter.exs"]})
+{:ok, client} = Snodo.Client.connect({:stdio, "elixir", ["--erl", "-noinput", "greeter.exs"]})
 {:ok, client} = Snodo.Client.connect({:http, "http://127.0.0.1:4000/mcp"})
 ```
 

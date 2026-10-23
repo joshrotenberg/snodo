@@ -95,7 +95,9 @@ result["content"]
 #=> [%{"type" => "text", "text" => "Hello, Ada!"}]
 ```
 
-Serve it over stdio from a script or release:
+Serve it over stdio from a script or release. [Getting started](https://hexdocs.pm/snodo/getting-started.html#over-stdio)
+has a complete `Mix.install` script and the commands to register it with an
+MCP host:
 
 ```elixir
 :ok = Snodo.Transport.Stdio.serve(Greeter.runtime())
@@ -110,7 +112,7 @@ children = [{Snodo.Transport.StreamableHTTP.Server, runtime: Greeter.runtime(), 
 The same client connects to either:
 
 ```elixir
-{:ok, client} = Snodo.Client.connect({:stdio, "elixir", ["greeter.exs"]})
+{:ok, client} = Snodo.Client.connect({:stdio, "elixir", ["--erl", "-noinput", "greeter.exs"]})
 {:ok, client} = Snodo.Client.connect({:http, "http://127.0.0.1:4000/mcp"})
 ```
 
