@@ -33,8 +33,8 @@ mix run examples/01_direct_tools.exs --check
 
 Or run the complete no-external-service set, with every script launched in a
 fresh Elixir VM. The root task delegates examples 07–09, 17, and 26 to Tasks and example
-11 to the SQLite sibling; examples 12–16, 18–20, 23–25, and 27 remain in core. Examples
-21/22 run in their integration packages. All 26 default scripts run without
+11 to the SQLite sibling; examples 12–16, 18–20, 23–25, and 27–29 remain in core. Examples
+21/22 run in their integration packages. All 28 default scripts run without
 external services:
 
 ```sh
@@ -105,6 +105,8 @@ not have that requirement.
 | [`25_inline_components.exs`](25_inline_components.exs) | Inline tool, resource template, and prompt blocks next to a module tool; plain return values; generated module names |
 | [`26_tasks_client.exs`](26_tasks_client.exs) | `Snodo.Extensions.Tasks.Client` over `Snodo.Client`: per-request extension declaration, task-augmented call, input answered by the client's form handler, `tasks/get`, `tasks/cancel`, typed status and outcome |
 | [`27_distributed_subscriptions.exs`](27_distributed_subscriptions.exs) | OTP `:pg` fanout to two local hubs, per-hub filtering, application-owned bridge process |
+| [`28_genserver_tools.exs`](28_genserver_tools.exs) | Tools generated from a GenServer's calls and casts next to the same tools written by hand, compared schemas and results |
+| [`29_sampling_and_roots.exs`](29_sampling_and_roots.exs) | Deprecated sampling and roots input requests in one result, answered by a `Snodo.Client`'s `:sampling` and `:roots` handlers; `-32021` without them |
 
 The unnumbered stdio files remain interoperability and subprocess acceptance
 fixtures. DETS in example 08 is deliberately a local single-node reference
