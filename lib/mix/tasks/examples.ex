@@ -22,7 +22,8 @@ defmodule Mix.Tasks.Examples do
     {"examples/24_client_transports.exs", "24_client_transports: ok"},
     {"examples/25_inline_components.exs", "25_inline_components: ok"},
     {"examples/27_distributed_subscriptions.exs", "27_distributed_subscriptions: ok"},
-    {"examples/28_genserver_tools.exs", "28_genserver_tools: ok"}
+    {"examples/28_genserver_tools.exs", "28_genserver_tools: ok"},
+    {"examples/29_sampling_and_roots.exs", "29_sampling_and_roots: ok"}
   ]
 
   @tasks_examples [

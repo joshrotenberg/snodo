@@ -1,10 +1,12 @@
-# Ordinary MRTR and elicitation
+# Asking the client for input
 
-The first general MRTR slice supports ordinary tools, resources, and prompts
-with form/URL elicitation, the deprecated sampling and roots input requests,
-and state-only continuations. It uses public APIs, preserves the synchronous
-core, and needs no server-owned waiting process. The implementation follows
-the pinned [2026-07-28 MRTR contract](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/mrtr)
+A tool, resource, or prompt can ask the client for something before it
+answers: a form the user fills in, a URL the user opens, or (deprecated)
+a model completion or the client's roots. In 2026-07-28 this is a
+multi round-trip request (MRTR): the handler returns `input_required`, the
+client gathers the answers, and it sends the same request again with them.
+Nothing waits on the server between the two requests. The behavior follows
+the [2026-07-28 MRTR contract](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/mrtr)
 and [elicitation contract](https://modelcontextprotocol.io/specification/2026-07-28/client/elicitation).
 
 ## Authoring an interactive operation
@@ -16,6 +18,37 @@ and [elicitation contract](https://modelcontextprotocol.io/specification/2026-07
 4. On retry, consume the named response, validate any state, then return the
    feature's normal result. Ignore inputs you do not need and re-request missing
    answers. Partial answers needed on a later retry belong in protected state.
+
+```elixir
+tool "greet" do
+  @impl true
+  def call(_arguments, context) do
+    request =
+      Snodo.Elicitation.form("Who should I greet?", %{
+        "type" => "object",
+        "properties" => %{"name" => %{"type" => "string"}},
+        "required" => ["name"]
+      })
+
+    case Snodo.Elicitation.response(context, "who", request) do
+      :missing ->
+        {:ok, Snodo.Result.input_required(input_requests: %{"who" => request})}
+
+      {:ok, %{"action" => "accept", "content" => %{"name" => name}}} ->
+        {:ok, "Hello, #{name}!"}
+
+      {:ok, %{"action" => _declined_or_cancelled}} ->
+        {:ok, Snodo.Result.error("No name given")}
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+end
+```
+
+A `Snodo.Client` with a `:form` input handler answers and retries on its own,
+so `call_tool/3` returns the greeting; see [the client guide](client.md#input-handlers).
 
 The component's arguments do not gain hidden keys. Retry data is available as
 `context.input_responses` and `context.request_state`. The raw originating
@@ -69,9 +102,12 @@ Sampled content is model output the client chose to return: treat it as
 untrusted input, bound what you keep in signed state, and never follow it as an
 instruction. A root is a client claim about its file system, not an access
 grant; check every derived path against the application's own authorization.
-The conformance fixture in `conformance/support/mrtr.ex` shows a sampling
-tool, a roots tool, a three-kind result with signed partial progress, and a
-tool that requests only the kinds the client declared. On the client side,
+[Example 29](https://github.com/joshrotenberg/snodo/blob/main/examples/29_sampling_and_roots.exs)
+asks for roots and a sampled completion in one result and answers both with a
+`Snodo.Client`; a client without those handlers is refused with `-32021`. The
+conformance fixture in `conformance/support/mrtr.ex` shows a three-kind result
+with signed partial progress and a tool that requests only the kinds the
+client declared. On the client side,
 `Snodo.Client` answers both kinds through its `:sampling` and `:roots` input
 handlers and declares the matching capabilities only when a handler is
 installed; see [the client guide](client.md#input-handlers).
