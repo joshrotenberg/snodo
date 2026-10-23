@@ -8,7 +8,7 @@ the combined fixture. The [client leg](#client-leg) runs `Snodo.Client` against
 the runner's own scenario servers. `run.mjs` runs them as lanes, each with its
 own score and baseline: `server`, `client`, `client-2025-11-25`, and the
 [additional server lanes](#additional-server-lanes) `server-plug`,
-`server-2025-11-25`, and `server-2025-06-18`.
+`server-proxy`, `server-2025-11-25`, and `server-2025-06-18`.
 
 ## Latest external measurement
 
@@ -60,6 +60,7 @@ npm run check
 npm run check:client
 npm run check:client:2025-11-25
 npm run check:plug
+npm run check:proxy
 npm run check:2025-11-25
 npm run check:2025-06-18
 ```
@@ -179,6 +180,16 @@ validation.
   on Bandit instead of the native listener. On 2026-10-22 it matched the native
   lane check for check (37/37), so it shares `expected-failures.json`: any
   difference between the two listeners fails one of the gates.
+- `server-proxy` serves the same fixture as a direct backend of `Snodo.Proxy`
+  (empty prefix, so tool and prompt names are unchanged) on the native
+  listener. It passes **33/37** required scenarios. The four failures are by
+  design: the proxy does not route `completion/complete`, and it exposes
+  resources as `mcp-proxy://<id>/<original-uri>`, so the three resource read
+  scenarios do not find their fixed URIs. The unscored Tasks scenarios fail
+  because the proxy does not route the Tasks extension, and the pending
+  `http-custom-header-server-validation` scenario fails because the proxy does
+  not yet check `Mcp-Param-*` headers (#333). Its own baseline is
+  [expected-failures-proxy.json](expected-failures-proxy.json).
 - `server-2025-11-25` enables the initialize-era dialects next to 2026-07-28 on
   a fixture with tools, resources, prompts, and completion, and runs the frozen
   2025-11-25 requirement set. That set is the upstream reconstruction from
