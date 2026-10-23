@@ -35,7 +35,8 @@ defmodule Snodo.Proxy.MixProject do
     ]
   end
 
-  def cli, do: [preferred_envs: [quality: :test, "quality.types": :dev]]
+  def cli,
+    do: [preferred_envs: [quality: :test, "quality.types": :dev, "example.proxy": :dev]]
 
   def application do
     [extra_applications: [:logger], mod: {Snodo.Proxy.Application, []}]
@@ -63,8 +64,10 @@ defmodule Snodo.Proxy.MixProject do
         "format --check-formatted",
         "compile --warnings-as-errors",
         "credo --strict",
-        "test --warnings-as-errors --raise"
+        "test --warnings-as-errors --raise",
+        "example.proxy"
       ],
+      "example.proxy": ["run ../../examples/32_proxy.exs --check"],
       "quality.types": ["dialyzer --force-check --format short --list-unused-filters"]
     ]
   end

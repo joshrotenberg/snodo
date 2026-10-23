@@ -33,9 +33,9 @@ mix run examples/01_direct_tools.exs --check
 
 Or run the complete no-external-service set, with every script launched in a
 fresh Elixir VM. The root task delegates examples 07–09, 17, and 26 to Tasks and example
-11 to the SQLite sibling; examples 12–16, 18–20, 23–25, and 27–29 remain in core. Examples
-21/22 run in their integration packages. All 28 default scripts run without
-external services:
+11 to the SQLite sibling; examples 12–16, 18–20, 23–25, and 27–31 remain in core. Examples
+21, 22, 32, and 33 run in their integration packages. All 32 default scripts run
+without external services:
 
 ```sh
 mix examples
@@ -107,6 +107,10 @@ not have that requirement.
 | [`27_distributed_subscriptions.exs`](27_distributed_subscriptions.exs) | OTP `:pg` fanout to two local hubs, per-hub filtering, application-owned bridge process |
 | [`28_genserver_tools.exs`](28_genserver_tools.exs) | Tools generated from a GenServer's calls and casts next to the same tools written by hand, compared schemas and results |
 | [`29_sampling_and_roots.exs`](29_sampling_and_roots.exs) | Deprecated sampling and roots input requests in one result, answered by a `Snodo.Client`'s `:sampling` and `:roots` handlers; `-32021` without them |
+| [`30_component_wrappers.exs`](30_component_wrappers.exs) | Per-component wrappers (middleware): a custom audit wrapper, Timeout, and a RateLimit keyed on the transport's principal |
+| [`31_client_cache.exs`](31_client_cache.exs) | `Snodo.Client` response cache: a cached second read, `bypass_cache: true`, and a client without the cache |
+| [`32_proxy.exs`](32_proxy.exs) | `snodo_proxy`: two backends merged with prefixed names, routed calls, rewritten resource URIs, health, and removing a backend |
+| [`33_oauth_resource_server.exs`](33_oauth_resource_server.exs) | `snodo_oauth` resource server on the native listener: static JWKS key, JWT verification, the verified principal in a tool, 401 without a token, 403 without the scope |
 
 The unnumbered stdio files remain interoperability and subprocess acceptance
 fixtures. DETS in example 08 is deliberately a local single-node reference

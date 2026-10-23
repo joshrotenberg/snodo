@@ -23,7 +23,9 @@ defmodule Mix.Tasks.Examples do
     {"examples/25_inline_components.exs", "25_inline_components: ok"},
     {"examples/27_distributed_subscriptions.exs", "27_distributed_subscriptions: ok"},
     {"examples/28_genserver_tools.exs", "28_genserver_tools: ok"},
-    {"examples/29_sampling_and_roots.exs", "29_sampling_and_roots: ok"}
+    {"examples/29_sampling_and_roots.exs", "29_sampling_and_roots: ok"},
+    {"examples/30_component_wrappers.exs", "30_component_wrappers: ok"},
+    {"examples/31_client_cache.exs", "31_client_cache: ok"}
   ]
 
   @tasks_examples [
@@ -36,7 +38,9 @@ defmodule Mix.Tasks.Examples do
   @sqlite_example "11_tasks_sqlite: ok"
   @integration_examples [
     {"plug", "example.plug", "21_plug_bandit: ok"},
-    {"schema_jsv", "example.jsv", "22_full_schema_validation: ok"}
+    {"schema_jsv", "example.jsv", "22_full_schema_validation: ok"},
+    {"proxy", "example.proxy", "32_proxy: ok"},
+    {"oauth", "example.oauth", "33_oauth_resource_server: ok"}
   ]
   @total_examples length(@examples) + length(@tasks_examples) + 1 + length(@integration_examples)
 

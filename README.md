@@ -131,6 +131,7 @@ The same client connects to either:
 - [Initialize-era clients](https://hexdocs.pm/snodo/initialize-era-clients.html)
 - [Supported Elixir, OTP, and databases](https://hexdocs.pm/snodo/compatibility.html)
 - [Protocol compliance](https://hexdocs.pm/snodo/protocol-compliance.html)
+- [Aggregating MCP servers (`snodo_proxy`)](https://hexdocs.pm/snodo_proxy)
 
 The [examples](https://github.com/joshrotenberg/snodo/blob/main/examples/README.md) are runnable scripts, each checked in CI.
 

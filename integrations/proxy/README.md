@@ -118,4 +118,6 @@ choose one template's authorization component on the backend's behalf.
 ## Verify
 
 From this package directory, run `mix deps.get`, `mix quality`, and
-`mix quality.types`.
+`mix quality.types`. `mix example.proxy` runs
+[`examples/32_proxy.exs`](https://github.com/joshrotenberg/snodo/blob/main/examples/32_proxy.exs),
+which merges two backends and routes calls and reads through the proxy.

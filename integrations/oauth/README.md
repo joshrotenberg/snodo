@@ -157,6 +157,11 @@ resource URI cannot contain a query; invalid configurations fail at startup.
 For a public HTTPS resource, terminate TLS at a reverse proxy and keep the
 native listener on a private bind address, as in this example.
 
+[`examples/33_oauth_resource_server.exs`](https://github.com/joshrotenberg/snodo/blob/main/examples/33_oauth_resource_server.exs)
+(`mix example.oauth` from this package) runs this setup with a static key:
+it mints tokens, calls a tool that reads the verified principal, and shows
+the 401 and 403 answers.
+
 ## Phoenix
 
 Serve the document as a route outside the MCP pipeline and put the bearer
