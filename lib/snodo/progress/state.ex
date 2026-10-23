@@ -3,7 +3,12 @@ defmodule Snodo.Progress.State do
 
   alias Snodo.Progress.Sink
 
-  @type t :: %__MODULE__{sink: Sink.t(), last: number() | nil, count: non_neg_integer()}
+  @type t :: %__MODULE__{
+          sink: Sink.t(),
+          last: number() | nil,
+          count: non_neg_integer(),
+          log_count: non_neg_integer()
+        }
   @enforce_keys [:sink]
-  defstruct [:sink, :last, count: 0]
+  defstruct [:sink, :last, count: 0, log_count: 0]
 end

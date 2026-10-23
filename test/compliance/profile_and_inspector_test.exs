@@ -46,7 +46,7 @@ defmodule Snodo.Compliance.ProfileAndInspectorTest do
     {"notifications/cancelled", :notification, :server_to_client, :required, nil, :unsupported,
      :top_level, :active},
     {"notifications/message", :notification, :server_to_client, :required, "logging",
-     :unsupported, :top_level, :deprecated},
+     :implemented, :top_level, :deprecated},
     {"notifications/progress", :notification, :server_to_client, :required, nil, :implemented,
      :top_level, :active},
     {"notifications/prompts/list_changed", :notification, :server_to_client, :optional, "prompts",
@@ -82,7 +82,7 @@ defmodule Snodo.Compliance.ProfileAndInspectorTest do
              scope: :implemented_slice,
              era: :stateless,
              batching: :forbidden,
-             capabilities: ["completions", "tools", "prompts", "resources"]
+             capabilities: ["completions", "logging", "tools", "prompts", "resources"]
            } = profile
 
     assert Profile.method_names(profile,
@@ -434,7 +434,7 @@ defmodule Snodo.Compliance.ProfileAndInspectorTest do
         official_summary: summary
       )
 
-    assert length(report["evidence"]["internalPass"]) == 32
+    assert length(report["evidence"]["internalPass"]) == 33
     assert report["evidence"]["officialPass"] == summary["score"]["passedScenarioIds"]
     official = report["officialServerConformance"]
 

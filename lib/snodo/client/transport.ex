@@ -35,13 +35,17 @@ defmodule Snodo.Client.Transport do
       the `params` of each `notifications/progress` whose `progressToken` is
       the request's `params["_meta"]["progressToken"]`, before returning the
       response.
+    * `:on_log` - present when the client has a log function. A function of
+      one argument to call, in the process that called `request/3`, with the
+      `params` of each `notifications/message` the server sends while the
+      request is in flight, before returning the response.
     * `:reset_timeout_on_progress` - when `true`, each delivered progress
       notification restarts `:timeout`, up to `:max_total_timeout`
       milliseconds after the request started. Past that the request fails
       with `max_total_timeout_error/1`.
 
   A transport that ignores the progress options delivers no progress and keeps
-  a fixed timeout.
+  a fixed timeout; one that ignores `:on_log` delivers no log messages.
 
   Three callbacks are optional. `notify/3` sends a notification, a message
   without an `id`, and returns once the transport has delivered it; it

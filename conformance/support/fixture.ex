@@ -1,3 +1,4 @@
+Code.require_file("logging.ex", __DIR__)
 Code.require_file("mrtr.ex", __DIR__)
 Code.require_file("progress.ex", __DIR__)
 Code.require_file("stateless.ex", __DIR__)
@@ -337,6 +338,7 @@ defmodule SnodoTest.Conformance.Fixture do
   alias Snodo.Protocol.V2026_07_28
   alias Snodo.Router
   alias Snodo.Server.Runtime
+  alias SnodoTest.Conformance.Logging.Tool, as: LoggingTool
   alias SnodoTest.Conformance.MRTR, as: MRTRFixture
   alias SnodoTest.Conformance.Progress.Tool, as: ProgressTool
   alias SnodoTest.Conformance.Prompts.Simple
@@ -385,7 +387,8 @@ defmodule SnodoTest.Conformance.Fixture do
     MixedContent,
     ErrorHandling,
     JSONSchema2020,
-    ProgressTool
+    ProgressTool,
+    LoggingTool
   ]
   @legacy_resources [StaticText, StaticBinary, TemplateData]
   @legacy_prompts [Simple, WithArguments, WithEmbeddedResource, WithImage]
@@ -400,6 +403,7 @@ defmodule SnodoTest.Conformance.Fixture do
       |> Map.put("completions", %{})
       |> Map.put("prompts", %{"listChanged" => true})
       |> Map.put("resources", %{})
+      |> Map.put("logging", %{})
 
     Runtime.new(
       router: router,
@@ -420,7 +424,13 @@ defmodule SnodoTest.Conformance.Fixture do
       router: router(@legacy_tools, @legacy_resources, @legacy_prompts),
       protocols: [V2026_07_28, V2025_11_25, V2025_06_18],
       server_info: %{"name" => "snodo-conformance", "version" => "0.1.0"},
-      capabilities: %{"tools" => %{}, "prompts" => %{}, "resources" => %{}, "completions" => %{}},
+      capabilities: %{
+        "tools" => %{},
+        "prompts" => %{},
+        "resources" => %{},
+        "completions" => %{},
+        "logging" => %{}
+      },
       tools_cache: [ttl_ms: 0, scope: "private"],
       prompts_cache: [ttl_ms: 0, scope: "private"],
       resources_cache: [ttl_ms: 0, scope: "private"]

@@ -195,23 +195,26 @@ validation.
   2025-11-25 requirement set. That set is the upstream reconstruction from
   alpha.10 (see the header of
   [requirements/2025-11-25.yaml](requirements/2025-11-25.yaml)), pinned by
-  SHA-256. It passes **21/30** required scenarios. The failures are features
-  the initialize-era slice does not implement: `logging/setLevel`,
-  server-initiated sampling and elicitation (which need a session),
-  `resources/subscribe`, and SSE session IDs. They are listed with reasons in
+  SHA-256. It passes **23/30** required scenarios. The failures are features
+  the initialize-era slice does not implement: server-initiated sampling and
+  elicitation (which need a session), `resources/subscribe`, and SSE session
+  IDs. They are listed with reasons in
   [expected-failures-2025-11-25.json](expected-failures-2025-11-25.json).
 - `server-2025-06-18` runs `--spec-version 2025-06-18 --suite active` on the
   same fixture. No frozen requirement set exists for 2025-06-18, so all 27
-  scenarios are unscored; 21 pass, and the other 6 fail for the same missing
+  scenarios are unscored; 23 pass, and the other 4 fail for the same missing
   features. The per-check baseline in
   [expected-failures-2025-06-18.json](expected-failures-2025-06-18.json) still
   gates every change.
 
 Results: [Plug](results/2026-10-22-plug-alpha.12-summary.md),
-[2025-11-25](results/2026-10-22-2025-11-25-alpha.12-summary.md),
-[2025-06-18](results/2026-10-22-2025-06-18-alpha.12-summary.md). Under alpha.12
+[2025-11-25](results/2026-10-23-2025-11-25-alpha.12-summary.md),
+[2025-06-18](results/2026-10-23-2025-06-18-alpha.12-summary.md). Under alpha.12
 the 2025-06-18 lane no longer runs `tools-list:tools-name-format`, the Plug lane
 changes exactly as the native lane does, and the 2025-11-25 lane is unchanged.
+On 2026-10-23 `logging-set-level` and `tools-call-with-logging` began passing in
+both initialize-era lanes, with `logging/setLevel` and `notifications/message`
+implemented.
 
 ## Client leg
 

@@ -639,7 +639,7 @@ defmodule Snodo.Server do
   end
 
   defp execute(_runtime, _protocol, operation, _params, _context)
-       when operation in [:initialized, :ping],
+       when operation in [:initialized, :ping, :logging_set_level],
        do: {:ok, Result.raw(%{})}
 
   defp execute(runtime, protocol, :server_discover, _params, _context) do

@@ -73,7 +73,8 @@ defmodule Snodo.Protocol.Legacy do
       {"resources/list", :optional, "resources"},
       {"resources/templates/list", :optional, "resources"},
       {"resources/read", :required, "resources"},
-      {"completion/complete", :required, "completions"}
+      {"completion/complete", :required, "completions"},
+      {"logging/setLevel", :required, "logging"}
     ]
 
     methods =
@@ -119,9 +120,17 @@ defmodule Snodo.Protocol.Legacy do
               directions: [:server_to_client],
               params: :required,
               status: :implemented
+            ),
+            Method.new!(
+              name: "notifications/message",
+              kind: :notification,
+              directions: [:server_to_client],
+              params: :required,
+              capability: "logging",
+              status: :implemented
             )
           ],
-      capabilities: ["tools", "prompts", "resources", "completions"],
+      capabilities: ["tools", "prompts", "resources", "completions", "logging"],
       transports: %{direct: :tested, streamable_http: :tested, stdio: :tested},
       limitations: %{
         http_sessions: :unsupported,
@@ -167,7 +176,7 @@ defmodule Snodo.Protocol.Legacy do
         server_info: implementation(runtime.server_info, protocol.version()),
         server_capabilities:
           runtime.capabilities
-          |> Map.take(["tools", "prompts", "resources", "completions", "experimental"])
+          |> Map.take(["tools", "prompts", "resources", "completions", "logging", "experimental"])
           |> Map.new(fn
             {"experimental", value} -> {"experimental", value}
             {key, _value} -> {key, %{}}
@@ -179,8 +188,20 @@ defmodule Snodo.Protocol.Legacy do
         trace_context: TraceContext.from_metadata(Map.get(envelope.params, "_meta", %{}))
       }
 
+      sink = envelope.transport.metadata[:progress_sink]
+
+      # Over stdio, logging/setLevel sets the connection's level. Otherwise the
+      # client has set none, and these revisions let the server choose.
+      log_level =
+        if Map.has_key?(runtime.capabilities, "logging"),
+          do: envelope.transport.metadata[:log_level] || runtime.log_level
+
       {:ok,
-       %{context | progress: Progress.bind(envelope.transport.metadata[:progress_sink], context)}}
+       %{
+         context
+         | progress: Progress.bind(sink, context),
+           logging: Snodo.Logging.bind(sink, context, log_level)
+       }}
     end
   end
 
@@ -283,6 +304,7 @@ defmodule Snodo.Protocol.Legacy do
   def resolve_operation(%Envelope{method: "initialize"}), do: {:ok, :initialize}
   def resolve_operation(%Envelope{method: "notifications/initialized"}), do: {:ok, :initialized}
   def resolve_operation(%Envelope{method: "ping"}), do: {:ok, :ping}
+  def resolve_operation(%Envelope{method: "logging/setLevel"}), do: {:ok, :logging_set_level}
   def resolve_operation(%Envelope{method: "completion/complete"}), do: {:ok, :completion_complete}
 
   def resolve_operation(%Envelope{method: "resources/read", params: %{"uri" => uri}})
@@ -335,6 +357,14 @@ defmodule Snodo.Protocol.Legacy do
   def validate_operation(operation, _params, _context) when operation in [:initialized, :ping],
     do: :ok
 
+  def validate_operation(:logging_set_level, params, context) do
+    with :ok <- require_capability(:logging_set_level, context) do
+      if Snodo.Logging.parse_level(params["level"]) && is_binary(params["level"]),
+        do: :ok,
+        else: {:error, Error.invalid_params("logging/setLevel requires a valid level")}
+    end
+  end
+
   def validate_operation({:cancel, _id, reason}, _params, _context)
       when is_nil(reason) or is_binary(reason) do
     :ok
@@ -357,6 +387,7 @@ defmodule Snodo.Protocol.Legacy do
         op when op in [:prompts_list] -> "prompts"
         {:prompt_get, _} -> "prompts"
         :completion_complete -> "completions"
+        :logging_set_level -> "logging"
         _ -> "resources"
       end
 

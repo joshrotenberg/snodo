@@ -12,7 +12,11 @@ defmodule Snodo.Client.Direct do
   a progress sink owned by the calling process. The caller acknowledges each
   of the handler's `Snodo.Progress.report/3` calls after passing the
   notification to the progress function, as a server transport does after
-  writing it.
+  writing it. A client with `on_log:` runs every request that way too, and
+  passes each `Snodo.Logging.log/4` message to the log function. On an
+  initialize-era version there is no connection to hold a level, so
+  `logging/setLevel` has no lasting effect and the runtime's `:log_level`
+  applies.
 
   A `subscriptions/listen` request opened with `Snodo.Client.listen/3` is
   dispatched in a process of its own, which then serves the server-side
@@ -42,15 +46,15 @@ defmodule Snodo.Client.Direct do
   def request(%{runtime: runtime} = state, message, opts) do
     transport = transport_context(state, Keyword.fetch!(opts, :dialect))
 
-    case Keyword.get(opts, :on_progress) do
-      nil ->
+    case {Keyword.get(opts, :on_progress), Keyword.get(opts, :on_log)} do
+      {nil, nil} ->
         # Snodo.Client sends subscriptions/listen through listen/3, so dispatch
         # always returns a response map here.
         {:ok, response} = Server.dispatch(runtime, message, transport)
         {:ok, response}
 
-      on_progress ->
-        dispatch_with_progress(runtime, message, transport, on_progress)
+      callbacks ->
+        dispatch_with_notifications(runtime, message, transport, callbacks)
     end
   end
 
@@ -87,7 +91,7 @@ defmodule Snodo.Client.Direct do
     }
   end
 
-  defp dispatch_with_progress(runtime, message, transport, on_progress) do
+  defp dispatch_with_notifications(runtime, message, transport, callbacks) do
     sink = Progress.sink(self())
     transport = put_in(transport.metadata[:progress_sink], sink)
 
@@ -101,14 +105,14 @@ defmodule Snodo.Client.Direct do
       end)
 
     try do
-      await(task, Progress.state(sink), on_progress)
+      await(task, Progress.state(sink), callbacks)
     after
       Progress.close(sink)
       _result = Task.shutdown(task, :brutal_kill)
     end
   end
 
-  defp await(%Task{ref: ref} = task, progress, on_progress) do
+  defp await(%Task{ref: ref} = task, progress, callbacks) do
     reference = progress.sink.reference
 
     receive do
@@ -117,18 +121,24 @@ defmodule Snodo.Client.Direct do
 
       {:"$gen_call", from, {:mcp_progress, ^reference, report}} ->
         case Progress.accept(progress, from, report) do
-          {:ok, %{"params" => params}, progress} ->
-            on_progress.(params)
+          {:ok, notification, progress} ->
+            notify_caller(notification, callbacks)
             :ok = Progress.reply(from, report, :ok)
-            await(task, progress, on_progress)
+            await(task, progress, callbacks)
 
           {:error, reason} ->
             :ok = Progress.reply(from, report, {:error, reason})
-            await(task, progress, on_progress)
+            await(task, progress, callbacks)
         end
 
       {:DOWN, ^ref, :process, _pid, reason} ->
         exit(reason)
     end
   end
+
+  defp notify_caller(%{"method" => "notifications/message", "params" => params}, {_, on_log}),
+    do: if(on_log, do: on_log.(params))
+
+  defp notify_caller(%{"params" => params}, {on_progress, _}),
+    do: if(on_progress, do: on_progress.(params))
 end

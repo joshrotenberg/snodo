@@ -42,8 +42,7 @@ defmodule Snodo.Protocol.V2026_07_28 do
   @meta_key ~r/^(?:(?:[A-Za-z](?:[A-Za-z0-9-]*[A-Za-z0-9])?)(?:\.(?:[A-Za-z](?:[A-Za-z0-9-]*[A-Za-z0-9])?))*\/)?(?:[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)?$/
 
   @unsupported_server_notifications [
-    {@cancel_method, nil, :required, :active},
-    {"notifications/message", "logging", :required, :deprecated}
+    {@cancel_method, nil, :required, :active}
   ]
 
   # SEP-2577 deprecates the embedded sampling and roots requests. They stay
@@ -196,6 +195,15 @@ defmodule Snodo.Protocol.V2026_07_28 do
                      validator: {__MODULE__, :inspect_progress_params}
                    ),
                    Method.new!(
+                     name: "notifications/message",
+                     kind: :notification,
+                     directions: [:server_to_client],
+                     params: :required,
+                     capability: "logging",
+                     status: :implemented,
+                     lifecycle: :deprecated
+                   ),
+                   Method.new!(
                      name: "notifications/subscriptions/acknowledged",
                      kind: :notification,
                      directions: [:server_to_client],
@@ -235,7 +243,7 @@ defmodule Snodo.Protocol.V2026_07_28 do
                      status: :implemented
                    )
                  ] ++ @unsupported_methods,
-             capabilities: ["completions", "tools", "prompts", "resources"],
+             capabilities: ["completions", "logging", "tools", "prompts", "resources"],
              transports: %{direct: :tested, stdio: :tested, streamable_http: :tested},
              limitations: %{
                official_server_conformance: :complete,
@@ -322,7 +330,18 @@ defmodule Snodo.Protocol.V2026_07_28 do
         if envelope.method != "subscriptions/listen",
           do: envelope.transport.metadata[:progress_sink]
 
-      {:ok, %{context | progress: Progress.bind(sink, context)}}
+      # The client opts in to log messages per request; without a level, or
+      # without the logging capability, the request gets none.
+      log_level =
+        if Map.has_key?(runtime.capabilities, "logging"),
+          do: Snodo.Logging.parse_level(metadata[@log_level_key])
+
+      {:ok,
+       %{
+         context
+         | progress: Progress.bind(sink, context),
+           logging: Snodo.Logging.bind(sink, context, log_level)
+       }}
     end
   end
 

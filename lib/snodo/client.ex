@@ -132,7 +132,9 @@ defmodule Snodo.Client do
           cache_namespace: term(),
           cache_variant: term(),
           input_handlers: input_handlers(),
-          max_input_rounds: pos_integer()
+          max_input_rounds: pos_integer(),
+          log_level: Snodo.Logging.level() | nil,
+          on_log: (map() -> term()) | nil
         }
 
   @default_max_input_rounds 10
@@ -156,7 +158,9 @@ defmodule Snodo.Client do
     cache_namespace: nil,
     cache_variant: nil,
     input_handlers: %{},
-    max_input_rounds: @default_max_input_rounds
+    max_input_rounds: @default_max_input_rounds,
+    log_level: nil,
+    on_log: nil
   ]
 
   @version Mix.Project.config()[:version]
@@ -173,6 +177,7 @@ defmodule Snodo.Client do
     prompts: {"prompts/list", "prompts"}
   }
   @list_kinds Map.keys(@list_operations)
+  @log_level_key "io.modelcontextprotocol/logLevel"
   @cacheable_methods [
     "server/discover",
     "tools/list",
@@ -235,6 +240,20 @@ defmodule Snodo.Client do
     * `:cache` - opt in to caching complete discovery, list, and resource-read
       results according to their `ttlMs` and `cacheScope` hints. Defaults to
       `false`. The shared cache holds at most 256 results and 16 MiB.
+    * `:log_level` - the lowest `Snodo.Logging` level to ask the server for,
+      such as `:info`. On 2026-07-28 it is sent with every request as
+      `_meta["io.modelcontextprotocol/logLevel"]`, and a server sends no log
+      messages for a request without it. Each request can override it with
+      `log_level:`. The initialize-era versions set the level with
+      `set_log_level/2` instead. Defaults to `nil`.
+    * `:on_log` - a function of one argument, or a pid, to receive the
+      server's `notifications/message`. A function is called in the process
+      that made the request, with each notification's `params` map
+      (`"level"`, `"data"`, and, when the server sent it, `"logger"`), before
+      the request returns. A pid is sent `{:snodo_log, params}`. Log messages
+      carry no request ID: over HTTP and on a direct client each request
+      delivers its own, and over stdio a message goes to one of the requests
+      in flight. Defaults to `nil`, which drops them.
   """
   @spec direct(Runtime.t(), keyword()) :: {:ok, t()} | {:error, Error.t()}
   def direct(%Runtime{} = runtime, opts \\ []) when is_list(opts) do
@@ -267,7 +286,8 @@ defmodule Snodo.Client do
     * `:probe_timeout` - milliseconds to wait for the answer to the
       `server/discover` probe, 10,000 unless set.
     * `:client_capabilities`, `:client_info`, `:max_pages`,
-      `:input_handlers`, `:max_input_rounds`, and `:cache` - as for `direct/2`.
+      `:input_handlers`, `:max_input_rounds`, `:cache`, `:log_level`, and
+      `:on_log` - as for `direct/2`.
     * `:timeout` - the default request timeout in milliseconds, 30,000 unless
       set. Each request can override it with `timeout:`.
 
@@ -353,6 +373,40 @@ defmodule Snodo.Client do
   """
   @spec ping(t()) :: response()
   def ping(%__MODULE__{} = client), do: request(client, "ping")
+
+  @doc """
+  Sets the lowest level of log messages the server sends, with
+  `logging/setLevel`.
+
+  Only the initialize-era versions define `logging/setLevel`. Over stdio the
+  level holds for the connection; over HTTP those versions keep no session,
+  so the server applies its own default. On 2026-07-28 the level travels with
+  each request instead (the `:log_level` option), and this returns -32601
+  without sending anything. Options are those of `request/4`.
+  """
+  @spec set_log_level(t(), Snodo.Logging.level(), keyword()) :: :ok | {:error, Error.t()}
+  def set_log_level(%__MODULE__{} = client, level, opts \\ []) do
+    unless Snodo.Logging.parse_level(level) && is_atom(level) do
+      raise ArgumentError,
+            "expected a level from Snodo.Logging.levels/0, got: #{inspect(level)}"
+    end
+
+    if client.dialect.era() == :stateless do
+      {:error,
+       %Error{
+         code: -32_601,
+         message: "Protocol #{client.dialect.version()} does not define logging/setLevel",
+         kind: :protocol,
+         data: %{"method" => "logging/setLevel", "protocolVersion" => client.dialect.version()}
+       }}
+    else
+      case request(client, "logging/setLevel", %{"level" => Atom.to_string(level)}, opts) do
+        {:ok, _result} -> :ok
+        {:input_required, result} -> {:error, Error.internal("Unexpected input_required", result)}
+        {:error, %Error{}} = error -> error
+      end
+    end
+  end
 
   @doc """
   Lists every tool, following `nextCursor` to the last page.
@@ -490,6 +544,8 @@ defmodule Snodo.Client do
       to 600,000. A request stopped by this limit returns -32001 with the
       message "Maximum total timeout exceeded" and
       `data: %{"maxTotalTimeoutMs" => limit}`.
+    * `:log_level` - overrides the client's `:log_level` for this request.
+      `nil` asks for no log messages.
     * `:timeout` - overrides the client's request timeout.
     * `:extension` - an extension module that owns this request method. Over
       HTTP its `transport_policy/2` supplies routing headers for the exact
@@ -702,7 +758,8 @@ defmodule Snodo.Client do
           :on_cache_credential,
           :cache_token
         ]) ++
-        session_options(client) ++ progress_options(progress, opts)
+        session_options(client) ++
+        progress_options(progress, opts) ++ log_options(client)
 
     case module.request(state, raw, transport_opts) do
       {:ok, response} ->
@@ -818,6 +875,8 @@ defmodule Snodo.Client do
 
     client_info = Keyword.get_lazy(opts, :client_info, &default_client_info/0)
     validate_client_info!(client_info)
+    log_level = log_level!(Keyword.get(opts, :log_level))
+    on_log = log_callback(Keyword.get(opts, :on_log))
 
     %{
       client_capabilities: Input.merge_capabilities(Input.capabilities(handlers), capabilities),
@@ -828,7 +887,9 @@ defmodule Snodo.Client do
       max_pages: max_pages,
       cache: cache,
       input_handlers: handlers,
-      max_input_rounds: max_input_rounds
+      max_input_rounds: max_input_rounds,
+      log_level: log_level,
+      on_log: on_log
     }
   end
 
@@ -904,6 +965,7 @@ defmodule Snodo.Client do
       client.dialect.request_metadata(client.client_capabilities)
       |> put_client_info(client)
       |> Map.merge(Map.get(params, "_meta", %{}))
+      |> put_log_level(client, Keyword.get(opts, :log_level, client.log_level))
       |> Map.merge(Keyword.get(opts, :meta, %{}))
       |> Map.merge(trace_context_metadata!(opts))
 
@@ -931,6 +993,40 @@ defmodule Snodo.Client do
       do: Map.put(metadata, dialect.client_info_key(), info),
       else: metadata
   end
+
+  # Only the stateless dialects carry the level on each request.
+  defp put_log_level(metadata, _client, nil), do: metadata
+
+  defp put_log_level(metadata, %__MODULE__{dialect: dialect}, level) do
+    level = log_level!(level)
+
+    if dialect.era() == :stateless,
+      do: Map.put(metadata, @log_level_key, Atom.to_string(level)),
+      else: metadata
+  end
+
+  defp log_level!(nil), do: nil
+
+  defp log_level!(level) when is_atom(level) do
+    if Snodo.Logging.parse_level(level),
+      do: level,
+      else: raise(ArgumentError, ":log_level must be one of Snodo.Logging.levels/0 or nil")
+  end
+
+  defp log_level!(_level),
+    do: raise(ArgumentError, ":log_level must be one of Snodo.Logging.levels/0 or nil")
+
+  defp log_callback(nil), do: nil
+  defp log_callback(pid) when is_pid(pid), do: &send(pid, {:snodo_log, &1})
+  defp log_callback(fun) when is_function(fun, 1), do: fun
+
+  defp log_callback(other) do
+    raise ArgumentError,
+          ":on_log must be a function of one argument or a pid, got: #{inspect(other)}"
+  end
+
+  defp log_options(%__MODULE__{on_log: nil}), do: []
+  defp log_options(%__MODULE__{on_log: on_log}), do: [on_log: on_log]
 
   defp progress_callback(nil), do: nil
   defp progress_callback(pid) when is_pid(pid), do: &send(pid, {:snodo_progress, &1})

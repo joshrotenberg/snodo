@@ -23,7 +23,8 @@ defmodule Snodo.Client.HTTP do
   `notifications/progress` event for a request made with `progress:` is passed
   to the progress function when it arrives, and with
   `reset_timeout_on_progress: true` it moves the deadline for the rest of the
-  response. A request the server sends on the stream, such as
+  response. A `notifications/message` event is passed to the `on_log:`
+  function when the request was made with one. A request the server sends on the stream, such as
   `elicitation/create` on an initialize-era connection, is answered by the
   `:on_server_request` function in the calling process, and the response is
   sent as its own `POST` before the stream is read further; without that
@@ -289,6 +290,7 @@ defmodule Snodo.Client.HTTP do
           id: Map.get(message, "id"),
           on_progress: nil,
           token: nil,
+          on_log: nil,
           on_server_request: nil,
           reply: nil,
           stream: stream,
@@ -654,6 +656,7 @@ defmodule Snodo.Client.HTTP do
       id: message && Map.get(message, "id"),
       on_progress: on_progress,
       token: if(on_progress, do: get_in(message, ["params", "_meta", "progressToken"])),
+      on_log: Keyword.get(opts, :on_log),
       on_server_request: Keyword.get(opts, :on_server_request),
       reply: {state, Keyword.get(opts, :headers, []), Keyword.take(opts, [:timeout])},
       stream: nil,
@@ -1244,6 +1247,15 @@ defmodule Snodo.Client.HTTP do
        when not is_nil(token) and token == expected do
     conn.on_progress.(params)
     {:ok, %{conn | deadline: Deadline.extend(conn.deadline)}}
+  end
+
+  defp handle_event(
+         {:ok, %{"method" => "notifications/message", "params" => params}},
+         %{on_log: on_log} = conn
+       )
+       when is_map(params) and is_function(on_log, 1) do
+    on_log.(params)
+    {:ok, conn}
   end
 
   defp handle_event(

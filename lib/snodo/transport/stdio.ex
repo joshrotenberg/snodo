@@ -73,6 +73,7 @@ defmodule Snodo.Transport.Stdio do
           max_subscriptions: pos_integer(),
           max_line_bytes: pos_integer(),
           negotiated_version: String.t() | nil,
+          log_level: Snodo.Logging.level() | nil,
           eof?: boolean()
         }
 
@@ -153,6 +154,7 @@ defmodule Snodo.Transport.Stdio do
        max_subscriptions: validate_max_subscriptions!(Keyword.get(opts, :max_subscriptions, 32)),
        max_line_bytes: max_line_bytes,
        negotiated_version: nil,
+       log_level: nil,
        eof?: false
      }}
   end
@@ -376,8 +378,8 @@ defmodule Snodo.Transport.Stdio do
     output = state.output
     sink = Progress.sink(self())
 
-    transport =
-      transport_context(state, message, %{progress_sink: sink, subscription_owner: self()})
+    metadata = %{progress_sink: sink, subscription_owner: self(), log_level: state.log_level}
+    transport = transport_context(state, message, metadata)
 
     work = fn cancellation ->
       route_raw_io_to_stderr(output)
@@ -597,7 +599,15 @@ defmodule Snodo.Transport.Stdio do
          {:completed, {:ok, %{"result" => %{"protocolVersion" => version}}}}
        )
        when is_binary(version),
-       do: %{state | negotiated_version: version}
+       do: %{state | negotiated_version: version, log_level: nil}
+
+  # logging/setLevel holds for the rest of the connection.
+  defp record_negotiated_version(
+         state,
+         %{"method" => "logging/setLevel", "params" => %{"level" => level}},
+         {:completed, {:ok, %{"result" => _result}}}
+       ),
+       do: %{state | log_level: Snodo.Logging.parse_level(level)}
 
   defp record_negotiated_version(state, _message, _outcome), do: state
 

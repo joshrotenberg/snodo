@@ -225,7 +225,7 @@ defmodule Snodo.ClientTest do
     test "the negotiated version refuses methods its catalog does not define" do
       {:ok, client} = Client.direct(TestFixtures.runtime(@legacy_fixture))
 
-      for method <- ["server/discover", "tasks/get", "logging/setLevel"] do
+      for method <- ["server/discover", "tasks/get", "resources/subscribe"] do
         assert {:error,
                 %Error{
                   code: -32_601,

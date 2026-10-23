@@ -81,11 +81,18 @@ defmodule Snodo.Progress do
   # can report. The worker waits while that process runs, so one process
   # reports at a time. A binding that `from` does not hold is left as it is.
   @spec handoff(context, pid(), pid()) :: context when context: Context.t() | term()
-  def handoff(%Context{progress: %__MODULE__{producer: from} = binding} = context, from, to)
-      when is_pid(to),
-      do: %{context | progress: %{binding | producer: to}}
+  def handoff(%Context{} = context, from, to) when is_pid(to) do
+    %{
+      context
+      | progress: moved(context.progress, from, to),
+        logging: moved(context.logging, from, to)
+    }
+  end
 
   def handoff(context, _from, _to), do: context
+
+  defp moved(%{producer: from} = binding, from, to), do: %{binding | producer: to}
+  defp moved(binding, _from, _to), do: binding
 
   @doc "Reports increasing progress, optionally including numeric total and a human-readable message."
   @spec report(Context.t(), number(), keyword()) :: result()
@@ -110,6 +117,19 @@ defmodule Snodo.Progress do
   """
   @spec accept(State.t(), GenServer.from(), report()) ::
           {:ok, map(), State.t()} | {:error, atom()}
+  def accept(
+        %State{sink: sink} = state,
+        {caller, _tag},
+        %{binding: %Snodo.Logging{} = binding, fields: fields}
+      ) do
+    with :ok <- validate_binding(sink, binding, caller),
+         :ok <- active(binding),
+         :ok <- log_under_limit(state),
+         {:ok, notification} <- Snodo.Logging.notification(fields) do
+      {:ok, notification, %{state | log_count: state.log_count + 1}}
+    end
+  end
+
   def accept(%State{sink: sink} = state, {caller, _tag}, %{binding: binding, fields: fields}) do
     with :ok <- validate_binding(sink, binding, caller),
          :ok <- active(binding),
@@ -125,7 +145,8 @@ defmodule Snodo.Progress do
 
   @doc "Acknowledges a consumed report after writing, releasing its one-outstanding-update gate."
   @spec reply(GenServer.from(), report(), result()) :: :ok
-  def reply(from, %{binding: %__MODULE__{sink: sink}}, result) do
+  def reply(from, %{binding: %{__struct__: kind, sink: sink}}, result)
+      when kind in [__MODULE__, Snodo.Logging] do
     :ok = :atomics.put(sink.lifecycle, 2, 0)
     GenServer.reply(from, result)
   end
@@ -153,6 +174,19 @@ defmodule Snodo.Progress do
       (not Map.has_key?(fields, "total") or is_number(fields["total"])) and
       (not Map.has_key?(fields, "message") or
          (is_binary(fields["message"]) and String.valid?(fields["message"])))
+  end
+
+  @doc false
+  # Hands a report for `binding` to the sink owner once the binding's worker,
+  # lifecycle, and one-outstanding gate allow it. Snodo.Logging uses it for
+  # log messages, which share the request's notification channel.
+  @spec submit(map(), map()) :: result()
+  def submit(binding, fields) do
+    with :ok <- original_worker(binding),
+         :ok <- active(binding),
+         :ok <- acquire(binding.sink) do
+      call_owner(binding, fields)
+    end
   end
 
   defp deliver(nil, _fields), do: :ok
@@ -208,8 +242,12 @@ defmodule Snodo.Progress do
 
   defp validate_binding(%Sink{owner: owner} = sink, binding, caller) do
     case binding do
-      %__MODULE__{sink: ^sink, producer: ^caller} when owner == self() -> :ok
-      _wrong -> {:error, :wrong_sink}
+      %{__struct__: kind, sink: ^sink, producer: ^caller}
+      when owner == self() and kind in [__MODULE__, Snodo.Logging] ->
+        :ok
+
+      _wrong ->
+        {:error, :wrong_sink}
     end
   end
 
@@ -230,6 +268,11 @@ defmodule Snodo.Progress do
     do: :ok
 
   defp under_limit(_state), do: {:error, :limit_reached}
+
+  @max_log_messages 1_000
+
+  defp log_under_limit(%State{log_count: count}) when count < @max_log_messages, do: :ok
+  defp log_under_limit(_state), do: {:error, :limit_reached}
 
   defp notification(%{token: token, context: context}, fields) do
     notification = context.protocol.shape_progress(token, fields, context)

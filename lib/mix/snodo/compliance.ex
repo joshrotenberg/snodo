@@ -92,6 +92,7 @@ defmodule Snodo.Compliance do
     "mrtr-extension-composition",
     "mrtr-state-integrity",
     "request-progress",
+    "server-logging",
     "stdio-write-deadline"
   ]
 

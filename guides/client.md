@@ -341,6 +341,27 @@ message "Maximum total timeout exceeded" and `data` holding
 A direct client has no timeout; its handler runs in a linked task while the
 calling process receives the progress reports.
 
+## Log messages
+
+`on_log:` receives the server's `notifications/message`, and `log_level:` asks
+for messages at or above a level. On 2026-07-28 the level travels with each
+request; on an initialize-era connection `set_log_level/2` sends
+`logging/setLevel`.
+
+```elixir
+{:ok, client} = Snodo.Client.connect({:http, url}, log_level: :info, on_log: self())
+{:ok, _result} = Snodo.Client.call_tool(client, "import")
+receive do: ({:snodo_log, %{"level" => level, "data" => data}} -> {level, data})
+```
+
+| Option | Where | Default | Meaning |
+|---|---|---|---|
+| `:on_log` | `direct/2`, `connect/2` | none | a function of one argument, or a pid sent `{:snodo_log, params}` |
+| `:log_level` | `direct/2`, `connect/2`, each call | none | the lowest level to ask for on 2026-07-28 |
+
+See the [logging guide](logging.md) for the server side and how each
+revision and transport delivers the messages.
+
 ## Subscriptions
 
 `listen/3` opens a `subscriptions/listen` stream. It sends the filter as given
