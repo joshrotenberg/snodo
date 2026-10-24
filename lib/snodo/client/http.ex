@@ -216,21 +216,22 @@ defmodule Snodo.Client.HTTP do
        when reason == :timeout or (is_tuple(reason) and elem(reason, 0) == :timeout) do
     dialect = Keyword.fetch!(opts, :dialect)
 
-    if dialect.era() == :session and message["method"] != "initialize" do
-      cancellation = %{
-        "jsonrpc" => "2.0",
-        "method" => "notifications/cancelled",
-        "params" => %{"requestId" => id, "reason" => "Request timed out"}
-      }
+    _cancelled =
+      if dialect.era() == :session and message["method"] != "initialize" do
+        cancellation = %{
+          "jsonrpc" => "2.0",
+          "method" => "notifications/cancelled",
+          "params" => %{"requestId" => id, "reason" => "Request timed out"}
+        }
 
-      notify_opts = [
-        dialect: dialect,
-        headers: Keyword.get(opts, :headers, []),
-        timeout: @cancel_timeout
-      ]
+        notify_opts = [
+          dialect: dialect,
+          headers: Keyword.get(opts, :headers, []),
+          timeout: @cancel_timeout
+        ]
 
-      _outcome = notify(state, cancellation, notify_opts)
-    end
+        notify(state, cancellation, notify_opts)
+      end
 
     result
   end
