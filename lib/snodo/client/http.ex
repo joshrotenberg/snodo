@@ -35,7 +35,10 @@ defmodule Snodo.Client.HTTP do
   are dropped. A JSON-RPC error body is returned whatever the HTTP status, so
   `Snodo.Client` decodes it as `{:error, %Snodo.Error{}}`. Anything else is a
   -32000 transport error with the status and body in `cause`. A timeout closes
-  the connection, which the server treats as cancellation.
+  the connection, which a 2026-07-28 server treats as cancellation. On an
+  initialize-era connection the transport also sends `notifications/cancelled`
+  for the request, with the session headers, waiting at most 5,000 ms for it;
+  `initialize` itself is never cancelled.
 
   On an initialize-era connection the client passes `MCP-Protocol-Version` and
   `Mcp-Session-Id` in `:headers`, reads `Mcp-Session-Id` from the `initialize`
@@ -135,6 +138,7 @@ defmodule Snodo.Client.HTTP do
   @sentinel_suffix "?="
   @default_max_response_bytes 16 * 1024 * 1024
   @default_pool_size 4
+  @cancel_timeout 5_000
   @default_pool_idle_timeout 30_000
   @default_pool_max_requests 100
   @socket_options [:binary, active: false, packet: :raw]
@@ -199,9 +203,39 @@ defmodule Snodo.Client.HTTP do
       state
       |> authorized_exchange("POST", headers ++ state.headers, message, opts)
       |> report_headers(Keyword.get(opts, :on_response_headers))
+      |> cancel_on_timeout(state, message, opts)
       |> response(timeout, state.max_response_bytes)
     end
   end
+
+  # Closing the connection cancels a 2026-07-28 request, but an initialize-era
+  # server keeps working until it receives notifications/cancelled. The
+  # specification forbids cancelling initialize. The notice is bounded and its
+  # outcome is not reported: the request has already failed.
+  defp cancel_on_timeout({:error, reason} = result, state, %{"id" => id} = message, opts)
+       when reason == :timeout or (is_tuple(reason) and elem(reason, 0) == :timeout) do
+    dialect = Keyword.fetch!(opts, :dialect)
+
+    if dialect.era() == :session and message["method"] != "initialize" do
+      cancellation = %{
+        "jsonrpc" => "2.0",
+        "method" => "notifications/cancelled",
+        "params" => %{"requestId" => id, "reason" => "Request timed out"}
+      }
+
+      notify_opts = [
+        dialect: dialect,
+        headers: Keyword.get(opts, :headers, []),
+        timeout: @cancel_timeout
+      ]
+
+      _outcome = notify(state, cancellation, notify_opts)
+    end
+
+    result
+  end
+
+  defp cancel_on_timeout(result, _state, _message, _opts), do: result
 
   @impl Transport
   def notify(state, message, opts) when is_map(message) do
