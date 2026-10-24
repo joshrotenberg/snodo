@@ -81,9 +81,10 @@ defmodule Snodo.Transport.StreamableHTTP do
              base_policy
            ),
          :ok <- validate_policy(request, raw, policy, envelope.id),
-         tool_mirrors = tool_parameter_mirrors(policy, runtime, envelope),
+         {tool_mirrors, tool_authorization} =
+           tool_parameter_mirrors(policy, runtime, protocol.version(), envelope),
          {:ok, deferred} <-
-           validate_tool_mirrors(request, raw, tool_mirrors, runtime, envelope.id) do
+           validate_tool_mirrors(request, raw, tool_mirrors, tool_authorization, envelope.id) do
       {:ok,
        %Prepared{
          raw: raw,
@@ -91,7 +92,8 @@ defmodule Snodo.Transport.StreamableHTTP do
          protocol: protocol,
          kind: envelope.kind,
          policy: %{policy | mirrored_headers: Map.merge(policy.mirrored_headers, tool_mirrors)},
-         deferred_error: deferred
+         deferred_error: deferred,
+         deferred_authorization: tool_authorization
        }}
     else
       :response_object ->
@@ -354,38 +356,56 @@ defmodule Snodo.Transport.StreamableHTTP do
     }
   end
 
-  # Mirrors for the `x-mcp-header` arguments of the called tool. An unknown
-  # tool adds none; dispatch reports it.
+  # Mirrors for the `x-mcp-header` arguments of the called tool, with the
+  # authorization policy that decides its visibility. A tool outside the router
+  # may come from an extension that serves it. An unknown tool adds none;
+  # dispatch reports it.
   defp tool_parameter_mirrors(
          %Policy{tool_parameter_headers?: true},
-         %Runtime{router: router},
+         %Runtime{} = runtime,
+         version,
          %Envelope{params: %{"name" => name}}
        )
        when is_binary(name) do
-    with {:ok, tool} <- Map.fetch(router.tools, name),
-         {:ok, [_first | _rest] = annotations} <-
-           ParamHeaders.annotations(Tool.definition(tool).input_schema) do
-      ParamHeaders.mirrors(annotations)
+    with {:ok, schema, authorization} <- tool_input_schema(runtime, version, name),
+         {:ok, [_first | _rest] = annotations} <- ParamHeaders.annotations(schema) do
+      {ParamHeaders.mirrors(annotations), authorization}
     else
-      _none -> %{}
+      _none -> {%{}, runtime.authorization}
     end
   end
 
-  defp tool_parameter_mirrors(_policy, _runtime, _envelope), do: %{}
+  defp tool_parameter_mirrors(_policy, runtime, _version, _envelope),
+    do: {%{}, runtime.authorization}
+
+  defp tool_input_schema(%Runtime{} = runtime, version, name) do
+    case Map.fetch(runtime.router.tools, name) do
+      {:ok, tool} ->
+        {:ok, Tool.definition(tool).input_schema, runtime.authorization}
+
+      :error ->
+        ExtensionRegistry.tool_input_schema(
+          runtime.extension_registry,
+          version,
+          name,
+          runtime.capabilities
+        )
+    end
+  end
 
   # A tool parameter header names an argument of one specific tool, so its
   # failure would reveal a tool the policy conceals. That failure waits for
   # execute/3, where the caller's identity is known.
-  defp validate_tool_mirrors(_request, _raw, mirrors, _runtime, _id) when mirrors == %{},
+  defp validate_tool_mirrors(_request, _raw, mirrors, _authorization, _id) when mirrors == %{},
     do: {:ok, nil}
 
-  defp validate_tool_mirrors(request, raw, mirrors, runtime, id) do
+  defp validate_tool_mirrors(request, raw, mirrors, authorization, id) do
     case validate_mirrors(request.headers, raw, mirrors, id) do
       :ok ->
         {:ok, nil}
 
       {:http_error, _status, _error, _id} = failure ->
-        if Authorization.conceal?(runtime.authorization), do: {:ok, failure}, else: failure
+        if Authorization.conceal?(authorization), do: {:ok, failure}, else: failure
     end
   end
 
@@ -400,7 +420,7 @@ defmodule Snodo.Transport.StreamableHTTP do
          {:ok, context} <- protocol.build_context(envelope, runtime) do
       component = %Authorization.Component{kind: :tool, name: name}
 
-      case Authorization.decide(runtime.authorization, :invocation, component, context) do
+      case Authorization.decide(prepared.deferred_authorization, :invocation, component, context) do
         :ok ->
           error_response(status, error, id)
 

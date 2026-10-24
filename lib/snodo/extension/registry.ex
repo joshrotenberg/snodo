@@ -216,6 +216,25 @@ defmodule Snodo.Extension.Registry do
     end
   end
 
+  @doc false
+  # The input schema and authorization policy of a tool an advertised
+  # extension serves outside the router, for Streamable HTTP header checks.
+  @spec tool_input_schema(t(), String.t(), String.t(), map()) ::
+          {:ok, map(), Snodo.Authorization.config()} | :error
+  def tool_input_schema(%__MODULE__{} = registry, version, name, server_capabilities)
+      when is_binary(version) and is_binary(name) and is_map(server_capabilities) do
+    registry
+    |> subscription_modules(version, server_capabilities, :tool_input_schema, 2)
+    |> Enum.find_value(:error, fn {id, module} ->
+      options = Map.fetch!(registry.options_by_id, id)
+
+      case safe_callback(module, :tool_input_schema, [name, options], & &1) do
+        {:ok, schema, authorization} when is_map(schema) -> {:ok, schema, authorization}
+        _other -> nil
+      end
+    end)
+  end
+
   @doc "Collects validated, collision-free subscription filter fields from advertised extensions."
   @spec subscription_filters(t(), String.t(), map(), Context.t()) ::
           {:ok, map(), %{optional(String.t()) => map()}} | {:error, Error.t()}

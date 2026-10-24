@@ -26,6 +26,16 @@ defmodule Snodo.Extension do
   an installed, advertised, exact-version-compatible extension and retains
   per-extension filter ownership through the stream lifecycle.
 
+  An extension whose `around_dispatch/4` answers `tools/call` for tools that
+  are not in the router, as `Snodo.Proxy` does, can implement
+  `tool_input_schema/2`. Streamable HTTP calls it when the router has no tool
+  of the called name, so it can check the tool's `Mcp-Param-*` headers. It
+  receives the tool name and the extension's installed options, and returns
+  the tool's input schema with the `Snodo.Authorization` policy that decides
+  whether a caller may see the tool, or `:error` for a tool it does not serve.
+  A header failure for a tool that policy conceals is answered like an unknown
+  tool.
+
   Middleware that defers or persists a call instead of passing it to the
   continuation must first call `check_dispatch/3`, so the deferred work passes
   the same lookup, authorization, and argument checks as a direct call.
@@ -71,11 +81,15 @@ defmodule Snodo.Extension do
               Context.t()
             ) :: map()
 
+  @callback tool_input_schema(name :: String.t(), options :: keyword() | map()) ::
+              {:ok, input_schema :: map(), Snodo.Authorization.config()} | :error
+
   @optional_callbacks around_dispatch: 4,
                       missing_capability_error: 2,
                       transport_policy: 2,
                       subscription_filter: 2,
-                      shape_subscription_event: 3
+                      shape_subscription_event: 3,
+                      tool_input_schema: 2
 
   @doc """
   Runs the core checks for `operation` without running it, from inside
