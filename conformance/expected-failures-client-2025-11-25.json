@@ -1332,9 +1332,11 @@
         "INFO",
         "INFO",
         "INFO",
+        "INFO",
         "INFO"
       ],
       "outgoing-response": [
+        "INFO",
         "INFO",
         "INFO",
         "INFO",

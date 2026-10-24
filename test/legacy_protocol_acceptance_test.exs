@@ -123,6 +123,65 @@ defmodule Snodo.LegacyProtocolAcceptanceTest do
     end
   end
 
+  test "an initialize proposal the server does not support gets the latest legacy version" do
+    runtime = runtime(protocols: [V2025_06_18, V2025_11_25])
+
+    assert {:ok, %{"result" => %{"protocolVersion" => "2025-11-25"}}} =
+             Server.dispatch(runtime, initialization("2024-11-05"), %TransportContext{})
+
+    assert {:ok, %{"result" => %{"protocolVersion" => "2025-06-18"}}} =
+             Server.dispatch(runtime, initialization("2025-06-18"), %TransportContext{})
+  end
+
+  test "the version header is checked before a dialect's header rules" do
+    http = fn runtime, headers, body ->
+      response =
+        StreamableHTTP.handle(runtime, %StreamableHTTP.Request{
+          method: "POST",
+          path: "/mcp",
+          headers:
+            [
+              {"content-type", "application/json"},
+              {"accept", "application/json, text/event-stream"}
+            ] ++
+              headers,
+          body: JSON.encode!(body),
+          peer: {{127, 0, 0, 1}, 50_000},
+          connection_ref: make_ref()
+        })
+
+      {response.status, JSON.decode!(response.body)}
+    end
+
+    list = request("tools/list")
+
+    # A 2026-07-28-only server answers an initialize-era request with -32022,
+    # not with the missing Mcp-Method that only 2026-07-28 requires.
+    modern_only = runtime(protocols: [V2026_07_28])
+
+    assert {400, %{"error" => %{"code" => -32_022, "data" => data}}} =
+             http.(modern_only, [{"mcp-protocol-version", "2025-06-18"}], list)
+
+    assert data == %{"requested" => "2025-06-18", "supported" => ["2026-07-28"]}
+
+    # With both eras enabled, a header that disagrees with the body's version
+    # is a mismatch, not an unsupported version.
+    modern =
+      put_in(list, ["params", "_meta"], %{
+        "io.modelcontextprotocol/protocolVersion" => "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities" => %{}
+      })
+
+    assert {400, %{"error" => %{"code" => -32_020, "data" => mismatch}}} =
+             http.(
+               runtime(),
+               [{"mcp-protocol-version", "2025-06-18"}, {"mcp-method", "tools/list"}],
+               modern
+             )
+
+    assert mismatch == %{"header" => "2025-06-18", "body" => "2026-07-28"}
+  end
+
   test "legacy initialize retains explicit experimental capability values" do
     for version <- ["2025-06-18", "2025-11-25"],
         experimental <- [

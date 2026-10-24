@@ -305,21 +305,55 @@ defmodule Snodo.Transport.StreamableHTTP do
     end
   end
 
+  # The version header is checked before any dialect's header rules apply. A
+  # header that disagrees with the body's version is -32020. One that names a
+  # version the runtime does not enable is -32022, so a client can tell it
+  # should change versions. An enabled header that no single dialect accepts
+  # also disagrees with the body.
   defp select_protocol(%Runtime{} = runtime, %Envelope{} = envelope) do
-    case Registry.select(runtime.protocol_registry, envelope) do
-      {:ok, protocol} ->
-        {:ok, protocol}
+    requested = TransportContext.get_header(envelope.transport.request_headers, @protocol_header)
+    body_version = body_version(envelope)
 
-      {:error, selection_error} ->
-        requested =
-          TransportContext.get_header(envelope.transport.request_headers, @protocol_header)
+    with :ok <- check_version_header(runtime, requested, body_version, envelope.id) do
+      case Registry.select(runtime.protocol_registry, envelope) do
+        {:ok, protocol} ->
+          {:ok, protocol}
 
-        if is_binary(requested) do
-          {:http_error, 400, unsupported_version(runtime, requested), envelope.id}
-        else
+        {:error, _selection_error} when is_binary(requested) ->
+          {:http_error, 400, version_mismatch(requested, body_version), envelope.id}
+
+        {:error, selection_error} ->
           {:http_error, 400, selection_error, envelope.id}
-        end
+      end
     end
+  end
+
+  defp check_version_header(_runtime, nil, _body_version, _id), do: :ok
+
+  defp check_version_header(_runtime, requested, body_version, id)
+       when is_binary(body_version) and requested != body_version,
+       do: {:http_error, 400, version_mismatch(requested, body_version), id}
+
+  defp check_version_header(runtime, requested, _body_version, id) do
+    if requested in Registry.versions(runtime.protocol_registry),
+      do: :ok,
+      else: {:http_error, 400, unsupported_version(runtime, requested), id}
+  end
+
+  defp body_version(%Envelope{
+         params: %{"_meta" => %{"io.modelcontextprotocol/protocolVersion" => version}}
+       }),
+       do: version
+
+  defp body_version(%Envelope{}), do: nil
+
+  defp version_mismatch(header_version, body_version) do
+    %Error{
+      code: -32_020,
+      message: "Protocol header does not match request metadata",
+      kind: :protocol,
+      data: %{"header" => header_version, "body" => body_version}
+    }
   end
 
   # Mirrors for the `x-mcp-header` arguments of the called tool, with the
@@ -491,10 +525,12 @@ defmodule Snodo.Transport.StreamableHTTP do
 
   # A plain value may carry only visible ASCII, space, and tab; anything else
   # must arrive base64-encoded.
+  # The prefix and suffix overlap in "=?base64?=", so an encoded value is at
+  # least 11 bytes; a shorter one that has both is malformed.
   defp decode_header_value(value, :base64_sentinel) do
     cond do
       String.starts_with?(value, "=?base64?") and String.ends_with?(value, "?=") ->
-        decode_base64_sentinel(value)
+        if byte_size(value) >= 11, do: decode_base64_sentinel(value), else: :error
 
       Enum.all?(:binary.bin_to_list(value), &(&1 == 0x09 or &1 in 0x20..0x7E)) ->
         {:ok, value}
@@ -506,7 +542,7 @@ defmodule Snodo.Transport.StreamableHTTP do
 
   defp decode_base64_sentinel(value) do
     encoded_size = byte_size(value) - byte_size("=?base64?") - byte_size("?=")
-    payload = String.slice(value, byte_size("=?base64?"), encoded_size)
+    payload = binary_part(value, byte_size("=?base64?"), encoded_size)
 
     case Base.decode64(payload) do
       {:ok, decoded} -> validate_utf8_header(decoded)
