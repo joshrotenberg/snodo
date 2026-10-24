@@ -78,7 +78,15 @@ original request. Each request to a `2026-07-28` backend carries the frontend
 caller's client capabilities, so a backend input request reaches a caller that
 declared the matching capability and is refused for one that did not. An
 initialize-era backend fixes its capabilities at `initialize` from
-`client_options:`, so callers' capabilities are not forwarded to it. List
+`client_options:`, so callers' capabilities are not forwarded to it.
+
+The proxy advertises `"logging"` and forwards a backend's
+`notifications/message` to the caller in the original request, before its
+result. A request that sets `_meta["io.modelcontextprotocol/logLevel"]` passes
+that level to a `2026-07-28` backend, and the proxy drops any message below it;
+a request without a level gets no messages. An initialize-era backend sets its
+level per connection with `logging/setLevel`, which the proxy does not send,
+so its messages are filtered by the caller's level only. List
 results are never cached (`ttlMs: 0`, `cacheScope: "private"`). With an
 authorization policy configured, forwarded reads are always private, because
 the proxy filters by caller. It forwards backend list changes and resource update

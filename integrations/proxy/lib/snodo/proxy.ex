@@ -22,6 +22,10 @@ defmodule Snodo.Proxy do
   `{:direct, runtime}` for an in-process server. Backends that disconnect are
   retried every second. A rejected or conflicting catalog update retains the
   last accepted catalog and appears in `health/1`.
+
+  Backend progress and log messages reach the caller in the original request.
+  Log messages follow the caller's `io.modelcontextprotocol/logLevel`; see the
+  logging guide.
   """
 
   alias Snodo.Authorization
@@ -64,6 +68,7 @@ defmodule Snodo.Proxy do
         "tools" => %{"listChanged" => true},
         "prompts" => %{"listChanged" => true},
         "resources" => %{"listChanged" => true, "subscribe" => true},
+        "logging" => %{},
         "extensions" => %{Snodo.Proxy.Extension.id() => %{}}
       },
       extensions: [

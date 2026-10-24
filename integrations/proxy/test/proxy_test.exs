@@ -128,6 +128,25 @@ defmodule Snodo.ProxyTest do
     end
   end
 
+  defmodule BackendLogging do
+    use Snodo.Server,
+      name: "backend-logging",
+      version: "1.0.0",
+      capabilities: %{"tools" => %{}, "logging" => %{}}
+
+    # Logs once at each level and returns the level the request asked for.
+    tool "levels" do
+      @impl true
+      def call(_arguments, context) do
+        for level <- Snodo.Logging.levels() do
+          :ok = Snodo.Logging.log(context, level, "#{level} message", logger: "levels")
+        end
+
+        {:ok, inspect(Snodo.Logging.level(context))}
+      end
+    end
+  end
+
   defmodule BackendRenamed do
     use Snodo.Server, name: "backend-renamed", version: "1.0.0"
 
@@ -302,6 +321,62 @@ defmodule Snodo.ProxyTest do
 
     assert {:ok, %{"content" => [%{"text" => "resumed"}]}} =
              Client.call_tool(client, "a.continuation", %{}, request_state: "resume")
+  end
+
+  test "forwards backend log messages at the frontend request's level, before the result" do
+    proxy =
+      start_supervised!(
+        {Proxy, backends: [[id: "log", target: {:direct, BackendLogging.runtime()}]]}
+      )
+
+    runtime = Proxy.runtime(proxy)
+    assert Map.has_key?(runtime.capabilities, "logging")
+
+    parent = self()
+    on_log = &send(parent, {:event, {:log, &1}})
+    {:ok, client} = Client.direct(runtime, on_log: on_log)
+
+    assert {:ok, %{"content" => [%{"text" => ":error"}]}} =
+             Client.call_tool(client, "log.levels", %{}, log_level: :error)
+
+    send(self(), {:event, :result})
+
+    assert [
+             {:log, %{"level" => "error", "data" => "error message", "logger" => "levels"}},
+             {:log, %{"level" => "critical"}},
+             {:log, %{"level" => "alert"}},
+             {:log, %{"level" => "emergency"}},
+             :result
+           ] = events()
+
+    assert {:ok, %{"content" => [%{"text" => "nil"}]}} = Client.call_tool(client, "log.levels")
+    assert events() == []
+  end
+
+  test "an HTTP frontend receives log messages from an HTTP backend" do
+    backend_server = start_supervised!({HTTPServer, runtime: BackendLogging.runtime(), port: 0})
+
+    proxy =
+      start_supervised!(
+        {Proxy, backends: [[id: "remote", target: {:http, HTTPServer.url(backend_server)}]]}
+      )
+
+    proxy_server =
+      start_supervised!({HTTPServer, id: :proxy_http, runtime: Proxy.runtime(proxy), port: 0})
+
+    {:ok, client} = Client.connect({:http, HTTPServer.url(proxy_server)}, on_log: self())
+
+    assert {:ok, %{"content" => [%{"text" => ":alert"}]}} =
+             Client.call_tool(client, "remote.levels", %{}, log_level: :alert)
+
+    assert_received {:snodo_log, %{"level" => "alert", "logger" => "levels"}}
+    assert_received {:snodo_log, %{"level" => "emergency"}}
+    refute_received {:snodo_log, _params}
+
+    assert {:ok, %{"content" => [%{"text" => "nil"}]}} =
+             Client.call_tool(client, "remote.levels")
+
+    refute_received {:snodo_log, _params}
   end
 
   test "backend input requests reach a frontend caller that declared the capability" do
@@ -709,6 +784,14 @@ defmodule Snodo.ProxyTest do
             10 -> await_replaced_backend_until(proxy, tool, old_backend, deadline)
           end
         end
+    end
+  end
+
+  defp events do
+    receive do
+      {:event, event} -> [event | events()]
+    after
+      0 -> []
     end
   end
 end

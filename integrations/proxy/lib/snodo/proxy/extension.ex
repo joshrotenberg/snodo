@@ -9,6 +9,7 @@ defmodule Snodo.Proxy.Extension do
   alias Snodo.Context
   alias Snodo.Error
   alias Snodo.Extension.Method
+  alias Snodo.Logging
   alias Snodo.Progress
   alias Snodo.Proxy.Catalog
   alias Snodo.Proxy.Manager
@@ -296,6 +297,26 @@ defmodule Snodo.Proxy.Extension do
     |> maybe_put(:request_state, context.request_state, is_binary(context.request_state))
     |> maybe_put(:input_responses, context.input_responses, context.input_responses != %{})
     |> maybe_put(:progress, progress_callback(context), not is_nil(context.progress))
+    |> log_options(Logging.level(context), context)
+  end
+
+  # The backend gets the frontend request's level and its messages are logged
+  # on the frontend request, which filters them by that level again. A request
+  # that asked for no level gets none, so the backend is not asked for any.
+  defp log_options(opts, nil, _context), do: Keyword.merge(opts, log_level: nil, on_log: nil)
+
+  defp log_options(opts, level, context) do
+    Keyword.merge(opts, log_level: level, on_log: log_callback(context))
+  end
+
+  defp log_callback(context), do: &forward_log(context, &1)
+
+  defp forward_log(context, params) do
+    with level when not is_nil(level) <- Logging.parse_level(params["level"]),
+         true <- Map.has_key?(params, "data") do
+      opts = if is_binary(params["logger"]), do: [logger: params["logger"]], else: []
+      Logging.log(context, level, params["data"], opts)
+    end
   end
 
   defp progress_callback(%Context{progress: nil}), do: nil

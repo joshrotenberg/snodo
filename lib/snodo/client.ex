@@ -546,6 +546,9 @@ defmodule Snodo.Client do
       `data: %{"maxTotalTimeoutMs" => limit}`.
     * `:log_level` - overrides the client's `:log_level` for this request.
       `nil` asks for no log messages.
+    * `:on_log` - overrides the client's `:on_log` for this request: a
+      function of one argument or a pid, called or sent as for the client
+      option. `nil` drops the request's log messages.
     * `:timeout` - overrides the client's request timeout.
     * `:extension` - an extension module that owns this request method. Over
       HTTP its `transport_policy/2` supplies routing headers for the exact
@@ -759,7 +762,7 @@ defmodule Snodo.Client do
           :cache_token
         ]) ++
         session_options(client) ++
-        progress_options(progress, opts) ++ log_options(client)
+        progress_options(progress, opts) ++ log_options(client, opts)
 
     case module.request(state, raw, transport_opts) do
       {:ok, response} ->
@@ -1025,8 +1028,15 @@ defmodule Snodo.Client do
           ":on_log must be a function of one argument or a pid, got: #{inspect(other)}"
   end
 
-  defp log_options(%__MODULE__{on_log: nil}), do: []
-  defp log_options(%__MODULE__{on_log: on_log}), do: [on_log: on_log]
+  # A request's own `:on_log`, even nil, replaces the client's.
+  defp log_options(%__MODULE__{on_log: on_log}, opts) do
+    on_log =
+      if Keyword.has_key?(opts, :on_log),
+        do: log_callback(Keyword.fetch!(opts, :on_log)),
+        else: on_log
+
+    if on_log, do: [on_log: on_log], else: []
+  end
 
   defp progress_callback(nil), do: nil
   defp progress_callback(pid) when is_pid(pid), do: &send(pid, {:snodo_progress, &1})
