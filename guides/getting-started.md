@@ -11,7 +11,7 @@ Add `snodo` to your dependencies:
 ```elixir
 def deps do
   [
-    {:snodo, "~> 0.4.2"}
+    {:snodo, "~> 0.4.3"}
   ]
 end
 ```
@@ -21,7 +21,7 @@ For a Plug or Bandit application, also add `snodo_plug`:
 
 <!-- x-release-please-start-version -->
 ```elixir
-{:snodo_plug, "~> 0.4.2"}
+{:snodo_plug, "~> 0.4.3"}
 ```
 <!-- x-release-please-end -->
 
@@ -146,12 +146,12 @@ runnable server is a script that installs `snodo` itself:
 <!-- x-release-please-start-version -->
 ```elixir
 # greeter.exs
-Mix.install([{:snodo, "~> 0.4.2"}])
+Mix.install([{:snodo, "~> 0.4.3"}])
 
 defmodule Greeter do
   use Snodo.Server,
     name: "greeter",
-    version: "0.1.0",
+    version: "0.4.3",
     protocols: [
       Snodo.Protocol.V2026_07_28,
       Snodo.Protocol.V2025_11_25,
