@@ -9,7 +9,7 @@ It runs alongside `snodo` without changing the core router.
 
 <!-- x-release-please-start-version -->
 ```elixir
-{:snodo_proxy, "~> 0.4.2"}
+{:snodo_proxy, "~> 0.4.3"}
 ```
 <!-- x-release-please-end -->
 

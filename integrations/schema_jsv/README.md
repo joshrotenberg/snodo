@@ -12,7 +12,7 @@ Add `snodo_jsv` next to `snodo`:
 
 <!-- x-release-please-start-version -->
 ```elixir
-{:snodo_jsv, "~> 0.4.2"}
+{:snodo_jsv, "~> 0.4.3"}
 ```
 <!-- x-release-please-end -->
 

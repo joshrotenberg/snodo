@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.3](https://github.com/joshrotenberg/snodo/compare/v0.4.2...v0.4.3) (2026-10-24)
+
+
+### Features
+
+* declare metadata-only extensions and read a client's extension settings (closes [#289](https://github.com/joshrotenberg/snodo/issues/289)) ([#334](https://github.com/joshrotenberg/snodo/issues/334)) ([bf74c36](https://github.com/joshrotenberg/snodo/commit/bf74c367dc0cfc96ca04ec9a53f10f2bf1ff9801))
+* server logging through notifications/message (closes [#311](https://github.com/joshrotenberg/snodo/issues/311)) ([5e93394](https://github.com/joshrotenberg/snodo/commit/5e933945ceadeb6c63dd4c69f9169302e1f7169b))
+
+
+### Bug Fixes
+
+* **client:** send notifications/cancelled when an initialize-era HTTP request times out (closes [#281](https://github.com/joshrotenberg/snodo/issues/281)) ([#346](https://github.com/joshrotenberg/snodo/issues/346)) ([0f758ad](https://github.com/joshrotenberg/snodo/commit/0f758adc3cb8db257014feacd0570127608acf93))
+* **proxy:** check Mcp-Param-* headers against the merged catalog's tool schemas (closes [#333](https://github.com/joshrotenberg/snodo/issues/333)) ([#347](https://github.com/joshrotenberg/snodo/issues/347)) ([823d642](https://github.com/joshrotenberg/snodo/commit/823d642496546ba54f3729c95ca6509bc9d44c5f))
+* treat a 10-byte =?base64?= header value as malformed (closes [#278](https://github.com/joshrotenberg/snodo/issues/278)) ([#343](https://github.com/joshrotenberg/snodo/issues/343)) ([2f46075](https://github.com/joshrotenberg/snodo/commit/2f46075e60c1d19b49d174e573c4f554f03a408f))
+* version header errors and initialize negotiation (closes [#277](https://github.com/joshrotenberg/snodo/issues/277)) ([#345](https://github.com/joshrotenberg/snodo/issues/345)) ([9e4cbe1](https://github.com/joshrotenberg/snodo/commit/9e4cbe19b0e7694b4399bfbd108e940837e939e0))
+
 ## [0.4.2](https://github.com/joshrotenberg/snodo/compare/v0.4.1...v0.4.2) (2026-10-22)
 
 
