@@ -312,25 +312,30 @@ defmodule Snodo.Transport.StreamableHTTP do
     requested = TransportContext.get_header(envelope.transport.request_headers, @protocol_header)
     body_version = body_version(envelope)
 
-    cond do
-      is_binary(requested) and is_binary(body_version) and requested != body_version ->
-        {:http_error, 400, version_mismatch(requested, body_version), envelope.id}
+    with :ok <- check_version_header(runtime, requested, body_version, envelope.id) do
+      case Registry.select(runtime.protocol_registry, envelope) do
+        {:ok, protocol} ->
+          {:ok, protocol}
 
-      is_binary(requested) and requested not in Registry.versions(runtime.protocol_registry) ->
-        {:http_error, 400, unsupported_version(runtime, requested), envelope.id}
+        {:error, _selection_error} when is_binary(requested) ->
+          {:http_error, 400, version_mismatch(requested, body_version), envelope.id}
 
-      true ->
-        case Registry.select(runtime.protocol_registry, envelope) do
-          {:ok, protocol} ->
-            {:ok, protocol}
-
-          {:error, _selection_error} when is_binary(requested) ->
-            {:http_error, 400, version_mismatch(requested, body_version), envelope.id}
-
-          {:error, selection_error} ->
-            {:http_error, 400, selection_error, envelope.id}
-        end
+        {:error, selection_error} ->
+          {:http_error, 400, selection_error, envelope.id}
+      end
     end
+  end
+
+  defp check_version_header(_runtime, nil, _body_version, _id), do: :ok
+
+  defp check_version_header(_runtime, requested, body_version, id)
+       when is_binary(body_version) and requested != body_version,
+       do: {:http_error, 400, version_mismatch(requested, body_version), id}
+
+  defp check_version_header(runtime, requested, _body_version, id) do
+    if requested in Registry.versions(runtime.protocol_registry),
+      do: :ok,
+      else: {:http_error, 400, unsupported_version(runtime, requested), id}
   end
 
   defp body_version(%Envelope{
