@@ -91,8 +91,10 @@ defmodule Snodo.Protocol.Registry do
         )
       end)
 
+    # A version the server does not support is answered with the latest one
+    # it does, as the lifecycle says it should.
     case Enum.find(candidates, &(&1.version() == params["protocolVersion"])) ||
-           List.first(candidates) do
+           latest(candidates) do
       nil -> detect(registry, envelope)
       protocol -> {:ok, protocol}
     end
@@ -101,6 +103,9 @@ defmodule Snodo.Protocol.Registry do
   def select(%__MODULE__{} = registry, %Envelope{} = envelope) do
     detect(registry, envelope)
   end
+
+  defp latest([]), do: nil
+  defp latest(candidates), do: Enum.max_by(candidates, & &1.version())
 
   defp detect(registry, envelope) do
     detections = Enum.map(registry.protocols, &{&1, &1.detect(envelope)})

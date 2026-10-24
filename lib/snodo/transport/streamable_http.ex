@@ -303,21 +303,50 @@ defmodule Snodo.Transport.StreamableHTTP do
     end
   end
 
+  # The version header is checked before any dialect's header rules apply. A
+  # header that disagrees with the body's version is -32020. One that names a
+  # version the runtime does not enable is -32022, so a client can tell it
+  # should change versions. An enabled header that no single dialect accepts
+  # also disagrees with the body.
   defp select_protocol(%Runtime{} = runtime, %Envelope{} = envelope) do
-    case Registry.select(runtime.protocol_registry, envelope) do
-      {:ok, protocol} ->
-        {:ok, protocol}
+    requested = TransportContext.get_header(envelope.transport.request_headers, @protocol_header)
+    body_version = body_version(envelope)
 
-      {:error, selection_error} ->
-        requested =
-          TransportContext.get_header(envelope.transport.request_headers, @protocol_header)
+    cond do
+      is_binary(requested) and is_binary(body_version) and requested != body_version ->
+        {:http_error, 400, version_mismatch(requested, body_version), envelope.id}
 
-        if is_binary(requested) do
-          {:http_error, 400, unsupported_version(runtime, requested), envelope.id}
-        else
-          {:http_error, 400, selection_error, envelope.id}
+      is_binary(requested) and requested not in Registry.versions(runtime.protocol_registry) ->
+        {:http_error, 400, unsupported_version(runtime, requested), envelope.id}
+
+      true ->
+        case Registry.select(runtime.protocol_registry, envelope) do
+          {:ok, protocol} ->
+            {:ok, protocol}
+
+          {:error, _selection_error} when is_binary(requested) ->
+            {:http_error, 400, version_mismatch(requested, body_version), envelope.id}
+
+          {:error, selection_error} ->
+            {:http_error, 400, selection_error, envelope.id}
         end
     end
+  end
+
+  defp body_version(%Envelope{
+         params: %{"_meta" => %{"io.modelcontextprotocol/protocolVersion" => version}}
+       }),
+       do: version
+
+  defp body_version(%Envelope{}), do: nil
+
+  defp version_mismatch(header_version, body_version) do
+    %Error{
+      code: -32_020,
+      message: "Protocol header does not match request metadata",
+      kind: :protocol,
+      data: %{"header" => header_version, "body" => body_version}
+    }
   end
 
   # Mirrors for the `x-mcp-header` arguments of the called tool. An unknown
