@@ -471,10 +471,12 @@ defmodule Snodo.Transport.StreamableHTTP do
 
   # A plain value may carry only visible ASCII, space, and tab; anything else
   # must arrive base64-encoded.
+  # The prefix and suffix overlap in "=?base64?=", so an encoded value is at
+  # least 11 bytes; a shorter one that has both is malformed.
   defp decode_header_value(value, :base64_sentinel) do
     cond do
       String.starts_with?(value, "=?base64?") and String.ends_with?(value, "?=") ->
-        decode_base64_sentinel(value)
+        if byte_size(value) >= 11, do: decode_base64_sentinel(value), else: :error
 
       Enum.all?(:binary.bin_to_list(value), &(&1 == 0x09 or &1 in 0x20..0x7E)) ->
         {:ok, value}
@@ -486,7 +488,7 @@ defmodule Snodo.Transport.StreamableHTTP do
 
   defp decode_base64_sentinel(value) do
     encoded_size = byte_size(value) - byte_size("=?base64?") - byte_size("?=")
-    payload = String.slice(value, byte_size("=?base64?"), encoded_size)
+    payload = binary_part(value, byte_size("=?base64?"), encoded_size)
 
     case Base.decode64(payload) do
       {:ok, decoded} -> validate_utf8_header(decoded)
