@@ -88,7 +88,9 @@ A dependency-free listener that binds to `127.0.0.1` by default and serves
 
 It checks media types, the mirrored `MCP-Protocol-Version`, `Mcp-Method`, and
 `Mcp-Name` headers, the `Mcp-Param-*` headers for a tool's `x-mcp-header`
-arguments (see [Components](components.md#arguments-in-http-headers)), and
+arguments (see [Components](components.md#arguments-in-http-headers)) for
+tools in the router or served by an extension's `tool_input_schema/2`, such
+as `Snodo.Proxy`'s merged tools, and
 `Origin` when present: loopback names by default,
 `:allowed_origin_hosts` to change, where an entry with a port
 (`"localhost:3000"`) pins the port and an Origin with userinfo is refused.
