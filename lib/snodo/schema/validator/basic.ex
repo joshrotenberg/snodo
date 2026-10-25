@@ -239,8 +239,8 @@ defmodule Snodo.Schema.Validator.Basic do
   defp validate_items(_instance, _schema, _path, _patterns), do: :ok
 
   defp validate_string(instance, schema, path, patterns) do
-    with :ok <- validate_count(instance, schema, path, "minLength", &String.length/1, :at_least),
-         :ok <- validate_count(instance, schema, path, "maxLength", &String.length/1, :at_most) do
+    with :ok <- validate_count(instance, schema, path, "minLength", &code_points/1, :at_least),
+         :ok <- validate_count(instance, schema, path, "maxLength", &code_points/1, :at_most) do
       validate_pattern(instance, schema, path, patterns)
     end
   end
@@ -249,8 +249,11 @@ defmodule Snodo.Schema.Validator.Basic do
        when is_binary(pattern) do
     compiled =
       case Map.fetch(patterns, pattern) do
-        {:ok, value} -> value
-        :error -> Cache.fetch({__MODULE__, :pattern, pattern}, fn -> Regex.compile(pattern) end)
+        {:ok, value} ->
+          value
+
+        :error ->
+          Cache.fetch({__MODULE__, :unicode_pattern, pattern}, fn -> compile_pattern(pattern) end)
       end
 
     case compiled do
@@ -270,11 +273,17 @@ defmodule Snodo.Schema.Validator.Basic do
 
   defp validate_pattern(_instance, _schema, _path, _patterns), do: :ok
 
+  # JSON Schema counts string length in code points, not graphemes, and its
+  # patterns match code points, so they compile in Unicode mode.
+  defp code_points(string), do: string |> String.codepoints() |> length()
+
+  defp compile_pattern(pattern), do: Regex.compile(pattern, "u")
+
   defp collect_patterns(schema, patterns) when is_map(schema) do
     patterns =
       case Map.fetch(schema, "pattern") do
         {:ok, pattern} when is_binary(pattern) ->
-          Map.put_new_lazy(patterns, pattern, fn -> Regex.compile(pattern) end)
+          Map.put_new_lazy(patterns, pattern, fn -> compile_pattern(pattern) end)
 
         _other ->
           patterns
@@ -346,7 +355,11 @@ defmodule Snodo.Schema.Validator.Basic do
 
   defp matches_type?(value, "array"), do: is_list(value)
   defp matches_type?(value, "boolean"), do: is_boolean(value)
-  defp matches_type?(value, "integer"), do: is_integer(value)
+  # JSON Schema counts a number with a zero fractional part, such as 1.0, as
+  # an integer.
+  defp matches_type?(value, "integer"),
+    do: is_integer(value) or (is_float(value) and value == Float.round(value))
+
   defp matches_type?(value, "null"), do: is_nil(value)
   defp matches_type?(value, "number"), do: is_number(value)
   defp matches_type?(value, "object"), do: is_map(value) and not is_struct(value)
