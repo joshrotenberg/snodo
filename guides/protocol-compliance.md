@@ -14,9 +14,9 @@ code and reports:
 | Exact protocol profile | Which core methods exist in the pinned revision and which capabilities, methods, transports, and limitations this build implements | Complete catalog; implemented slice explicit |
 | Core internal contract | Literal wire requests plus HTTP and generic extension acceptance obey the declared core slice | 33 evidence groups passing |
 | Tasks package contract | The independent child package obeys its Tasks wire, lifecycle, subscriptions, HTTP, descriptor, durable-store, and recovery contract | 10 evidence groups passing |
-| Released-client interop | A real official TypeScript client can discover, list, call, cancel, and call again over stdio | Passing with client 2.1.0 |
+| Released-client interop | A real official TypeScript client can discover, list, call, cancel, and call again over stdio | Passing with the client pinned in `interop/official_client/package.json` |
 | Target application acceptance | The real Hex.pm server's catalog, tool outcomes, prompts, and resource reads work with seeded domain responses over stdio and HTTP | Passing with client 2.0.0; [scope and commands](https://github.com/joshrotenberg/snodo/blob/main/docs/history/target-application-findings.md) |
-| MRTR client acceptance | Ordinary tool/resource/prompt elicitation, signed state, automatic retries, and URL consent work over stdio and HTTP | Passing with client 2.1.0; [scope and commands](interactive-operations.md) |
+| MRTR client acceptance | Ordinary tool/resource/prompt elicitation, signed state, automatic retries, and URL consent work over stdio and HTTP | Passing with the client pinned in `interop/official_client/package.json`; [scope and commands](interactive-operations.md) |
 | Official server requirements | The implementation passes the frozen upstream scenarios for the released revision | 37/37 exercised whole scenarios pass on the frozen alpha.12 runner (2026-10-22); the runner's score, not full revision conformance |
 | Ordinary progress | Correlated progress precedes normal/error/MRTR terminal messages; cancellation and no-token behavior are checked over stdio and HTTP | Passing wire and controlled client checks; [SDK callback caveat](https://github.com/joshrotenberg/snodo/blob/main/interop/official_client/PROGRESS.md) |
 | Independent wire-schema corpus | Representative real emissions validate against named definitions and concrete result, input-request, and error branches in the pinned official schema using AJV | 99 emissions across direct/stdio/HTTP; 99 negative mutations and 9 unit controls; not every possible message |
@@ -330,8 +330,9 @@ The [managed lane](https://github.com/joshrotenberg/snodo/blob/main/conformance/
 dependency graph, verifies the frozen manifest digest, starts an ephemeral
 loopback fixture, retains raw artifacts, and applies a reviewed per-check
 [regression baseline](https://github.com/joshrotenberg/snodo/blob/main/conformance/expected-failures.json). The official runner
-still exits non-zero; failures remain failures in the report. The baseline pins
-all 194 check occurrences across 50 required and unscored scenarios:
+exits 0 when the scored scenarios pass; any failures remain failures in the
+report. The baseline pins every check occurrence across the required and
+unscored scenarios:
 
 - an unexpected failure breaks CI;
 - a passing baselined check also breaks CI because the baseline is stale;

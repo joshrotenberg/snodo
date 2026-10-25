@@ -105,7 +105,7 @@ jobs:
           done
 
   official-client:
-    name: Official TypeScript client 2.0.0
+    name: Official TypeScript client
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
@@ -145,7 +145,7 @@ jobs:
           retention-days: 14
 
   official-python:
-    name: Official Python client 2.0.0
+    name: Official Python client
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:

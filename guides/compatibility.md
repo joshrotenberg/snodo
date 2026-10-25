@@ -32,10 +32,18 @@ and the workflow uses the Erlang Ecosystem Foundation's
 
 ## Independent protocol and client lanes
 
-The current BEAM lane also runs the lockfile-pinned official TypeScript client
-2.1.0 baseline, MRTR, and progress checks over stdio and native HTTP. Progress
-wire correctness and the SDK's callback scheduling limitation are recorded
+[`compatibility.yml`](https://github.com/joshrotenberg/snodo/blob/main/.github/workflows/compatibility.yml)
+runs the lockfile-pinned official TypeScript client baseline, MRTR, and progress
+checks over stdio and native HTTP. The client version is pinned in
+[`interop/official_client/package.json`](https://github.com/joshrotenberg/snodo/blob/main/interop/official_client/package.json).
+Progress wire correctness and the SDK's callback scheduling limitation are recorded
 [separately](https://github.com/joshrotenberg/snodo/blob/main/interop/official_client/PROGRESS.md).
+
+The same workflow runs the official Python `mcp` client over stdio and native
+HTTP against 2026-07-28, 2025-11-25, and 2025-06-18, with MRTR elicitation and
+progress on 2026-07-28. The SDK version is pinned in
+[`interop/official_python/pyproject.toml`](https://github.com/joshrotenberg/snodo/blob/main/interop/official_python/pyproject.toml)
+and its dependencies in `uv.lock`.
 
 [`protocol.yml`](https://github.com/joshrotenberg/snodo/blob/main/.github/workflows/protocol.yml) adds independent jobs:
 the exact frozen alpha.12 conformance runner's server and client legs, the same
