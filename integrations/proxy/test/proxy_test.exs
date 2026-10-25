@@ -156,6 +156,31 @@ defmodule Snodo.ProxyTest do
     end
   end
 
+  defmodule BackendHeaders do
+    use Snodo.Server, name: "backend-headers", version: "1.0.0"
+
+    tool "region" do
+      input_schema(%{
+        "type" => "object",
+        "properties" => %{"region" => %{"type" => "string", "x-mcp-header" => "Region"}},
+        "required" => ["region"]
+      })
+
+      @impl true
+      def call(%{"region" => region}, _context), do: {:ok, "region #{region}"}
+    end
+  end
+
+  defmodule ConcealRegion do
+    @behaviour Snodo.Authorization
+
+    @impl true
+    def authorize(_phase, %{name: "h.region"}, _context, _options),
+      do: {:error, Error.authorization(-32_003, "Blocked")}
+
+    def authorize(_phase, _component, _context, _options), do: :ok
+  end
+
   defmodule RefuseB do
     @behaviour Snodo.Authorization
 
@@ -726,6 +751,73 @@ defmodule Snodo.ProxyTest do
 
     assert {:ok, %{"status" => "up"} = health} = Client.request(client, "proxy/health", %{})
     refute Map.has_key?(health, "backends")
+  end
+
+  describe "Mcp-Param-* headers over Streamable HTTP" do
+    setup do
+      proxy =
+        start_supervised!(
+          {Proxy, backends: [[id: "h", target: {:direct, BackendHeaders.runtime()}]]}
+        )
+
+      %{proxy: proxy}
+    end
+
+    test "are checked against the merged tool's input schema", %{proxy: proxy} do
+      runtime = Proxy.runtime(proxy)
+
+      for headers <- [[], [{"Mcp-Param-Region", "west"}], [{"Mcp-Param-Region", "=?base64?!!?="}]] do
+        assert {400, %{"error" => %{"code" => -32_020}}} = region_call(runtime, headers)
+      end
+
+      assert {200, %{"result" => %{"content" => [%{"text" => "region east"}]}}} =
+               region_call(runtime, [{"Mcp-Param-Region", "east"}])
+    end
+
+    test "a failure for a tool the proxy policy conceals answers like an unknown tool",
+         %{proxy: proxy} do
+      runtime = Proxy.runtime(proxy, authorization: {ConcealRegion, refusal: :conceal})
+
+      assert {400, %{"error" => %{"code" => -32_602, "message" => "Unknown tool: h.region"}}} =
+               region_call(runtime, [])
+    end
+  end
+
+  defp region_call(runtime, param_headers) do
+    raw = %{
+      "jsonrpc" => "2.0",
+      "id" => 1,
+      "method" => "tools/call",
+      "params" => %{
+        "name" => "h.region",
+        "arguments" => %{"region" => "east"},
+        "_meta" => %{
+          "io.modelcontextprotocol/protocolVersion" => "2026-07-28",
+          "io.modelcontextprotocol/clientCapabilities" => %{}
+        }
+      }
+    }
+
+    headers =
+      [
+        {"content-type", "application/json"},
+        {"accept", "application/json, text/event-stream"},
+        {"mcp-protocol-version", "2026-07-28"},
+        {"mcp-method", "tools/call"},
+        {"mcp-name", "h.region"}
+      ] ++ param_headers
+
+    response =
+      Snodo.Transport.StreamableHTTP.handle(runtime, %Snodo.Transport.StreamableHTTP.Request{
+        method: "POST",
+        path: "/mcp",
+        headers: headers,
+        body: JSON.encode!(raw),
+        peer: {{127, 0, 0, 1}, 50_000},
+        connection_ref: make_ref()
+      })
+
+    {response.status, JSON.decode!(response.body)}
   end
 
   test "HTTP backends can be served through the proxy HTTP endpoint" do

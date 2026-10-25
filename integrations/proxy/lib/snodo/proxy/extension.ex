@@ -59,6 +59,19 @@ defmodule Snodo.Proxy.Extension do
     %{"code" => error.code, "message" => error.message}
   end
 
+  # Streamable HTTP checks a merged tool's Mcp-Param-* headers against its
+  # public input schema, under the proxy's own authorization policy.
+  @impl true
+  def tool_input_schema(name, %{proxy: proxy, authorization: authorization}) do
+    case Catalog.lookup(Manager.catalog(proxy), :tool, name) do
+      {:ok, %{public: %{"inputSchema" => schema}}} when is_map(schema) ->
+        {:ok, schema, authorization}
+
+      _unknown ->
+        :error
+    end
+  end
+
   @impl true
   def around_dispatch(operation, params, %Context{} = context, next) do
     proxy = proxy!(context)

@@ -186,9 +186,11 @@ validation.
   design: the proxy does not route `completion/complete`, and it exposes
   resources as `mcp-proxy://<id>/<original-uri>`, so the three resource read
   scenarios do not find their fixed URIs. The unscored Tasks scenarios fail
-  because the proxy does not route the Tasks extension, and the pending
-  `http-custom-header-server-validation` scenario fails because the proxy does
-  not yet check `Mcp-Param-*` headers (#333). Its own baseline is
+  because the proxy does not route the Tasks extension. The pending
+  `http-custom-header-server-validation` scenario passes: the proxy gives the
+  HTTP adapter the merged tool's input schema through the extension
+  `tool_input_schema/2` callback, so `Mcp-Param-*` headers are checked as they
+  are for the fixture served directly. Its own baseline is
   [expected-failures-proxy.json](expected-failures-proxy.json).
 - `server-2025-11-25` enables the initialize-era dialects next to 2026-07-28 on
   a fixture with tools, resources, prompts, and completion, and runs the frozen

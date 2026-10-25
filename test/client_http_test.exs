@@ -1172,6 +1172,32 @@ defmodule Snodo.ClientHTTPTest do
       assert headers["mcp-session-id"] == "s-1"
     end
 
+    test "a timed-out request is cancelled with notifications/cancelled and the session headers" do
+      url =
+        legacy_server(fn
+          %{"method" => "tools/call"} = message ->
+            Process.sleep(1_000)
+            json(message, %{"content" => [], "isError" => false})
+
+          message ->
+            json(message, %{"tools" => []})
+        end)
+
+      assert {:ok, client} = negotiate(url)
+
+      assert {:error, %Error{code: -32_001}} =
+               Client.call_tool(client, "slow", %{}, timeout: 100)
+
+      assert_receive {:fake_http, _headers, %{"method" => "tools/call", "id" => id}}, 1_000
+
+      assert_receive {:fake_http, headers, %{"method" => "notifications/cancelled"} = note},
+                     2_000
+
+      assert note["params"] == %{"requestId" => id, "reason" => "Request timed out"}
+      assert headers["mcp-protocol-version"] == "2025-11-25"
+      assert headers["mcp-session-id"] == "s-1"
+    end
+
     test "a server request on the event stream is answered on its own POST with the session headers" do
       form = fn %{"message" => "Name?"} ->
         {:ok, %{"action" => "accept", "content" => %{"name" => "Ada"}}}
