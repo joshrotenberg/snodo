@@ -435,6 +435,14 @@ defmodule Snodo.Compliance.ProfileAndInspectorTest do
       )
 
     assert length(report["evidence"]["internalPass"]) == 33
+
+    assert report["evidence"]["unsupported"] == [
+             "method:notifications/cancelled:server_to_client"
+           ]
+
+    assert Compliance.to_markdown(report) =~
+             "Unsupported surfaces: method:notifications/cancelled:server_to_client"
+
     assert report["evidence"]["officialPass"] == summary["score"]["passedScenarioIds"]
     official = report["officialServerConformance"]
 
@@ -485,5 +493,58 @@ defmodule Snodo.Compliance.ProfileAndInspectorTest do
     assert String.starts_with?(newest, summary["runDate"])
 
     assert is_binary(JSON.encode!(report))
+  end
+
+  test "compliance evidence includes each unsupported method direction alongside other surfaces" do
+    profile = V2026_07_28.profile()
+
+    methods =
+      Enum.map(profile.methods, fn
+        %{name: "notifications/message"} = method ->
+          %{method | status: :unsupported, directions: [:server_to_client, :client_to_server]}
+
+        method ->
+          method
+      end)
+
+    profile = %{
+      profile
+      | methods: methods,
+        limitations: %{unsupported_feature: :unsupported, unmeasured_feature: :unmeasured},
+        transports: %{direct: :tested, stdio: :unsupported, streamable_http: :unmeasured}
+    }
+
+    report = Compliance.report(profile)
+
+    unsupported = [
+      "method:notifications/cancelled:server_to_client",
+      "method:notifications/message:client_to_server",
+      "method:notifications/message:server_to_client",
+      "transport:stdio",
+      "unsupported_feature"
+    ]
+
+    assert report["evidence"]["unsupported"] == unsupported
+
+    assert report["evidence"]["unmeasured"] == [
+             "transport:streamable_http",
+             "unmeasured_feature"
+           ]
+
+    assert report |> JSON.encode!() |> JSON.decode!() |> get_in(["evidence", "unsupported"]) ==
+             unsupported
+
+    assert Compliance.to_markdown(report) =~
+             "Unsupported surfaces: #{Enum.join(unsupported, ", ")}"
+  end
+
+  test "compliance evidence is empty when every profile surface is supported" do
+    profile = V2026_07_28.profile()
+    methods = Enum.map(profile.methods, &%{&1 | status: :implemented})
+    report = Compliance.report(%{profile | methods: methods})
+
+    assert report["evidence"]["unsupported"] == []
+    assert report["evidence"]["unmeasured"] == []
+    assert Compliance.to_markdown(report) =~ "Unsupported surfaces: none"
   end
 end
