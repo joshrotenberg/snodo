@@ -6,6 +6,7 @@ defmodule Snodo.Proxy.Backend do
   alias Snodo.Client
   alias Snodo.Client.Stdio
   alias Snodo.Client.Subscription
+  alias Snodo.Proxy.RequestLock
   alias Snodo.Server.Runtime
 
   @listen_filter %{
@@ -26,11 +27,11 @@ defmodule Snodo.Proxy.Backend do
   def refresh(pid, ref), do: GenServer.cast(pid, {:refresh, ref})
 
   # Stdio log messages have no request ID. Keep finite requests on that
-  # connection mutually exclusive, including probes and catalog refreshes.
+  # connection mutually exclusive, including background calls with callbacks.
   # The function runs in its caller so logging retains the handler's context.
   @doc false
   def request(%Client{transport: {Stdio, pid}}, fun) do
-    :global.trans({{__MODULE__, pid}, self()}, fun, [node()])
+    RequestLock.run(pid, fun)
   end
 
   def request(%Client{}, fun), do: fun.()
@@ -56,6 +57,7 @@ defmodule Snodo.Proxy.Backend do
   @impl true
   def handle_continue({:connect, target, client_options}, state) do
     with {:ok, client} <- connect(target, client_options),
+         :ok <- start_request_lock(client),
          {:ok, catalog} <- fetch_catalog_or_close(client) do
       state = %{
         state
@@ -193,7 +195,20 @@ defmodule Snodo.Proxy.Backend do
     end
   end
 
-  defp fetch_catalog(client), do: request(client, fn -> do_fetch_catalog(client) end)
+  defp start_request_lock(%Client{transport: {Stdio, pid}}) do
+    case RequestLock.start_link(pid) do
+      {:ok, _lock} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp start_request_lock(%Client{}), do: :ok
+
+  # Background requests without callbacks cannot capture another request's logs.
+  defp background_request(%Client{on_log: nil}, fun), do: fun.()
+  defp background_request(client, fun), do: request(client, fun)
+
+  defp fetch_catalog(client), do: background_request(client, fn -> do_fetch_catalog(client) end)
 
   defp do_fetch_catalog(client) do
     with {:ok, tools} <- optional_list(Client.list_tools(client)),
@@ -214,7 +229,7 @@ defmodule Snodo.Proxy.Backend do
   defp optional_list({:error, %{code: -32_601}}), do: {:ok, []}
   defp optional_list({:error, error}), do: {:error, error}
 
-  defp probe_client(client), do: request(client, fn -> do_probe_client(client) end)
+  defp probe_client(client), do: background_request(client, fn -> do_probe_client(client) end)
 
   defp do_probe_client(%Client{protocol: "2026-07-28"} = client) do
     case Client.discover(client, timeout: 5_000) do

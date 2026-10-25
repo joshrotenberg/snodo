@@ -99,10 +99,19 @@ each update is delivered. Authorization also filters discovery and checks
 calls, reads, and gets. The backend's own policy still applies when a request
 is forwarded.
 
-Stdio backend calls, reads, prompt requests, health probes, and catalog
-refreshes run one at a time per connection so log messages stay with their
-request. A queued request starts its backend timeout when it acquires the
-connection. Direct and HTTP backend requests can run concurrently.
+Stdio backend calls, reads, and prompt requests run one at a time per
+connection so log messages stay with their request. Waiting requests acquire
+the connection in FIFO order as soon as the previous caller releases it.
+Health probes and catalog refreshes join this queue only when the backend's
+`client_options:` includes `on_log:`. Otherwise they run concurrently and cannot
+capture forwarded logs. Direct and HTTP backend requests can run concurrently.
+
+The stdio queue wait is bounded to 30,000 ms. Expiry returns a -32603 error
+with `data.reason` set to `"stdio_queue_timeout"` without sending the request
+to the backend. A closed connection returns `"backend_unavailable"` in the
+same error field. A queued request starts its separate backend timeout when
+it acquires the connection. Exited callers are removed from the queue, and an
+exited holder releases the connection to the next waiter.
 
 ## Limits and errors
 

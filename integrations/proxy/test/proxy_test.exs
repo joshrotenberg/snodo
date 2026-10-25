@@ -404,10 +404,10 @@ defmodule Snodo.ProxyTest do
     refute_received {:snodo_log, _params}
   end
 
-  for second_level <- [:error, nil] do
-    @tag second_level: second_level
-    test "concurrent stdio requests retain their own log context with #{inspect(second_level)}",
-         %{second_level: second_level} do
+  for second_level <- [:error, nil], client_callback? <- [false, true] do
+    @tag second_level: second_level, client_callback?: client_callback?
+    test "concurrent stdio logs with #{inspect(second_level)} and client callback #{client_callback?}",
+         %{second_level: second_level, client_callback?: client_callback?} do
       {:ok, barrier} = :gen_tcp.listen(0, [:binary, active: false, ip: {127, 0, 0, 1}])
       on_exit(fn -> :gen_tcp.close(barrier) end)
       {:ok, port} = :inet.port(barrier)
@@ -416,10 +416,18 @@ defmodule Snodo.ProxyTest do
       snodo_ebin = Path.expand("../../snodo/ebin", Mix.Project.compile_path())
       fixture = Path.expand("../fixtures/stdio_logging_backend.exs", __DIR__)
 
+      client_options = if client_callback?, do: [on_log: self()], else: []
+
       proxy =
         start_supervised!(
           {Proxy,
-           backends: [[id: "stdio", target: {:stdio, elixir, ["-pa", snodo_ebin, fixture]}]]}
+           backends: [
+             [
+               id: "stdio",
+               target: {:stdio, elixir, ["-pa", snodo_ebin, fixture]},
+               client_options: client_options
+             ]
+           ]}
         )
 
       {:ok, client} = Client.direct(Proxy.runtime(proxy))
@@ -438,6 +446,14 @@ defmodule Snodo.ProxyTest do
 
       assert {:ok, first_socket} = :gen_tcp.accept(barrier, 5_000)
       assert {:ok, "first"} = :gen_tcp.recv(first_socket, 5, 1_000)
+      # Only background requests with a client callback need the same lock.
+      refresh = Task.async(fn -> Proxy.refresh_backend(proxy, "stdio") end)
+
+      if client_callback? do
+        assert Task.yield(refresh, 100) == nil
+      else
+        assert :ok = Task.await(refresh, 1_000)
+      end
 
       second =
         Task.async(fn ->
@@ -459,8 +475,9 @@ defmodule Snodo.ProxyTest do
       assert :ok = :gen_tcp.close(first_socket)
       assert {:ok, %{"content" => [%{"text" => "first"}]}} = Task.await(first, 5_000)
       assert_received {:first_log, %{"level" => "emergency", "data" => "first"}}
+      if client_callback?, do: assert(:ok = Task.await(refresh, 1_000))
 
-      assert {:ok, second_socket} = :gen_tcp.accept(barrier, 5_000)
+      assert {:ok, second_socket} = :gen_tcp.accept(barrier, 1_000)
       assert {:ok, "second"} = :gen_tcp.recv(second_socket, 6, 1_000)
       assert :ok = :gen_tcp.send(second_socket, "release")
       assert :ok = :gen_tcp.close(second_socket)

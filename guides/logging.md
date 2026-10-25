@@ -113,8 +113,11 @@ caller's level are dropped and a request without a level gets none. An
 initialize-era backend sets its level per connection with `logging/setLevel`,
 which the proxy does not send.
 
-The proxy serializes forwarded calls, reads, prompt requests, health probes,
-and catalog refreshes on each stdio backend connection because stdio log
-notifications carry no request ID. A queued request starts its backend timeout
-when it acquires the connection. Direct and HTTP backends can handle concurrent
-requests.
+The proxy serializes forwarded calls, reads, and prompt requests on each
+stdio backend connection because stdio log notifications carry no request ID.
+Health probes and catalog refreshes are serialized only when the backend has a
+client-level `on_log:` callback. Waiting requests acquire the connection in FIFO
+order, with a 30,000 ms queue wait limit. Queue expiry returns -32603 with
+`data.reason: "stdio_queue_timeout"`. A queued request starts its separate
+backend timeout when it acquires the connection. Direct and HTTP backends can
+handle concurrent requests.
