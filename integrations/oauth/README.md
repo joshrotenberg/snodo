@@ -397,6 +397,14 @@ request path through `snodo_plug` on Bandit: 401 with the metadata URL,
 403 `insufficient_scope`, `tools/list` filtered by scope, and a refused
 `tools/call`.
 
+The resource server is also checked against the pinned official TypeScript
+client, over the native listener and over `snodo_plug`: the SDK discovers the
+metadata from the challenge, completes the authorization code flow with
+dynamic registration and PKCE, and the `client_credentials` grant, against a
+loopback authorization server whose JWKS the resource server fetches. See
+`check:oauth` in the
+[official client interop](../../interop/official_client/README.md).
+
 The client is tested through `Snodo.Client` against fake authorization and
 resource servers on loopback Bandit listeners shaped like the conformance
 runner's: discovery at every metadata location, the resource and issuer
