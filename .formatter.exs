@@ -6,6 +6,8 @@ locals_without_parens = [
   argument: 4,
   annotations: 1,
   description: 1,
+  genserver_call: 2,
+  genserver_cast: 2,
   icons: 1,
   metadata: 1,
   title: 1,
