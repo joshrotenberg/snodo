@@ -147,6 +147,20 @@ defmodule Snodo.TasksLimitsTest do
     assert :sys.get_state(runner).jobs == %{}
   end
 
+  test "a finished job's max_runtime timer is cancelled" do
+    %{runtime: runtime, runner: runner} = start_tasks(runner: [max_runtime_ms: 3_600_000])
+    {task_id, worker} = create_blocking!(runtime, "timer")
+
+    %{runtime_timer: timer} = :sys.get_state(runner).jobs[task_id]
+    assert is_integer(:erlang.read_timer(timer))
+
+    send(worker, {:tasks_release, "timer"})
+    TasksSupport.eventually_get(runtime, task_id, &completed?/1)
+
+    assert :sys.get_state(runner).jobs == %{}
+    refute :erlang.read_timer(timer)
+  end
+
   test "creation over max_active_tasks_per_scope is refused for that scope only" do
     %{runtime: runtime} = start_tasks(store: [max_active_tasks_per_scope: 2])
     alice = [auth: %{"tenant" => "alice"}]
