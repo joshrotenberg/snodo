@@ -81,9 +81,10 @@ defmodule Snodo.Transport.StreamableHTTP do
              base_policy
            ),
          :ok <- validate_policy(request, raw, policy, envelope.id),
-         tool_mirrors = tool_parameter_mirrors(policy, runtime, envelope),
+         {tool_mirrors, tool_authorization} =
+           tool_parameter_mirrors(policy, runtime, protocol.version(), envelope),
          {:ok, deferred} <-
-           validate_tool_mirrors(request, raw, tool_mirrors, runtime, envelope.id) do
+           validate_tool_mirrors(request, raw, tool_mirrors, tool_authorization, envelope.id) do
       {:ok,
        %Prepared{
          raw: raw,
@@ -91,7 +92,8 @@ defmodule Snodo.Transport.StreamableHTTP do
          protocol: protocol,
          kind: envelope.kind,
          policy: %{policy | mirrored_headers: Map.merge(policy.mirrored_headers, tool_mirrors)},
-         deferred_error: deferred
+         deferred_error: deferred,
+         deferred_authorization: tool_authorization
        }}
     else
       :response_object ->
@@ -303,55 +305,107 @@ defmodule Snodo.Transport.StreamableHTTP do
     end
   end
 
+  # The version header is checked before any dialect's header rules apply. A
+  # header that disagrees with the body's version is -32020. One that names a
+  # version the runtime does not enable is -32022, so a client can tell it
+  # should change versions. An enabled header that no single dialect accepts
+  # also disagrees with the body.
   defp select_protocol(%Runtime{} = runtime, %Envelope{} = envelope) do
-    case Registry.select(runtime.protocol_registry, envelope) do
-      {:ok, protocol} ->
-        {:ok, protocol}
+    requested = TransportContext.get_header(envelope.transport.request_headers, @protocol_header)
+    body_version = body_version(envelope)
 
-      {:error, selection_error} ->
-        requested =
-          TransportContext.get_header(envelope.transport.request_headers, @protocol_header)
+    with :ok <- check_version_header(runtime, requested, body_version, envelope.id) do
+      case Registry.select(runtime.protocol_registry, envelope) do
+        {:ok, protocol} ->
+          {:ok, protocol}
 
-        if is_binary(requested) do
-          {:http_error, 400, unsupported_version(runtime, requested), envelope.id}
-        else
+        {:error, _selection_error} when is_binary(requested) ->
+          {:http_error, 400, version_mismatch(requested, body_version), envelope.id}
+
+        {:error, selection_error} ->
           {:http_error, 400, selection_error, envelope.id}
-        end
+      end
     end
   end
 
-  # Mirrors for the `x-mcp-header` arguments of the called tool. An unknown
-  # tool adds none; dispatch reports it.
+  defp check_version_header(_runtime, nil, _body_version, _id), do: :ok
+
+  defp check_version_header(_runtime, requested, body_version, id)
+       when is_binary(body_version) and requested != body_version,
+       do: {:http_error, 400, version_mismatch(requested, body_version), id}
+
+  defp check_version_header(runtime, requested, _body_version, id) do
+    if requested in Registry.versions(runtime.protocol_registry),
+      do: :ok,
+      else: {:http_error, 400, unsupported_version(runtime, requested), id}
+  end
+
+  defp body_version(%Envelope{
+         params: %{"_meta" => %{"io.modelcontextprotocol/protocolVersion" => version}}
+       }),
+       do: version
+
+  defp body_version(%Envelope{}), do: nil
+
+  defp version_mismatch(header_version, body_version) do
+    %Error{
+      code: -32_020,
+      message: "Protocol header does not match request metadata",
+      kind: :protocol,
+      data: %{"header" => header_version, "body" => body_version}
+    }
+  end
+
+  # Mirrors for the `x-mcp-header` arguments of the called tool, with the
+  # authorization policy that decides its visibility. A tool outside the router
+  # may come from an extension that serves it. An unknown tool adds none;
+  # dispatch reports it.
   defp tool_parameter_mirrors(
          %Policy{tool_parameter_headers?: true},
-         %Runtime{router: router},
+         %Runtime{} = runtime,
+         version,
          %Envelope{params: %{"name" => name}}
        )
        when is_binary(name) do
-    with {:ok, tool} <- Map.fetch(router.tools, name),
-         {:ok, [_first | _rest] = annotations} <-
-           ParamHeaders.annotations(Tool.definition(tool).input_schema) do
-      ParamHeaders.mirrors(annotations)
+    with {:ok, schema, authorization} <- tool_input_schema(runtime, version, name),
+         {:ok, [_first | _rest] = annotations} <- ParamHeaders.annotations(schema) do
+      {ParamHeaders.mirrors(annotations), authorization}
     else
-      _none -> %{}
+      _none -> {%{}, runtime.authorization}
     end
   end
 
-  defp tool_parameter_mirrors(_policy, _runtime, _envelope), do: %{}
+  defp tool_parameter_mirrors(_policy, runtime, _version, _envelope),
+    do: {%{}, runtime.authorization}
+
+  defp tool_input_schema(%Runtime{} = runtime, version, name) do
+    case Map.fetch(runtime.router.tools, name) do
+      {:ok, tool} ->
+        {:ok, Tool.definition(tool).input_schema, runtime.authorization}
+
+      :error ->
+        ExtensionRegistry.tool_input_schema(
+          runtime.extension_registry,
+          version,
+          name,
+          runtime.capabilities
+        )
+    end
+  end
 
   # A tool parameter header names an argument of one specific tool, so its
   # failure would reveal a tool the policy conceals. That failure waits for
   # execute/3, where the caller's identity is known.
-  defp validate_tool_mirrors(_request, _raw, mirrors, _runtime, _id) when mirrors == %{},
+  defp validate_tool_mirrors(_request, _raw, mirrors, _authorization, _id) when mirrors == %{},
     do: {:ok, nil}
 
-  defp validate_tool_mirrors(request, raw, mirrors, runtime, id) do
+  defp validate_tool_mirrors(request, raw, mirrors, authorization, id) do
     case validate_mirrors(request.headers, raw, mirrors, id) do
       :ok ->
         {:ok, nil}
 
       {:http_error, _status, _error, _id} = failure ->
-        if Authorization.conceal?(runtime.authorization), do: {:ok, failure}, else: failure
+        if Authorization.conceal?(authorization), do: {:ok, failure}, else: failure
     end
   end
 
@@ -366,7 +420,7 @@ defmodule Snodo.Transport.StreamableHTTP do
          {:ok, context} <- protocol.build_context(envelope, runtime) do
       component = %Authorization.Component{kind: :tool, name: name}
 
-      case Authorization.decide(runtime.authorization, :invocation, component, context) do
+      case Authorization.decide(prepared.deferred_authorization, :invocation, component, context) do
         :ok ->
           error_response(status, error, id)
 
@@ -471,10 +525,12 @@ defmodule Snodo.Transport.StreamableHTTP do
 
   # A plain value may carry only visible ASCII, space, and tab; anything else
   # must arrive base64-encoded.
+  # The prefix and suffix overlap in "=?base64?=", so an encoded value is at
+  # least 11 bytes; a shorter one that has both is malformed.
   defp decode_header_value(value, :base64_sentinel) do
     cond do
       String.starts_with?(value, "=?base64?") and String.ends_with?(value, "?=") ->
-        decode_base64_sentinel(value)
+        if byte_size(value) >= 11, do: decode_base64_sentinel(value), else: :error
 
       Enum.all?(:binary.bin_to_list(value), &(&1 == 0x09 or &1 in 0x20..0x7E)) ->
         {:ok, value}
@@ -486,7 +542,7 @@ defmodule Snodo.Transport.StreamableHTTP do
 
   defp decode_base64_sentinel(value) do
     encoded_size = byte_size(value) - byte_size("=?base64?") - byte_size("?=")
-    payload = String.slice(value, byte_size("=?base64?"), encoded_size)
+    payload = binary_part(value, byte_size("=?base64?"), encoded_size)
 
     case Base.decode64(payload) do
       {:ok, decoded} -> validate_utf8_header(decoded)

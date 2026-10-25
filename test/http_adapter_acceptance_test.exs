@@ -115,6 +115,7 @@ defmodule Snodo.Transport.StreamableHTTP.AdapterAcceptanceTest do
             [{"Mcp-Param-Region", "Goodbye"}],
             [{"Mcp-Param-Region", "=?base64?SGVsbG8?="}],
             [{"Mcp-Param-Region", "=?base64?SGVs!!!bG8=?="}],
+            [{"Mcp-Param-Region", "=?base64?="}],
             [{"Mcp-Param-Region", "Hello"}, {"Mcp-Param-Region", "Hello"}]
           ] do
         assert {400, %{"error" => %{"code" => -32_020}}} =
@@ -123,6 +124,10 @@ defmodule Snodo.Transport.StreamableHTTP.AdapterAcceptanceTest do
 
       assert {400, %{"error" => %{"code" => -32_020}}} =
                routed(runtime, %{"region" => "Héllo"}, [{"Mcp-Param-Region", "Héllo"}])
+
+      # The shortest encoded value carries an empty string.
+      assert {200, %{"result" => _result}} =
+               routed(runtime, %{"region" => ""}, [{"Mcp-Param-Region", "=?base64??="}])
 
       assert {400, %{"error" => %{"code" => -32_020}}} =
                routed(runtime, %{"region" => "a", "verbose" => true}, [
