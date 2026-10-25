@@ -106,6 +106,35 @@ defmodule Snodo.GenServerToolTest do
       encode_reply: fn count -> %{"value" => count} end
     )
 
+    # Only a caller whose auth names a limit may add, and only up to it.
+    genserver_call("counter_add_limited",
+      target: Counter,
+      input_schema: %{
+        "type" => "object",
+        "properties" => %{"by" => %{"type" => "integer"}},
+        "required" => ["by"],
+        "additionalProperties" => false
+      },
+      message: fn %{"by" => by}, context ->
+        case context.auth do
+          %{limit: limit} when by <= limit -> {:add, by}
+          _other -> {:error, Snodo.Error.authorization(-32_003, "Over the caller's limit")}
+        end
+      end,
+      encode_reply: fn count -> %{"value" => count} end
+    )
+
+    genserver_cast("counter_cast_limited",
+      target: Counter,
+      input_schema: %{
+        "type" => "object",
+        "properties" => %{"by" => %{"type" => "integer"}},
+        "required" => ["by"],
+        "additionalProperties" => false
+      },
+      message: fn %{"by" => by}, %{auth: %{limit: limit}} when by <= limit -> {:add, by} end
+    )
+
     genserver_cast("counter_cast_add",
       target: Counter,
       input_schema: %{
@@ -205,6 +234,35 @@ defmodule Snodo.GenServerToolTest do
       end
       ''')
     end
+  end
+
+  test "a two-argument builder reads the request context and can refuse" do
+    {:ok, limited} = Client.direct(Server.runtime(), auth: %{limit: 5})
+    {:ok, anonymous} = Client.direct(Server.runtime())
+
+    assert {:ok, %{"structuredContent" => %{"value" => 4}}} =
+             Client.call_tool(limited, "counter_add_limited", %{"by" => 4})
+
+    assert {:error, %Snodo.Error{code: -32_003, message: "Over the caller's limit"}} =
+             Client.call_tool(limited, "counter_add_limited", %{"by" => 6})
+
+    assert {:error, %Snodo.Error{code: -32_003}} =
+             Client.call_tool(anonymous, "counter_add_limited", %{"by" => 1})
+
+    # The refused calls sent nothing.
+    assert {:ok, %{"structuredContent" => %{"value" => 4}}} =
+             Client.call_tool(limited, "counter_get")
+
+    assert {:ok, %{"structuredContent" => %{"sent" => true}}} =
+             Client.call_tool(limited, "counter_cast_limited", %{"by" => 2})
+
+    assert_receive {:cast_applied, 2}, 1_000
+
+    # A builder that raises is a tool error, as before.
+    assert {:ok, %{"isError" => true}} =
+             Client.call_tool(anonymous, "counter_cast_limited", %{"by" => 2})
+
+    refute_receive {:cast_applied, _by}, 100
   end
 
   test "casts acknowledge sending without claiming processing", %{client: client} do
