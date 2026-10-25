@@ -18,8 +18,23 @@ defmodule Snodo.Tool.GenServer do
           encode_reply: fn count -> %{"value" => count} end
       end
 
-  `:message` may be a fixed term or a one-argument function receiving the
-  validated string-keyed input map. Calls require `:encode_reply`, a one-argument
+  `:message` may be a fixed term, a one-argument function receiving the
+  validated string-keyed input map, or a two-argument function receiving that
+  map and the request's `Snodo.Context`. The context carries the caller's
+  `auth`, so a builder can decide by argument value as well as by tool:
+
+      genserver_call "peer_send",
+        target: Mesh,
+        input_schema: %{...},
+        message: fn %{"peer" => peer} = args, context ->
+          if peer in allowed_peers(context.auth),
+            do: {:send, peer, args["body"]},
+            else: {:error, Snodo.Error.authorization(-32_003, "Peer not allowed")}
+        end,
+        encode_reply: &%{"result" => &1}
+
+  A builder function that returns `{:error, %Snodo.Error{}}` sends nothing,
+  and the request fails with that error. Calls require `:encode_reply`, a one-argument
   function that returns a JSON object. `:timeout` defaults to 5,000 milliseconds
   and must be a positive integer. Failed validation, message construction,
   unavailable targets, timeouts, and non-JSON replies become tool error results.
@@ -134,14 +149,15 @@ defmodule Snodo.Tool.GenServer do
       output_schema(unquote(output_schema))
 
       @impl Snodo.Tool
-      def call(arguments, _context) do
+      def call(arguments, context) do
         Snodo.Tool.GenServer.invoke_call(
           unquote(target),
           unquote(message),
           unquote(encoder),
           unquote(timeout),
           input_schema(),
-          arguments
+          arguments,
+          context
         )
       end
     end
@@ -150,12 +166,13 @@ defmodule Snodo.Tool.GenServer do
   defp generated_body(:cast, target, message, _opts) do
     quote do
       @impl Snodo.Tool
-      def call(arguments, _context) do
+      def call(arguments, context) do
         Snodo.Tool.GenServer.invoke_cast(
           unquote(target),
           unquote(message),
           input_schema(),
-          arguments
+          arguments,
+          context
         )
       end
     end
@@ -255,24 +272,26 @@ defmodule Snodo.Tool.GenServer do
   end
 
   @doc false
-  def invoke_call(target, message, encoder, timeout, schema, arguments) do
+  def invoke_call(target, message, encoder, timeout, schema, arguments, context) do
     with :ok <- validate_arguments(arguments, schema),
-         {:ok, built} <- build_message(message, arguments),
+         {:ok, built} <- build_message(message, arguments, context),
          {:ok, reply} <- safe_call(target, built, timeout) do
       encode_reply(encoder, reply)
     else
+      {:refused, %Snodo.Error{} = error} -> {:error, error}
       {:error, result} -> {:ok, result}
     end
   end
 
   @doc false
-  def invoke_cast(target, message, schema, arguments) do
+  def invoke_cast(target, message, schema, arguments, context) do
     with :ok <- validate_arguments(arguments, schema),
-         {:ok, built} <- build_message(message, arguments),
+         {:ok, built} <- build_message(message, arguments, context),
          :ok <- available_target(target) do
       :ok = GenServer.cast(target, built)
       {:ok, Result.structured(%{"sent" => true})}
     else
+      {:refused, %Snodo.Error{} = error} -> {:error, error}
       {:error, result} -> {:ok, result}
     end
   end
@@ -294,8 +313,21 @@ defmodule Snodo.Tool.GenServer do
     end
   end
 
-  defp build_message(builder, arguments) do
-    {:ok, if(is_function(builder, 1), do: builder.(arguments), else: builder)}
+  # A builder function refuses the request by returning a Snodo.Error; a fixed
+  # term is always sent as it is.
+  defp build_message(builder, arguments, context) do
+    built =
+      cond do
+        is_function(builder, 2) -> builder.(arguments, context)
+        is_function(builder, 1) -> builder.(arguments)
+        true -> {:fixed, builder}
+      end
+
+    case built do
+      {:fixed, message} -> {:ok, message}
+      {:error, %Snodo.Error{} = error} -> {:refused, error}
+      message -> {:ok, message}
+    end
   rescue
     _error -> {:error, Result.error("Could not build GenServer message")}
   catch
