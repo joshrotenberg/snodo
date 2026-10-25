@@ -79,6 +79,7 @@ test("canary covers every current lane against both runners with isolated issue 
   assert.equal(report.if, "always() && !cancelled()");
   assert.equal(workflow.concurrency["cancel-in-progress"], false);
   assert.equal(canary["continue-on-error"], undefined);
+  assert.equal(canary.steps.find((step) => step.id === "run").shell, "bash");
   assert.equal(canary.steps.find((step) => step.id === "run")["continue-on-error"], undefined);
 });
 

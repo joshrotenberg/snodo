@@ -87,6 +87,7 @@ jobs:
           echo "Upstream main is at $(git rev-parse --short HEAD)." >> "$GITHUB_STEP_SUMMARY"
       - name: Run the lane
         id: run
+        shell: bash
         working-directory: conformance
         run: node run.mjs "$LANE" 2>&1 | tee "$MCP_CONFORMANCE_OUTPUT/../lane.log"
       - name: Summarize differences or execution errors
