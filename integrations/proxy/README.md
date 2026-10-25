@@ -104,7 +104,13 @@ connection so log messages stay with their request. Waiting requests acquire
 the connection in FIFO order as soon as the previous caller releases it.
 Health probes and catalog refreshes join this queue only when the backend's
 `client_options:` includes `on_log:`. Otherwise they run concurrently and cannot
-capture forwarded logs. Direct and HTTP backend requests can run concurrently.
+capture forwarded logs. While a background request waits, the backend process
+also defers handling catalog refresh messages. A health probe whose queue wait
+expires treats the connection as busy and schedules another probe without
+closing it. A background catalog refresh whose queue wait expires keeps the
+last snapshot without marking the backend degraded. Explicit refresh requests
+still return the queue timeout error. Direct and HTTP backend requests can run
+concurrently.
 
 The stdio queue wait is bounded to 30,000 ms. Expiry returns a -32603 error
 with `data.reason` set to `"stdio_queue_timeout"` without sending the request
