@@ -4,6 +4,7 @@ defmodule Snodo.Proxy.Backend do
   use GenServer, restart: :temporary
 
   alias Snodo.Client
+  alias Snodo.Client.Stdio
   alias Snodo.Client.Subscription
   alias Snodo.Server.Runtime
 
@@ -23,6 +24,16 @@ defmodule Snodo.Proxy.Backend do
 
   @doc false
   def refresh(pid, ref), do: GenServer.cast(pid, {:refresh, ref})
+
+  # Stdio log messages have no request ID. Keep finite requests on that
+  # connection mutually exclusive, including probes and catalog refreshes.
+  # The function runs in its caller so logging retains the handler's context.
+  @doc false
+  def request(%Client{transport: {Stdio, pid}}, fun) do
+    :global.trans({{__MODULE__, pid}, self()}, fun, [node()])
+  end
+
+  def request(%Client{}, fun), do: fun.()
 
   @impl true
   def init(opts) do
@@ -182,7 +193,9 @@ defmodule Snodo.Proxy.Backend do
     end
   end
 
-  defp fetch_catalog(client) do
+  defp fetch_catalog(client), do: request(client, fn -> do_fetch_catalog(client) end)
+
+  defp do_fetch_catalog(client) do
     with {:ok, tools} <- optional_list(Client.list_tools(client)),
          {:ok, resources} <- optional_list(Client.list_resources(client)),
          {:ok, resource_templates} <- optional_list(Client.list_resource_templates(client)),
@@ -201,14 +214,16 @@ defmodule Snodo.Proxy.Backend do
   defp optional_list({:error, %{code: -32_601}}), do: {:ok, []}
   defp optional_list({:error, error}), do: {:error, error}
 
-  defp probe_client(%Client{protocol: "2026-07-28"} = client) do
+  defp probe_client(client), do: request(client, fn -> do_probe_client(client) end)
+
+  defp do_probe_client(%Client{protocol: "2026-07-28"} = client) do
     case Client.discover(client, timeout: 5_000) do
       {:ok, _discovery} -> :ok
       {:error, error} -> {:error, error}
     end
   end
 
-  defp probe_client(client) do
+  defp do_probe_client(client) do
     case Client.request(client, "ping", %{}, timeout: 5_000) do
       {:ok, _result} -> :ok
       {:error, error} -> {:error, error}

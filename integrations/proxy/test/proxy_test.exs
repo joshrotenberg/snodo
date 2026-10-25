@@ -379,6 +379,78 @@ defmodule Snodo.ProxyTest do
     refute_received {:snodo_log, _params}
   end
 
+  for second_level <- [:error, nil] do
+    @tag second_level: second_level
+    test "concurrent stdio requests retain their own log context with #{inspect(second_level)}",
+         %{second_level: second_level} do
+      {:ok, barrier} = :gen_tcp.listen(0, [:binary, active: false, ip: {127, 0, 0, 1}])
+      on_exit(fn -> :gen_tcp.close(barrier) end)
+      {:ok, port} = :inet.port(barrier)
+
+      elixir = System.find_executable("elixir")
+      snodo_ebin = Path.expand("../../snodo/ebin", Mix.Project.compile_path())
+      fixture = Path.expand("../fixtures/stdio_logging_backend.exs", __DIR__)
+
+      proxy =
+        start_supervised!(
+          {Proxy,
+           backends: [[id: "stdio", target: {:stdio, elixir, ["-pa", snodo_ebin, fixture]}]]}
+        )
+
+      {:ok, client} = Client.direct(Proxy.runtime(proxy))
+      parent = self()
+
+      first =
+        Task.async(fn ->
+          Client.call_tool(
+            client,
+            "stdio.log",
+            %{"port" => port, "name" => "first", "level" => "emergency"},
+            log_level: :emergency,
+            on_log: &send(parent, {:first_log, &1})
+          )
+        end)
+
+      assert {:ok, first_socket} = :gen_tcp.accept(barrier, 5_000)
+      assert {:ok, "first"} = :gen_tcp.recv(first_socket, 5, 1_000)
+
+      second =
+        Task.async(fn ->
+          send(parent, :second_started)
+
+          Client.call_tool(
+            client,
+            "stdio.log",
+            %{"port" => port, "name" => "second", "level" => "error"},
+            log_level: second_level,
+            on_log: &send(parent, {:second_log, &1})
+          )
+        end)
+
+      assert_receive :second_started
+      # The second handler must not enter the backend while the first owns it.
+      assert {:error, :timeout} = :gen_tcp.accept(barrier, 200)
+      assert :ok = :gen_tcp.send(first_socket, "release")
+      assert :ok = :gen_tcp.close(first_socket)
+      assert {:ok, %{"content" => [%{"text" => "first"}]}} = Task.await(first, 5_000)
+      assert_received {:first_log, %{"level" => "emergency", "data" => "first"}}
+
+      assert {:ok, second_socket} = :gen_tcp.accept(barrier, 5_000)
+      assert {:ok, "second"} = :gen_tcp.recv(second_socket, 6, 1_000)
+      assert :ok = :gen_tcp.send(second_socket, "release")
+      assert :ok = :gen_tcp.close(second_socket)
+      assert {:ok, %{"content" => [%{"text" => "second"}]}} = Task.await(second, 5_000)
+
+      if second_level do
+        assert_received {:second_log,
+                         %{"level" => "error", "data" => "second", "logger" => "barrier"}}
+      end
+
+      refute_received {:first_log, _params}
+      refute_received {:second_log, _params}
+    end
+  end
+
   test "backend input requests reach a frontend caller that declared the capability" do
     proxy =
       start_supervised!(

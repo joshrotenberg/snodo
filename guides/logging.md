@@ -112,3 +112,9 @@ is logged again on the caller's request with `log/4`, so messages below the
 caller's level are dropped and a request without a level gets none. An
 initialize-era backend sets its level per connection with `logging/setLevel`,
 which the proxy does not send.
+
+The proxy serializes forwarded calls, reads, prompt requests, health probes,
+and catalog refreshes on each stdio backend connection because stdio log
+notifications carry no request ID. A queued request starts its backend timeout
+when it acquires the connection. Direct and HTTP backends can handle concurrent
+requests.

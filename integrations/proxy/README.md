@@ -99,6 +99,11 @@ each update is delivered. Authorization also filters discovery and checks
 calls, reads, and gets. The backend's own policy still applies when a request
 is forwarded.
 
+Stdio backend calls, reads, prompt requests, health probes, and catalog
+refreshes run one at a time per connection so log messages stay with their
+request. A queued request starts its backend timeout when it acquires the
+connection. Direct and HTTP backend requests can run concurrently.
+
 ## Limits and errors
 
 `max_backends:` defaults to 32 and `max_catalog_items:` to 1,000 across all
