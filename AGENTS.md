@@ -50,7 +50,7 @@ Run all of these before every push. CI runs the same commands.
 
 ```sh
 mix quality                                    # format, compile with warnings as errors, credo --strict, tests, contract, examples, every sibling
-MIX_ENV=test mix quality.types                 # Dialyzer across all nine packages
+mix quality.types                              # Dialyzer across all nine packages
 MIX_ENV=dev mix docs --warnings-as-errors      # documentation build
 mix compile && (cd integrations/oauth && mix compile) && (cd interop/official_client && npm run check)   # official TypeScript client: baseline, MRTR, progress, OAuth resource server
 mix compile && (cd interop/official_python && uv run --frozen python check.py) # official Python client

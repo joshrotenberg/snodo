@@ -1,8 +1,8 @@
-# Recommended application stack
+# Choosing packages for an application
 
 The current application target is MCP **2026-07-28**, using the official
 TypeScript client **2.1.0** as the interoperability baseline. This is a
-tested slice of the protocol, not a full-conformance or all-host compatibility claim.
+tested subset of the protocol, not a full-conformance or all-host compatibility claim.
 
 ## Compose the pieces your application needs
 
@@ -66,7 +66,7 @@ Native HTTP and Plug switch to request-scoped SSE only when a progress update is
 written. After HTTP 200/SSE begins, a later typed error is the terminal JSON-RPC
 error in that stream, not another HTTP status. With no emitted progress, ordinary
 JSON response behavior is unchanged. Cancellation/deadline/disconnect cleanup
-closes the sink. General incremental content streaming is outside this slice.
+closes the sink. General incremental content streaming is not implemented.
 
 Portable Plug cannot immediately detect a silent client's disconnect before the
 first write. Keep finite request and socket-write deadlines; streaming keepalive

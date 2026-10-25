@@ -41,8 +41,9 @@ Every call returns one of:
 Decoded JSON-RPC errors keep the server's `code`, `message`, and `data`.
 Connection failures have `kind: :transport`: -32000 for a closed, unreachable,
 or unusable connection and -32001 for a timeout, the codes the official
-TypeScript SDK uses. Each request can set `timeout:` (the default is 30 seconds,
-or the client's `:timeout` option).
+TypeScript SDK uses. Each request can set `timeout:`. On stdio and HTTP
+clients the default is 30 seconds, or the client's `:timeout` option; a direct
+client has no timeout.
 
 Request IDs are fresh integers, so one client can be shared by many processes.
 
@@ -204,7 +205,7 @@ Snodo.Client.call_tool(client, "deploy", %{},
 )
 ```
 
-See [Interactive operations](interactive-operations.md) for the server side.
+See [Asking the client for input](interactive-operations.md) for the server side.
 
 ### Input handlers
 
@@ -222,7 +223,7 @@ result the kind expects, or `{:error, reason}`.
 
 SEP-2577 deprecates the server-initiated sampling and roots requests in
 2026-07-28; the protocol still defines them, and servers built on this library
-can send them (see [Interactive operations](interactive-operations.md)). A
+can send them (see [Asking the client for input](interactive-operations.md)). A
 `:sampling` handler that accepts `"tools"` and `"toolChoice"`, or an
 `"includeContext"` other than `"none"`, declares `"sampling" => %{"tools" =>
 %{}}` or `%{"context" => %{}}` in `:client_capabilities`; the client does not
