@@ -8,12 +8,13 @@ The unmodified official TypeScript client (`@modelcontextprotocol/client`, versi
 
 ```sh
 mix compile
+(cd integrations/oauth && mix compile)
 cd interop/official_client
 npm ci --ignore-scripts
-npm run check             # check.mjs, check_mrtr.mjs, check_progress.mjs
+npm run check             # check.mjs, check_mrtr.mjs, check_progress.mjs, check_oauth.mjs
 ```
 
-The `*_fixture.exs` files are the servers under test. A change to wire shapes, transports, MRTR, or progress should keep all three scripts passing. `check_hexpm.mjs` exercises a separate consumer and is not part of `npm run check`.
+The `*_fixture.exs` files are the servers under test. A change to wire shapes, transports, MRTR, progress, or the snodo_oauth resource server should keep all four scripts passing. `oauth_fixture.exs` loads the code compiled in `integrations/oauth` (`MIX_BUILD_PATH` or `SNODO_OAUTH_BUILD` override the build directory). `check_hexpm.mjs` exercises a separate consumer and is not part of `npm run check`.
 
 ## official_python
 

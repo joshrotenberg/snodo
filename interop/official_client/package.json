@@ -2,10 +2,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "npm run check:baseline && npm run check:mrtr && npm run check:progress",
+    "check": "npm run check:baseline && npm run check:mrtr && npm run check:progress && npm run check:oauth",
     "check:baseline": "node check.mjs",
     "check:mrtr": "node check_mrtr.mjs",
     "check:progress": "node check_progress.mjs",
+    "check:oauth": "node check_oauth.mjs",
     "check:hexpm": "node check_hexpm.mjs"
   },
   "dependencies": {

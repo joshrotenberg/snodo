@@ -33,7 +33,9 @@ and the workflow uses the Erlang Ecosystem Foundation's
 ## Independent protocol and client lanes
 
 The current BEAM lane also runs the lockfile-pinned official TypeScript client
-2.1.0 baseline, MRTR, and progress checks over stdio and native HTTP. Progress
+2.1.0 baseline, MRTR, and progress checks over stdio and native HTTP, and the
+OAuth check against a server protected by `snodo_oauth` over the native listener
+and `snodo_plug`. Progress
 wire correctness and the SDK's callback scheduling limitation are recorded
 [separately](https://github.com/joshrotenberg/snodo/blob/main/interop/official_client/PROGRESS.md).
 
