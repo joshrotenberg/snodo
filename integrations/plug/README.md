@@ -1,4 +1,4 @@
-# Optional Plug / Bandit application stack
+# snodo_plug: Plug and Bandit transport
 
 `snodo_plug` translates `Plug.Conn` through the existing protocol-first
 `Snodo.Transport.StreamableHTTP` adapter. It adds Plug as a dependency to this
@@ -180,7 +180,7 @@ instead. Detection still depends on the HTTP adapter and operating system
 reporting a failed write. This package does not access Bandit socket internals
 or claim the native listener's immediate read-side disconnect cancellation.
 A cancelled request is answered with 204, as the native listener does. General
-content streaming beyond progress is not implemented by this slice.
+content streaming beyond progress is not implemented.
 
 Source `open/3` and `close/3` must be prompt and resource-safe, as required by the
 core source contract. External work must still implement its own timeouts and

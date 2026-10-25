@@ -15,7 +15,7 @@ Closes #
 ## Gates
 
 - [ ] `mix quality`
-- [ ] `MIX_ENV=test mix quality.types`
+- [ ] `mix quality.types`
 - [ ] `MIX_ENV=dev mix docs --warnings-as-errors`
 - [ ] `mix compile && (cd interop/official_client && npm run check)`
 - [ ] Transport or wire changes: conformance lanes and `interop/schema_validation` (see `conformance/AGENTS.md`, `interop/AGENTS.md`)

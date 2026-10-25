@@ -128,10 +128,15 @@ jobs:
           mix local.rebar --force
           mix deps.get
           mix compile --warnings-as-errors
+      - name: Build snodo_oauth for the resource server fixture
+        working-directory: integrations/oauth
+        run: |
+          mix deps.get
+          mix compile --warnings-as-errors
       - name: Install pinned official client
         working-directory: interop/official_client
         run: npm ci --ignore-scripts
-      - name: Run baseline, MRTR, and progress acceptance
+      - name: Run baseline, MRTR, progress, and OAuth resource server acceptance
         working-directory: interop/official_client
         shell: bash
         run: npm run check 2>&1 | tee official-client.log
@@ -157,7 +162,7 @@ jobs:
         with:
           elixir-version: "1.20"
           otp-version: "29"
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.13.0"
       - name: Build framework public APIs

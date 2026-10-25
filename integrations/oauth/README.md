@@ -108,7 +108,7 @@ children = [
   {Snodo.Server.Executor, name: MyApp.SnodoExecutor, max_concurrency: 32, max_queue: 128},
   {Bandit,
    plug: {MyApp.MCPEndpoint, runtime: MyApp.MCPServer.runtime(), executor: MyApp.SnodoExecutor},
-   ip: {0, 0, 0, 0},
+   ip: {127, 0, 0, 1},
    port: 4000,
    thousand_island_options: [transport_options: [send_timeout: 5_000, send_timeout_close: true]]}
 ]
@@ -117,6 +117,11 @@ children = [
 Each plug halts the connection it answers, and each `call/2` passes a halted
 connection through, so the chain needs no `Plug.Builder`. The transport
 options are the ones `snodo_plug` documents.
+
+The example binds to loopback because requests carry bearer tokens over plain
+HTTP. Before binding a public interface, put the listener behind a TLS reverse
+proxy or configure Bandit with TLS. [Transports](https://hexdocs.pm/snodo/transports.html)
+gives the same advice for the native listener.
 
 ## Native listener
 
@@ -374,7 +379,7 @@ are kept in the token store and never logged or placed in an error.
 
 Against the official conformance runner's client scenarios, every required
 `auth/*` scenario passes with this client as the token provider; see the
-[conformance workspace](../../conformance/README.md#client-leg). DPoP,
+[conformance workspace](https://github.com/joshrotenberg/snodo/blob/main/conformance/README.md#client-leg). DPoP,
 enterprise-managed authorization, and workload identity federation are not
 implemented.
 
@@ -396,6 +401,14 @@ listener, the scope policy through `Snodo.Client.direct/2`, and a full
 request path through `snodo_plug` on Bandit: 401 with the metadata URL,
 403 `insufficient_scope`, `tools/list` filtered by scope, and a refused
 `tools/call`.
+
+The resource server is also checked against the pinned official TypeScript
+client, over the native listener and over `snodo_plug`: the SDK discovers the
+metadata from the challenge, completes the authorization code flow with
+dynamic registration and PKCE, and the `client_credentials` grant, against a
+loopback authorization server whose JWKS the resource server fetches. See
+`check:oauth` in the
+[official client interop](../../interop/official_client/README.md).
 
 The client is tested through `Snodo.Client` against fake authorization and
 resource servers on loopback Bandit listeners shaped like the conformance

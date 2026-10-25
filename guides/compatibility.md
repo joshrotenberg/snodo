@@ -34,7 +34,8 @@ and the workflow uses the Erlang Ecosystem Foundation's
 
 [`compatibility.yml`](https://github.com/joshrotenberg/snodo/blob/main/.github/workflows/compatibility.yml)
 runs the lockfile-pinned official TypeScript client baseline, MRTR, and progress
-checks over stdio and native HTTP. The client version is pinned in
+checks over stdio and native HTTP, and the OAuth check against a server protected
+by `snodo_oauth` over the native listener and `snodo_plug`. The client version is pinned in
 [`interop/official_client/package.json`](https://github.com/joshrotenberg/snodo/blob/main/interop/official_client/package.json).
 Progress wire correctness and the SDK's callback scheduling limitation are recorded
 [separately](https://github.com/joshrotenberg/snodo/blob/main/interop/official_client/PROGRESS.md).

@@ -55,7 +55,7 @@ Run the same checks CI runs:
 
 ```sh
 mix quality
-MIX_ENV=test mix quality.types
+mix quality.types
 MIX_ENV=dev mix docs --warnings-as-errors
 mix compile && (cd interop/official_client && npm run check)
 mix compile && (cd interop/official_python && uv run --frozen python check.py)

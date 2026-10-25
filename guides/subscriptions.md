@@ -162,8 +162,9 @@ cancellation.
 `Snodo.Client.listen/3` opens a stream over the direct client, stdio, and
 HTTP. It returns a `Snodo.Client.Subscription` once the acknowledgement
 arrives, with the filter the server accepted, and delivers each event to the
-owning process as a `{:notification, method, params}` message on demand, with
-a bounded buffer in between. See [The client](client.md#subscriptions).
+owning process as a `{:snodo_subscription, ref, payload}` message on demand,
+with a bounded buffer in between. An event's payload is
+`{:notification, method, params}`. See [The client](client.md#subscriptions).
 
 ## Extensions
 
