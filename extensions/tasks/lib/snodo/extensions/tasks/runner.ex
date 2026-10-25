@@ -742,7 +742,8 @@ defmodule Snodo.Extensions.Tasks.Runner do
       revision: snapshot.revision,
       lease: lease,
       token: token,
-      started_at: System.monotonic_time()
+      started_at: System.monotonic_time(),
+      runtime_timer: schedule_max_runtime(state, snapshot.task.id, task.ref)
     }
 
     next = %{
@@ -752,7 +753,6 @@ defmodule Snodo.Extensions.Tasks.Runner do
     }
 
     schedule_renewal(next, snapshot.task.id, task.ref)
-    schedule_max_runtime(next, snapshot.task.id, task.ref)
 
     Instrumentation.emit(
       state.instrumentation,
@@ -883,7 +883,14 @@ defmodule Snodo.Extensions.Tasks.Runner do
     %{state | waiters: Map.delete(state.waiters, task_id)}
   end
 
+  # A finished job's max_runtime timer would otherwise stay pending for up to
+  # max_runtime_ms.
   defp remove_job(state, task_id, ref) do
+    case Map.fetch(state.jobs, task_id) do
+      {:ok, %{ref: ^ref} = job} -> cancel_timer(job.runtime_timer)
+      _missing_or_replaced -> :ok
+    end
+
     fill_slot(%{
       state
       | jobs: Map.delete(state.jobs, task_id),
@@ -1020,12 +1027,10 @@ defmodule Snodo.Extensions.Tasks.Runner do
     Process.send_after(self(), {:renew_claim, task_id, job_ref}, state.heartbeat_ms)
   end
 
-  defp schedule_max_runtime(%{max_runtime_ms: :infinity}, _task_id, _job_ref), do: :ok
+  defp schedule_max_runtime(%{max_runtime_ms: :infinity}, _task_id, _job_ref), do: nil
 
-  defp schedule_max_runtime(state, task_id, job_ref) do
-    Process.send_after(self(), {:max_runtime, task_id, job_ref}, state.max_runtime_ms)
-    :ok
-  end
+  defp schedule_max_runtime(state, task_id, job_ref),
+    do: Process.send_after(self(), {:max_runtime, task_id, job_ref}, state.max_runtime_ms)
 
   defp maybe_schedule_recovery(state, delay \\ nil)
 
