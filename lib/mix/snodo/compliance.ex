@@ -110,6 +110,9 @@ defmodule Snodo.Compliance do
   and `"officialServerConformance"` (the retained result of the official
   conformance run). `mix snodo.contract --format json` prints this map.
 
+  Unsupported method rules are listed as `method:<name>:<direction>` alongside
+  limitation names and `transport:<name>` entries in the unsupported bucket.
+
   Options:
 
     * `:internal_pass` - the internal contract IDs whose evidence passed,
@@ -124,15 +127,14 @@ defmodule Snodo.Compliance do
     summary = Keyword.get_lazy(opts, :official_summary, &latest_official_summary!/0)
     raw = summary["rawRunnerNoFailure"]
 
-    limitations = Profile.to_map(profile)["limitations"]
-    transports = Profile.to_map(profile)["transports"]
+    manifest = Profile.to_map(profile)
 
     %{
-      "protocolProfile" => Profile.to_map(profile),
+      "protocolProfile" => manifest,
       "evidence" => %{
         "internalPass" => internal_pass,
-        "unsupported" => evidence_names(limitations, transports, "unsupported"),
-        "unmeasured" => evidence_names(limitations, transports, "unmeasured"),
+        "unsupported" => evidence_names(manifest, "unsupported"),
+        "unmeasured" => evidence_names(manifest, "unmeasured"),
         "officialPass" => summary["score"]["passedScenarioIds"]
       },
       "officialServerConformance" => %{
@@ -237,13 +239,20 @@ defmodule Snodo.Compliance do
     |> Enum.sort()
   end
 
-  defp evidence_names(limitations, transports, status) do
+  defp evidence_names(manifest, status) do
+    method_names =
+      for %{"name" => name, "directions" => directions, "status" => ^status} <-
+            manifest["methods"],
+          direction <- directions do
+        "method:#{name}:#{direction}"
+      end
+
     transport_names =
-      transports
+      manifest["transports"]
       |> Enum.filter(fn {_name, value} -> value == status end)
       |> Enum.map(fn {name, _status} -> "transport:#{name}" end)
 
-    (limitation_names(limitations, status) ++ transport_names)
+    (limitation_names(manifest["limitations"], status) ++ transport_names ++ method_names)
     |> Enum.sort()
   end
 
