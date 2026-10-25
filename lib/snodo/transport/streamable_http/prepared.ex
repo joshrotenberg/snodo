@@ -8,17 +8,28 @@ defmodule Snodo.Transport.StreamableHTTP.Prepared do
   alias Snodo.Transport.Policy
 
   @enforce_keys [:raw, :transport, :protocol, :kind, :policy]
-  defstruct [:raw, :transport, :protocol, :kind, :policy, :deferred_error]
+  defstruct [
+    :raw,
+    :transport,
+    :protocol,
+    :kind,
+    :policy,
+    :deferred_error,
+    :deferred_authorization
+  ]
 
-  # `deferred_error` holds a tool parameter header failure for a runtime that
-  # conceals refused components. It is answered in `execute/3`, once the
-  # caller's identity is known, so the answer cannot reveal a concealed tool.
+  # `deferred_error` holds a tool parameter header failure for a tool whose
+  # authorization policy conceals refused components. It is answered in
+  # `execute/3`, once the caller's identity is known, so the answer cannot
+  # reveal a concealed tool. `deferred_authorization` is that policy: the
+  # runtime's, or the one an extension returned with the tool's schema.
   @type t :: %__MODULE__{
           raw: map(),
           transport: TransportContext.t(),
           protocol: module(),
           kind: :request | :notification,
           policy: Policy.t(),
-          deferred_error: {:http_error, pos_integer(), Snodo.Error.t(), term()} | nil
+          deferred_error: {:http_error, pos_integer(), Snodo.Error.t(), term()} | nil,
+          deferred_authorization: Snodo.Authorization.config()
         }
 end
