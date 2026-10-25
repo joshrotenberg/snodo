@@ -24,14 +24,14 @@ defmodule Snodo.ResourceTemplateCostTest do
       end)
 
     1..@runs
-    |> Enum.map(fn _run ->
-      Enum.map(compiled, fn {template, uri} ->
-        :erlang.garbage_collect()
-        elem(:timer.tc(fn -> Template.match(template, uri) end), 0)
-      end)
-    end)
+    |> Enum.map(fn _run -> Enum.map(compiled, &time_match/1) end)
     |> Enum.zip_with(&Enum.min/1)
     |> Enum.map(&max(&1, 1))
+  end
+
+  defp time_match({template, uri}) do
+    :erlang.garbage_collect()
+    elem(:timer.tc(fn -> Template.match(template, uri) end), 0)
   end
 
   defp uri(bytes, segment),
