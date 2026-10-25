@@ -116,7 +116,7 @@ defmodule Snodo.SchemaValidatorCacheTest do
     assert :ok = Basic.validate("cache-probe-#{id}", schema)
 
     assert {:ok, %Regex{}} =
-             Cache.fetch({Basic, :pattern, pattern}, fn -> flunk("pattern was not cached") end)
+             Cache.fetch({Basic, :unicode_pattern, pattern}, fn -> flunk("pattern was not cached") end)
 
     invalid = %{"type" => "string", "pattern" => "["}
     assert {:error, %{keyword: "pattern"}} = Basic.validate("anything", invalid)
@@ -145,7 +145,7 @@ defmodule Snodo.SchemaValidatorCacheTest do
     assert {:ok, %{"content" => [%{"text" => "runtime-cache-ok"}]}} =
              Snodo.Client.call_tool(client, "cache_pattern", %{"text" => "runtime-cache-ok"})
 
-    assert :ets.lookup(Cache, {Basic, :pattern, "^runtime-cache-ok$"}) == []
+    assert :ets.lookup(Cache, {Basic, :unicode_pattern, "^runtime-cache-ok$"}) == []
   end
 
   test "a compilation error term remains the internal error cause" do
