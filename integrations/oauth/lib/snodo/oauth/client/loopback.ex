@@ -50,38 +50,46 @@ defmodule Snodo.OAuth.Client.Loopback do
 
   @doc """
   Starts a process that accepts connections until one is a `GET` for the
-  callback path, sends `{:redirect, ref, query}` to `flow`, and stops. Any
-  other request gets a 404. It gives up after `timeout` milliseconds.
+  callback path carrying `state`, sends `{:redirect, ref, query}` to `flow`,
+  and stops. A callback with another or no `state` gets a 400 and the
+  listener keeps waiting, so a stray request cannot end the authorization.
+  Any other request gets a 404 or 405. It gives up after `timeout`
+  milliseconds.
   """
-  @spec accept(t(), pid(), reference(), timeout()) :: pid()
-  def accept(listener, flow, ref, timeout) do
-    spawn_link(fn -> loop(listener, flow, ref, deadline(timeout)) end)
+  @spec accept(t(), pid(), reference(), timeout(), String.t()) :: pid()
+  def accept(listener, flow, ref, timeout, state) when is_binary(state) do
+    spawn_link(fn -> loop(listener, {flow, ref, state}, deadline(timeout)) end)
   end
 
-  defp loop(listener, flow, ref, deadline) do
+  defp loop(listener, target, deadline) do
     case :gen_tcp.accept(listener.socket, remaining(deadline)) do
       {:ok, socket} ->
-        outcome = serve(socket, listener.path, flow, ref)
+        outcome = serve(socket, listener.path, target)
         :gen_tcp.close(socket)
-        if outcome == :continue, do: loop(listener, flow, ref, deadline)
+        if outcome == :continue, do: loop(listener, target, deadline)
 
       {:error, _reason} ->
         :ok
     end
   end
 
-  defp serve(socket, path, flow, ref) do
+  defp serve(socket, path, {flow, ref, state}) do
     with {:ok, {:http_request, method, {:abs_path, target}, _version}} <-
            :gen_tcp.recv(socket, 0, @recv_timeout),
          :ok <- drain_headers(socket, 0),
          :ok <- :inet.setopts(socket, packet: :raw) do
       %URI{path: request_path, query: query} = URI.parse(target)
+      params = URI.decode_query(query || "", %{}, :www_form)
 
       cond do
-        method == :GET and request_path == path ->
-          send(flow, {:redirect, ref, URI.decode_query(query || "", %{}, :www_form)})
+        method == :GET and request_path == path and state?(params["state"], state) ->
+          send(flow, {:redirect, ref, params})
           respond(socket, "200 OK", @page)
           :done
+
+        method == :GET and request_path == path ->
+          respond(socket, "400 Bad Request", "Unknown authorization state\n")
+          :continue
 
         request_path == path ->
           respond(socket, "405 Method Not Allowed", "Method not allowed\n")
@@ -95,6 +103,12 @@ defmodule Snodo.OAuth.Client.Loopback do
       _other -> :continue
     end
   end
+
+  defp state?(received, expected)
+       when is_binary(received) and byte_size(received) == byte_size(expected),
+       do: :crypto.hash_equals(received, expected)
+
+  defp state?(_received, _expected), do: false
 
   defp drain_headers(_socket, count) when count > @header_limit, do: :error
 
