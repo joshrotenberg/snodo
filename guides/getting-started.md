@@ -183,7 +183,7 @@ The first run downloads and compiles `snodo`; later runs reuse the
 `protocols:` enables the initialize-era versions next to 2026-07-28, because
 hosts differ: some probe with 2026-07-28, others still send `initialize` with
 2025-11-25 or 2025-06-18. See
-[Initialize-era compatibility](initialize-era-clients.md).
+[Initialize-era clients](initialize-era-clients.md).
 
 In a Mix project, compile first so compiler output never reaches the host's
 stdout, then serve the module from the project directory:

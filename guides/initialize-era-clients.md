@@ -1,4 +1,4 @@
-# Initialize-era compatibility
+# Initialize-era clients
 
 The runtime remains 2026-only by default. Applications can opt into
 `Snodo.Protocol.V2025_11_25` and `Snodo.Protocol.V2025_06_18` alongside
@@ -53,7 +53,7 @@ session-manager behavior is added.
 
 Configured capabilities must be valid for every enabled profile. For a mixed
 runtime, use the implemented base tools/prompts/resources/completions capabilities;
-listChanged and subscribe remain unavailable on this legacy slice. Applications
+listChanged and subscribe remain unavailable on the initialize-era dialects. Applications
 that need latest-only subscriptions can expose a separate 2026-only runtime.
 
 ## Official conformance
@@ -61,8 +61,8 @@ that need latest-only subscriptions can expose a separate 2026-only runtime.
 The official runner's frozen 2025-11-25 requirement set runs in CI against a
 fixture with these dialects enabled: 23 of 30 required scenarios pass. The
 2025-06-18 run has no frozen set; 23 of its 27 scenarios pass. The failures are
-server-initiated sampling and elicitation and `resources/subscribe`, which this
-slice does not implement, plus a warning that no session ID is issued.
+server-initiated sampling and elicitation and `resources/subscribe`, which these
+dialects do not implement, plus a warning that no session ID is issued.
 `logging/setLevel` is implemented; see the [logging guide](logging.md). See the
 [conformance lanes](https://github.com/joshrotenberg/snodo/blob/main/conformance/README.md#additional-server-lanes).
 

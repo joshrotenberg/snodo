@@ -123,7 +123,7 @@ The same client connects to either:
 - [The client](https://hexdocs.pm/snodo/client.html)
 - [Transports](https://hexdocs.pm/snodo/transports.html)
 - [Choosing packages for an application](https://hexdocs.pm/snodo/application-stack.html)
-- [Asking the client for input (MRTR and elicitation)](https://hexdocs.pm/snodo/interactive-operations.html)
+- [Asking the client for input](https://hexdocs.pm/snodo/interactive-operations.html)
 - [Subscriptions](https://hexdocs.pm/snodo/subscriptions.html)
 - [Authorization](https://hexdocs.pm/snodo/authorization.html)
 - [Extensions and Tasks](https://hexdocs.pm/snodo/extensions.html)
