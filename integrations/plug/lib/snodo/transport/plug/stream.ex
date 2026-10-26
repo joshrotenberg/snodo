@@ -116,7 +116,10 @@ defmodule Snodo.Transport.Plug.Stream do
   # A handler started without proc_lib has no recorded parent, and then any
   # shutdown exit ends the stream rather than none. A registered parent name
   # that no longer resolves is treated the same way, since a pid that never
-  # matches would silently ignore the shutdown.
+  # matches would silently ignore the shutdown. ThousandIsland starts the
+  # handler through DynamicSupervisor.start_child/2 (connection.ex), so the
+  # first ancestor is that supervisor, which is also what sends the shutdown
+  # exit; the Bandit shutdown test guards this.
   defp parent do
     case Process.get(:"$ancestors") do
       [parent | _] when is_pid(parent) -> parent
