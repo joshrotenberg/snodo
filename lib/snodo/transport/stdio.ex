@@ -59,9 +59,13 @@ defmodule Snodo.Transport.Stdio do
   `notify/3` is synchronous and unbuffered: the caller waits for its own write,
   so at most one write is in flight and pending callers wait in the transport's
   mailbox, each bounded by its call timeout. It returns `{:error, :closed}` if
-  the connection is gone. A failed or timed-out write is terminal for the
-  connection exactly as for a response, and the caller gets
-  `{:error, {:output_failed, reason}}`. Invalid input returns
+  the connection is gone, or `{:error, {:transport_down, reason}}` if the
+  transport stopped abnormally while the call was waiting. A failed or
+  timed-out write is terminal for the connection exactly as for a response,
+  and the caller gets `{:error, {:output_failed, reason}}`. If the caller's
+  own call timeout expires first it gets `{:error, :timeout}`, but the request
+  stays in the transport's mailbox and the frame may still be written
+  afterward; treat `:timeout` as "unknown". Invalid input returns
   `{:error, %Snodo.Error{}}` and writes nothing. Delivery is a hint: nothing is
   retried or queued across a failure.
   """
@@ -141,12 +145,22 @@ defmodule Snodo.Transport.Stdio do
   See the module documentation for the failure behavior.
   """
   @spec notify(GenServer.server(), String.t(), map(), timeout()) ::
-          :ok | {:error, Error.t() | :closed | :timeout | {:output_failed, term()}}
+          :ok
+          | {:error,
+             Error.t()
+             | :closed
+             | :timeout
+             | {:output_failed, term()}
+             | {:transport_down, term()}}
   def notify(server, method, params \\ %{}, timeout \\ 10_000) do
     GenServer.call(server, {:notify, method, params}, timeout)
   catch
     :exit, {:timeout, _call} -> {:error, :timeout}
-    :exit, _reason -> {:error, :closed}
+    :exit, {:noproc, _call} -> {:error, :closed}
+    :exit, {:normal, _call} -> {:error, :closed}
+    :exit, {:shutdown, _call} -> {:error, :closed}
+    :exit, {{:shutdown, _}, _call} -> {:error, :closed}
+    :exit, {reason, _call} -> {:error, {:transport_down, reason}}
   end
 
   def child_spec(opts) do
@@ -957,6 +971,13 @@ defmodule Snodo.Transport.Stdio do
     "notifications/progress",
     "notifications/message",
     "notifications/initialized",
+    "notifications/tools/list_changed",
+    "notifications/prompts/list_changed",
+    "notifications/resources/list_changed",
+    "notifications/resources/updated",
+    "notifications/roots/list_changed",
+    "notifications/elicitation/complete",
+    "notifications/tasks/status",
     "notifications/subscriptions/acknowledged",
     "notifications/subscriptions/listen"
   ]

@@ -99,7 +99,18 @@ defmodule Snodo.Transport.StdioNotifyTest do
   test "reserved or malformed method lists are refused at startup", ctx do
     Process.flag(:trap_exit, true)
 
-    for methods <- [["notifications/progress"], ["tools/call"], "x"] do
+    reserved = [
+      "notifications/progress",
+      "notifications/tools/list_changed",
+      "notifications/prompts/list_changed",
+      "notifications/resources/list_changed",
+      "notifications/resources/updated",
+      "notifications/roots/list_changed",
+      "notifications/elicitation/complete",
+      "notifications/tasks/status"
+    ]
+
+    for methods <- Enum.map(reserved, &[&1]) ++ [["tools/call"], "x"] do
       assert {:error, _} =
                Stdio.start_link(
                  runtime: TestFixtures.runtime(),
@@ -107,6 +118,41 @@ defmodule Snodo.Transport.StdioNotifyTest do
                  output: ctx.output,
                  notification_methods: methods
                )
+    end
+  end
+
+  test "a caller timeout returns :timeout and the queued frame is still written", ctx do
+    transport = start_transport(ctx)
+    :ok = :sys.suspend(transport)
+    assert {:error, :timeout} = Stdio.notify(transport, @method, %{"n" => 1}, 20)
+    :ok = :sys.resume(transport)
+    # A synchronous call is handled after the queued notification.
+    assert :ok = Stdio.notify(transport, @method, %{"n" => 2})
+    assert [%{"params" => %{"n" => 1}}, %{"params" => %{"n" => 2}}] = frames(ctx)
+  end
+
+  test "an abnormal transport stop is not reported as a closed connection", ctx do
+    transport = start_transport(ctx)
+    :ok = :sys.suspend(transport)
+    task = Task.async(fn -> Stdio.notify(transport, @method, %{}) end)
+    ref = Process.monitor(transport)
+    await_queued_call(transport)
+    Process.exit(transport, :kill)
+    assert_receive {:DOWN, ^ref, :process, ^transport, :killed}, 1_000
+    assert {:error, {:transport_down, :killed}} = Task.await(task)
+  end
+
+  # The suspended transport holds the caller's request unread in its mailbox.
+  defp await_queued_call(transport) do
+    case Process.info(transport, :message_queue_len) do
+      {:message_queue_len, n} when n > 0 ->
+        :ok
+
+      _empty ->
+        receive do
+        after
+          1 -> await_queued_call(transport)
+        end
     end
   end
 
