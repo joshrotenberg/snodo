@@ -215,6 +215,18 @@ defmodule Snodo.Transport.PlugBanditTest do
     assert elapsed < 2_000
   end
 
+  test "an HTTP/2 body trickled in one-byte frames is ended at body_timeout" do
+    %{port: port} = server(body_timeout: 300, read_timeout: 5_000)
+    encoded = JSON.encode!(request("server/discover", %{}))
+    socket = h2_open(port, h2_headers("server/discover", byte_size(encoded)))
+    started = System.monotonic_time(:millisecond)
+
+    assert {:status, "408"} = h2_trickle_until_ended(socket, started + 3_000)
+    elapsed = System.monotonic_time(:millisecond) - started
+    assert elapsed >= 300
+    assert elapsed < 2_000
+  end
+
   test "body_timeout must be a positive integer" do
     runtime = PlugFixtures.runtime(start_supervised!(Hub))
 
@@ -1077,6 +1089,59 @@ defmodule Snodo.Transport.PlugBanditTest do
 
     socket
   end
+
+  # Sends a one-byte DATA frame every 50 ms until the server resets the stream
+  # (`:reset`), answers it (`{:status, status}`, from the first HEADERS block),
+  # or closes the connection (`:closed`); `:open` when `give_up` passes first.
+  # Received bytes accumulate in `buffer`, so a frame split across reads or
+  # coalesced with others is still seen.
+  defp h2_trickle_until_ended(socket, give_up, buffer \\ "") do
+    cond do
+      System.monotonic_time(:millisecond) > give_up ->
+        :open
+
+      match?({:error, _}, :gen_tcp.send(socket, h2_frame(:data, [], "x"))) ->
+        :closed
+
+      true ->
+        socket |> :gen_tcp.recv(0, 50) |> h2_after_wait(socket, give_up, buffer)
+    end
+  end
+
+  defp h2_after_wait({:error, :timeout}, socket, give_up, buffer),
+    do: h2_trickle_until_ended(socket, give_up, buffer)
+
+  defp h2_after_wait({:error, _closed}, _socket, _give_up, _buffer), do: :closed
+
+  defp h2_after_wait({:ok, data}, socket, give_up, buffer) do
+    case h2_scan(buffer <> data) do
+      {:more, rest} -> h2_trickle_until_ended(socket, give_up, rest)
+      ended -> ended
+    end
+  end
+
+  # Walks the complete frames in the buffer; the rest is kept for the next read.
+  defp h2_scan(<<size::24, type, _flags, _r::1, stream::31, tail::binary>> = buffer) do
+    case tail do
+      <<_payload::binary-size(^size), rest::binary>> ->
+        h2_scan_frame(stream, type, binary_part(tail, 0, size), rest)
+
+      _incomplete ->
+        {:more, buffer}
+    end
+  end
+
+  defp h2_scan(incomplete), do: {:more, incomplete}
+
+  defp h2_scan_frame(1, 3, _payload, _rest), do: :reset
+
+  defp h2_scan_frame(1, 1, payload, _rest) do
+    {:ok, decoded, _table} = HPAX.decode(payload, HPAX.new(4_096))
+    {":status", status} = List.keyfind(decoded, ":status", 0)
+    {:status, status}
+  end
+
+  defp h2_scan_frame(_stream, _type, _payload, rest), do: h2_scan(rest)
 
   @h2_default_window 65_535
 
