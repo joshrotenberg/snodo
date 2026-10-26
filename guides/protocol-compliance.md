@@ -330,7 +330,8 @@ The [managed lane](https://github.com/joshrotenberg/snodo/blob/main/conformance/
 dependency graph, verifies the frozen manifest digest, starts an ephemeral
 loopback fixture, retains raw artifacts, and applies a reviewed per-check
 [regression baseline](https://github.com/joshrotenberg/snodo/blob/main/conformance/expected-failures.json). The official runner
-exits 0 when the scored scenarios pass; any failures remain failures in the
+exits 0 when the scored scenarios pass (see the
+[honest baseline policy](https://github.com/joshrotenberg/snodo/blob/main/conformance/README.md#honest-baseline-policy)); any failures remain failures in the
 report. The baseline pins every check occurrence across the required and
 unscored scenarios:
 
