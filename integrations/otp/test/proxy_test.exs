@@ -38,16 +38,20 @@ defmodule Snodo.OTP.ProxyTest do
     assert GenServer.call(proxy, :get) == 0
     assert GenServer.call(proxy, {:add, 2}) == 2
     :ok = GenServer.cast(proxy, {:add, 3})
-    assert eventually(fn -> GenServer.call(proxy, :get) == 5 end)
+    # The proxy sends requests in order, so this call follows the cast.
+    assert GenServer.call(proxy, :get) == 5
   end
 
   test "the caller's timeout governs and a late result is dropped, proxy stays alive", %{
     proxy: proxy
   } do
     assert catch_exit(GenServer.call(proxy, {:slow, 300}, 50)) |> elem(0) == :timeout
-    Process.sleep(400)
     assert Process.alive?(proxy)
+
+    # This call goes out once the slow one's late result has arrived and been
+    # dropped.
     assert GenServer.call(proxy, :get) == 0
+    assert Process.alive?(proxy)
   end
 
   test "a remote target that is gone stops the proxy with :noproc and DOWN reaches a monitor", %{
@@ -85,19 +89,5 @@ defmodule Snodo.OTP.ProxyTest do
     {:ok, r} = Snodo.Client.call_tool(client, "counter_slow", %{"ms" => 800})
     assert r["isError"] == true
     assert [%{"text" => "GenServer call timed out"}] = r["content"]
-  end
-
-  defp eventually(fun, tries \\ 20) do
-    cond do
-      fun.() ->
-        true
-
-      tries == 0 ->
-        false
-
-      true ->
-        Process.sleep(25)
-        eventually(fun, tries - 1)
-    end
   end
 end

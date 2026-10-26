@@ -208,7 +208,8 @@ defmodule SnodoTest.OTP.FaultyContract do
   def encode_call(message), do: CounterContract.encode_call(message)
 
   @impl true
-  defdelegate encode_cast(message), to: CounterContract
+  def encode_cast(:unencodable), do: {"counter_cast_add", %{"by" => {1, 2}}}
+  def encode_cast(message), do: CounterContract.encode_cast(message)
 
   @impl true
   def decode_reply("counter_add", %{"total" => total}), do: total

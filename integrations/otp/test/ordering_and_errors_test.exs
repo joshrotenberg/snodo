@@ -41,8 +41,9 @@ defmodule Snodo.OTP.OrderingAndErrorsTest do
     assert GenServer.call(proxy, {:slow_long, 500}, :infinity) == {:error, :timeout}
     assert Process.alive?(proxy)
 
-    # The remote GenServer is still busy with that call for a while.
-    Process.sleep(500)
+    # A local call to the Recorder waits until it has finished the slow
+    # message, which the proxy gave up on.
+    assert GenServer.call(Recorder, :list) == []
     assert GenServer.call(proxy, :list) == []
   end
 

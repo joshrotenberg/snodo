@@ -35,19 +35,23 @@ defmodule Snodo.OTP.ReviewFixesTest do
   } do
     stop_supervised!(Counter)
     :ok = GenServer.cast(proxy, {:add, 1})
-    assert eventually(fn -> :sys.get_state(proxy).in_flight == nil end)
+
+    # Requests go out in order, so this call is answered only after the cast's
+    # request has finished while the target was down. It fails locally and
+    # never reaches the target.
+    assert {:error, {:request_failed, _reason}} = GenServer.call(proxy, :unencodable)
 
     start_supervised!(Counter)
     assert GenServer.call(proxy, :get) == 0
     assert Process.alive?(proxy)
   end
 
-  defp eventually(check, tries \\ 40) do
-    cond do
-      check.() -> true
-      tries == 0 -> false
-      true -> Process.sleep(25) && eventually(check, tries - 1)
-    end
+  test "a cast whose arguments cannot be encoded is dropped, and the proxy stays up", %{
+    proxy: proxy
+  } do
+    :ok = GenServer.cast(proxy, :unencodable)
+    assert GenServer.call(proxy, :get) == 0
+    assert Process.alive?(proxy)
   end
 
   test ":connect options reach Snodo.Client.connect/2", %{url: url} do
