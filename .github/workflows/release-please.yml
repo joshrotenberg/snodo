@@ -150,7 +150,7 @@ jobs:
           publish snodo_otp integrations/otp
           publish snodo_tasks_postgres extensions/tasks_postgres
           publish snodo_tasks_sqlite extensions/tasks_sqlite
-      - name: Build all nine release tarballs
+      - name: Build all ten release tarballs
         run: |
           version="${TAG#v}"
           mkdir -p release

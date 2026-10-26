@@ -111,13 +111,22 @@ Failures follow OTP where the wire allows it:
   the caller gave up is dropped.
 - A call the remote side timed out (the adapter's `:timeout`, or the proxy's
   `:request_timeout`, default 60,000 ms) is answered `{:error, :timeout}`.
-- A remote target that is not running stops the proxy with `:noproc`, so a
-  monitor receives `DOWN` and a supervisor can restart it.
+- A call to a remote target that is not running stops the proxy with
+  `:noproc`, so a monitor receives `DOWN` and a supervisor can restart it. A
+  cast to it is dropped, as in OTP.
+- A request whose process crashes, for example on arguments JSON cannot
+  encode, is answered `{:error, {:request_failed, reason}}`; a reply
+  `decode_reply/2` does not match is answered
+  `{:error, {:decode_failed, name, json}}`. Later requests still run.
 - A connection failure stops the proxy with `{:nodedown, url}`. An HTTP error
   status, such as 401 or 404, is answered `{:error, error}` and the proxy keeps
   running.
 - A message the contract does not know stops the proxy with
   `{:function_clause, message}`.
+
+`:connect` passes options through to `Snodo.Client.connect/2`, merged over
+`protocol: "2026-07-28"` and `timeout: 15_000`, for example
+`connect: [token_provider: provider]`.
 
 The proxy has no pid for the remote process and no link to it, and it sees a
 remote failure only when a call reaches it.

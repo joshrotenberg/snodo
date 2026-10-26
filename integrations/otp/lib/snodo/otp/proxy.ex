@@ -18,15 +18,28 @@ defmodule Snodo.OTP.Proxy do
       proxy's `:request_timeout`, default 60,000 ms) is answered
       `{:error, :timeout}`, so a caller with an `:infinity` timeout is not
       left waiting.
-    * A remote target that is not there (`GenServer target unavailable`)
-      stops the proxy with `:noproc`, so a `Process.monitor/1` on the proxy
-      delivers `DOWN` and a supervisor can restart it.
+    * A call to a remote target that is not there (`GenServer target
+      unavailable`) stops the proxy with `:noproc`, so a `Process.monitor/1`
+      on the proxy delivers `DOWN` and a supervisor can restart it. A cast
+      to it is dropped, as a cast to a dead name is in OTP.
+    * A request whose process crashes, for example on arguments JSON cannot
+      encode, is answered `{:error, {:request_failed, reason}}`, and later
+      requests still run.
+    * A reply `decode_reply/2` does not match is answered
+      `{:error, {:decode_failed, name, json}}`. `encode_call/1` and
+      `encode_cast/1` run on the caller's message in the proxy, as a
+      GenServer callback does, so a raise there stops the proxy.
     * A connection failure stops the proxy with `{:nodedown, url}`. An HTTP
       error status, such as 401 or 404, is answered `{:error, error}` and the
       proxy keeps running.
     * A message the contract does not know stops the proxy with
       `{:function_clause, message}`, which is what an unmatched callback
       clause does to a GenServer.
+
+  Options: `:url` and `:contract` (required), `:name`, `:headers`,
+  `:request_timeout`, and `:connect`, a keyword list merged over the
+  defaults passed to `Snodo.Client.connect/2` (`protocol: "2026-07-28"`,
+  `timeout: 15_000`), for example `connect: [token_provider: provider]`.
 
   What it cannot give: a pid for the remote process, links to it, or any
   DOWN that is not provoked by a call. Those need a subscription stream.
@@ -51,6 +64,7 @@ defmodule Snodo.OTP.Proxy do
      %{
        url: Keyword.fetch!(opts, :url),
        headers: Keyword.get(opts, :headers, []),
+       connect: Keyword.get(opts, :connect, []),
        contract: Keyword.fetch!(opts, :contract),
        request_timeout: Keyword.get(opts, :request_timeout, @default_request_timeout),
        client: nil,
@@ -76,16 +90,28 @@ defmodule Snodo.OTP.Proxy do
   end
 
   @impl true
-  def handle_info({:tool_result, ref, result}, %{in_flight: {ref, from, name}} = state) do
-    state = %{state | in_flight: nil}
+  def handle_info({:tool_result, ref, result}, %{in_flight: {ref, monitor, from, name}} = state) do
+    Process.demonitor(monitor, [:flush])
+    finish(%{state | in_flight: nil}, result, from, name)
+  end
 
+  # The request process died without a result, for example because the
+  # client raised on arguments it could not encode.
+  def handle_info(
+        {:DOWN, monitor, :process, _pid, reason},
+        %{in_flight: {_ref, monitor, from, name}} = state
+      ) do
+    finish(%{state | in_flight: nil}, {:failed, reason}, from, name)
+  end
+
+  def handle_info(_other, state), do: {:noreply, state}
+
+  defp finish(state, result, from, name) do
     case outcome(result, from, name, state) do
       :continue -> dispatch(state)
       {:stop, reason} -> {:stop, reason, state}
     end
   end
-
-  def handle_info(_other, state), do: {:noreply, state}
 
   defp enqueue(state, request) do
     dispatch(%{state | queue: :queue.in(request, state.queue)})
@@ -98,8 +124,8 @@ defmodule Snodo.OTP.Proxy do
         case ensure_client(%{state | queue: queue}) do
           {:ok, state} ->
             ref = make_ref()
-            :ok = run_tool(state, name, args, ref)
-            {:noreply, %{state | in_flight: {ref, from, name}}}
+            monitor = run_tool(state, name, args, ref)
+            {:noreply, %{state | in_flight: {ref, monitor, from, name}}}
 
           {:stop, _reason, _state} = stop ->
             stop
@@ -112,32 +138,39 @@ defmodule Snodo.OTP.Proxy do
 
   defp dispatch(state), do: {:noreply, state}
 
-  # The request runs in its own process so the proxy keeps accepting
-  # messages; its result comes back as {:tool_result, ref, result}.
+  # The request runs in its own monitored process so the proxy keeps
+  # accepting messages; its result comes back as {:tool_result, ref, result},
+  # and a crash comes back as :DOWN.
   defp run_tool(%{client: client, request_timeout: timeout}, name, args, ref) do
     owner = self()
 
-    {:ok, _pid} =
-      Task.start(fn ->
+    {_pid, monitor} =
+      spawn_monitor(fn ->
         result = Snodo.Client.call_tool(client, name, args, timeout: timeout)
         send(owner, {:tool_result, ref, result})
       end)
 
-    :ok
+    monitor
   end
 
   # What a tool result means for the caller (nil for a cast) and the proxy.
+  defp outcome({:failed, reason}, from, _name, _state),
+    do: reply(from, {:error, {:request_failed, reason}})
+
+  # A cast to a target that is not running is dropped, as in OTP.
   defp outcome({:ok, %{"isError" => true} = result}, from, _name, _state) do
     case error_text(result) do
+      "GenServer target unavailable" <> _rest when is_nil(from) -> :continue
       "GenServer target unavailable" <> _rest -> {:stop, :noproc}
       "GenServer call timed out" <> _rest -> reply(from, {:error, :timeout})
       text -> reply(from, {:error, text})
     end
   end
 
-  defp outcome({:ok, %{"structuredContent" => json}}, from, name, state) do
-    if from, do: reply(from, state.contract.decode_reply(name, json)), else: :continue
-  end
+  defp outcome({:ok, %{"structuredContent" => _json}}, nil, _name, _state), do: :continue
+
+  defp outcome({:ok, %{"structuredContent" => json}}, from, name, state),
+    do: reply(from, decode(state.contract, name, json))
 
   defp outcome({:ok, other}, from, _name, _state),
     do: reply(from, {:error, {:unexpected_result, other}})
@@ -163,6 +196,13 @@ defmodule Snodo.OTP.Proxy do
 
   defp outcome({:error, error}, from, _name, _state), do: reply(from, {:error, error})
 
+  # A reply the contract cannot decode fails only its own call.
+  defp decode(contract, name, json) do
+    contract.decode_reply(name, json)
+  rescue
+    _exception -> {:error, {:decode_failed, name, json}}
+  end
+
   # A cast has no caller to answer.
   defp reply(nil, _value), do: :continue
 
@@ -172,11 +212,13 @@ defmodule Snodo.OTP.Proxy do
   end
 
   defp ensure_client(%{client: nil} = state) do
-    case Snodo.Client.connect({:http, state.url},
-           headers: state.headers,
-           protocol: "2026-07-28",
-           timeout: 15_000
-         ) do
+    options =
+      Keyword.merge(
+        [headers: state.headers, protocol: "2026-07-28", timeout: 15_000],
+        state.connect
+      )
+
+    case Snodo.Client.connect({:http, state.url}, options) do
       {:ok, client} -> {:ok, %{state | client: client}}
       {:error, _reason} -> {:stop, {:nodedown, state.url}, state}
     end

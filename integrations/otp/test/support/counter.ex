@@ -186,3 +186,31 @@ defmodule SnodoTest.OTP.RecorderServer do
 
   expose(RecorderContract, target: Recorder)
 end
+
+defmodule SnodoTest.OTP.FaultyContract do
+  @moduledoc false
+  # CounterContract's server side, with client-side faults: arguments JSON
+  # cannot encode, and a reply decode_reply does not match.
+  @behaviour Snodo.OTP.Contract
+
+  alias SnodoTest.OTP.CounterContract
+
+  @impl true
+  defdelegate ops(), to: CounterContract
+  @impl true
+  defdelegate build_message(name, args), to: CounterContract
+  @impl true
+  defdelegate encode_reply(name, reply), to: CounterContract
+
+  @impl true
+  def encode_call(:unencodable), do: {"counter_get", %{"x" => {1, 2}}}
+  def encode_call(:undecodable), do: {"counter_add", %{"by" => 1}}
+  def encode_call(message), do: CounterContract.encode_call(message)
+
+  @impl true
+  defdelegate encode_cast(message), to: CounterContract
+
+  @impl true
+  def decode_reply("counter_add", %{"total" => total}), do: total
+  def decode_reply("counter_get" = name, json), do: CounterContract.decode_reply(name, json)
+end
