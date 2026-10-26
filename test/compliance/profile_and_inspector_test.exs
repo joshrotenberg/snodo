@@ -196,6 +196,14 @@ defmodule Snodo.Compliance.ProfileAndInspectorTest do
     assert error.message =~ "2026-07-28"
     assert error.message =~ "Snodo.Protocol.V2025_11_25"
     assert error.data == %{"enabled" => ["2026-07-28"]}
+
+    # Any other unrecognized request keeps the generic error.
+    unknown = %{"jsonrpc" => "2.0", "id" => 2, "method" => "acme/unknown", "params" => %{}}
+    assert {:ok, envelope} = Envelope.decode(unknown, %TransportContext{transport: :direct})
+    assert {:error, other} = Registry.select(registry, envelope)
+    assert other.code == -32_600
+    assert other.message == "No configured protocol dialect recognized the request"
+    assert other.data == nil
   end
 
   @tag mcp_contract: [
