@@ -1664,6 +1664,24 @@ defmodule Snodo.ClientTest do
       refute_receive {:canned_request, _message, _opts}, 50
     end
 
+    test "surfaces a failed renegotiated handshake as its own error" do
+      client = flexible_client()
+      send(self(), refusal(["2025-11-25"]))
+
+      send(
+        self(),
+        {:canned_response,
+         %{
+           "jsonrpc" => "2.0",
+           "id" => 0,
+           "error" => %{"code" => -32_603, "message" => "boom"}
+         }}
+      )
+
+      assert {:error, %Error{code: code}} = Client.request(client, "tools/list")
+      assert code != -32_022
+    end
+
     test "does not resend when the client allows none of the supported versions" do
       client = canned_client()
       send(self(), refusal(["2025-11-25"]))

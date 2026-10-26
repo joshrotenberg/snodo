@@ -813,6 +813,11 @@ defmodule Snodo.Client do
         end_session(renegotiated)
       end
     else
+      # A refused `initialize` leaves the original error as the more useful one;
+      # any other handshake failure (transport, crash) is the real cause.
+      {:error, %Error{code: code} = failure} when code not in [-32_602, -32_022] ->
+        {:error, failure}
+
       _not_renegotiated ->
         {:error, error}
     end

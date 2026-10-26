@@ -80,6 +80,17 @@ the server issued (if any), and the `serverInfo`, `capabilities`, and
 versions is a -32602 error with `requested` and `supported` in `data`, and a
 version the client does not speak at all is refused before connecting.
 
+A stateless client whose server later drops the connection's version (for
+example after a restart with different dialects) gets -32022 with `supported`
+in `data`. When the client allows another version from that list, it
+renegotiates once: it runs the handshake for that version on a temporary
+client, resends the request there, and ends any session it opened. The server
+checks the version before it runs a request, so the resend does not repeat work.
+It does not happen for `initialize` or `server/discover`, from an
+initialize-era session, or when the resent request is refused again; in those
+cases the -32022 error is returned. If the renegotiated handshake itself fails
+for another reason, such as a transport error, that error is returned instead.
+
 `direct/2` needs no probe: the runtime's enabled versions are known, so the
 highest allowed one among them is used, and an initialize-era version is
 negotiated through the runtime the same way. A runtime that enables only the
