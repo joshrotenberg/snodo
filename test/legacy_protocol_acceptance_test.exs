@@ -123,6 +123,43 @@ defmodule Snodo.LegacyProtocolAcceptanceTest do
     end
   end
 
+  test "mixed-era runtimes advertise listChanged and subscribe only to the dialect that delivers them" do
+    {:ok, hub} = start_supervised(Snodo.Subscription.Hub)
+
+    runtime =
+      runtime(
+        capabilities: %{
+          "tools" => %{"listChanged" => true},
+          "resources" => %{"listChanged" => true, "subscribe" => true}
+        },
+        subscription_source: Snodo.Subscription.Hub.source(hub)
+      )
+
+    assert {:ok, %{"result" => legacy}} =
+             Server.dispatch(runtime, initialization("2025-11-25"), %TransportContext{})
+
+    assert legacy["capabilities"] == %{"tools" => %{}, "resources" => %{}}
+
+    assert {:ok, %{"result" => modern}} =
+             Server.dispatch(
+               runtime,
+               request("server/discover", %{
+                 "_meta" => %{
+                   "io.modelcontextprotocol/protocolVersion" => "2026-07-28",
+                   "io.modelcontextprotocol/clientCapabilities" => %{}
+                 }
+               }),
+               transport("2026-07-28")
+             )
+
+    assert modern["capabilities"]["tools"] == %{"listChanged" => true}
+    assert modern["capabilities"]["resources"] == %{"listChanged" => true, "subscribe" => true}
+
+    assert_raise ArgumentError, ~r/tasks for 2025-11-25/, fn ->
+      runtime(protocols: [V2025_11_25], capabilities: %{"tools" => %{}, "tasks" => %{}})
+    end
+  end
+
   test "an initialize proposal the server does not support gets the latest legacy version" do
     runtime = runtime(protocols: [V2025_06_18, V2025_11_25])
 
