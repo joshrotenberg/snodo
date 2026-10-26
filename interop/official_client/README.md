@@ -1,7 +1,7 @@
 # Official TypeScript client acceptance
 
-These checks use the unmodified `@modelcontextprotocol/client` **2.1.0** package
-and its locked transitive dependencies against compiled public framework APIs.
+These checks use the unmodified `@modelcontextprotocol/client` package, at the
+version pinned in `package.json`, and its locked transitive dependencies against compiled public framework APIs.
 They pin protocol **2026-07-28**; passing them is not a claim of support for older
 protocol versions or every current feature.
 
