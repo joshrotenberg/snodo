@@ -436,14 +436,14 @@ defmodule Snodo.Server do
   # the router does not register is reported as :unknown, never as the requested
   # string. Only direct resources are named; a URI matched by a template (or by
   # nothing) is :unknown because the URI itself is client-chosen.
-  defp put_component(metadata, router, %{"method" => "tools/call", "params" => params}),
-    do: Map.put(metadata, :component, catalog_name(router.tools, params, "name"))
+  defp put_component(metadata, router, %{"method" => "tools/call"} = raw),
+    do: Map.put(metadata, :component, catalog_name(router.tools, raw["params"], "name"))
 
-  defp put_component(metadata, router, %{"method" => "prompts/get", "params" => params}),
-    do: Map.put(metadata, :component, catalog_name(router.prompts, params, "name"))
+  defp put_component(metadata, router, %{"method" => "prompts/get"} = raw),
+    do: Map.put(metadata, :component, catalog_name(router.prompts, raw["params"], "name"))
 
-  defp put_component(metadata, router, %{"method" => "resources/read", "params" => params}),
-    do: Map.put(metadata, :component, catalog_name(router.resources, params, "uri"))
+  defp put_component(metadata, router, %{"method" => "resources/read"} = raw),
+    do: Map.put(metadata, :component, catalog_name(router.resources, raw["params"], "uri"))
 
   defp put_component(metadata, _router, _raw), do: metadata
 

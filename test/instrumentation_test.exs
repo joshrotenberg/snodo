@@ -68,6 +68,15 @@ defmodule Snodo.InstrumentationTest do
       assert stop_metadata.component == component
       refute inspect(start_metadata) =~ "no-such"
     end
+
+    # A request without params still carries the key.
+    transport = %TransportContext{transport: :direct}
+
+    raw = %{"jsonrpc" => "2.0", "id" => "no-params", "method" => "tools/call"}
+    Snodo.Server.dispatch(runtime, raw, transport)
+
+    assert_receive {:instrumentation, [:snodo, :server, :dispatch, :start], _start,
+                    %{request_id: "no-params", component: :unknown}}
   end
 
   test "dispatch reports malformed or oversized methods as invalid metadata" do
