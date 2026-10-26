@@ -214,14 +214,14 @@ defmodule Snodo.OAuth.ResourceServer.Bearer do
          :ok <- check_audience(claims["aud"], opts.audience),
          {:ok, scopes} <- granted_scopes(claims),
          :ok <- check_scopes(scopes, opts.required_scopes) do
-      {:ok,
-       {:ok,
-        %{
-          principal: claims["sub"],
-          client_id: claims["client_id"],
-          scopes: scopes,
-          claims: claims
-        }}}
+      auth = %{
+        principal: claims["sub"],
+        client_id: claims["client_id"],
+        scopes: scopes,
+        claims: claims
+      }
+
+      {:ok, {:ok, auth}}
     else
       {:invalid_token, outcome, description} ->
         refuse(outcome, 401, "invalid_token", description, opts)
