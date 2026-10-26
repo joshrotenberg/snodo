@@ -10,6 +10,6 @@
     "check:hexpm": "node check_hexpm.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/client": "2.3.1"
+    "@modelcontextprotocol/client": "2.4.0"
   }
 }

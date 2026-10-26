@@ -29,7 +29,7 @@ mix setup
 (cd interop/official_python && uv sync --frozen)
 ```
 
-This repository builds nine Hex packages: the core `snodo` at the root, and eight siblings under `integrations/` and `extensions/`. `mix setup` fetches dependencies for all of them.
+This repository builds ten Hex packages: the core `snodo` at the root, and nine siblings under `integrations/` and `extensions/`. `mix setup` fetches dependencies for all of them.
 
 ## Making a change
 

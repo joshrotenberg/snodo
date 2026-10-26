@@ -86,7 +86,8 @@ jobs:
           for file in mix.exs extensions/tasks/mix.exs extensions/tasks_postgres/mix.exs \
                       extensions/tasks_sqlite/mix.exs integrations/plug/mix.exs \
                       integrations/schema_jsv/mix.exs integrations/oauth/mix.exs \
-                      integrations/telemetry/mix.exs integrations/proxy/mix.exs; do
+                      integrations/telemetry/mix.exs integrations/proxy/mix.exs \
+                      integrations/otp/mix.exs; do
             grep -q "@version \"$version\"" "$file" ||
               { echo "::error::$file does not declare version $version"; exit 1; }
           done
@@ -143,9 +144,10 @@ jobs:
           publish snodo_oauth integrations/oauth
           publish snodo_telemetry integrations/telemetry
           publish snodo_proxy integrations/proxy
+          publish snodo_otp integrations/otp
           publish snodo_tasks_postgres extensions/tasks_postgres
           publish snodo_tasks_sqlite extensions/tasks_sqlite
-      - name: Build all nine release tarballs
+      - name: Build all ten release tarballs
         run: |
           version="${TAG#v}"
           mkdir -p release
@@ -166,6 +168,7 @@ jobs:
           build snodo_oauth integrations/oauth
           build snodo_telemetry integrations/telemetry
           build snodo_proxy integrations/proxy
+          build snodo_otp integrations/otp
           build snodo_tasks_postgres extensions/tasks_postgres
           build snodo_tasks_sqlite extensions/tasks_sqlite
 
@@ -203,6 +206,7 @@ jobs:
           verify snodo_oauth
           verify snodo_telemetry
           verify snodo_proxy
+          verify snodo_otp
           verify snodo_tasks_postgres
           verify snodo_tasks_sqlite
       - name: Attest release tarballs
