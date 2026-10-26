@@ -111,15 +111,17 @@ defmodule Snodo.Transport.Plug.Stream do
     :ok = Subscription.stop_worker(state.worker, state.worker_monitor)
   end
 
-  # The process that started this handler is the one whose shutdown exit
-  # signal ends the stream; exits from other linked processes are not ours.
-  # A handler started without proc_lib has no recorded parent, and then any
-  # shutdown exit ends the stream rather than none. A registered parent name
-  # that no longer resolves is treated the same way, since a pid that never
-  # matches would silently ignore the shutdown. ThousandIsland starts the
-  # handler through DynamicSupervisor.start_child/2 (connection.ex), so the
-  # first ancestor is that supervisor, which is also what sends the shutdown
-  # exit; the Bandit shutdown test guards this.
+  # When the parent is known, only its shutdown exit ends the stream; exits
+  # from other linked processes are ignored. When it is not known (no
+  # recorded ancestors, or a registered parent name that no longer
+  # resolves), any shutdown exit from any linked process ends the stream,
+  # because a pid that never matches would silently ignore the shutdown.
+  # ThousandIsland starts the handler through DynamicSupervisor.start_child/2
+  # (connection.ex), so the first ancestor is that supervisor, which also
+  # sends the shutdown exit. This is verified over HTTP/1.x by the Bandit
+  # shutdown test; HTTP/2 stream process layout is not tested, and if the
+  # first ancestor differs there, the shutdown waits for the supervisor's
+  # timeout as it did before this change.
   defp parent do
     case Process.get(:"$ancestors") do
       [parent | _] when is_pid(parent) -> parent
