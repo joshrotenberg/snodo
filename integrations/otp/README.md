@@ -22,17 +22,12 @@ end
 
 ## Contract
 
-`Snodo.OTP.Contract` is a behaviour. `ops/0` lists the operations, each with a
-`name`, a `kind` (`:call` or `:cast`), an `input_schema`, and optionally an
-`output_schema`, a `description`, and a `timeout`. The server side implements
-`build_message/2` (JSON arguments to the GenServer message) and
-`encode_reply/2` (the reply to a JSON object). The client side implements
-`encode_call/1` and `encode_cast/1` (a message to a tool name and JSON
-arguments, or `:nomatch`) and `decode_reply/2`.
+`use Snodo.OTP.Contract` declares each operation once, with `call/2` or
+`cast/2`, and generates both sides from it:
 
 ```elixir
 defmodule CounterContract do
-  @behaviour Snodo.OTP.Contract
+  use Snodo.OTP.Contract
 
   @by %{
     "type" => "object",
@@ -46,32 +41,34 @@ defmodule CounterContract do
     "required" => ["value"]
   }
 
-  @impl true
-  def ops do
-    [
-      %{name: "counter_add", kind: :call, input_schema: @by, output_schema: @value},
-      %{name: "counter_cast_add", kind: :cast, input_schema: @by}
-    ]
-  end
+  call("counter_add",
+    message: {:add, {:arg, "by"}},
+    reply: "value",
+    input_schema: @by,
+    output_schema: @value
+  )
 
-  @impl true
-  def build_message(_name, %{"by" => by}), do: {:add, by}
-
-  @impl true
-  def encode_reply(_name, count), do: %{"value" => count}
-
-  @impl true
-  def encode_call({:add, by}), do: {"counter_add", %{"by" => by}}
-  def encode_call(_message), do: :nomatch
-
-  @impl true
-  def encode_cast({:add, by}), do: {"counter_cast_add", %{"by" => by}}
-  def encode_cast(_message), do: :nomatch
-
-  @impl true
-  def decode_reply(_name, %{"value" => count}), do: count
+  cast("counter_cast_add", message: {:add, {:arg, "by"}}, input_schema: @by)
 end
 ```
+
+`:message` is the GenServer message as data, with `{:arg, key}` marking a JSON
+argument. The server builds the message from the arguments; the client matches
+a message against the same shape and sends the arguments it binds. `:reply`
+names the key of the JSON object that carries a call's reply. Each operation
+also takes an `input_schema`, and optionally an `output_schema`, a
+`description`, and a `timeout`. Compilation fails on a duplicate name, a
+missing `:message`, a call without `:reply`, and an argument the input schema
+does not list.
+
+The server node and the client node use the same compiled contract module,
+for example from a shared package.
+
+A contract can instead implement the `Snodo.OTP.Contract` callbacks by hand,
+for messages a `:message` shape cannot describe: `ops/0`, the server side
+`build_message/2` and `encode_reply/2`, and the client side `encode_call/1`,
+`encode_cast/1` (a message to a tool name and JSON arguments, or `:nomatch`)
+and `decode_reply/2`.
 
 Nothing is inferred: an operation exists because the contract names it, so a
 client never chooses a process, atom, or term.
