@@ -402,10 +402,10 @@ defmodule Snodo.Transport.PlugBanditTest do
     %{port: port} = server()
     socket = open_stream(port, "shutdown-listen")
 
-    # ThousandIsland gives connection handlers 15 s to stop; a stream that
-    # ignored the shutdown exit would hold stop_supervised for that long.
-    {stop_us, :ok} = :timer.tc(fn -> stop_supervised(:listener) end)
-    assert stop_us < 5_000_000
+    # A stream that ignored the shutdown exit would be killed at
+    # ThousandIsland's timeout without a terminal result, so the result read
+    # below is the signal; no wall-clock bound is asserted.
+    assert :ok = stop_supervised(:listener)
 
     body = read_until(socket, "\"id\":\"shutdown-listen\"")
     [_, json] = Regex.run(~r/data: (\{[^\r\n]*"id":"shutdown-listen"[^\r\n]*\})/, body)

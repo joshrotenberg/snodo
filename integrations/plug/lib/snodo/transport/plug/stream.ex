@@ -114,11 +114,13 @@ defmodule Snodo.Transport.Plug.Stream do
   # The process that started this handler is the one whose shutdown exit
   # signal ends the stream; exits from other linked processes are not ours.
   # A handler started without proc_lib has no recorded parent, and then any
-  # shutdown exit ends the stream rather than none.
+  # shutdown exit ends the stream rather than none. A registered parent name
+  # that no longer resolves is treated the same way, since a pid that never
+  # matches would silently ignore the shutdown.
   defp parent do
     case Process.get(:"$ancestors") do
       [parent | _] when is_pid(parent) -> parent
-      [parent | _] when is_atom(parent) -> Process.whereis(parent)
+      [parent | _] when is_atom(parent) -> Process.whereis(parent) || :any
       _unknown -> :any
     end
   end
