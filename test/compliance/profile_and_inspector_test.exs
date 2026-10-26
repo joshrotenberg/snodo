@@ -180,6 +180,24 @@ defmodule Snodo.Compliance.ProfileAndInspectorTest do
     assert Protocol.builtin_versions() == ["2026-07-28", "2025-11-25", "2025-06-18"]
   end
 
+  test "initialize on a 2026-only registry names the enabled versions and how to enable more" do
+    registry = Registry.new([V2026_07_28])
+
+    raw = %{
+      "jsonrpc" => "2.0",
+      "id" => 1,
+      "method" => "initialize",
+      "params" => %{"protocolVersion" => "2025-06-18"}
+    }
+
+    assert {:ok, envelope} = Envelope.decode(raw, %TransportContext{transport: :direct})
+    assert {:error, error} = Registry.select(registry, envelope)
+    assert error.code == -32_600
+    assert error.message =~ "2026-07-28"
+    assert error.message =~ "Snodo.Protocol.V2025_11_25"
+    assert error.data == %{"enabled" => ["2026-07-28"]}
+  end
+
   @tag mcp_contract: [
          "runtime-capability-advertisement",
          "prompts-routing-wire",
