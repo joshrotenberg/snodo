@@ -82,7 +82,7 @@ defmodule Snodo.Client.Handshake do
 
     cond do
       session == [] -> {:ok, speak(client, hd(stateless))}
-      stateless == [] -> initialize(client, session)
+      stateless == [] -> initialize(client, session, opts)
       true -> probe(client, dialects, session, reopen, opts)
     end
   end
@@ -100,27 +100,28 @@ defmodule Snodo.Client.Handshake do
            answer_input: false
          ) do
       {:ok, %{"supportedVersions" => versions}} when is_list(versions) ->
-        settle(client, dialects, session, versions)
+        settle(client, dialects, session, versions, opts)
 
       _non_modern ->
-        with {:ok, client} <- reopen_transport(client, reopen), do: initialize(client, session)
+        with {:ok, client} <- reopen_transport(client, reopen),
+             do: initialize(client, session, opts)
     end
   end
 
   # The highest allowed version a modern server lists. An initialize-era one
   # is initialized on the same connection: a stateless server kept nothing
   # from the probe.
-  defp settle(client, dialects, session, versions) do
+  defp settle(client, dialects, session, versions, opts) do
     case Enum.find(dialects, &(&1.version() in versions)) do
-      nil -> close_with(client, no_common_version(dialects, versions))
-      dialect -> adopt(client, dialect, session)
+      nil -> close_with(client, no_common_version(dialects, versions), opts)
+      dialect -> adopt(client, dialect, session, opts)
     end
   end
 
-  defp adopt(client, dialect, session) do
+  defp adopt(client, dialect, session, opts) do
     if dialect.era() == :stateless,
       do: {:ok, speak(client, dialect)},
-      else: initialize(client, Enum.drop_while(session, &(&1 != dialect)))
+      else: initialize(client, Enum.drop_while(session, &(&1 != dialect)), opts)
   end
 
   defp reopen_transport(%Client{transport: {module, state}} = client, reopen) do
@@ -131,7 +132,11 @@ defmodule Snodo.Client.Handshake do
   # `initialize` proposes the highest allowed initialize-era version. The
   # server answers with that version or another it prefers; one the client
   # does not allow ends the connection, as the specification asks.
-  defp initialize(%Client{transport: {module, _state}} = client, [proposed | _others] = allowed) do
+  defp initialize(
+         %Client{transport: {module, _state}} = client,
+         [proposed | _others] = allowed,
+         opts
+       ) do
     client = speak(client, proposed)
 
     if function_exported?(module, :notify, 3) do
@@ -155,12 +160,13 @@ defmodule Snodo.Client.Handshake do
 
       case response do
         {:ok, %{"protocolVersion" => version} = result} when is_binary(version) ->
-          open_session(client, allowed, version, result, headers)
+          open_session(client, allowed, version, result, headers, opts)
 
         {:ok, result} ->
           close_with(
             client,
-            Transport.connection_error("The initialize result has no protocolVersion", result)
+            Transport.connection_error("The initialize result has no protocolVersion", result),
+            opts
           )
 
         {:input_required, result} ->
@@ -169,11 +175,12 @@ defmodule Snodo.Client.Handshake do
             Transport.connection_error(
               "The server answered initialize with an input request",
               result
-            )
+            ),
+            opts
           )
 
         {:error, %Error{} = error} ->
-          close_with(client, error)
+          close_with(client, error, opts)
       end
     else
       close_with(
@@ -181,12 +188,13 @@ defmodule Snodo.Client.Handshake do
         Error.invalid_params(
           "#{inspect(module)} cannot open an initialize-era connection: it has no notify/3",
           %{"requested" => versions(allowed)}
-        )
+        ),
+        opts
       )
     end
   end
 
-  defp open_session(client, allowed, version, result, headers) do
+  defp open_session(client, allowed, version, result, headers, opts) do
     case Enum.find(allowed, &(&1.version() == version)) do
       nil ->
         close_with(
@@ -194,7 +202,8 @@ defmodule Snodo.Client.Handshake do
           Error.invalid_params(
             "The server negotiated protocol #{version}, which the client does not allow",
             %{"negotiated" => version, "requested" => versions(allowed)}
-          )
+          ),
+          opts
         )
 
       dialect ->
@@ -210,7 +219,7 @@ defmodule Snodo.Client.Handshake do
 
         case Client.notify(client, "notifications/initialized", %{}) do
           :ok -> {:ok, client}
-          {:error, %Error{} = error} -> close_with(client, error)
+          {:error, %Error{} = error} -> close_with(client, error, opts)
         end
     end
   end
@@ -232,8 +241,10 @@ defmodule Snodo.Client.Handshake do
     end)
   end
 
-  defp close_with(client, %Error{} = error) do
-    :ok = Client.close(client)
+  # `keep_open: true` is for a handshake run on a connection the caller still
+  # uses (renegotiation), where a failure must not close it.
+  defp close_with(client, %Error{} = error, opts) do
+    unless Keyword.get(opts, :keep_open, false), do: :ok = Client.close(client)
     {:error, error}
   end
 

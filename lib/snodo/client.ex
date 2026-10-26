@@ -789,7 +789,8 @@ defmodule Snodo.Client do
   # the lifecycle) surface the error as it came; a second refusal surfaces the
   # error from the resent request. The `server/discover` and `initialize`
   # method guard is what keeps the connect-time handshake from renegotiating.
-  # The transport is not reopened (the reopen function is a stub): the refusing
+  # The handshake runs with `keep_open`, so a failure leaves the caller's
+  # connection open. The transport is not reopened (the reopen function is a stub): the refusing
   # server is stateless and kept nothing from the refused request, the same
   # situation as `initialize` after a successful `server/discover` in `settle/3`.
   defp renegotiate(client, method, params, opts, plan, round, error) do
@@ -801,7 +802,8 @@ defmodule Snodo.Client do
            Enum.find(client.dialects, &(&1 != client.dialect and &1.version() in supported)),
          {:ok, renegotiated} <-
            Handshake.run(%{client | session: nil}, [dialect], fn -> {:error, error} end,
-             probe_timeout: client.probe_timeout
+             probe_timeout: client.probe_timeout,
+             keep_open: true
            ) do
       try do
         send_request(

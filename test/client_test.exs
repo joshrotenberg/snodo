@@ -1682,6 +1682,24 @@ defmodule Snodo.ClientTest do
       assert code != -32_022
     end
 
+    test "leaves the connection open when the renegotiated initialize fails" do
+      client = flexible_client()
+      send(self(), refusal(["2025-11-25"]))
+
+      send(
+        self(),
+        {:canned_response,
+         %{
+           "jsonrpc" => "2.0",
+           "id" => 0,
+           "error" => %{"code" => -32_602, "message" => "refused"}
+         }}
+      )
+
+      assert {:error, %Error{code: -32_022}} = Client.request(client, "tools/list")
+      refute_receive :canned_closed, 50
+    end
+
     test "does not resend when the client allows none of the supported versions" do
       client = canned_client()
       send(self(), refusal(["2025-11-25"]))
