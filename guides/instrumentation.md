@@ -82,6 +82,12 @@ Durations use the VM's native monotonic time unit. Convert them with
 | `[:snodo, :tasks, :runner, :job, :start]` | current `jobs`, `system_time` | `task_id`, `revision`, `source` |
 | `[:snodo, :tasks, :runner, :job, :stop]` | `duration`, remaining `jobs` | `task_id`, job `outcome`, `store_outcome`, `release_outcome` |
 | `[:snodo, :tasks, :store, :transition]` | `duration` | `task_id`, `expected_revision`, `event_kind`, `authority`, `outcome` |
+| `[:snodo, :oauth, :verify, :start]` | `system_time` | none |
+| `[:snodo, :oauth, :verify, :stop]` | `duration` | `outcome`: `:ok`, `:missing_token`, `:invalid_token`, `:wrong_issuer`, `:wrong_audience`, `:expired`, or `:insufficient_scope` |
+| `[:snodo, :oauth, :verify, :exception]` | `duration` | `kind` and bounded `reason_class` |
+
+The `oauth` events come from the `snodo_oauth` bearer plug when its
+`:instrumentation` option is set. They never carry the token or its claims.
 
 The names and bounded metadata are framework API. A particular metrics backend,
 aggregation policy, sampling policy, and task-ID cardinality policy remain
