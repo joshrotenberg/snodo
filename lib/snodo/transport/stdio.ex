@@ -38,6 +38,36 @@ defmodule Snodo.Transport.Stdio do
   requests carry, so dialect selection and validation are shared with HTTP. A
   2026-07-28 client does not send `initialize`, and its messages carry no such
   header.
+
+  ## Application notifications
+
+  An application process can send a server-to-client notification on an open
+  connection with `notify/3`, for example a vendor or experimental hint while
+  the connection is idle. The handle is the transport's pid or registered
+  name: the pid returned by `start_link/1`, or the `:name` passed to `serve/2`
+  or `start_link/1`.
+
+  Only methods listed in the `:notification_methods` option may be sent. The
+  option is a list of method names, each starting with `notifications/`, and
+  defaults to `[]`, so nothing is sendable unless the application enables it.
+  The names of notifications the protocol defines, such as
+  `notifications/progress` and `notifications/cancelled`, are refused at
+  startup. The frame is `{"jsonrpc", "method", "params"}` with no id, written
+  through the same serialized, deadline-bound path as responses, so frames never
+  interleave.
+
+  `notify/3` is synchronous and unbuffered: the caller waits for its own write,
+  so at most one write is in flight and pending callers wait in the transport's
+  mailbox, each bounded by its call timeout. It returns `{:error, :closed}` if
+  the connection is gone, or `{:error, {:transport_down, reason}}` if the
+  transport stopped abnormally while the call was waiting. A failed or
+  timed-out write is terminal for the connection exactly as for a response,
+  and the caller gets `{:error, {:output_failed, reason}}`. If the caller's
+  own call timeout expires first it gets `{:error, :timeout}`, but the request
+  stays in the transport's mailbox and the frame may still be written
+  afterward; treat `:timeout` as "unknown". Invalid input returns
+  `{:error, %Snodo.Error{}}` and writes nothing. Delivery is a hint: nothing is
+  retried or queued across a failure.
   """
 
   @behaviour Snodo.Transport
@@ -72,6 +102,7 @@ defmodule Snodo.Transport.Stdio do
           subscriptions_by_worker: map(),
           max_subscriptions: pos_integer(),
           max_line_bytes: pos_integer(),
+          notification_methods: [String.t()],
           negotiated_version: String.t() | nil,
           log_level: Snodo.Logging.level() | nil,
           eof?: boolean()
@@ -104,6 +135,32 @@ defmodule Snodo.Transport.Stdio do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  @doc """
+  Sends a server-to-client notification on an open connection.
+
+  `server` is the transport's pid or registered name. `method` must be listed
+  in the transport's `:notification_methods`; `params` is a JSON-encodable map.
+  See the module documentation for the failure behavior.
+  """
+  @spec notify(GenServer.server(), String.t(), map(), timeout()) ::
+          :ok
+          | {:error,
+             Error.t()
+             | :closed
+             | :timeout
+             | {:output_failed, term()}
+             | {:transport_down, term()}}
+  def notify(server, method, params \\ %{}, timeout \\ 10_000) do
+    GenServer.call(server, {:notify, method, params}, timeout)
+  catch
+    :exit, {:timeout, _call} -> {:error, :timeout}
+    :exit, {:noproc, _call} -> {:error, :closed}
+    :exit, {:normal, _call} -> {:error, :closed}
+    :exit, {:shutdown, _call} -> {:error, :closed}
+    :exit, {{:shutdown, _}, _call} -> {:error, :closed}
+    :exit, {reason, _call} -> {:error, {:transport_down, reason}}
   end
 
   def child_spec(opts) do
@@ -153,6 +210,8 @@ defmodule Snodo.Transport.Stdio do
        subscriptions_by_worker: %{},
        max_subscriptions: validate_max_subscriptions!(Keyword.get(opts, :max_subscriptions, 32)),
        max_line_bytes: max_line_bytes,
+       notification_methods:
+         validate_notification_methods!(Keyword.get(opts, :notification_methods, [])),
        negotiated_version: nil,
        log_level: nil,
        eof?: false
@@ -166,6 +225,21 @@ defmodule Snodo.Transport.Stdio do
   end
 
   def handle_call(:start_reader, _from, state), do: {:reply, :ok, state}
+
+  def handle_call({:notify, method, params}, _from, state) do
+    with :ok <- validate_notification(state.notification_methods, method, params),
+         {:ok, frame} <- notification_frame(method, params) do
+      case write_progress(state.writer, frame) do
+        :ok ->
+          {:reply, :ok, state}
+
+        {:error, reason} ->
+          {:stop, {:output_failed, reason}, {:error, {:output_failed, reason}}, state}
+      end
+    else
+      {:error, %Error{}} = error -> {:reply, error, state}
+    end
+  end
 
   def handle_call({:mcp_progress, sink_ref, report}, from, state) do
     case Enum.find(state.executions_by_ref, fn {_ref, entry} ->
@@ -328,6 +402,32 @@ defmodule Snodo.Transport.Stdio do
     end)
 
     %{state | executions_by_id: %{}, executions_by_ref: %{}}
+  end
+
+  defp validate_notification(allowed, method, params) do
+    cond do
+      not is_binary(method) ->
+        {:error, Error.invalid_params("Notification method must be a string")}
+
+      method not in allowed ->
+        {:error, Error.invalid_params("Notification method is not enabled: #{method}")}
+
+      not is_map(params) ->
+        {:error, Error.invalid_params("Notification params must be a map")}
+
+      true ->
+        :ok
+    end
+  end
+
+  # Encoding is checked before the write so an unencodable value cannot reach
+  # the output.
+  defp notification_frame(method, params) do
+    frame = %{"jsonrpc" => "2.0", "method" => method, "params" => params}
+    _encoded = Framing.encode_message(frame)
+    {:ok, frame}
+  rescue
+    _exception -> {:error, Error.invalid_params("Notification params are not JSON-encodable")}
   end
 
   defp refuse_long_line(%{max_line_bytes: limit} = state) do
@@ -864,6 +964,43 @@ defmodule Snodo.Transport.Stdio do
 
   defp validate_max_line_bytes!(_invalid) do
     raise ArgumentError, ":max_line_bytes must be a positive integer"
+  end
+
+  @reserved_notifications [
+    "notifications/cancelled",
+    "notifications/progress",
+    "notifications/message",
+    "notifications/initialized",
+    "notifications/tools/list_changed",
+    "notifications/prompts/list_changed",
+    "notifications/resources/list_changed",
+    "notifications/resources/updated",
+    "notifications/roots/list_changed",
+    "notifications/elicitation/complete",
+    "notifications/tasks/status",
+    "notifications/subscriptions/acknowledged",
+    "notifications/subscriptions/listen"
+  ]
+
+  defp validate_notification_methods!(methods) when is_list(methods) do
+    valid? =
+      Enum.all?(methods, fn method ->
+        is_binary(method) and String.starts_with?(method, "notifications/") and
+          method not in @reserved_notifications
+      end)
+
+    if valid?,
+      do: methods,
+      else:
+        raise(
+          ArgumentError,
+          ":notification_methods must be strings starting with \"notifications/\" " <>
+            "that the protocol does not define"
+        )
+  end
+
+  defp validate_notification_methods!(_invalid) do
+    raise ArgumentError, ":notification_methods must be a list of method names"
   end
 
   defp validate_write_timeout!(value) when is_integer(value) and value > 0, do: value
