@@ -8,7 +8,7 @@ defmodule Snodo.OTP.OrderingAndErrorsTest do
   alias SnodoTest.OTP.RecorderServer
 
   setup do
-    start_supervised!(Recorder)
+    start_supervised!({Recorder, self()})
     server = start_supervised!({HTTPServer, runtime: RecorderServer.runtime(), port: 0})
     url = HTTPServer.url(server)
     proxy = start_supervised!({Proxy, url: url, contract: RecorderContract})
@@ -41,8 +41,9 @@ defmodule Snodo.OTP.OrderingAndErrorsTest do
     assert GenServer.call(proxy, {:slow_long, 500}, :infinity) == {:error, :timeout}
     assert Process.alive?(proxy)
 
-    # A local call to the Recorder waits until it has finished the slow
-    # message, which the proxy gave up on.
+    # The proxy gave up on the slow message, but the Recorder handles it. Once
+    # it has started, a local call to the Recorder waits until it finishes.
+    assert_receive {:recorder_slow, 500}
     assert GenServer.call(Recorder, :list) == []
     assert GenServer.call(proxy, :list) == []
   end

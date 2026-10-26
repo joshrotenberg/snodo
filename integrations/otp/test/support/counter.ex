@@ -108,23 +108,27 @@ end
 
 defmodule SnodoTest.OTP.Recorder do
   @moduledoc false
+  # Keeps pushed items in order. A pid given at start receives
+  # {:recorder_slow, ms} when a slow call starts.
   use GenServer
 
-  def start_link(_arg), do: GenServer.start_link(__MODULE__, [], name: __MODULE__)
+  def start_link(owner),
+    do: GenServer.start_link(__MODULE__, if(is_pid(owner), do: owner), name: __MODULE__)
 
   @impl true
-  def init(items), do: {:ok, items}
+  def init(owner), do: {:ok, %{items: [], owner: owner}}
 
   @impl true
-  def handle_call(:list, _from, items), do: {:reply, Enum.reverse(items), items}
+  def handle_call(:list, _from, state), do: {:reply, Enum.reverse(state.items), state}
 
-  def handle_call({:slow, ms}, _from, items) do
+  def handle_call({:slow, ms}, _from, state) do
+    if state.owner, do: send(state.owner, {:recorder_slow, ms})
     Process.sleep(ms)
-    {:reply, [], items}
+    {:reply, [], state}
   end
 
   @impl true
-  def handle_cast({:push, n}, items), do: {:noreply, [n | items]}
+  def handle_cast({:push, n}, state), do: {:noreply, %{state | items: [n | state.items]}}
 end
 
 defmodule SnodoTest.OTP.RecorderContract do
