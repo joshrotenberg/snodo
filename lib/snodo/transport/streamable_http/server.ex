@@ -2,8 +2,11 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   @moduledoc """
   Small dependency-free HTTP/1.1 listener for `Snodo.Transport.StreamableHTTP`.
 
-  It is intentionally a binding, not a web framework. Each accepted connection
-  carries one request and closes after one response. Header admission happens in
+  It is intentionally a binding, not a web framework. An accepted connection
+  serves further requests after a complete response (HTTP/1.1 keep-alive),
+  bounded by `:keepalive_timeout` and `:max_keepalive_requests`. It closes after
+  an error response, a stream, `Connection: close`, or an HTTP/1.0 request.
+  Header admission happens in
   the connection process; admitted MCP work runs through the reusable bounded
   `Snodo.Server.Executor`. A peer disconnect while work is pending cancels that
   execution and tears down its reply owner.
@@ -25,6 +28,11 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
       complete, default 10,000. `:read_timeout` (default 5,000) still bounds
       each read; this deadline bounds the whole head, so a client that sends it
       a byte at a time is closed when the deadline passes.
+    * `:keepalive_timeout` - milliseconds an idle connection waits for the next
+      request after a response, default 5,000. The `:head_timeout` for that
+      request starts when its first bytes arrive.
+    * `:max_keepalive_requests` - the most requests one connection serves,
+      default 100. The response to the last one carries `Connection: close`.
     * `:request_gate_timeout` - milliseconds allowed for a request gate to
       check the head, default 10,000. A timed-out gate gets a 504 response.
     * `:body_timeout` - milliseconds from the end of the head, or from gate
@@ -97,6 +105,8 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   @default_request_timeout 30_000
   @default_max_connections 1_024
   @default_head_timeout 10_000
+  @default_keepalive_timeout 5_000
+  @default_max_keepalive_requests 100
   @default_body_timeout 10_000
   @default_request_gate_timeout 10_000
   @header_name_pattern ~r/\A[!#$%&'*+\-.^_`|~0-9A-Za-z]+\z/
@@ -193,6 +203,9 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
         request_timeout: Keyword.get(opts, :request_timeout, :default),
         deadline_timeout: deadline_timeout!(Keyword.get(opts, :request_timeout, :default)),
         read_timeout: Keyword.get(opts, :read_timeout, @default_read_timeout),
+        keepalive_timeout: positive_option!(opts, :keepalive_timeout, @default_keepalive_timeout),
+        max_keepalive_requests:
+          positive_option!(opts, :max_keepalive_requests, @default_max_keepalive_requests),
         head_timeout: head_timeout,
         body_timeout: body_timeout,
         max_subscriptions: max_subscriptions,
@@ -428,23 +441,58 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
 
   defp serve_socket(socket, opts) do
     peer = peer_name(socket)
-    connection_ref = make_ref()
-
-    response =
-      with {:ok, request, auth} <- read_request(socket, peer, connection_ref, opts),
-           :ok <- validate_endpoint(request, opts.path) do
-        execute_request(socket, request, auth, opts)
-      else
-        {:response, response} -> response
-      end
-
-    _send_result = maybe_send_response(socket, response, opts)
+    serve_requests(socket, peer, opts, 1, "")
     _closed = :gen_tcp.close(socket)
     :ok
   catch
     _kind, _reason ->
       _closed = :gen_tcp.close(socket)
       :ok
+  end
+
+  # One iteration per request. Only a complete, plain response to a request
+  # that allows it keeps the connection open; errors, streams and cancelled
+  # requests close it, so the framing is never in doubt.
+  defp serve_requests(socket, peer, opts, count, buffer) do
+    connection_ref = make_ref()
+
+    {response, next} =
+      with {:ok, request, auth, leftover, persistent?} <-
+             read_request(socket, peer, connection_ref, buffer, opts),
+           :ok <- validate_endpoint(request, opts.path) do
+        {execute_request(socket, request, auth, opts), if(persistent?, do: {:keep, leftover})}
+      else
+        {:response, response} -> {response, nil}
+      end
+
+    keep? =
+      match?({:keep, _leftover}, next) and
+        match?(%Response{status: status} when status in [200, 202], response) and
+        count < opts.max_keepalive_requests
+
+    result = maybe_send_response(socket, response, opts, keep?)
+
+    with true <- keep?,
+         :ok <- result,
+         {:ok, buffer} <- await_next_request(socket, elem(next, 1), opts) do
+      opts =
+        Map.put(opts, :head_deadline, System.monotonic_time(:millisecond) + opts.head_timeout)
+
+      serve_requests(socket, peer, opts, count + 1, buffer)
+    else
+      _close -> :ok
+    end
+  end
+
+  # Waits for the first bytes of the next request on an idle connection. A
+  # drain or an expired idle timeout ends the connection.
+  defp await_next_request(_socket, leftover, _opts) when leftover != "", do: {:ok, leftover}
+
+  defp await_next_request(socket, "", opts) do
+    case recv_chunk(socket, opts.keepalive_timeout, opts.server_ref) do
+      {:ok, data} -> {:ok, data}
+      {:error, _reason} -> :close
+    end
   end
 
   defp execute_request(socket, request, auth, opts) do
@@ -651,8 +699,8 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     )
   end
 
-  defp read_request(socket, peer, connection_ref, opts) do
-    with {:ok, head, rest} <- recv_head(socket, "", opts),
+  defp read_request(socket, peer, connection_ref, buffer, opts) do
+    with {:ok, head, rest} <- recv_head(socket, buffer, opts),
          ungated_body_deadline = System.monotonic_time(:millisecond) + opts.body_timeout,
          {:ok, method, target, headers, content_length} <-
            parse_request_head(head, opts.max_body_bytes),
@@ -670,8 +718,8 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
              do: System.monotonic_time(:millisecond) + opts.body_timeout,
              else: ungated_body_deadline
            ),
-         {:ok, body} <- recv_body(socket, rest, content_length, body_deadline, opts) do
-      {:ok, %{request | body: body}, auth}
+         {:ok, body, leftover} <- recv_body(socket, rest, content_length, body_deadline, opts) do
+      {:ok, %{request | body: body}, auth, leftover, persistent?(head, headers)}
     else
       {:response, %Response{} = response} ->
         {:response, response}
@@ -900,7 +948,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   end
 
   defp recv_body(_socket, acc, length, _deadline, _opts) when byte_size(acc) >= length,
-    do: {:ok, binary_part(acc, 0, length)}
+    do: {:ok, binary_part(acc, 0, length), binary_part(acc, length, byte_size(acc) - length)}
 
   # Each read returns whatever has arrived, so `:read_timeout` bounds each read
   # and the body deadline bounds the whole body, as for the head.
@@ -916,6 +964,20 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     end
   end
 
+  # HTTP/1.1 is persistent unless the client sends `Connection: close`;
+  # HTTP/1.0 is never treated as persistent.
+  defp persistent?(head, headers) do
+    [request_line | _lines] = :binary.split(head, "\r\n")
+
+    String.ends_with?(request_line, "HTTP/1.1") and
+      not Enum.any?(header_values(headers, "connection"), fn value ->
+        value
+        |> String.downcase()
+        |> String.split(",")
+        |> Enum.any?(&(String.trim(&1) == "close"))
+      end)
+  end
+
   defp validate_endpoint(%Request{path: path}, path), do: :ok
   defp validate_endpoint(%Request{}, _configured), do: {:response, %Response{status: 404}}
 
@@ -925,7 +987,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     |> hd()
   end
 
-  defp send_response(socket, %Response{} = response) do
+  defp send_response(socket, %Response{} = response, keep?) do
     body = response.body
 
     length_header =
@@ -933,7 +995,8 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
         do: [{"content-length", Integer.to_string(byte_size(body))}],
         else: []
 
-    headers = response.headers ++ length_header ++ [{"connection", "close"}]
+    connection = if keep?, do: "keep-alive", else: "close"
+    headers = response.headers ++ length_header ++ [{"connection", connection}]
 
     lines =
       Enum.map(headers, fn {name, value} ->
@@ -952,14 +1015,14 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     ])
   end
 
-  defp maybe_send_response(socket, %Response{} = response, _opts),
-    do: send_response(socket, response)
+  defp maybe_send_response(socket, %Response{} = response, _opts, keep?),
+    do: send_response(socket, response, keep?)
 
-  defp maybe_send_response(socket, %StreamResponse{} = response, opts) do
+  defp maybe_send_response(socket, %StreamResponse{} = response, opts, _keep?) do
     serve_subscription(socket, response, opts.server_ref)
   end
 
-  defp maybe_send_response(_socket, _cancelled, _opts), do: :ok
+  defp maybe_send_response(_socket, _cancelled, _opts, _keep?), do: :ok
 
   defp serve_subscription(
          socket,

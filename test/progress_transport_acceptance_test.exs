@@ -281,7 +281,7 @@ defmodule Snodo.ProgressTransportAcceptanceTest do
 
     :ok =
       :gen_tcp.send(socket, [
-        "POST /mcp HTTP/1.1\r\nHost: localhost\r\n",
+        "POST /mcp HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n",
         "Content-Type: application/json\r\nAccept: application/json, text/event-stream\r\n",
         "MCP-Protocol-Version: 2026-07-28\r\nMcp-Method: tools/call\r\n",
         "Mcp-Name: progress_probe\r\nContent-Length: ",

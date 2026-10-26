@@ -79,7 +79,9 @@ children = [
 ```
 
 A dependency-free listener that binds to `127.0.0.1` by default and serves
-`POST /mcp`. It answers one request per connection:
+`POST /mcp`. A connection serves further requests after each complete
+response (HTTP/1.1 keep-alive), and closes after an error response, an event
+stream, `Connection: close`, or an HTTP/1.0 request. It answers:
 
 - `application/json` for ordinary results.
 - `text/event-stream` when a handler reports progress, and for
@@ -123,6 +125,11 @@ The listener also bounds what clients can hold open:
   closed without being read.
 - `:head_timeout` (default 10,000 ms from accept). The request head must be
   complete by then; `:read_timeout` (5,000 ms) still bounds each read.
+- `:keepalive_timeout` (default 5,000 ms). How long an idle connection waits
+  for its next request before it closes. The next request's `:head_timeout`
+  starts when its first bytes arrive.
+- `:max_keepalive_requests` (default 100). The most requests one connection
+  serves; the last response carries `Connection: close`.
 - `:request_gate_timeout` (default 10,000 ms). A gate that does not return in
   time gets a 504 response.
 - `:body_timeout` (default 10,000 ms from the end of the head, or from gate

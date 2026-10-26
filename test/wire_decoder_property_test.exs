@@ -425,6 +425,7 @@ defmodule Snodo.WireDecoderPropertyTest do
       [
         "POST /mcp HTTP/1.1",
         "Host: 127.0.0.1",
+        "Connection: close",
         "Content-Type: application/json",
         "Accept: application/json, text/event-stream",
         "MCP-Protocol-Version: 2026-07-28",
