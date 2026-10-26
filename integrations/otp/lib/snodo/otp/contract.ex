@@ -211,24 +211,13 @@ defmodule Snodo.OTP.Contract do
     ops = Enum.map(decls, & &1.op)
     calls = Enum.filter(decls, &(&1.op.kind == :call))
     casts = Enum.filter(decls, &(&1.op.kind == :cast))
-    args = Macro.var(:args, __MODULE__)
-    reply = Macro.var(:reply, __MODULE__)
 
     quote do
       @impl true
       def ops, do: unquote(Macro.escape(ops))
 
       @impl true
-      unquote_splicing(
-        for %{op: %{name: name}, message: message} <- decls do
-          # A message without arguments leaves the variable unused.
-          var = if args(message) == [], do: Macro.var(:_args, __MODULE__), else: args
-
-          quote do
-            def build_message(unquote(name), unquote(var)), do: unquote(build(message, args))
-          end
-        end
-      )
+      unquote_splicing(builders(decls))
 
       @impl true
       unquote_splicing(encoders(:encode_call, calls))
@@ -237,28 +226,49 @@ defmodule Snodo.OTP.Contract do
       unquote_splicing(encoders(:encode_cast, casts))
 
       @impl true
-      unquote_splicing(
-        for %{op: %{name: name}, reply: key} <- calls do
-          quote do
-            def encode_reply(unquote(name), unquote(reply)), do: %{unquote(key) => unquote(reply)}
-          end
-        end
-      )
+      unquote_splicing(replies(calls))
 
       def encode_reply(name, _reply),
         do: raise(ArgumentError, "no call operation named #{inspect(name)}")
 
       @impl true
-      unquote_splicing(
-        for %{op: %{name: name}, reply: key} <- calls do
-          quote do
-            def decode_reply(unquote(name), %{unquote(key) => unquote(reply)}), do: unquote(reply)
-          end
-        end
-      )
+      unquote_splicing(decoders(calls))
 
       def decode_reply(name, json),
         do: raise(ArgumentError, "cannot decode #{inspect(json)} for #{inspect(name)}")
+    end
+  end
+
+  defp builders(decls) do
+    args = Macro.var(:args, __MODULE__)
+
+    for %{op: %{name: name}, message: message} <- decls do
+      # A message without arguments leaves the variable unused.
+      var = if args(message) == [], do: Macro.var(:_args, __MODULE__), else: args
+
+      quote do
+        def build_message(unquote(name), unquote(var)), do: unquote(build(message, args))
+      end
+    end
+  end
+
+  defp replies(calls) do
+    reply = Macro.var(:reply, __MODULE__)
+
+    for %{op: %{name: name}, reply: key} <- calls do
+      quote do
+        def encode_reply(unquote(name), unquote(reply)), do: %{unquote(key) => unquote(reply)}
+      end
+    end
+  end
+
+  defp decoders(calls) do
+    reply = Macro.var(:reply, __MODULE__)
+
+    for %{op: %{name: name}, reply: key} <- calls do
+      quote do
+        def decode_reply(unquote(name), %{unquote(key) => unquote(reply)}), do: unquote(reply)
+      end
     end
   end
 
