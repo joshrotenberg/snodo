@@ -43,9 +43,11 @@ The Plug owns `/mcp` by default and returns 404 for other paths. Pass `path:` to
 change the exact full request path, or mount it in an application router with a
 matching path. It halts after handling a request. An already-halted authentication
 rejection is preserved. Place it **before `Plug.Parsers`** or any component that
-consumes the raw body. A request body needs `Content-Length`: a request that
-declares `Transfer-Encoding` (a chunked body) gets 411 without being read, as
-the native listener refuses a POST without `Content-Length`.
+consumes the raw body. When a parser has already read a body that the request
+declared with `Content-Length`, the Plug answers 500 with JSON-RPC -32603 and
+logs an error that names the cause. A request body needs `Content-Length`: a
+request that declares `Transfer-Encoding` (a chunked body) gets 411 without being
+read, as the native listener refuses a POST without `Content-Length`.
 
 The immutable runtime is application-supplied; there is no global runtime cache,
 hidden listener, or implicit executor. Configure a supervised `Snodo.Subscription.Hub`
