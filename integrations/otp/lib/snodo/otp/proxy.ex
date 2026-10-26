@@ -12,8 +12,11 @@ defmodule Snodo.OTP.Proxy do
 
   Failure semantics follow OTP where the wire allows it:
 
-    * The caller's own `GenServer.call` timeout governs. A result that
-      arrives after the caller gave up is dropped, as a late reply is in OTP.
+    * The caller's own `GenServer.call` timeout decides how long the caller
+      waits, and a result that arrives after the caller gave up is dropped,
+      as a late reply is in OTP. The request itself is not cancelled: it
+      holds the single in-flight slot until the remote side answers or
+      `:request_timeout` expires, so later requests wait behind it.
     * A call the remote side timed out (the adapter's `:timeout`, or the
       proxy's `:request_timeout`, default 60,000 ms) is answered
       `{:error, :timeout}`, so a caller with an `:infinity` timeout is not
@@ -21,7 +24,12 @@ defmodule Snodo.OTP.Proxy do
     * A call to a remote target that is not there (`GenServer target
       unavailable`) stops the proxy with `:noproc`, so a `Process.monitor/1`
       on the proxy delivers `DOWN` and a supervisor can restart it. A cast
-      to it is dropped, as a cast to a dead name is in OTP.
+      to it is dropped, as a cast to a dead name is in OTP. With
+      `on_unavailable: :error` the call is answered `{:error, :noproc}`
+      instead and the proxy keeps running.
+    * At most `:max_queue` requests (default 1,000) wait behind the one in
+      flight. A call beyond that is answered `{:error, :queue_full}` and a
+      cast is dropped.
     * A request whose process crashes, for example on arguments JSON cannot
       encode, is answered `{:error, {:request_failed, reason}}`, and later
       requests still run.
@@ -37,7 +45,8 @@ defmodule Snodo.OTP.Proxy do
       clause does to a GenServer.
 
   Options: `:url` and `:contract` (required), `:name`, `:headers`,
-  `:request_timeout`, and `:connect`, a keyword list merged over the
+  `:request_timeout`, `:max_queue`, `:on_unavailable` (`:stop`, the default,
+  or `:error`), and `:connect`, a keyword list merged over the
   defaults passed to `Snodo.Client.connect/2` (`protocol: "2026-07-28"`,
   `timeout: 15_000`), for example `connect: [token_provider: provider]`.
 
@@ -47,6 +56,7 @@ defmodule Snodo.OTP.Proxy do
   use GenServer
 
   @default_request_timeout 60_000
+  @default_max_queue 1_000
   # Snodo.Client.Transport.timeout_error/1
   @request_timeout -32_001
 
@@ -67,8 +77,11 @@ defmodule Snodo.OTP.Proxy do
        connect: Keyword.get(opts, :connect, []),
        contract: Keyword.fetch!(opts, :contract),
        request_timeout: Keyword.get(opts, :request_timeout, @default_request_timeout),
+       max_queue: Keyword.get(opts, :max_queue, @default_max_queue),
+       on_unavailable: Keyword.get(opts, :on_unavailable, :stop),
        client: nil,
        queue: :queue.new(),
+       queued: 0,
        in_flight: nil
      }}
   end
@@ -113,15 +126,22 @@ defmodule Snodo.OTP.Proxy do
     end
   end
 
+  # The request being sent does not count against the limit.
+  defp enqueue(%{queued: queued, max_queue: max} = state, {from, _name, _args})
+       when queued >= max and state.in_flight != nil do
+    reply(from, {:error, :queue_full})
+    {:noreply, state}
+  end
+
   defp enqueue(state, request) do
-    dispatch(%{state | queue: :queue.in(request, state.queue)})
+    dispatch(%{state | queue: :queue.in(request, state.queue), queued: state.queued + 1})
   end
 
   # Sends the next queued request when none is in flight.
   defp dispatch(%{in_flight: nil} = state) do
     case :queue.out(state.queue) do
       {{:value, {from, name, args}}, queue} ->
-        case ensure_client(%{state | queue: queue}) do
+        case ensure_client(%{state | queue: queue, queued: state.queued - 1}) do
           {:ok, state} ->
             ref = make_ref()
             monitor = run_tool(state, name, args, ref)
@@ -158,12 +178,22 @@ defmodule Snodo.OTP.Proxy do
     do: reply(from, {:error, {:request_failed, reason}})
 
   # A cast to a target that is not running is dropped, as in OTP.
-  defp outcome({:ok, %{"isError" => true} = result}, from, _name, _state) do
+  defp outcome({:ok, %{"isError" => true} = result}, from, _name, state) do
     case error_text(result) do
-      "GenServer target unavailable" <> _rest when is_nil(from) -> :continue
-      "GenServer target unavailable" <> _rest -> {:stop, :noproc}
-      "GenServer call timed out" <> _rest -> reply(from, {:error, :timeout})
-      text -> reply(from, {:error, text})
+      "GenServer target unavailable" <> _rest when is_nil(from) ->
+        :continue
+
+      "GenServer target unavailable" <> _rest when state.on_unavailable == :error ->
+        reply(from, {:error, :noproc})
+
+      "GenServer target unavailable" <> _rest ->
+        {:stop, :noproc}
+
+      "GenServer call timed out" <> _rest ->
+        reply(from, {:error, :timeout})
+
+      text ->
+        reply(from, {:error, text})
     end
   end
 
