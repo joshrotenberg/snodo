@@ -4,26 +4,38 @@ defmodule Snodo.OTP.Proxy do
   Application code keeps `GenServer.call/3` and `GenServer.cast/2`; each
   becomes a `tools/call` chosen by the contract.
 
+  Requests go out one at a time, in the order the proxy receives them, and
+  each waits for its result before the next is sent. That keeps the ordering
+  OTP gives a sender and a GenServer: casts arrive in order, and a call sees
+  every cast sent before it. The remote GenServer handles one message at a
+  time anyway; the cost is that requests do not overlap on the wire.
+
   Failure semantics follow OTP where the wire allows it:
 
-    * The caller's own `GenServer.call` timeout governs. The proxy answers
-      when the tool result arrives; a late result after the caller gave up
-      is dropped, as a late reply is in OTP.
+    * The caller's own `GenServer.call` timeout governs. A result that
+      arrives after the caller gave up is dropped, as a late reply is in OTP.
+    * A call the remote side timed out (the adapter's `:timeout`, or the
+      proxy's `:request_timeout`, default 60,000 ms) is answered
+      `{:error, :timeout}`, so a caller with an `:infinity` timeout is not
+      left waiting.
     * A remote target that is not there (`GenServer target unavailable`)
       stops the proxy with `:noproc`, so a `Process.monitor/1` on the proxy
       delivers `DOWN` and a supervisor can restart it.
-    * A transport failure stops the proxy with `{:nodedown, url}`.
+    * A connection failure stops the proxy with `{:nodedown, url}`. An HTTP
+      error status, such as 401 or 404, is answered `{:error, error}` and the
+      proxy keeps running.
     * A message the contract does not know stops the proxy with
       `{:function_clause, message}`, which is what an unmatched callback
       clause does to a GenServer.
 
   What it cannot give: a pid for the remote process, links to it, or any
-  DOWN that is not provoked by a call. Those need a subscription stream
-  (see the assessment).
+  DOWN that is not provoked by a call. Those need a subscription stream.
   """
   use GenServer
 
-  @tool_timeout 60_000
+  @default_request_timeout 60_000
+  # Snodo.Client.Transport.timeout_error/1
+  @request_timeout -32_001
 
   def start_link(opts) do
     {name, opts} = Keyword.pop(opts, :name)
@@ -40,15 +52,17 @@ defmodule Snodo.OTP.Proxy do
        url: Keyword.fetch!(opts, :url),
        headers: Keyword.get(opts, :headers, []),
        contract: Keyword.fetch!(opts, :contract),
+       request_timeout: Keyword.get(opts, :request_timeout, @default_request_timeout),
        client: nil,
-       pending: %{}
+       queue: :queue.new(),
+       in_flight: nil
      }}
   end
 
   @impl true
   def handle_call(message, from, state) do
     case state.contract.encode_call(message) do
-      {name, args} -> start_call(state, from, name, args)
+      {name, args} -> enqueue(state, {from, name, args})
       :nomatch -> {:stop, {:function_clause, message}, state}
     end
   end
@@ -56,88 +70,105 @@ defmodule Snodo.OTP.Proxy do
   @impl true
   def handle_cast(message, state) do
     case state.contract.encode_cast(message) do
-      {name, args} -> start_cast(state, name, args)
+      {name, args} -> enqueue(state, {nil, name, args})
       :nomatch -> {:stop, {:function_clause, message}, state}
     end
   end
 
-  defp start_call(state, from, name, args) do
-    case ensure_client(state) do
-      {:ok, state} ->
-        ref = make_ref()
-        :ok = run_tool(state.client, name, args, {self(), ref})
-        {:noreply, put_in(state.pending[ref], {from, name})}
-
-      {:stop, _reason, _state} = stop ->
-        stop
-    end
-  end
-
-  defp start_cast(state, name, args) do
-    case ensure_client(state) do
-      {:ok, state} ->
-        :ok = run_tool(state.client, name, args, nil)
-        {:noreply, state}
-
-      {:stop, _reason, _state} = stop ->
-        stop
-    end
-  end
-
-  # The call runs in its own process so the proxy keeps serving; a call's
-  # result comes back as {:tool_result, ref, result}, a cast's is dropped.
-  defp run_tool(client, name, args, reply_to) do
-    {:ok, _pid} =
-      Task.start(fn ->
-        result = Snodo.Client.call_tool(client, name, args, timeout: @tool_timeout)
-
-        case reply_to do
-          {owner, ref} -> send(owner, {:tool_result, ref, result})
-          nil -> :ok
-        end
-      end)
-
-    :ok
-  end
-
   @impl true
-  def handle_info({:tool_result, ref, result}, state) do
-    {{from, name}, pending} = Map.pop(state.pending, ref)
-    state = %{state | pending: pending}
+  def handle_info({:tool_result, ref, result}, %{in_flight: {ref, from, name}} = state) do
+    state = %{state | in_flight: nil}
 
-    case result do
-      {:ok, %{"isError" => true} = tool_error} ->
-        tool_error(state, from, error_text(tool_error))
-
-      {:ok, %{"structuredContent" => json}} ->
-        GenServer.reply(from, state.contract.decode_reply(name, json))
-        {:noreply, state}
-
-      {:ok, other} ->
-        GenServer.reply(from, {:error, {:unexpected_result, other}})
-        {:noreply, state}
-
-      {:error, %Snodo.Error{kind: :transport}} ->
-        {:stop, {:nodedown, state.url}, state}
-
-      {:error, error} ->
-        GenServer.reply(from, {:error, error})
-        {:noreply, state}
+    case outcome(result, from, name, state) do
+      :continue -> dispatch(state)
+      {:stop, reason} -> {:stop, reason, state}
     end
   end
 
   def handle_info(_other, state), do: {:noreply, state}
 
-  # A missing remote target stops the proxy as a dead local one would. The
-  # adapter's own timeout gets no reply: the caller's call timeout governs.
-  defp tool_error(state, _from, "GenServer target unavailable" <> _rest),
-    do: {:stop, :noproc, state}
+  defp enqueue(state, request) do
+    dispatch(%{state | queue: :queue.in(request, state.queue)})
+  end
 
-  defp tool_error(state, _from, "GenServer call timed out" <> _rest), do: {:noreply, state}
+  # Sends the next queued request when none is in flight.
+  defp dispatch(%{in_flight: nil} = state) do
+    case :queue.out(state.queue) do
+      {{:value, {from, name, args}}, queue} ->
+        case ensure_client(%{state | queue: queue}) do
+          {:ok, state} ->
+            ref = make_ref()
+            :ok = run_tool(state, name, args, ref)
+            {:noreply, %{state | in_flight: {ref, from, name}}}
 
-  defp tool_error(state, from, text) do
-    GenServer.reply(from, {:error, text})
-    {:noreply, state}
+          {:stop, _reason, _state} = stop ->
+            stop
+        end
+
+      {:empty, _queue} ->
+        {:noreply, state}
+    end
+  end
+
+  defp dispatch(state), do: {:noreply, state}
+
+  # The request runs in its own process so the proxy keeps accepting
+  # messages; its result comes back as {:tool_result, ref, result}.
+  defp run_tool(%{client: client, request_timeout: timeout}, name, args, ref) do
+    owner = self()
+
+    {:ok, _pid} =
+      Task.start(fn ->
+        result = Snodo.Client.call_tool(client, name, args, timeout: timeout)
+        send(owner, {:tool_result, ref, result})
+      end)
+
+    :ok
+  end
+
+  # What a tool result means for the caller (nil for a cast) and the proxy.
+  defp outcome({:ok, %{"isError" => true} = result}, from, _name, _state) do
+    case error_text(result) do
+      "GenServer target unavailable" <> _rest -> {:stop, :noproc}
+      "GenServer call timed out" <> _rest -> reply(from, {:error, :timeout})
+      text -> reply(from, {:error, text})
+    end
+  end
+
+  defp outcome({:ok, %{"structuredContent" => json}}, from, name, state) do
+    if from, do: reply(from, state.contract.decode_reply(name, json)), else: :continue
+  end
+
+  defp outcome({:ok, other}, from, _name, _state),
+    do: reply(from, {:error, {:unexpected_result, other}})
+
+  defp outcome(
+         {:error, %Snodo.Error{kind: :transport, code: @request_timeout}},
+         from,
+         _name,
+         _state
+       ),
+       do: reply(from, {:error, :timeout})
+
+  defp outcome(
+         {:error, %Snodo.Error{kind: :transport, cause: {:http_status, _status, _body}} = error},
+         from,
+         _name,
+         _state
+       ),
+       do: reply(from, {:error, error})
+
+  defp outcome({:error, %Snodo.Error{kind: :transport}}, _from, _name, state),
+    do: {:stop, {:nodedown, state.url}}
+
+  defp outcome({:error, error}, from, _name, _state), do: reply(from, {:error, error})
+
+  # A cast has no caller to answer.
+  defp reply(nil, _value), do: :continue
+
+  defp reply(from, value) do
+    GenServer.reply(from, value)
+    :continue
   end
 
   defp ensure_client(%{client: nil} = state) do

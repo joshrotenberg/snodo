@@ -100,13 +100,22 @@ GenServer.call(counter, {:add, 2})
 GenServer.cast(counter, {:add, 3})
 ```
 
+Requests go out one at a time, in the order the proxy receives them, so casts
+arrive in order and a call sees every cast sent before it, as in OTP. The
+remote GenServer handles one message at a time anyway; requests do not overlap
+on the wire.
+
 Failures follow OTP where the wire allows it:
 
 - The caller's `GenServer.call/3` timeout governs; a result that arrives after
   the caller gave up is dropped.
+- A call the remote side timed out (the adapter's `:timeout`, or the proxy's
+  `:request_timeout`, default 60,000 ms) is answered `{:error, :timeout}`.
 - A remote target that is not running stops the proxy with `:noproc`, so a
   monitor receives `DOWN` and a supervisor can restart it.
-- A transport failure stops the proxy with `{:nodedown, url}`.
+- A connection failure stops the proxy with `{:nodedown, url}`. An HTTP error
+  status, such as 401 or 404, is answered `{:error, error}` and the proxy keeps
+  running.
 - A message the contract does not know stops the proxy with
   `{:function_clause, message}`.
 
