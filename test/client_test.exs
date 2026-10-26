@@ -1636,7 +1636,9 @@ defmodule Snodo.ClientTest do
       send(self(), initialized())
       send(self(), refusal(["2026-07-28"]))
 
-      assert {:error, %Error{code: -32_022}} = Client.request(client, "tools/list")
+      # The error is the one from the resent request, not the first refusal.
+      assert {:error, %Error{code: -32_022, data: %{"supported" => ["2026-07-28"]}}} =
+               Client.request(client, "tools/list")
 
       assert_receive {:canned_request, %{"method" => "tools/list"}, _opts}, 1_000
       assert_receive {:canned_request, %{"method" => "initialize"}, _opts}, 1_000

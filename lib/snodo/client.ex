@@ -783,12 +783,12 @@ defmodule Snodo.Client do
   # -32022 before running it (the version is validated in the dialect's request
   # validation, ahead of dispatch), so one resend under another allowed version
   # from its `supported` list is safe. The renegotiated client lives for this
-  # request only; a session it opened is ended afterwards. A second refusal,
-  # a handshake request, a version the client does not allow, and a client
-  # that already holds an initialize-era session (a second `initialize` on its
-  # connection would break the lifecycle) surface the error as it came.
-  # `client.dialects` is empty while the connect-time handshake runs, which is
-  # what keeps the discover probe from renegotiating.
+  # request only; a session it opened is ended afterwards. A handshake request,
+  # a version the client does not allow, and a client that already holds an
+  # initialize-era session (a second `initialize` on its connection would break
+  # the lifecycle) surface the error as it came; a second refusal surfaces the
+  # error from the resent request. The `server/discover` and `initialize`
+  # method guard is what keeps the connect-time handshake from renegotiating.
   defp renegotiate(client, method, params, opts, plan, round, error) do
     with false <- Keyword.get(opts, :renegotiated, false),
          false <- method in ["initialize", "server/discover"],
