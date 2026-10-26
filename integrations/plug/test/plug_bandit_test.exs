@@ -194,9 +194,7 @@ defmodule Snodo.Transport.PlugBanditTest do
     padding = String.duplicate("x", 200_000)
     encoded = JSON.encode!(request("server/discover", %{"padding" => padding}))
     socket = h2_open(port, h2_headers("server/discover", byte_size(encoded)))
-    frames = for <<frame::binary-size(16_384) <- encoded>>, do: h2_frame(:data, [], frame)
-    last = binary_part(encoded, length(frames) * 16_384, rem(byte_size(encoded), 16_384))
-    :ok = :gen_tcp.send(socket, [frames, h2_frame(:data, [:end_stream], last)])
+    :ok = h2_send_body(socket, encoded)
 
     assert {"200", _headers, body} = h2_response(socket)
     assert @protocol in JSON.decode!(body)["result"]["supportedVersions"]
@@ -1078,6 +1076,51 @@ defmodule Snodo.Transport.PlugBanditTest do
       ])
 
     socket
+  end
+
+  @h2_default_window 65_535
+
+  # Sends `body` on stream 1 in frames of at most 16 KiB, within the
+  # connection and stream flow-control windows, reading the server's
+  # SETTINGS and WINDOW_UPDATE frames as they arrive. Bandit 1.14 grants
+  # window only as the stream reads, so a body larger than the initial
+  # 65,535 bytes waits for WINDOW_UPDATE. The response cannot start before
+  # the body is read, so other frames are skipped.
+  defp h2_send_body(socket, body),
+    do: h2_send_body(socket, body, @h2_default_window, @h2_default_window)
+
+  defp h2_send_body(socket, body, connection, stream)
+       when connection > 0 and stream > 0 do
+    size = Enum.min([byte_size(body), connection, stream, 16_384])
+    <<chunk::binary-size(^size), rest::binary>> = body
+    flags = if rest == "", do: [:end_stream], else: []
+    :ok = :gen_tcp.send(socket, h2_frame(:data, flags, chunk))
+
+    if rest == "",
+      do: :ok,
+      else: h2_send_body(socket, rest, connection - size, stream - size)
+  end
+
+  defp h2_send_body(socket, body, connection, stream) do
+    assert {:ok, <<size::24, type, flags, _reserved::1, stream_id::31>>} =
+             :gen_tcp.recv(socket, 9, 2_000)
+
+    {:ok, payload} = if size == 0, do: {:ok, ""}, else: :gen_tcp.recv(socket, size, 2_000)
+
+    case {type, stream_id, payload} do
+      {8, 0, <<_reserved::1, increment::31>>} ->
+        h2_send_body(socket, body, connection + increment, stream)
+
+      {8, 1, <<_reserved::1, increment::31>>} ->
+        h2_send_body(socket, body, connection, stream + increment)
+
+      {4, 0, _settings} when Bitwise.band(flags, 0x1) == 0 ->
+        :ok = :gen_tcp.send(socket, h2_frame(:settings, [:ack], ""))
+        h2_send_body(socket, body, connection, stream)
+
+      _other ->
+        h2_send_body(socket, body, connection, stream)
+    end
   end
 
   defp h2_frame(type, flags, payload) do
