@@ -398,6 +398,25 @@ defmodule Snodo.Transport.PlugBanditTest do
     :ok = :gen_tcp.close(socket)
   end
 
+  test "a listen stream sends its terminal result when the server shuts down" do
+    %{port: port} = server()
+    socket = open_stream(port, "shutdown-listen")
+
+    # ThousandIsland gives connection handlers 15 s to stop; a stream that
+    # ignored the shutdown exit would hold stop_supervised for that long.
+    {stop_us, :ok} = :timer.tc(fn -> stop_supervised(:listener) end)
+    assert stop_us < 5_000_000
+
+    body = read_until(socket, "\"id\":\"shutdown-listen\"")
+    [_, json] = Regex.run(~r/data: (\{[^\r\n]*"id":"shutdown-listen"[^\r\n]*\})/, body)
+
+    assert %{"jsonrpc" => "2.0", "id" => "shutdown-listen", "result" => result} =
+             JSON.decode!(json)
+
+    assert is_map(result)
+    :ok = :gen_tcp.close(socket)
+  end
+
   test "queue wait is included in the finite request deadline" do
     %{port: port, executor: executor} =
       server(max_concurrency: 1, max_queue: 1, request_timeout: 60)
@@ -871,8 +890,14 @@ defmodule Snodo.Transport.PlugBanditTest do
 
     listener =
       start_supervised!(
-        {Bandit,
-         plug: {PlugFixtures.Endpoint, plug_opts}, ip: {127, 0, 0, 1}, port: 0, startup_log: false}
+        Supervisor.child_spec(
+          {Bandit,
+           plug: {PlugFixtures.Endpoint, plug_opts},
+           ip: {127, 0, 0, 1},
+           port: 0,
+           startup_log: false},
+          id: :listener
+        )
       )
 
     {:ok, {_ip, port}} = ThousandIsland.listener_info(listener)

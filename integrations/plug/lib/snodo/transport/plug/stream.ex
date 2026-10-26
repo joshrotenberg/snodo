@@ -111,29 +111,36 @@ defmodule Snodo.Transport.Plug.Stream do
     :ok = Subscription.stop_worker(state.worker, state.worker_monitor)
   end
 
+  # The process that started this handler is the one whose shutdown exit
+  # signal ends the stream; exits from other linked processes are not ours.
+  # A handler started without proc_lib has no recorded parent, and then any
+  # shutdown exit ends the stream rather than none.
+  defp parent do
+    case Process.get(:"$ancestors") do
+      [parent | _] when is_pid(parent) -> parent
+      [parent | _] when is_atom(parent) -> Process.whereis(parent)
+      _unknown -> :any
+    end
+  end
+
   defp loop(conn, stream, monitor, subscription, keepalive_ms) do
+    parent = parent()
+
     receive do
-      {:mcp_plug_stream, ^stream, {:ok, event}} ->
-        case Subscription.notification(subscription, event) do
-          {:ok, message} ->
-            continue(conn, stream, monitor, subscription, keepalive_ms, message)
-
-          :drop ->
-            GenServer.cast(stream, :continue)
-            loop(conn, stream, monitor, subscription, keepalive_ms)
-
-          {:error, reason} ->
-            finish(conn, stream, subscription, {:error, reason})
-        end
-
-      {:mcp_plug_stream, ^stream, :closed} ->
-        finish(conn, stream, subscription, :complete)
-
-      {:mcp_plug_stream, ^stream, {:error, reason}} ->
-        finish(conn, stream, subscription, {:error, reason})
+      {:mcp_plug_stream, ^stream, outcome} ->
+        stream_outcome(outcome, conn, stream, monitor, subscription, keepalive_ms)
 
       {:DOWN, ^monitor, :process, ^stream, reason} ->
         final_chunk(conn, Subscription.failure(subscription, reason))
+
+      # The handler traps exits, so a server shutdown arrives as a message.
+      # Without this clause the stream would hold shutdown until the
+      # connection supervisor's timeout kills it.
+      {:EXIT, from, reason}
+      when (parent == :any or from == parent) and
+             (reason == :shutdown or
+                (is_tuple(reason) and tuple_size(reason) == 2 and elem(reason, 0) == :shutdown)) ->
+        finish(conn, stream, subscription, :complete)
     after
       keepalive_ms ->
         case Conn.chunk(conn, ": keepalive\r\n\r\n") do
@@ -142,6 +149,26 @@ defmodule Snodo.Transport.Plug.Stream do
         end
     end
   end
+
+  defp stream_outcome({:ok, event}, conn, stream, monitor, subscription, keepalive_ms) do
+    case Subscription.notification(subscription, event) do
+      {:ok, message} ->
+        continue(conn, stream, monitor, subscription, keepalive_ms, message)
+
+      :drop ->
+        GenServer.cast(stream, :continue)
+        loop(conn, stream, monitor, subscription, keepalive_ms)
+
+      {:error, reason} ->
+        finish(conn, stream, subscription, {:error, reason})
+    end
+  end
+
+  defp stream_outcome(:closed, conn, stream, _monitor, subscription, _keepalive_ms),
+    do: finish(conn, stream, subscription, :complete)
+
+  defp stream_outcome({:error, reason}, conn, stream, _monitor, subscription, _keepalive_ms),
+    do: finish(conn, stream, subscription, {:error, reason})
 
   defp continue(conn, stream, monitor, subscription, keepalive_ms, message) do
     case chunk(conn, message) do
