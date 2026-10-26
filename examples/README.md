@@ -33,7 +33,7 @@ mix run examples/01_direct_tools.exs --check
 
 Or run the complete no-external-service set, with every script launched in a
 fresh Elixir VM. The root task delegates examples 07–09, 17, and 26 to Tasks and example
-11 to the SQLite sibling; examples 12–16, 18–20, 23–25, 27–31, and 34 remain in core. Examples
+11 to the SQLite sibling; examples 01–06, 12–16, 18–20, 23–25, 27–31, and 34 remain in core. Examples
 21, 22, 32, and 33 run in their integration packages. All 33 default scripts run
 without external services:
 
