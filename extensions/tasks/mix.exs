@@ -21,6 +21,8 @@ defmodule Snodo.Extensions.Tasks.MixProject do
         files: ~w(lib/snodo guides mix.exs README.md LICENSE .formatter.exs)
       ],
       docs: [
+        logo: "../../assets/svg/snodo-icon-color.svg",
+        favicon: "../../assets/svg/snodo-icon-color.svg",
         main: "readme",
         extras: ["README.md", "guides/custom-stores.md"],
         source_ref: "v#{@version}",

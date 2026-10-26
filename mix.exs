@@ -70,6 +70,10 @@ defmodule Snodo.MixProject do
   defp docs do
     [
       main: "readme",
+      logo: "assets/svg/snodo-icon-color.svg",
+      favicon: "assets/svg/snodo-icon-color.svg",
+      # The README's logo is under assets/, so HexDocs needs the directory.
+      assets: %{"assets" => "assets"},
       source_ref: "v#{@version}",
       extras: [
         "README.md",
