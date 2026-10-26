@@ -68,9 +68,12 @@ pid or `:name`. The frame has no id and goes through the same serialized write
 path as responses. A disallowed method or non-map or non-JSON params returns
 `{:error, %Snodo.Error{}}` and writes nothing; a closed connection returns
 `{:error, :closed}`; a failed or timed-out write is terminal, as for any
-output, and returns `{:error, {:output_failed, reason}}`. There is no queue:
-callers wait for their own write, each bounded by the call timeout (default
-10,000 ms), and nothing is retried.
+output, and returns `{:error, {:output_failed, reason}}`; if the transport
+process exits during the call, it returns `{:error, {:transport_down, reason}}`.
+There is no queue: callers wait for their own write, each bounded by the call
+timeout (default 10,000 ms), and nothing is retried. If the call returns
+`{:error, :timeout}`, the caller stopped waiting and it is unknown whether the
+frame was written; do not assume it was or was not delivered.
 
 Logger output is redirected away from stdout by default, because stdout carries
 only protocol messages.

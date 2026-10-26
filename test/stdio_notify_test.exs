@@ -100,6 +100,11 @@ defmodule Snodo.Transport.StdioNotifyTest do
     Process.flag(:trap_exit, true)
 
     reserved = [
+      "notifications/cancelled",
+      "notifications/message",
+      "notifications/initialized",
+      "notifications/subscriptions/acknowledged",
+      "notifications/subscriptions/listen",
       "notifications/progress",
       "notifications/tools/list_changed",
       "notifications/prompts/list_changed",
