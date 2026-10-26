@@ -149,6 +149,7 @@ defmodule Snodo.Client do
     :protocol,
     :dialect,
     :session,
+    dialects: [],
     client_capabilities: %{},
     client_info: %{},
     timeout: 30_000,
@@ -770,10 +771,64 @@ defmodule Snodo.Client do
         |> Response.decode()
         |> answer_input(client, method, params, opts, plan, round)
 
+      {:error, %Error{code: -32_022} = error} ->
+        renegotiate(client, method, params, opts, plan, round, error)
+
       {:error, %Error{}} = error ->
         error
     end
   end
+
+  # A server that dropped the connection's version refuses the request with
+  # -32022 before running it, so one resend under another allowed version from
+  # its `supported` list is safe. The renegotiated client lives for this
+  # request only; a session it opened is ended afterwards. A second refusal,
+  # a handshake request, and a version the client does not allow surface the
+  # error as it came.
+  defp renegotiate(client, method, params, opts, plan, round, error) do
+    with false <- Keyword.get(opts, :renegotiated, false),
+         false <- method in ["initialize", "server/discover"],
+         supported when is_list(supported) <- get_in_data(error, "supported"),
+         dialect when not is_nil(dialect) <-
+           Enum.find(client.dialects, &(&1 != client.dialect and &1.version() in supported)),
+         {:ok, renegotiated} <-
+           Handshake.run(%{client | session: nil}, [dialect], fn -> {:error, error} end,
+             probe_timeout: client.probe_timeout
+           ) do
+      try do
+        send_request(
+          renegotiated,
+          method,
+          params,
+          Keyword.put(opts, :renegotiated, true),
+          plan,
+          round
+        )
+      after
+        end_session(renegotiated)
+      end
+    else
+      _not_renegotiated ->
+        {:error, error}
+    end
+  end
+
+  defp get_in_data(%Error{data: %{} = data}, key), do: Map.get(data, key)
+  defp get_in_data(%Error{}, _key), do: nil
+
+  defp end_session(%__MODULE__{transport: {module, state}, session: %Session{id: id}} = client)
+       when is_binary(id) do
+    if function_exported?(module, :delete_session, 2) do
+      module.delete_session(state,
+        headers: session_headers(client),
+        timeout: min(client.timeout, @delete_session_timeout)
+      )
+    end
+
+    :ok
+  end
+
+  defp end_session(_client), do: :ok
 
   # `plan` is nil when the client has no handlers or the call opted out; the
   # result then reaches the caller as it is.
@@ -792,6 +847,17 @@ defmodule Snodo.Client do
       send_request(client, method, params, opts, plan, round + 1)
     end
   end
+
+  defp answer_input(
+         {:error, %Error{code: -32_022} = error},
+         client,
+         method,
+         params,
+         opts,
+         plan,
+         round
+       ),
+       do: renegotiate(client, method, params, opts, plan, round, error)
 
   defp answer_input(response, _client, _method, _params, _opts, _plan, _round), do: response
 
@@ -846,6 +912,7 @@ defmodule Snodo.Client do
             transport: {module, state},
             protocol: first.version(),
             dialect: first,
+            dialects: dialects,
             cache_variant: cache_variant(module, state)
           })
         )

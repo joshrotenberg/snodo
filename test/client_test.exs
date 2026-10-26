@@ -1587,6 +1587,74 @@ defmodule Snodo.ClientTest do
     send(self(), {:canned_response, %{"jsonrpc" => "2.0", "id" => 0, "result" => result}})
   end
 
+  describe "a -32022 refusal" do
+    defp refusal(supported) do
+      {:canned_response,
+       %{
+         "jsonrpc" => "2.0",
+         "id" => 0,
+         "error" => %{
+           "code" => -32_022,
+           "message" => "Unsupported protocol version",
+           "data" => %{"requested" => "2026-07-28", "supported" => supported}
+         }
+       }}
+    end
+
+    defp initialized do
+      {:canned_response,
+       %{
+         "jsonrpc" => "2.0",
+         "id" => 0,
+         "result" => %{"protocolVersion" => "2025-11-25", "capabilities" => %{}}
+       }, [{"mcp-session-id", "s1"}]}
+    end
+
+    defp flexible_client do
+      client = canned_client()
+      %{client | dialects: [V2026_07_28, V2025_11_25]}
+    end
+
+    test "renegotiates once from the supported list and resends the request" do
+      client = flexible_client()
+      send(self(), refusal(["2025-11-25"]))
+      send(self(), initialized())
+
+      assert {:ok, %{"canned" => true}} = Client.request(client, "tools/list")
+
+      assert_receive {:canned_request, %{"method" => "tools/list"}, _opts}, 1_000
+      assert_receive {:canned_request, %{"method" => "initialize"}, _opts}, 1_000
+      assert_receive {:canned_notification, %{"method" => "notifications/initialized"}, _}, 1_000
+      assert_receive {:canned_request, %{"method" => "tools/list"}, opts}, 1_000
+      assert {"mcp-protocol-version", "2025-11-25"} in opts[:headers]
+      assert_receive {:canned_delete, _opts}, 1_000
+    end
+
+    test "surfaces the error when the new version is refused too" do
+      client = flexible_client()
+      send(self(), refusal(["2025-11-25"]))
+      send(self(), initialized())
+      send(self(), refusal(["2026-07-28"]))
+
+      assert {:error, %Error{code: -32_022}} = Client.request(client, "tools/list")
+
+      assert_receive {:canned_request, %{"method" => "tools/list"}, _opts}, 1_000
+      assert_receive {:canned_request, %{"method" => "initialize"}, _opts}, 1_000
+      assert_receive {:canned_request, %{"method" => "tools/list"}, _opts}, 1_000
+      refute_receive {:canned_request, _message, _opts}, 50
+    end
+
+    test "does not resend when the client allows none of the supported versions" do
+      client = canned_client()
+      send(self(), refusal(["2025-11-25"]))
+
+      assert {:error, %Error{code: -32_022}} = Client.request(client, "tools/list")
+
+      assert_receive {:canned_request, %{"method" => "tools/list"}, _opts}, 1_000
+      refute_receive {:canned_request, _message, _opts}, 50
+    end
+  end
+
   defp count(tag) do
     receive do
       ^tag -> 1 + count(tag)
