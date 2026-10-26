@@ -85,6 +85,6 @@ effects.
 - [PostgreSQL store](https://hexdocs.pm/snodo_tasks_postgres)
 - [SQLite store](https://hexdocs.pm/snodo_tasks_sqlite)
 
-Examples 07, 08, 09, and 17 run from `extensions/tasks`; example 10 from
+Examples 07, 08, 09, 17, and 26 run from `extensions/tasks`; example 10 from
 `extensions/tasks_postgres` with a live database; example 11 from
 `extensions/tasks_sqlite`.

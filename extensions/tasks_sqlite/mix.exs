@@ -21,6 +21,8 @@ defmodule Snodo.Extensions.Tasks.SQLite.MixProject do
         files: ~w(lib/snodo mix.exs README.md LICENSE .formatter.exs)
       ],
       docs: [
+        logo: "../../assets/svg/snodo-icon-color.svg",
+        favicon: "../../assets/svg/snodo-icon-color.svg",
         main: "readme",
         extras: ["README.md"],
         source_ref: "v#{@version}",

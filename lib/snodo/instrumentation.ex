@@ -6,6 +6,12 @@ defmodule Snodo.Instrumentation do
   measurements, and deliberately bounded metadata. Sink failures are isolated:
   observability cannot change protocol, transport, or Tasks behavior.
 
+  Dispatch events for `tools/call`, `prompts/get`, and `resources/read` also
+  carry `:component`: the registered tool or prompt name, or the URI of a
+  registered direct resource. A name the router does not register, and a
+  resource URI that only a template matches, is reported as `:unknown`, so the
+  value stays bounded by the catalog and is safe as a metric tag.
+
   A sink may bridge events to `:telemetry`, OpenTelemetry, Logger, a metrics
   process, or a test collector without making any of those systems a framework
   dependency.

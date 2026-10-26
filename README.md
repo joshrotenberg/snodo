@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/svg/snodo-lockup-white.svg">
+    <img src="assets/svg/snodo-lockup-color.svg" alt="snodo" width="440">
+  </picture>
+</p>
+
 # snodo
 
 [![Compatibility](https://github.com/joshrotenberg/snodo/actions/workflows/compatibility.yml/badge.svg)](https://github.com/joshrotenberg/snodo/actions/workflows/compatibility.yml)

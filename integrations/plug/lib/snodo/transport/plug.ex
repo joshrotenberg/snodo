@@ -55,6 +55,8 @@ defmodule Snodo.Transport.Plug do
 
   @behaviour Plug
 
+  require Logger
+
   alias Plug.Conn
   alias Snodo.Error
   alias Snodo.Progress
@@ -115,12 +117,50 @@ defmodule Snodo.Transport.Plug do
 
   def call(%Conn{request_path: path} = conn, %{path: path} = opts) do
     case read_body(conn, opts) do
-      {:ok, body, conn} -> admit(conn, body, opts)
-      {:error, status, conn} -> refuse_body(conn, status)
+      {:ok, "", conn} = read ->
+        if consumed?(conn), do: body_consumed(conn), else: admit_read(read, opts)
+
+      read ->
+        admit_read(read, opts)
     end
   end
 
   def call(%Conn{} = conn, _opts), do: conn |> Conn.send_resp(404, "") |> Conn.halt()
+
+  @body_consumed "The request body was already consumed by a body parser such as Plug.Parsers. " <>
+                   "Install Snodo.Transport.Plug before the parser, or forward the MCP path " <>
+                   "before the parsing plug runs."
+
+  defp admit_read({:ok, body, conn}, opts), do: admit(conn, body, opts)
+  defp admit_read({:error, status, conn}, _opts), do: refuse_body(conn, status)
+
+  # An empty read means a parser took the body only when a parser ran and the
+  # request declared a non-empty body. Params alone are not evidence: another
+  # plug can set them on a bodyless request. Chunked bodies are refused before
+  # this point, so a body always declares its length here.
+  defp consumed?(%Conn{body_params: %Conn.Unfetched{}}), do: false
+
+  defp consumed?(%Conn{} = conn) do
+    Enum.any?(Conn.get_req_header(conn, "content-length"), fn value ->
+      match?({length, ""} when length > 0, Integer.parse(String.trim(value)))
+    end)
+  end
+
+  defp body_consumed(conn) do
+    Logger.error("Snodo.Transport.Plug: " <> @body_consumed)
+
+    body =
+      JSON.encode!(%{
+        "jsonrpc" => "2.0",
+        "id" => nil,
+        "error" => %{"code" => -32_603, "message" => @body_consumed}
+      })
+
+    conn
+    |> Conn.put_resp_content_type("application/json")
+    |> Conn.send_resp(500, body)
+    |> Conn.halt()
+  end
 
   defp admit(conn, body, opts) do
     request = %Request{

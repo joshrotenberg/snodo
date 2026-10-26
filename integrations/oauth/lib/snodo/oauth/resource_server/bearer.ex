@@ -60,12 +60,38 @@ defmodule Snodo.OAuth.ResourceServer.Bearer do
   | `:realm` | omitted | The `realm` parameter in challenges |
   | `:leeway` | 0 | Clock skew tolerated for `exp` and `nbf`, in seconds |
   | `:auth_assign` | `:mcp_auth` | The assign that receives the identity |
+  | `:instrumentation` | none | A `Snodo.Instrumentation` sink, or `{sink, options}` |
+
+  ## Instrumentation
+
+  With `:instrumentation` set, each request emits a span named
+  `[:snodo, :oauth, :verify]`: `:start` (measurement `system_time`), then
+  `:stop` (measurement `duration`) with the metadata `%{outcome: outcome}`,
+  or `:exception` (measurement `duration`; metadata `kind` and `reason_class`)
+  if a verifier raises. `outcome` is one of:
+
+  | Outcome | When |
+  |---|---|
+  | `:ok` | The request was admitted |
+  | `:missing_token` | No `Authorization` header, or a scheme other than `Bearer` |
+  | `:invalid_token` | Malformed header, duplicate header, a refusal with any other reason, or an unusable claim |
+  | `:wrong_issuer` | The verifier reported `:wrong_issuer` |
+  | `:wrong_audience` | The `aud` claim is missing or does not name this resource |
+  | `:expired` | `exp` has passed, or the verifier reported an expired signature |
+  | `:insufficient_scope` | The token is valid but lacks a required scope |
+
+  Events never carry the token, its claims, or the verifier's error reason.
+  Pass `Snodo.Instrumentation.Telemetry` from `snodo_telemetry` to receive
+  them as `:telemetry` events.
   """
 
   @behaviour Plug
 
   alias Plug.Conn
+  alias Snodo.Instrumentation
   alias Snodo.OAuth.ResourceServer
+
+  @event [:snodo, :oauth, :verify]
 
   @bearer ~r/\A[Bb][Ee][Aa][Rr][Ee][Rr]([ \t]|\z)/
   @token ~r/\A[Bb][Ee][Aa][Rr][Ee][Rr][ \t]+([A-Za-z0-9\-._~+\/]+=*)[ \t]*\z/
@@ -82,7 +108,8 @@ defmodule Snodo.OAuth.ResourceServer.Bearer do
       required_scopes: scopes!(Keyword.get(opts, :required_scopes, [])),
       realm: string!(opts, :realm, nil),
       leeway: leeway!(opts),
-      auth_assign: assign!(opts)
+      auth_assign: assign!(opts),
+      instrumentation: opts |> Keyword.get(:instrumentation) |> Instrumentation.normalize!()
     }
   end
 
@@ -107,18 +134,35 @@ defmodule Snodo.OAuth.ResourceServer.Bearer do
   @spec authorize([{String.t(), String.t()}], map()) ::
           {:ok, map()} | {:error, pos_integer(), String.t(), binary()}
   def authorize(headers, opts) when is_list(headers) do
+    Instrumentation.span(
+      opts.instrumentation,
+      @event,
+      %{},
+      fn -> decide(headers, opts) end,
+      fn {outcome, _result} -> %{outcome: outcome} end
+    )
+    |> elem(1)
+  end
+
+  defp decide(headers, opts) do
     case token(headers) do
       {:ok, token} ->
         authenticate(token, opts)
 
       {:error, :missing} ->
-        refuse(401, nil, "A bearer token is required", opts)
+        refuse(:missing_token, 401, nil, "A bearer token is required", opts)
 
       {:error, :malformed} ->
-        refuse(400, "invalid_request", "The Authorization header is malformed", opts)
+        refuse(
+          :invalid_token,
+          400,
+          "invalid_request",
+          "The Authorization header is malformed",
+          opts
+        )
 
       {:error, :multiple} ->
-        refuse(400, "invalid_request", "More than one Authorization header", opts)
+        refuse(:invalid_token, 400, "invalid_request", "More than one Authorization header", opts)
     end
   end
 
@@ -147,7 +191,13 @@ defmodule Snodo.OAuth.ResourceServer.Bearer do
         admit(claims, opts)
 
       {:error, reason} ->
-        refuse(401, "invalid_token", "Token verification failed: " <> name(reason), opts)
+        refuse(
+          verifier_outcome(reason),
+          401,
+          "invalid_token",
+          "Token verification failed: " <> name(reason),
+          opts
+        )
 
       other ->
         raise ArgumentError,
@@ -164,45 +214,64 @@ defmodule Snodo.OAuth.ResourceServer.Bearer do
          :ok <- check_audience(claims["aud"], opts.audience),
          {:ok, scopes} <- granted_scopes(claims),
          :ok <- check_scopes(scopes, opts.required_scopes) do
-      {:ok,
-       %{
-         principal: claims["sub"],
-         client_id: claims["client_id"],
-         scopes: scopes,
-         claims: claims
-       }}
+      auth = %{
+        principal: claims["sub"],
+        client_id: claims["client_id"],
+        scopes: scopes,
+        claims: claims
+      }
+
+      {:ok, {:ok, auth}}
     else
-      {:invalid_token, description} ->
-        refuse(401, "invalid_token", description, opts)
+      {:invalid_token, outcome, description} ->
+        refuse(outcome, 401, "invalid_token", description, opts)
 
       {:insufficient_scope, description} ->
-        refuse(403, "insufficient_scope", description, opts)
+        refuse(:insufficient_scope, 403, "insufficient_scope", description, opts)
+    end
+  end
+
+  # An unrecognized verifier reason is :invalid_token, which keeps the set of
+  # outcomes bounded whatever a custom verifier returns.
+  defp verifier_outcome(reason) do
+    case name(reason) do
+      "wrong_issuer" -> :wrong_issuer
+      "wrong_audience" -> :wrong_audience
+      "expired_signature" -> :expired
+      "expired" -> :expired
+      _other -> :invalid_token
     end
   end
 
   defp check_expiry(nil, _now, _leeway), do: :ok
 
   defp check_expiry(exp, now, leeway) when is_number(exp) do
-    if now - leeway < exp, do: :ok, else: {:invalid_token, "The access token has expired"}
+    if now - leeway < exp,
+      do: :ok,
+      else: {:invalid_token, :expired, "The access token has expired"}
   end
 
-  defp check_expiry(_exp, _now, _leeway), do: {:invalid_token, "The exp claim is not a number"}
+  defp check_expiry(_exp, _now, _leeway),
+    do: {:invalid_token, :invalid_token, "The exp claim is not a number"}
 
   defp check_not_before(nil, _now, _leeway), do: :ok
 
   defp check_not_before(nbf, now, leeway) when is_number(nbf) do
-    if nbf - leeway <= now, do: :ok, else: {:invalid_token, "The access token is not yet valid"}
+    if nbf - leeway <= now,
+      do: :ok,
+      else: {:invalid_token, :invalid_token, "The access token is not yet valid"}
   end
 
   defp check_not_before(_nbf, _now, _leeway),
-    do: {:invalid_token, "The nbf claim is not a number"}
+    do: {:invalid_token, :invalid_token, "The nbf claim is not a number"}
 
-  defp check_audience(nil, _audience), do: {:invalid_token, "The access token has no audience"}
+  defp check_audience(nil, _audience),
+    do: {:invalid_token, :wrong_audience, "The access token has no audience"}
 
   defp check_audience(aud, audience) do
     if ResourceServer.audience_match?(aud, audience),
       do: :ok,
-      else: {:invalid_token, "The access token was not issued for this resource"}
+      else: {:invalid_token, :wrong_audience, "The access token was not issued for this resource"}
   end
 
   defp granted_scopes(claims) do
@@ -210,14 +279,14 @@ defmodule Snodo.OAuth.ResourceServer.Bearer do
       nil -> {:ok, []}
       scope when is_binary(scope) -> {:ok, String.split(scope, " ", trim: true)}
       scopes when is_list(scopes) -> scope_list(scopes)
-      _other -> {:invalid_token, "The scope claim is malformed"}
+      _other -> {:invalid_token, :invalid_token, "The scope claim is malformed"}
     end
   end
 
   defp scope_list(scopes) do
     if Enum.all?(scopes, &is_binary/1),
       do: {:ok, scopes},
-      else: {:invalid_token, "The scope claim is malformed"}
+      else: {:invalid_token, :invalid_token, "The scope claim is malformed"}
   end
 
   defp check_scopes(granted, required) do
@@ -226,13 +295,13 @@ defmodule Snodo.OAuth.ResourceServer.Bearer do
       else: {:insufficient_scope, "The access token lacks a required scope"}
   end
 
-  defp refuse(status, error, description, opts) do
+  defp refuse(outcome, status, error, description, opts) do
     body =
       if error,
         do: %{"error" => error, "error_description" => description},
         else: %{"error_description" => description}
 
-    {:error, status, challenge(opts, error, description), JSON.encode!(body)}
+    {outcome, {:error, status, challenge(opts, error, description), JSON.encode!(body)}}
   end
 
   # RFC 6750 section 3: a challenge without authentication information

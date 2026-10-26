@@ -103,9 +103,6 @@ jobs:
         run: |
           mix local.hex --force
           mix local.rebar --force
-      # The siblings depend on the released snodo (and the Tasks stores on the
-      # released snodo_tasks), so publish in dependency order. A package whose
-      # version is already on Hex is skipped, so the job can be rerun.
       # The siblings depend on the released snodo (the Tasks stores, and the
       # snodo_telemetry tests, on the released snodo_tasks), so publish in
       # dependency order. A package whose version is already on Hex is
