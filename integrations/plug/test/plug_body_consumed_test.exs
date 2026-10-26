@@ -5,11 +5,18 @@ defmodule Snodo.Transport.PlugBodyConsumedTest do
   import Plug.Conn
   import Plug.Test
 
+  alias Snodo.Subscription.Hub
   alias Snodo.Transport.Plug, as: TransportPlug
+  alias SnodoTest.PlugFixtures
 
-  @opts %{path: "/mcp"}
+  setup do
+    runtime = PlugFixtures.runtime(start_supervised!(Hub))
+    %{opts: TransportPlug.init(runtime: runtime, executor: self())}
+  end
 
-  test "a request whose body a parser already consumed gets an explicit 500 and a log line" do
+  test "a request whose body a parser already consumed gets an explicit 500 and a log line", %{
+    opts: opts
+  } do
     conn =
       :post
       |> conn("/mcp", ~s({"jsonrpc":"2.0"}))
@@ -20,7 +27,7 @@ defmodule Snodo.Transport.PlugBodyConsumedTest do
 
     log =
       capture_log(fn ->
-        send(self(), {:conn, TransportPlug.call(conn, @opts)})
+        send(self(), {:conn, TransportPlug.call(conn, opts)})
       end)
 
     assert_received {:conn, conn}
@@ -32,8 +39,27 @@ defmodule Snodo.Transport.PlugBodyConsumedTest do
     assert log =~ "already consumed"
   end
 
-  test "other paths are unaffected by a parsed body" do
+  test "a pass-through parser that left an empty params map does not trigger the error", %{
+    opts: opts
+  } do
+    conn =
+      :post
+      |> conn("/mcp", ~s({"jsonrpc":"2.0"}))
+      |> put_req_header("content-type", "text/plain")
+      |> Plug.Parsers.call(Plug.Parsers.init(parsers: [:json], pass: ["*/*"], json_decoder: JSON))
+      |> Map.put(:body_params, %{})
+
+    # The body is still unread, so it is read and admitted, not rejected.
+    refute TransportPlug.call(conn, opts).status == 500
+  end
+
+  test "a bodyless request with an empty params map is not reported as consumed", %{opts: opts} do
+    conn = :get |> conn("/mcp") |> Map.put(:body_params, %{})
+    refute TransportPlug.call(conn, opts).status == 500
+  end
+
+  test "other paths are unaffected by a parsed body", %{opts: opts} do
     conn = :post |> conn("/other", "") |> Map.put(:body_params, %{})
-    assert TransportPlug.call(conn, @opts).status == 404
+    assert TransportPlug.call(conn, opts).status == 404
   end
 end

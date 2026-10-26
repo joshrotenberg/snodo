@@ -112,24 +112,36 @@ defmodule Snodo.Transport.Plug do
   @impl true
   def call(%Conn{halted: true} = conn, _opts), do: conn
 
-  def call(
-        %Conn{request_path: path, body_params: %Conn.Unfetched{}} = conn,
-        %{path: path} = opts
-      ) do
+  def call(%Conn{request_path: path} = conn, %{path: path} = opts) do
     case read_body(conn, opts) do
-      {:ok, body, conn} -> admit(conn, body, opts)
-      {:error, status, conn} -> refuse_body(conn, status)
+      {:ok, "", conn} = read ->
+        if consumed?(conn), do: body_consumed(conn), else: admit_read(read, opts)
+
+      read ->
+        admit_read(read, opts)
     end
   end
-
-  # Plug.Parsers already read the body, so there is nothing left to read.
-  def call(%Conn{request_path: path} = conn, %{path: path}), do: body_consumed(conn)
 
   def call(%Conn{} = conn, _opts), do: conn |> Conn.send_resp(404, "") |> Conn.halt()
 
   @body_consumed "The request body was already consumed by a body parser such as Plug.Parsers. " <>
                    "Install Snodo.Transport.Plug before the parser, or forward the MCP path " <>
                    "before the parsing plug runs."
+
+  defp admit_read({:ok, body, conn}, opts), do: admit(conn, body, opts)
+  defp admit_read({:error, status, conn}, _opts), do: refuse_body(conn, status)
+
+  # An empty read only means a parser took the body when a parser ran and the
+  # request declared content or the parser produced params. A pass-through
+  # parser or a bodyless request leaves nothing to detect.
+  defp consumed?(%Conn{body_params: %Conn.Unfetched{}}), do: false
+
+  defp consumed?(%Conn{body_params: params} = conn) do
+    params != %{} or
+      Enum.any?(Conn.get_req_header(conn, "content-length"), fn value ->
+        match?({n, _} when n > 0, Integer.parse(value))
+      end)
+  end
 
   defp body_consumed(conn) do
     Logger.error("Snodo.Transport.Plug: " <> @body_consumed)
