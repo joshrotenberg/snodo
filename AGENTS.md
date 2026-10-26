@@ -38,7 +38,7 @@ Inside the repository each sibling depends on `snodo` by path. `RELEASING.md` ex
 Requirements: Elixir 1.18 or later on OTP 27 or later (CI runs 1.18/OTP 27, 1.19/OTP 28, and 1.20/OTP 29), Node.js 24 for the TypeScript interop and conformance checks, and Python 3.13 with uv 0.12.21 for Python interop. PostgreSQL is needed only for the live PostgreSQL lane.
 
 ```sh
-mix setup                                      # dependencies for the core, the eight siblings, and the conformance fixture
+mix setup                                      # dependencies for the core, the nine siblings, and the conformance fixture
 (cd interop/official_client && npm ci --ignore-scripts)
 (cd interop/official_python && uv sync --frozen)
 ```

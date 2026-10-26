@@ -60,6 +60,11 @@ defmodule Snodo.OTP.Proxy do
   # Snodo.Client.Transport.timeout_error/1
   @request_timeout -32_001
 
+  # Error texts of Snodo.Tool.GenServer, which has no structured error codes
+  # yet. The proxy's tests run against the real adapter and fail if they change.
+  @target_unavailable "GenServer target unavailable"
+  @call_timed_out "GenServer call timed out"
+
   def start_link(opts) do
     {name, opts} = Keyword.pop(opts, :name)
 
@@ -180,16 +185,16 @@ defmodule Snodo.OTP.Proxy do
   # A cast to a target that is not running is dropped, as in OTP.
   defp outcome({:ok, %{"isError" => true} = result}, from, _name, state) do
     case error_text(result) do
-      "GenServer target unavailable" <> _rest when is_nil(from) ->
+      @target_unavailable <> _rest when is_nil(from) ->
         :continue
 
-      "GenServer target unavailable" <> _rest when state.on_unavailable == :error ->
+      @target_unavailable <> _rest when state.on_unavailable == :error ->
         reply(from, {:error, :noproc})
 
-      "GenServer target unavailable" <> _rest ->
+      @target_unavailable <> _rest ->
         {:stop, :noproc}
 
-      "GenServer call timed out" <> _rest ->
+      @call_timed_out <> _rest ->
         reply(from, {:error, :timeout})
 
       text ->
