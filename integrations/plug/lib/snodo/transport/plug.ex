@@ -52,6 +52,8 @@ defmodule Snodo.Transport.Plug do
 
   @behaviour Plug
 
+  require Logger
+
   alias Plug.Conn
   alias Snodo.Error
   alias Snodo.Progress
@@ -110,14 +112,40 @@ defmodule Snodo.Transport.Plug do
   @impl true
   def call(%Conn{halted: true} = conn, _opts), do: conn
 
-  def call(%Conn{request_path: path} = conn, %{path: path} = opts) do
+  def call(
+        %Conn{request_path: path, body_params: %Conn.Unfetched{}} = conn,
+        %{path: path} = opts
+      ) do
     case read_body(conn, opts) do
       {:ok, body, conn} -> admit(conn, body, opts)
       {:error, status, conn} -> refuse_body(conn, status)
     end
   end
 
+  # Plug.Parsers already read the body, so there is nothing left to read.
+  def call(%Conn{request_path: path} = conn, %{path: path}), do: body_consumed(conn)
+
   def call(%Conn{} = conn, _opts), do: conn |> Conn.send_resp(404, "") |> Conn.halt()
+
+  @body_consumed "The request body was already consumed by a body parser such as Plug.Parsers. " <>
+                   "Install Snodo.Transport.Plug before the parser, or forward the MCP path " <>
+                   "before the parsing plug runs."
+
+  defp body_consumed(conn) do
+    Logger.error("Snodo.Transport.Plug: " <> @body_consumed)
+
+    body =
+      JSON.encode!(%{
+        "jsonrpc" => "2.0",
+        "id" => nil,
+        "error" => %{"code" => -32_603, "message" => @body_consumed}
+      })
+
+    conn
+    |> Conn.put_resp_content_type("application/json")
+    |> Conn.send_resp(500, body)
+    |> Conn.halt()
+  end
 
   defp admit(conn, body, opts) do
     request = %Request{
