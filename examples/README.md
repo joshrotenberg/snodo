@@ -33,8 +33,8 @@ mix run examples/01_direct_tools.exs --check
 
 Or run the complete no-external-service set, with every script launched in a
 fresh Elixir VM. The root task delegates examples 07–09, 17, and 26 to Tasks and example
-11 to the SQLite sibling; examples 12–16, 18–20, 23–25, and 27–31 remain in core. Examples
-21, 22, 32, and 33 run in their integration packages. All 32 default scripts run
+11 to the SQLite sibling; examples 12–16, 18–20, 23–25, 27–31, and 34 remain in core. Examples
+21, 22, 32, and 33 run in their integration packages. All 33 default scripts run
 without external services:
 
 ```sh
@@ -124,7 +124,7 @@ PostgreSQL database; it runs in the PostgreSQL package's opt-in live quality
 lane instead.
 Example 11 is included because its file-backed SQLite database is embedded,
 temporary, and cleaned up by the example itself.
-Example 12 mirrors the future `hexpm-mcp` rewrite shape with local fixture data:
+Example 12 uses a `hexpm-mcp`-shaped layout with local fixture data:
 `toolbox://groups` is static and `hex://{name}/info` uses an explicit
 application-owned matcher. It requires no network access.
 Example 13 mirrors the target application's five guided workflows and uses only
