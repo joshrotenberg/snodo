@@ -393,7 +393,7 @@ defmodule Snodo.Server do
     Instrumentation.span(
       runtime.instrumentation,
       [:snodo, :server, :dispatch],
-      dispatch_metadata(raw, transport),
+      dispatch_metadata(runtime, raw, transport),
       fn -> dispatch_uninstrumented(runtime, raw, transport) end,
       &dispatch_finish_metadata/1
     )
@@ -416,7 +416,7 @@ defmodule Snodo.Server do
       else: {:ok, generic_error_response(error, readable_id(raw))}
   end
 
-  defp dispatch_metadata(raw, transport) do
+  defp dispatch_metadata(runtime, raw, transport) do
     metadata =
       case raw do
         %{"params" => %{"_meta" => request_metadata}} -> request_metadata
@@ -428,8 +428,33 @@ defmodule Snodo.Server do
       request_id: readable_id(raw),
       transport: transport.transport
     }
+    |> put_component(runtime.router, raw)
     |> Map.merge(Snodo.TraceContext.instrumentation_metadata(metadata))
   end
+
+  # The component name is a metric tag, so it is bounded by the catalog: a name
+  # the router does not register is reported as :unknown, never as the requested
+  # string. Only direct resources are named; a URI matched by a template (or by
+  # nothing) is :unknown because the URI itself is client-chosen.
+  defp put_component(metadata, router, %{"method" => "tools/call", "params" => params}),
+    do: Map.put(metadata, :component, catalog_name(router.tools, params, "name"))
+
+  defp put_component(metadata, router, %{"method" => "prompts/get", "params" => params}),
+    do: Map.put(metadata, :component, catalog_name(router.prompts, params, "name"))
+
+  defp put_component(metadata, router, %{"method" => "resources/read", "params" => params}),
+    do: Map.put(metadata, :component, catalog_name(router.resources, params, "uri"))
+
+  defp put_component(metadata, _router, _raw), do: metadata
+
+  defp catalog_name(catalog, %{} = params, key) do
+    case params do
+      %{^key => name} when is_binary(name) and is_map_key(catalog, name) -> name
+      _other -> :unknown
+    end
+  end
+
+  defp catalog_name(_catalog, _params, _key), do: :unknown
 
   defp instrumented_method(%{"method" => method})
        when is_binary(method) and byte_size(method) <= @max_instrumented_method_bytes,
