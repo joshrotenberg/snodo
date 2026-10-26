@@ -42,13 +42,11 @@ defmodule Snodo.Transport.Plug do
   `Transfer-Encoding` gets 411 without its body being read: an adapter returns
   from a chunked read only once it has the requested bytes, however many
   socket reads that takes, so no deadline checked between reads can bound it.
-  Over HTTP/2, Bandit returns from a read after a slice of DATA, at the end of
-  the stream, or after `:read_timeout` without a frame, and each DATA frame
-  restarts that wait, so a client that keeps sending small or empty frames can
-  hold a read past the deadline. The Plug cannot interrupt that read, so over
-  HTTP/2 a watchdog process ends the request process 500 ms after the deadline
-  if the body is still unread. Bandit then resets the stream; the client gets
-  no 408. After a body error over HTTP/1.x
+  Over HTTP/2, Bandit 1.12.5 restarted a read's `:read_timeout` wait on every
+  DATA frame, even an empty one, so a client that kept sending small or empty
+  frames could hold a read past the deadline. Bandit 1.14.0 gives each read an
+  absolute deadline, so the Plug's deadline bounds the body there too; a test
+  covers this. Use Bandit 1.14 or later for untrusted HTTP/2 clients. After a body error over HTTP/1.x
   the response closes the connection, so the adapter does not read the rest of
   the body.
   """
@@ -72,10 +70,6 @@ defmodule Snodo.Transport.Plug do
   # socket read under Bandit, so the deadline is checked after each read.
   @body_slice 65_536
   @http1 [:"HTTP/1", :"HTTP/1.0", :"HTTP/1.1"]
-  # How long past `:body_timeout` an HTTP/2 read may run before the watchdog
-  # ends the request process.
-  @watchdog_grace 500
-
   @impl true
   def init(opts) do
     runtime = Keyword.fetch!(opts, :runtime)
@@ -423,47 +417,12 @@ defmodule Snodo.Transport.Plug do
     case Conn.get_req_header(conn, "transfer-encoding") do
       [] ->
         deadline = System.monotonic_time(:millisecond) + opts.body_timeout
-        watchdog = arm_watchdog(conn, opts)
-
-        try do
-          read_body(conn, opts, deadline, [], 0)
-        after
-          disarm_watchdog(watchdog)
-        end
+        read_body(conn, opts, deadline, [], 0)
 
       _declared ->
         {:error, 411, conn}
     end
   end
-
-  # Over HTTP/1.x a read returns by the deadline, so the check between reads
-  # bounds the body. A Bandit HTTP/2 read restarts its wait on every DATA frame,
-  # even an empty one, so a read can outlast the deadline and the Plug cannot
-  # interrupt it. A watchdog ends the request process shortly after the deadline
-  # instead; Bandit then resets the stream. It cannot answer 408. A read that
-  # returns in time wins and disarms the watchdog.
-  defp arm_watchdog(conn, opts) do
-    if Conn.get_http_protocol(conn) in @http1 do
-      nil
-    else
-      request = self()
-      delay = opts.body_timeout + @watchdog_grace
-
-      spawn(fn ->
-        monitor = Process.monitor(request)
-
-        receive do
-          :disarm -> :ok
-          {:DOWN, ^monitor, :process, ^request, _reason} -> :ok
-        after
-          delay -> Process.exit(request, :kill)
-        end
-      end)
-    end
-  end
-
-  defp disarm_watchdog(nil), do: :ok
-  defp disarm_watchdog(watchdog), do: send(watchdog, :disarm)
 
   defp read_body(conn, opts, deadline, acc, size) do
     remaining = deadline - System.monotonic_time(:millisecond)

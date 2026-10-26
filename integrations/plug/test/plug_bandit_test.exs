@@ -217,7 +217,7 @@ defmodule Snodo.Transport.PlugBanditTest do
     assert elapsed < 2_000
   end
 
-  test "an HTTP/2 body trickled in empty frames is ended shortly after body_timeout" do
+  test "an HTTP/2 body trickled in one-byte frames is ended at body_timeout" do
     %{port: port} = server(body_timeout: 300, read_timeout: 5_000)
     encoded = JSON.encode!(request("server/discover", %{}))
     socket = h2_open(port, h2_headers("server/discover", byte_size(encoded)))
@@ -226,7 +226,7 @@ defmodule Snodo.Transport.PlugBanditTest do
     assert :ended = h2_empty_frames_until_ended(socket, started + 3_000)
     elapsed = System.monotonic_time(:millisecond) - started
     assert elapsed >= 300
-    assert elapsed < 3_000
+    assert elapsed < 2_000
   end
 
   test "body_timeout must be a positive integer" do
@@ -1092,42 +1092,47 @@ defmodule Snodo.Transport.PlugBanditTest do
     socket
   end
 
-  # Sends an empty DATA frame every 50 ms until the server resets the stream
+  # Sends a one-byte DATA frame every 50 ms until the server resets the stream
   # (type 3), answers it (HEADERS, type 1), or closes the connection.
-  defp h2_empty_frames_until_ended(socket, give_up) do
+  # Received bytes accumulate in `buffer`, so a frame split across reads or
+  # coalesced with others is still seen.
+  defp h2_empty_frames_until_ended(socket, give_up, buffer \\ "") do
     cond do
       System.monotonic_time(:millisecond) > give_up ->
         :open
 
-      match?({:error, _}, :gen_tcp.send(socket, h2_frame(:data, [], ""))) ->
+      match?({:error, _}, :gen_tcp.send(socket, h2_frame(:data, [], "x"))) ->
         :ended
 
       true ->
-        socket |> :gen_tcp.recv(0, 50) |> h2_after_wait(socket, give_up)
+        socket |> :gen_tcp.recv(0, 50) |> h2_after_wait(socket, give_up, buffer)
     end
   end
 
-  defp h2_after_wait({:error, :timeout}, socket, give_up),
-    do: h2_empty_frames_until_ended(socket, give_up)
+  defp h2_after_wait({:error, :timeout}, socket, give_up, buffer),
+    do: h2_empty_frames_until_ended(socket, give_up, buffer)
 
-  defp h2_after_wait({:error, _closed}, _socket, _give_up), do: :ended
+  defp h2_after_wait({:error, _closed}, _socket, _give_up, _buffer), do: :ended
 
-  defp h2_after_wait({:ok, data}, socket, give_up) do
-    if h2_ends_stream?(data), do: :ended, else: h2_empty_frames_until_ended(socket, give_up)
+  defp h2_after_wait({:ok, data}, socket, give_up, buffer) do
+    case h2_scan(buffer <> data) do
+      :ended -> :ended
+      {:more, rest} -> h2_empty_frames_until_ended(socket, give_up, rest)
+    end
   end
 
-  defp h2_ends_stream?(<<size::24, type, _flags, _r::1, 1::31, rest::binary>>) do
-    type in [1, 3] or
-      (size <= byte_size(rest) and
-         h2_ends_stream?(binary_part(rest, size, byte_size(rest) - size)))
+  # Walks the complete frames in the buffer; the rest is kept for the next read.
+  defp h2_scan(<<size::24, type, _flags, _r::1, stream::31, tail::binary>> = buffer) do
+    case tail do
+      <<_payload::binary-size(^size), rest::binary>> ->
+        if stream == 1 and type in [1, 3], do: :ended, else: h2_scan(rest)
+
+      _incomplete ->
+        {:more, buffer}
+    end
   end
 
-  defp h2_ends_stream?(<<size::24, _type, _flags, _rest::32, payload::binary>>) do
-    size <= byte_size(payload) and
-      h2_ends_stream?(binary_part(payload, size, byte_size(payload) - size))
-  end
-
-  defp h2_ends_stream?(_other), do: false
+  defp h2_scan(incomplete), do: {:more, incomplete}
 
   defp h2_frame(type, flags, payload) do
     payload = IO.iodata_to_binary(payload)
