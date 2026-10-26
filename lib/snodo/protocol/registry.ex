@@ -119,11 +119,29 @@ defmodule Snodo.Protocol.Registry do
         {:ok, protocol}
 
       [] ->
-        {:error, Error.invalid_request("No configured protocol dialect recognized the request")}
+        {:error, unrecognized(registry, envelope)}
 
       _protocols ->
         {:error, Error.invalid_request("Multiple protocol dialects matched the request")}
     end
+  end
+
+  defp unrecognized(registry, %Envelope{kind: :request, method: "initialize"}) do
+    enabled = versions(registry)
+
+    error =
+      Error.invalid_request(
+        "No enabled protocol version handles initialize. Enabled versions: " <>
+          "#{Enum.join(enabled, ", ")}. To serve initialize-era clients, enable " <>
+          "Snodo.Protocol.V2025_11_25 and Snodo.Protocol.V2025_06_18 alongside " <>
+          "Snodo.Protocol.V2026_07_28."
+      )
+
+    %{error | data: %{"enabled" => enabled}}
+  end
+
+  defp unrecognized(_registry, _envelope) do
+    Error.invalid_request("No configured protocol dialect recognized the request")
   end
 
   defp validate_protocol!(protocol) when is_atom(protocol) do
