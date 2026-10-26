@@ -219,3 +219,69 @@ defmodule SnodoTest.OTP.FaultyContract do
   def decode_reply("counter_add", %{"total" => total}), do: total
   def decode_reply("counter_get" = name, json), do: CounterContract.decode_reply(name, json)
 end
+
+defmodule SnodoTest.OTP.DerivedCounterContract do
+  @moduledoc false
+  # CounterContract's operations, declared once each.
+  use Snodo.OTP.Contract
+
+  @obj %{"type" => "object", "additionalProperties" => false}
+  @by %{
+    "type" => "object",
+    "properties" => %{"by" => %{"type" => "integer"}},
+    "required" => ["by"],
+    "additionalProperties" => false
+  }
+  @ms %{
+    "type" => "object",
+    "properties" => %{"ms" => %{"type" => "integer"}},
+    "required" => ["ms"],
+    "additionalProperties" => false
+  }
+  @count %{
+    "type" => "object",
+    "properties" => %{"value" => %{"type" => "integer"}},
+    "required" => ["value"]
+  }
+
+  call("counter_get",
+    message: :get,
+    reply: "value",
+    input_schema: @obj,
+    output_schema: @count,
+    description: "Read the counter"
+  )
+
+  call("counter_add",
+    message: {:add, {:arg, "by"}},
+    reply: "value",
+    input_schema: @by,
+    output_schema: @count,
+    description: "Add to the counter"
+  )
+
+  call("counter_slow",
+    message: {:slow, {:arg, "ms"}},
+    reply: "value",
+    input_schema: @ms,
+    output_schema: @count,
+    timeout: 500
+  )
+
+  cast("counter_cast_add",
+    message: {:add, {:arg, "by"}},
+    input_schema: @by,
+    description: "Add without waiting"
+  )
+end
+
+defmodule SnodoTest.OTP.DerivedCounterServer do
+  @moduledoc false
+  use Snodo.Server, name: "derived-counter-node", version: "0.1.0"
+  import Snodo.OTP.Server
+
+  alias SnodoTest.OTP.Counter
+  alias SnodoTest.OTP.DerivedCounterContract
+
+  expose(DerivedCounterContract, target: Counter)
+end
