@@ -396,9 +396,25 @@ defmodule Snodo.Transport.PlugBanditTest do
     [stream] = slot_holders(executor)
     %{owner: handler} = :sys.get_state(stream)
 
-    Process.exit(handler, :shutdown)
+    {:dictionary, dictionary} = Process.info(handler, :dictionary)
+    [parent | _] = Keyword.fetch!(dictionary, :"$ancestors")
+    parent = if is_atom(parent), do: Process.whereis(parent), else: parent
 
-    assert read_until(socket, "\"id\":\"shutdown-listen\"") =~ "\"result\""
+    # A shutdown from an unrelated linked process must not end the stream.
+    send(handler, {:EXIT, self(), :shutdown})
+    refute_receive {:never, _}, 100
+    assert [^stream] = slot_holders(executor)
+
+    send(handler, {:EXIT, parent, :shutdown})
+
+    body = read_until(socket, "\"id\":\"shutdown-listen\"")
+    [_, json] = Regex.run(~r/data: (\{[^\r\n]*"id":"shutdown-listen"[^\r\n]*\})/, body)
+
+    assert %{"jsonrpc" => "2.0", "id" => "shutdown-listen", "result" => result} =
+             JSON.decode!(json)
+
+    refute Map.has_key?(JSON.decode!(json), "error")
+    assert is_map(result)
     assert eventually(fn -> slot_holders(executor) == [] end)
     :ok = :gen_tcp.close(socket)
   end

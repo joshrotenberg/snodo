@@ -111,7 +111,19 @@ defmodule Snodo.Transport.Plug.Stream do
     :ok = Subscription.stop_worker(state.worker, state.worker_monitor)
   end
 
+  # The process that started this handler is the one whose shutdown exit
+  # signal ends the stream; exits from other linked processes are not ours.
+  defp parent do
+    case Process.get(:"$ancestors") do
+      [parent | _] when is_pid(parent) -> parent
+      [parent | _] when is_atom(parent) -> Process.whereis(parent)
+      _ -> nil
+    end
+  end
+
   defp loop(conn, stream, monitor, subscription, keepalive_ms) do
+    parent = parent()
+
     receive do
       {:mcp_plug_stream, ^stream, {:ok, event}} ->
         case Subscription.notification(subscription, event) do
@@ -138,7 +150,7 @@ defmodule Snodo.Transport.Plug.Stream do
       # The handler traps exits, so a server shutdown arrives as a message.
       # Without this clause the stream would hold shutdown until the
       # connection supervisor's timeout kills it.
-      {:EXIT, _from, reason}
+      {:EXIT, ^parent, reason}
       when reason == :shutdown or (is_tuple(reason) and elem(reason, 0) == :shutdown) ->
         finish(conn, stream, subscription, :complete)
     after
