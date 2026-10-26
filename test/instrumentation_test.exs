@@ -38,6 +38,47 @@ defmodule Snodo.InstrumentationTest do
     refute inspect([start, metadata, stop, stop_metadata]) =~ "also-private"
   end
 
+  test "dispatch names registered components and maps everything else to :unknown" do
+    runtime =
+      TestFixtures.runtime(
+        prompts: [SnodoTest.TestPrompts.PackageAnalysis],
+        instrumentation: {TestInstrumentationSink, self()}
+      )
+
+    cases = [
+      {"tools/call", %{"name" => "echo", "arguments" => %{"text" => "hi"}}, "echo"},
+      {"tools/call", %{"name" => "no-such-tool-xyz"}, :unknown},
+      {"tools/call", %{"name" => 42}, :unknown},
+      {"prompts/get", %{"name" => "package_analysis"}, "package_analysis"},
+      {"prompts/get", %{"name" => "no-such-prompt-xyz"}, :unknown},
+      {"resources/read", %{"uri" => "file:///no/such/resource"}, :unknown}
+    ]
+
+    for {method, params, component} <- cases do
+      Snodo.Test.dispatch(runtime, protocol: "2026-07-28", method: method, params: params)
+
+      assert_receive {:instrumentation, [:snodo, :server, :dispatch, :start], _start,
+                      %{method: ^method} = start_metadata}
+
+      assert start_metadata.component == component
+
+      assert_receive {:instrumentation, [:snodo, :server, :dispatch, :stop], _stop,
+                      %{method: ^method} = stop_metadata}
+
+      assert stop_metadata.component == component
+      refute inspect(start_metadata) =~ "no-such"
+    end
+
+    # A request without params still carries the key.
+    transport = %TransportContext{transport: :direct}
+
+    raw = %{"jsonrpc" => "2.0", "id" => "no-params", "method" => "tools/call"}
+    Snodo.Server.dispatch(runtime, raw, transport)
+
+    assert_receive {:instrumentation, [:snodo, :server, :dispatch, :start], _start,
+                    %{request_id: "no-params", component: :unknown}}
+  end
+
   test "dispatch reports malformed or oversized methods as invalid metadata" do
     runtime = TestFixtures.runtime(instrumentation: {TestInstrumentationSink, self()})
     transport = %TransportContext{transport: :direct}

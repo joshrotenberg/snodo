@@ -9,8 +9,8 @@ npm run check:progress --prefix interop/official_client
 ```
 
 `npm run check` chains baseline, MRTR, and progress acceptance. The progress script
-also accepts `--stdio` or `--http`. It uses the exact lockfile client version,
-`@modelcontextprotocol/client@2.1.0`, against fresh Mixless public-API fixtures.
+also accepts `--stdio` or `--http`. It uses the exact lockfile version of
+`@modelcontextprotocol/client` against fresh Mixless public-API fixtures.
 There are no external service calls or timing sleeps.
 
 ## Separate proofs
