@@ -131,16 +131,16 @@ defmodule Snodo.Transport.Plug do
   defp admit_read({:ok, body, conn}, opts), do: admit(conn, body, opts)
   defp admit_read({:error, status, conn}, _opts), do: refuse_body(conn, status)
 
-  # An empty read only means a parser took the body when a parser ran and the
-  # request declared content or the parser produced params. A pass-through
-  # parser or a bodyless request leaves nothing to detect.
+  # An empty read means a parser took the body only when a parser ran and the
+  # request declared a non-empty body. Params alone are not evidence: another
+  # plug can set them on a bodyless request. Chunked bodies are refused before
+  # this point, so a body always declares its length here.
   defp consumed?(%Conn{body_params: %Conn.Unfetched{}}), do: false
 
-  defp consumed?(%Conn{body_params: params} = conn) do
-    params != %{} or
-      Enum.any?(Conn.get_req_header(conn, "content-length"), fn value ->
-        match?({n, _} when n > 0, Integer.parse(value))
-      end)
+  defp consumed?(%Conn{} = conn) do
+    Enum.any?(Conn.get_req_header(conn, "content-length"), fn value ->
+      match?({length, ""} when length > 0, Integer.parse(String.trim(value)))
+    end)
   end
 
   defp body_consumed(conn) do

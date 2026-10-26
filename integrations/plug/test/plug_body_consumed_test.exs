@@ -9,21 +9,25 @@ defmodule Snodo.Transport.PlugBodyConsumedTest do
   alias Snodo.Transport.Plug, as: TransportPlug
   alias SnodoTest.PlugFixtures
 
+  @json_parser Plug.Parsers.init(parsers: [:json], json_decoder: JSON)
+  @pass_parser Plug.Parsers.init(parsers: [:json], pass: ["*/*"], json_decoder: JSON)
+
   setup do
     runtime = PlugFixtures.runtime(start_supervised!(Hub))
     %{opts: TransportPlug.init(runtime: runtime, executor: self())}
   end
 
-  test "a request whose body a parser already consumed gets an explicit 500 and a log line", %{
-    opts: opts
-  } do
-    conn =
-      :post
-      |> conn("/mcp", ~s({"jsonrpc":"2.0"}))
-      |> put_req_header("content-type", "application/json")
-      |> Plug.Parsers.call(Plug.Parsers.init(parsers: [:json], json_decoder: JSON))
+  # Plug.Test sets no content-length; a real server always does for a body.
+  defp post(path, body, content_type) do
+    :post
+    |> conn(path, body)
+    |> put_req_header("content-type", content_type)
+    |> put_req_header("content-length", Integer.to_string(byte_size(body)))
+  end
 
-    assert is_map(conn.body_params)
+  test "a body a parser already consumed gets an explicit 500 and a log line", %{opts: opts} do
+    conn =
+      "/mcp" |> post(~s({"jsonrpc":"2.0"}), "application/json") |> Plug.Parsers.call(@json_parser)
 
     log =
       capture_log(fn ->
@@ -39,27 +43,27 @@ defmodule Snodo.Transport.PlugBodyConsumedTest do
     assert log =~ "already consumed"
   end
 
-  test "a pass-through parser that left an empty params map does not trigger the error", %{
-    opts: opts
-  } do
-    conn =
-      :post
-      |> conn("/mcp", ~s({"jsonrpc":"2.0"}))
-      |> put_req_header("content-type", "text/plain")
-      |> Plug.Parsers.call(Plug.Parsers.init(parsers: [:json], pass: ["*/*"], json_decoder: JSON))
-      |> Map.put(:body_params, %{})
+  test "a body a pass-through parser left unread is read and admitted", %{opts: opts} do
+    conn = "/mcp" |> post("not json", "text/plain") |> Plug.Parsers.call(@pass_parser)
+    assert %Plug.Conn.Unfetched{} = conn.body_params
 
-    # The body is still unread, so it is read and admitted, not rejected.
-    refute TransportPlug.call(conn, opts).status == 500
+    conn = TransportPlug.call(conn, opts)
+    refute conn.status == 500
+    refute conn.resp_body =~ "already consumed"
   end
 
-  test "a bodyless request with an empty params map is not reported as consumed", %{opts: opts} do
-    conn = :get |> conn("/mcp") |> Map.put(:body_params, %{})
-    refute TransportPlug.call(conn, opts).status == 500
+  test "params another plug set on a bodyless request are not taken as a consumed body", %{
+    opts: opts
+  } do
+    conn = :post |> conn("/mcp") |> Map.put(:body_params, %{"set" => "elsewhere"})
+
+    conn = TransportPlug.call(conn, opts)
+    refute conn.status == 500
+    refute conn.resp_body =~ "already consumed"
   end
 
   test "other paths are unaffected by a parsed body", %{opts: opts} do
-    conn = :post |> conn("/other", "") |> Map.put(:body_params, %{})
+    conn = "/other" |> post(~s({"a":1}), "application/json") |> Plug.Parsers.call(@json_parser)
     assert TransportPlug.call(conn, opts).status == 404
   end
 end
