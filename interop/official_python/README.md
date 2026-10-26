@@ -1,6 +1,6 @@
 # Official Python client acceptance
 
-These checks use the unmodified official `mcp` Python SDK 2.0.0 against Snodo's
+These checks use the unmodified official `mcp` Python SDK against Snodo's
 public server APIs. `pyproject.toml` pins the SDK and `uv.lock` pins its
 dependencies. Python 3.13 and uv 0.12.21 are required.
 
