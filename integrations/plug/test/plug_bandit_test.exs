@@ -388,6 +388,21 @@ defmodule Snodo.Transport.PlugBanditTest do
     :ok = :gen_tcp.close(socket)
   end
 
+  test "a listen stream sends its terminal result when the handler is told to shut down" do
+    %{port: port, executor: executor} = server()
+    socket = open_stream(port, "shutdown-listen")
+
+    assert eventually(fn -> length(slot_holders(executor)) == 1 end)
+    [stream] = slot_holders(executor)
+    %{owner: handler} = :sys.get_state(stream)
+
+    Process.exit(handler, :shutdown)
+
+    assert read_until(socket, "\"id\":\"shutdown-listen\"") =~ "\"result\""
+    assert eventually(fn -> slot_holders(executor) == [] end)
+    :ok = :gen_tcp.close(socket)
+  end
+
   test "queue wait is included in the finite request deadline" do
     %{port: port, executor: executor} =
       server(max_concurrency: 1, max_queue: 1, request_timeout: 60)

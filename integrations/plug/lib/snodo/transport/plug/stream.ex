@@ -134,6 +134,13 @@ defmodule Snodo.Transport.Plug.Stream do
 
       {:DOWN, ^monitor, :process, ^stream, reason} ->
         final_chunk(conn, Subscription.failure(subscription, reason))
+
+      # The handler traps exits, so a server shutdown arrives as a message.
+      # Without this clause the stream would hold shutdown until the
+      # connection supervisor's timeout kills it.
+      {:EXIT, _from, reason}
+      when reason == :shutdown or (is_tuple(reason) and elem(reason, 0) == :shutdown) ->
+        finish(conn, stream, subscription, :complete)
     after
       keepalive_ms ->
         case Conn.chunk(conn, ": keepalive\r\n\r\n") do
