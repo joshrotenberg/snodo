@@ -194,9 +194,7 @@ defmodule Snodo.Transport.PlugBanditTest do
     padding = String.duplicate("x", 200_000)
     encoded = JSON.encode!(request("server/discover", %{"padding" => padding}))
     socket = h2_open(port, h2_headers("server/discover", byte_size(encoded)))
-    frames = for <<frame::binary-size(16_384) <- encoded>>, do: h2_frame(:data, [], frame)
-    last = binary_part(encoded, length(frames) * 16_384, rem(byte_size(encoded), 16_384))
-    :ok = :gen_tcp.send(socket, [frames, h2_frame(:data, [:end_stream], last)])
+    :ok = h2_send_body(socket, encoded)
 
     assert {"200", _headers, body} = h2_response(socket)
     assert @protocol in JSON.decode!(body)["result"]["supportedVersions"]
@@ -223,7 +221,7 @@ defmodule Snodo.Transport.PlugBanditTest do
     socket = h2_open(port, h2_headers("server/discover", byte_size(encoded)))
     started = System.monotonic_time(:millisecond)
 
-    assert :ended = h2_empty_frames_until_ended(socket, started + 3_000)
+    assert {:status, "408"} = h2_trickle_until_ended(socket, started + 3_000)
     elapsed = System.monotonic_time(:millisecond) - started
     assert elapsed >= 300
     assert elapsed < 2_000
@@ -1093,16 +1091,17 @@ defmodule Snodo.Transport.PlugBanditTest do
   end
 
   # Sends a one-byte DATA frame every 50 ms until the server resets the stream
-  # (type 3), answers it (HEADERS, type 1), or closes the connection.
+  # (`:reset`), answers it (`{:status, status}`, from the first HEADERS block),
+  # or closes the connection (`:closed`); `:open` when `give_up` passes first.
   # Received bytes accumulate in `buffer`, so a frame split across reads or
   # coalesced with others is still seen.
-  defp h2_empty_frames_until_ended(socket, give_up, buffer \\ "") do
+  defp h2_trickle_until_ended(socket, give_up, buffer \\ "") do
     cond do
       System.monotonic_time(:millisecond) > give_up ->
         :open
 
       match?({:error, _}, :gen_tcp.send(socket, h2_frame(:data, [], "x"))) ->
-        :ended
+        :closed
 
       true ->
         socket |> :gen_tcp.recv(0, 50) |> h2_after_wait(socket, give_up, buffer)
@@ -1110,14 +1109,14 @@ defmodule Snodo.Transport.PlugBanditTest do
   end
 
   defp h2_after_wait({:error, :timeout}, socket, give_up, buffer),
-    do: h2_empty_frames_until_ended(socket, give_up, buffer)
+    do: h2_trickle_until_ended(socket, give_up, buffer)
 
-  defp h2_after_wait({:error, _closed}, _socket, _give_up, _buffer), do: :ended
+  defp h2_after_wait({:error, _closed}, _socket, _give_up, _buffer), do: :closed
 
   defp h2_after_wait({:ok, data}, socket, give_up, buffer) do
     case h2_scan(buffer <> data) do
-      :ended -> :ended
-      {:more, rest} -> h2_empty_frames_until_ended(socket, give_up, rest)
+      {:more, rest} -> h2_trickle_until_ended(socket, give_up, rest)
+      ended -> ended
     end
   end
 
@@ -1125,7 +1124,7 @@ defmodule Snodo.Transport.PlugBanditTest do
   defp h2_scan(<<size::24, type, _flags, _r::1, stream::31, tail::binary>> = buffer) do
     case tail do
       <<_payload::binary-size(^size), rest::binary>> ->
-        if stream == 1 and type in [1, 3], do: :ended, else: h2_scan(rest)
+        h2_scan_frame(stream, type, binary_part(tail, 0, size), rest)
 
       _incomplete ->
         {:more, buffer}
@@ -1133,6 +1132,61 @@ defmodule Snodo.Transport.PlugBanditTest do
   end
 
   defp h2_scan(incomplete), do: {:more, incomplete}
+
+  defp h2_scan_frame(1, 3, _payload, _rest), do: :reset
+
+  defp h2_scan_frame(1, 1, payload, _rest) do
+    {:ok, decoded, _table} = HPAX.decode(payload, HPAX.new(4_096))
+    {":status", status} = List.keyfind(decoded, ":status", 0)
+    {:status, status}
+  end
+
+  defp h2_scan_frame(_stream, _type, _payload, rest), do: h2_scan(rest)
+
+  @h2_default_window 65_535
+
+  # Sends `body` on stream 1 in frames of at most 16 KiB, within the
+  # connection and stream flow-control windows, reading the server's
+  # SETTINGS and WINDOW_UPDATE frames as they arrive. Bandit 1.14 grants
+  # window only as the stream reads, so a body larger than the initial
+  # 65,535 bytes waits for WINDOW_UPDATE. The response cannot start before
+  # the body is read, so other frames are skipped.
+  defp h2_send_body(socket, body),
+    do: h2_send_body(socket, body, @h2_default_window, @h2_default_window)
+
+  defp h2_send_body(socket, body, connection, stream)
+       when connection > 0 and stream > 0 do
+    size = Enum.min([byte_size(body), connection, stream, 16_384])
+    <<chunk::binary-size(^size), rest::binary>> = body
+    flags = if rest == "", do: [:end_stream], else: []
+    :ok = :gen_tcp.send(socket, h2_frame(:data, flags, chunk))
+
+    if rest == "",
+      do: :ok,
+      else: h2_send_body(socket, rest, connection - size, stream - size)
+  end
+
+  defp h2_send_body(socket, body, connection, stream) do
+    assert {:ok, <<size::24, type, flags, _reserved::1, stream_id::31>>} =
+             :gen_tcp.recv(socket, 9, 2_000)
+
+    {:ok, payload} = if size == 0, do: {:ok, ""}, else: :gen_tcp.recv(socket, size, 2_000)
+
+    case {type, stream_id, payload} do
+      {8, 0, <<_reserved::1, increment::31>>} ->
+        h2_send_body(socket, body, connection + increment, stream)
+
+      {8, 1, <<_reserved::1, increment::31>>} ->
+        h2_send_body(socket, body, connection, stream + increment)
+
+      {4, 0, _settings} when Bitwise.band(flags, 0x1) == 0 ->
+        :ok = :gen_tcp.send(socket, h2_frame(:settings, [:ack], ""))
+        h2_send_body(socket, body, connection, stream)
+
+      _other ->
+        h2_send_body(socket, body, connection, stream)
+    end
+  end
 
   defp h2_frame(type, flags, payload) do
     payload = IO.iodata_to_binary(payload)

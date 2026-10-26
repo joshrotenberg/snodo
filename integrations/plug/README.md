@@ -135,10 +135,12 @@ a chunked read returns only once it has the requested bytes, however many socket
 reads that takes. Over HTTP/2, Bandit 1.12.5 restarted a read's `read_timeout`
 wait on every DATA frame, even an empty one, so a client that kept sending small
 or empty frames could hold the request process past `body_timeout`. Bandit
-1.14.0 gives each read an absolute deadline, and the Plug's check then answers
-408 on time; a test covers it. With an older Bandit, serve untrusted clients
-over HTTP/1.1 only (`http_2_options: [enabled: false]`) or behind a proxy that
-buffers request bodies. After a body error (400, 408, 411, 413) over HTTP/1.x the response
+1.14.0 gives each read one deadline that empty frames do not extend and that
+data extends only in proportion to the bytes delivered, and the Plug's check
+then answers 408 on time; a test covers it. With an older Bandit, serve
+untrusted clients over HTTP/1.1 only (`http_2_options: [enabled: false]`) or
+behind a proxy that buffers request bodies. After a body error (400, 408, 411,
+413) over HTTP/1.x the response
 closes the connection; otherwise Bandit reads the rest of the body after the Plug
 returns, with its own limits.
 The Plug cannot enforce its request deadline while an adapter is blocked inside

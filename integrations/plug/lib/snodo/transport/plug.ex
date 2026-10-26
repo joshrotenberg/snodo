@@ -44,10 +44,12 @@ defmodule Snodo.Transport.Plug do
   socket reads that takes, so no deadline checked between reads can bound it.
   Over HTTP/2, Bandit 1.12.5 restarted a read's `:read_timeout` wait on every
   DATA frame, even an empty one, so a client that kept sending small or empty
-  frames could hold a read past the deadline. Bandit 1.14.0 gives each read an
-  absolute deadline, so the Plug's deadline bounds the body there too; a test
-  covers this. Use Bandit 1.14 or later for untrusted HTTP/2 clients. After a body error over HTTP/1.x
-  the response closes the connection, so the adapter does not read the rest of
+  frames could hold a read past the deadline. Bandit 1.14.0 gives each read one
+  deadline that empty frames do not extend and that data extends only in
+  proportion to the bytes delivered (`Bandit.HTTP2.Stream.read_data/2`), so
+  the Plug's deadline bounds the body there too; a test covers this. Use
+  Bandit 1.14 or later for untrusted HTTP/2 clients. After a body error over
+  HTTP/1.x the response closes the connection, so the adapter does not read the rest of
   the body.
   """
 
@@ -70,6 +72,7 @@ defmodule Snodo.Transport.Plug do
   # socket read under Bandit, so the deadline is checked after each read.
   @body_slice 65_536
   @http1 [:"HTTP/1", :"HTTP/1.0", :"HTTP/1.1"]
+
   @impl true
   def init(opts) do
     runtime = Keyword.fetch!(opts, :runtime)
