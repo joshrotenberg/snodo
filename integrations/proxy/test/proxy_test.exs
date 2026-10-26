@@ -128,6 +128,25 @@ defmodule Snodo.ProxyTest do
     end
   end
 
+  defmodule BackendLogging do
+    use Snodo.Server,
+      name: "backend-logging",
+      version: "1.0.0",
+      capabilities: %{"tools" => %{}, "logging" => %{}}
+
+    # Logs once at each level and returns the level the request asked for.
+    tool "levels" do
+      @impl true
+      def call(_arguments, context) do
+        for level <- Snodo.Logging.levels() do
+          :ok = Snodo.Logging.log(context, level, "#{level} message", logger: "levels")
+        end
+
+        {:ok, inspect(Snodo.Logging.level(context))}
+      end
+    end
+  end
+
   defmodule BackendRenamed do
     use Snodo.Server, name: "backend-renamed", version: "1.0.0"
 
@@ -327,6 +346,151 @@ defmodule Snodo.ProxyTest do
 
     assert {:ok, %{"content" => [%{"text" => "resumed"}]}} =
              Client.call_tool(client, "a.continuation", %{}, request_state: "resume")
+  end
+
+  test "forwards backend log messages at the frontend request's level, before the result" do
+    proxy =
+      start_supervised!(
+        {Proxy, backends: [[id: "log", target: {:direct, BackendLogging.runtime()}]]}
+      )
+
+    runtime = Proxy.runtime(proxy)
+    assert Map.has_key?(runtime.capabilities, "logging")
+
+    parent = self()
+    on_log = &send(parent, {:event, {:log, &1}})
+    {:ok, client} = Client.direct(runtime, on_log: on_log)
+
+    assert {:ok, %{"content" => [%{"text" => ":error"}]}} =
+             Client.call_tool(client, "log.levels", %{}, log_level: :error)
+
+    send(self(), {:event, :result})
+
+    assert [
+             {:log, %{"level" => "error", "data" => "error message", "logger" => "levels"}},
+             {:log, %{"level" => "critical"}},
+             {:log, %{"level" => "alert"}},
+             {:log, %{"level" => "emergency"}},
+             :result
+           ] = events()
+
+    assert {:ok, %{"content" => [%{"text" => "nil"}]}} = Client.call_tool(client, "log.levels")
+    assert events() == []
+  end
+
+  test "an HTTP frontend receives log messages from an HTTP backend" do
+    backend_server = start_supervised!({HTTPServer, runtime: BackendLogging.runtime(), port: 0})
+
+    proxy =
+      start_supervised!(
+        {Proxy, backends: [[id: "remote", target: {:http, HTTPServer.url(backend_server)}]]}
+      )
+
+    proxy_server =
+      start_supervised!({HTTPServer, id: :proxy_http, runtime: Proxy.runtime(proxy), port: 0})
+
+    {:ok, client} = Client.connect({:http, HTTPServer.url(proxy_server)}, on_log: self())
+
+    assert {:ok, %{"content" => [%{"text" => ":alert"}]}} =
+             Client.call_tool(client, "remote.levels", %{}, log_level: :alert)
+
+    assert_received {:snodo_log, %{"level" => "alert", "logger" => "levels"}}
+    assert_received {:snodo_log, %{"level" => "emergency"}}
+    refute_received {:snodo_log, _params}
+
+    assert {:ok, %{"content" => [%{"text" => "nil"}]}} =
+             Client.call_tool(client, "remote.levels")
+
+    refute_received {:snodo_log, _params}
+  end
+
+  for second_level <- [:error, nil], client_callback? <- [false, true] do
+    @tag second_level: second_level, client_callback?: client_callback?
+    test "concurrent stdio logs with #{inspect(second_level)} and client callback #{client_callback?}",
+         %{second_level: second_level, client_callback?: client_callback?} do
+      {:ok, barrier} = :gen_tcp.listen(0, [:binary, active: false, ip: {127, 0, 0, 1}])
+      on_exit(fn -> :gen_tcp.close(barrier) end)
+      {:ok, port} = :inet.port(barrier)
+
+      elixir = System.find_executable("elixir")
+      snodo_ebin = Path.expand("../../snodo/ebin", Mix.Project.compile_path())
+      fixture = Path.expand("../fixtures/stdio_logging_backend.exs", __DIR__)
+
+      client_options = if client_callback?, do: [on_log: self()], else: []
+
+      proxy =
+        start_supervised!(
+          {Proxy,
+           backends: [
+             [
+               id: "stdio",
+               target: {:stdio, elixir, ["-pa", snodo_ebin, fixture]},
+               client_options: client_options
+             ]
+           ]}
+        )
+
+      {:ok, client} = Client.direct(Proxy.runtime(proxy))
+      parent = self()
+
+      first =
+        Task.async(fn ->
+          Client.call_tool(
+            client,
+            "stdio.log",
+            %{"port" => port, "name" => "first", "level" => "emergency"},
+            log_level: :emergency,
+            on_log: &send(parent, {:first_log, &1})
+          )
+        end)
+
+      assert {:ok, first_socket} = :gen_tcp.accept(barrier, 5_000)
+      assert {:ok, "first"} = :gen_tcp.recv(first_socket, 5, 1_000)
+      # Only background requests with a client callback need the same lock.
+      refresh = Task.async(fn -> Proxy.refresh_backend(proxy, "stdio") end)
+
+      if client_callback? do
+        assert Task.yield(refresh, 100) == nil
+      else
+        assert :ok = Task.await(refresh, 1_000)
+      end
+
+      second =
+        Task.async(fn ->
+          send(parent, :second_started)
+
+          Client.call_tool(
+            client,
+            "stdio.log",
+            %{"port" => port, "name" => "second", "level" => "error"},
+            log_level: second_level,
+            on_log: &send(parent, {:second_log, &1})
+          )
+        end)
+
+      assert_receive :second_started
+      # The second handler must not enter the backend while the first owns it.
+      assert {:error, :timeout} = :gen_tcp.accept(barrier, 200)
+      assert :ok = :gen_tcp.send(first_socket, "release")
+      assert :ok = :gen_tcp.close(first_socket)
+      assert {:ok, %{"content" => [%{"text" => "first"}]}} = Task.await(first, 5_000)
+      assert_received {:first_log, %{"level" => "emergency", "data" => "first"}}
+      if client_callback?, do: assert(:ok = Task.await(refresh, 1_000))
+
+      assert {:ok, second_socket} = :gen_tcp.accept(barrier, 1_000)
+      assert {:ok, "second"} = :gen_tcp.recv(second_socket, 6, 1_000)
+      assert :ok = :gen_tcp.send(second_socket, "release")
+      assert :ok = :gen_tcp.close(second_socket)
+      assert {:ok, %{"content" => [%{"text" => "second"}]}} = Task.await(second, 5_000)
+
+      if second_level do
+        assert_received {:second_log,
+                         %{"level" => "error", "data" => "second", "logger" => "barrier"}}
+      end
+
+      refute_received {:first_log, _params}
+      refute_received {:second_log, _params}
+    end
   end
 
   test "backend input requests reach a frontend caller that declared the capability" do
@@ -801,6 +965,14 @@ defmodule Snodo.ProxyTest do
             10 -> await_replaced_backend_until(proxy, tool, old_backend, deadline)
           end
         end
+    end
+  end
+
+  defp events do
+    receive do
+      {:event, event} -> [event | events()]
+    after
+      0 -> []
     end
   end
 end

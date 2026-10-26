@@ -207,7 +207,7 @@ defmodule Snodo.OAuth.ClientUnitsTest do
       assert {:ok, listener} = Loopback.listen(port: 0, path: "/cb")
       assert listener.uri =~ ~r{^http://127\.0\.0\.1:\d+/cb$}
       ref = make_ref()
-      acceptor = Loopback.accept(listener, self(), ref, 5_000)
+      acceptor = Loopback.accept(listener, self(), ref, 5_000, "s t")
       monitor = Process.monitor(acceptor)
 
       assert {:ok, {{_version, 404, _reason}, _headers, _body}} =
@@ -241,9 +241,41 @@ defmodule Snodo.OAuth.ClientUnitsTest do
       Loopback.close(listener)
     end
 
+    test "a callback with another or no state gets 400 and the listener keeps waiting" do
+      assert {:ok, listener} = Loopback.listen(port: 0, path: "/cb")
+      ref = make_ref()
+      acceptor = Loopback.accept(listener, self(), ref, 5_000, "expected")
+      monitor = Process.monitor(acceptor)
+
+      for query <- ["?code=abc&state=forged", "?code=abc", "?code=abc&state=expectee"] do
+        assert {:ok, {{_version, 400, _reason}, _headers, _body}} =
+                 :httpc.request(
+                   :get,
+                   {String.to_charlist(listener.uri <> query), []},
+                   [timeout: 5_000],
+                   body_format: :binary
+                 )
+      end
+
+      refute_received {:redirect, ^ref, _params}
+      assert Process.alive?(acceptor)
+
+      assert {:ok, {{_version, 200, _reason}, _headers, _body}} =
+               :httpc.request(
+                 :get,
+                 {String.to_charlist(listener.uri <> "?code=abc&state=expected"), []},
+                 [timeout: 5_000],
+                 body_format: :binary
+               )
+
+      assert_receive {:redirect, ^ref, %{"code" => "abc", "state" => "expected"}}, 1_000
+      assert_receive {:DOWN, ^monitor, :process, ^acceptor, :normal}, 1_000
+      Loopback.close(listener)
+    end
+
     test "gives up after the timeout" do
       assert {:ok, listener} = Loopback.listen([])
-      acceptor = Loopback.accept(listener, self(), make_ref(), 50)
+      acceptor = Loopback.accept(listener, self(), make_ref(), 50, "s")
       monitor = Process.monitor(acceptor)
       assert_receive {:DOWN, ^monitor, :process, ^acceptor, :normal}, 1_000
       Loopback.close(listener)

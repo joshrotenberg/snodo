@@ -4,7 +4,10 @@ defmodule Snodo.Proxy.Backend do
   use GenServer, restart: :temporary
 
   alias Snodo.Client
+  alias Snodo.Client.Stdio
   alias Snodo.Client.Subscription
+  alias Snodo.Error
+  alias Snodo.Proxy.RequestLock
   alias Snodo.Server.Runtime
 
   @listen_filter %{
@@ -24,6 +27,16 @@ defmodule Snodo.Proxy.Backend do
   @doc false
   def refresh(pid, ref), do: GenServer.cast(pid, {:refresh, ref})
 
+  # Stdio log messages have no request ID. Keep finite requests on that
+  # connection mutually exclusive, including background calls with callbacks.
+  # The function runs in its caller so logging retains the handler's context.
+  @doc false
+  def request(%Client{transport: {Stdio, pid}}, fun) do
+    RequestLock.run(pid, fun)
+  end
+
+  def request(%Client{}, fun), do: fun.()
+
   @impl true
   def init(opts) do
     state = %{
@@ -33,6 +46,7 @@ defmodule Snodo.Proxy.Backend do
       client: nil,
       catalog: nil,
       health_interval_ms: Keyword.fetch!(opts, :health_interval_ms),
+      queue_timeout_ms: Keyword.get(opts, :queue_timeout_ms, 30_000),
       listener: nil,
       resource_listeners: %{}
     }
@@ -45,6 +59,7 @@ defmodule Snodo.Proxy.Backend do
   @impl true
   def handle_continue({:connect, target, client_options}, state) do
     with {:ok, client} <- connect(target, client_options),
+         :ok <- start_request_lock(client),
          {:ok, catalog} <- fetch_catalog_or_close(client) do
       state = %{
         state
@@ -67,7 +82,7 @@ defmodule Snodo.Proxy.Backend do
   @impl true
   def handle_cast({:refresh, ref}, state) do
     {reply, state} =
-      case fetch_catalog(state.client) do
+      case fetch_catalog(state.client, state.queue_timeout_ms) do
         {:ok, catalog} ->
           state = update_catalog(state, catalog)
           {{:ok, snapshot_state(state)}, state}
@@ -93,12 +108,14 @@ defmodule Snodo.Proxy.Backend do
   end
 
   def handle_info(:health_check, state) do
-    case probe_client(state.client) do
+    case probe_client(state.client, state.queue_timeout_ms) do
       :ok ->
         if is_nil(state.listener), do: send(self(), :listen)
         state = refresh_and_notify(state, nil)
-        Process.send_after(self(), :health_check, state.health_interval_ms)
-        {:noreply, state}
+        {:noreply, schedule_health_check(state)}
+
+      {:error, %Error{code: -32_603, data: %{"reason" => "stdio_queue_timeout"}}} ->
+        {:noreply, schedule_health_check(state)}
 
       {:error, reason} ->
         send(state.manager, {:backend_error, state.id, self(), reason})
@@ -182,7 +199,27 @@ defmodule Snodo.Proxy.Backend do
     end
   end
 
-  defp fetch_catalog(client) do
+  defp start_request_lock(%Client{transport: {Stdio, pid}}) do
+    case RequestLock.start_link(pid) do
+      {:ok, _lock} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp start_request_lock(%Client{}), do: :ok
+
+  # Background requests without callbacks cannot capture another request's logs.
+  defp background_request(%Client{on_log: nil}, fun, _timeout), do: fun.()
+
+  defp background_request(%Client{transport: {Stdio, pid}}, fun, timeout),
+    do: RequestLock.run(pid, fun, timeout)
+
+  defp background_request(%Client{}, fun, _timeout), do: fun.()
+
+  defp fetch_catalog(client, timeout \\ 30_000),
+    do: background_request(client, fn -> do_fetch_catalog(client) end, timeout)
+
+  defp do_fetch_catalog(client) do
     with {:ok, tools} <- optional_list(Client.list_tools(client)),
          {:ok, resources} <- optional_list(Client.list_resources(client)),
          {:ok, resource_templates} <- optional_list(Client.list_resource_templates(client)),
@@ -201,14 +238,22 @@ defmodule Snodo.Proxy.Backend do
   defp optional_list({:error, %{code: -32_601}}), do: {:ok, []}
   defp optional_list({:error, error}), do: {:error, error}
 
-  defp probe_client(%Client{protocol: "2026-07-28"} = client) do
+  defp schedule_health_check(state) do
+    Process.send_after(self(), :health_check, state.health_interval_ms)
+    state
+  end
+
+  defp probe_client(client, timeout),
+    do: background_request(client, fn -> do_probe_client(client) end, timeout)
+
+  defp do_probe_client(%Client{protocol: "2026-07-28"} = client) do
     case Client.discover(client, timeout: 5_000) do
       {:ok, _discovery} -> :ok
       {:error, error} -> {:error, error}
     end
   end
 
-  defp probe_client(client) do
+  defp do_probe_client(client) do
     case Client.request(client, "ping", %{}, timeout: 5_000) do
       {:ok, _result} -> :ok
       {:error, error} -> {:error, error}
@@ -223,10 +268,13 @@ defmodule Snodo.Proxy.Backend do
   end
 
   defp refresh_and_notify(state, method) do
-    case fetch_catalog(state.client) do
+    case fetch_catalog(state.client, state.queue_timeout_ms) do
       {:ok, catalog} ->
         state = update_catalog(state, catalog)
         notify_snapshot(state, method)
+        state
+
+      {:error, %Error{code: -32_603, data: %{"reason" => "stdio_queue_timeout"}}} ->
         state
 
       {:error, reason} ->

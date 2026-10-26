@@ -345,7 +345,7 @@ defmodule Snodo.OAuth.Client.Flow do
       url = with_query(endpoint, query)
 
       result =
-        with {:ok, params} <- redirect(ctx, url),
+        with {:ok, params} <- redirect(ctx, url, state),
              do: validate_redirect(ctx, as_metadata, params, state)
 
       drop_pending(result, ctx, state)
@@ -362,9 +362,9 @@ defmodule Snodo.OAuth.Client.Flow do
     result
   end
 
-  defp redirect(ctx, url) do
+  defp redirect(ctx, url, state) do
     timeout = ctx.config.authorization_timeout
-    acceptor = if ctx.listener, do: Loopback.accept(ctx.listener, self(), ctx.ref, timeout)
+    acceptor = if ctx.listener, do: Loopback.accept(ctx.listener, self(), ctx.ref, timeout, state)
     {pid, monitor, tag} = run_authorize(ctx.config.authorize, url)
 
     try do

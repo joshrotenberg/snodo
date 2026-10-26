@@ -708,6 +708,24 @@ defmodule Snodo.OAuth.ClientTest do
 
       assert {_oauth, {:ok, _tools}} = list_tools(fake, authorize: authorize)
     end
+
+    test "a callback with a forged state gets 400 and the login still completes" do
+      fake = Fake.start()
+
+      authorize = fn url ->
+        redirect = URI.parse(URI.decode_query(URI.parse(url).query)["redirect_uri"])
+        forged = URI.to_string(%{redirect | query: "code=stolen&state=forged"})
+
+        {:ok, {{_version, 400, _reason}, _headers, _body}} =
+          :httpc.request(:get, {String.to_charlist(forged), []}, [timeout: 5_000],
+            body_format: :binary
+          )
+
+        Fake.follow(url)
+      end
+
+      assert {_oauth, {:ok, _tools}} = list_tools(fake, authorize: authorize)
+    end
   end
 
   describe "tokens" do

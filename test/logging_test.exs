@@ -127,6 +127,31 @@ defmodule Snodo.LoggingTest do
       assert logged() == []
     end
 
+    test "a request's on_log replaces the client's" do
+      parent = self()
+      client = direct(protocol: "2026-07-28", on_log: self(), log_level: :emergency)
+
+      assert {:ok, _result} =
+               Client.call_tool(client, "levels", %{},
+                 on_log: &send(parent, {:request_log, &1["level"]})
+               )
+
+      assert_received {:request_log, "emergency"}
+      assert logged() == []
+
+      assert {:ok, _result} = Client.call_tool(client, "levels", %{}, on_log: nil)
+      refute_received {:request_log, _level}
+      assert logged() == []
+
+      client = direct(protocol: "2026-07-28", log_level: :emergency)
+      assert {:ok, _result} = Client.call_tool(client, "levels", %{}, on_log: self())
+      assert [%{"level" => "emergency"}] = logged()
+
+      assert_raise ArgumentError, ~r/:on_log must be/, fn ->
+        Client.call_tool(client, "levels", %{}, on_log: :nope)
+      end
+    end
+
     test "a runtime without the logging capability sends none, whatever the level" do
       runtime = [capabilities: %{"tools" => %{}}]
       client = direct(protocol: "2026-07-28", runtime: runtime, on_log: self())

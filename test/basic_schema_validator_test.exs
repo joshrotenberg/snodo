@@ -29,6 +29,27 @@ defmodule Snodo.Schema.Validator.BasicTest do
              Basic.validate(%{"name" => "mcp", "settings" => %{}}, schema)
   end
 
+  test "agrees with JSON Schema on integral floats, Unicode patterns, and code point lengths" do
+    integer = %{"type" => "integer"}
+    assert Basic.validate(1.0, integer) == :ok
+    assert Basic.validate(-3.0, integer) == :ok
+    assert {:error, %Error{keyword: "type"}} = Basic.validate(1.5, integer)
+
+    # A pattern matches code points, not bytes.
+    one_character = %{"type" => "string", "pattern" => "^.$"}
+    assert Basic.validate("é", one_character) == :ok
+    assert Basic.validate("日", one_character) == :ok
+    assert {:error, %Error{keyword: "pattern"}} = Basic.validate("ab", one_character)
+
+    # "e" followed by a combining acute accent is one grapheme but two code
+    # points; JSON Schema counts code points.
+    combining = "e\u0301"
+    assert Basic.validate(combining, %{"type" => "string", "minLength" => 2}) == :ok
+
+    assert {:error, %Error{keyword: "maxLength"}} =
+             Basic.validate(combining, %{"type" => "string", "maxLength" => 1})
+  end
+
   test "supports arrays, recursive items, uniqueness, and size constraints" do
     schema = %{
       "type" => "array",

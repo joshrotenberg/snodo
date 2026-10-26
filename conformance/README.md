@@ -93,13 +93,20 @@ It runs on every pull request and every push to `main`.
 ## Canary and dependency updates
 
 The [conformance canary](../.github/workflows/canary.yml) runs weekly and on
-demand. It runs both legs against the runner's `alpha` dist-tag and against a
-build of upstream `main`, with `MCP_CONFORMANCE_RUNNER` pointing `run.mjs` at
+demand. It runs all seven lanes (native, Plug, proxy, both initialize-era
+servers, and both clients) against the runner's `alpha` dist-tag and a build
+of upstream `main`, with `MCP_CONFORMANCE_RUNNER` pointing `run.mjs` at
 that build. In that mode the pinned version and installed-manifest checks are
 skipped. The runner's own frozen manifest is used, so scenarios added after the
-pin appear as baseline differences. The job never fails the workflow. Its step
-summary notes whether the `alpha` tag has moved past the pin and shows every
-difference from the reviewed baselines, and its artifacts keep the raw checks.
+pin appear as baseline differences. Differences or execution errors fail the
+lane and open or comment on one issue per affected lane, labeled `area/ci`,
+grouping both runner sources. A raw runner exit of 1 alone does not trigger an
+issue when the reviewed baseline matches. Each report includes the resolved
+runner version or commit, the pin, a bounded excerpt of exact differences,
+and a run link. Missing summaries or artifacts are reported as execution
+errors. Artifacts retain full summaries, logs, and raw checks for 30 days.
+The report job alone has issue-write permission. This workflow is not a
+required check, and it never updates the pin or baselines.
 
 [Dependabot](../.github/dependabot.yml) proposes weekly updates for the npm
 lockfiles in `conformance/`, `interop/official_client/`, and

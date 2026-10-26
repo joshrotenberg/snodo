@@ -485,7 +485,8 @@ defmodule Snodo.Subscription do
   end
 
   defp shape(%__MODULE__{protocol: protocol, context: context} = subscription, callback, args) do
-    if function_exported?(protocol, callback, length(args) + 2) do
+    # function_exported?/3 is false for a module not yet loaded.
+    if Code.ensure_loaded?(protocol) and function_exported?(protocol, callback, length(args) + 2) do
       value = apply(protocol, callback, args ++ [subscription.id, context])
 
       if is_map(value) and JSONValue.valid?(value),
