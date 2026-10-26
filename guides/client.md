@@ -90,6 +90,15 @@ It does not happen for `initialize` or `server/discover`, from an
 initialize-era session, or when the resent request is refused again; in those
 cases the -32022 error is returned. If the renegotiated handshake itself fails
 for another reason, such as a transport error, that error is returned instead.
+The renegotiation reuses the open connection and does not reopen it, as the
+connect-time handshake does after a probe: the refusing server is a stateless
+one that kept nothing from the refused request, which is the same situation as
+`initialize` after a successful `server/discover`. On stdio that means
+`initialize` is sent to the running server process.
+
+The `dialects` a client may renegotiate to are the ones given in `:protocol`.
+`direct/2` holds only the one dialect it selected, so a direct client never
+renegotiates.
 
 `direct/2` needs no probe: the runtime's enabled versions are known, so the
 highest allowed one among them is used, and an initialize-era version is
