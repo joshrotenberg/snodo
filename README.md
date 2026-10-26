@@ -42,6 +42,7 @@ The client speaks all three versions and negotiates one when it connects.
 | [`snodo_oauth`](https://hex.pm/packages/snodo_oauth) | OAuth 2.1 resource server plugs (protected resource metadata, bearer token verification, scope policy) and the client authorization flows for `Snodo.Client` | [HexDocs](https://hexdocs.pm/snodo_oauth) |
 | [`snodo_telemetry`](https://hex.pm/packages/snodo_telemetry) | `Snodo.Instrumentation.Telemetry`, an instrumentation sink that emits `:telemetry` events | [HexDocs](https://hexdocs.pm/snodo_telemetry) |
 | [`snodo_proxy`](https://hex.pm/packages/snodo_proxy) | Aggregating proxy for MCP backends | [HexDocs](https://hexdocs.pm/snodo_proxy) |
+| [`snodo_otp`](https://hex.pm/packages/snodo_otp) | GenServer calls and casts over MCP: one contract serves a GenServer's operations as tools and drives a local stand-in process | [HexDocs](https://hexdocs.pm/snodo_otp) |
 | [`snodo_tasks`](https://hex.pm/packages/snodo_tasks) | The `io.modelcontextprotocol/tasks` extension with an application-owned store and runner | [HexDocs](https://hexdocs.pm/snodo_tasks) |
 | [`snodo_tasks_postgres`](https://hex.pm/packages/snodo_tasks_postgres) | PostgreSQL store for Tasks | [HexDocs](https://hexdocs.pm/snodo_tasks_postgres) |
 | [`snodo_tasks_sqlite`](https://hex.pm/packages/snodo_tasks_sqlite) | SQLite store for Tasks | [HexDocs](https://hexdocs.pm/snodo_tasks_sqlite) |
