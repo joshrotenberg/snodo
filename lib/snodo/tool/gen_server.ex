@@ -36,7 +36,10 @@ defmodule Snodo.Tool.GenServer do
   A builder function that returns `{:error, %Snodo.Error{}}` sends nothing,
   and the request fails with that error. Calls require `:encode_reply`, a one-argument
   function that returns a JSON object. `:timeout` defaults to 5,000 milliseconds
-  and must be a positive integer. Failed validation, message construction,
+  and must be a positive integer literal. The options are read from the macro's
+  syntax at compile time, so they must be written as a literal keyword list;
+  a variable or a composed list such as `base_opts ++ [message: :get]` fails
+  compilation. Failed validation, message construction,
   unavailable targets, timeouts, and non-JSON replies become tool error results.
 
   Input schemas may use the assertions enforced by
@@ -201,6 +204,15 @@ defmodule Snodo.Tool.GenServer do
   end
 
   defp validate_keys!(env, kind, name, opts, allowed, required) do
+    unless is_list(opts) do
+      raise CompileError,
+        file: env.file,
+        line: env.line,
+        description:
+          "GenServer #{kind} #{inspect(name)} options must be a literal keyword list " <>
+            "(not a variable or a composed list such as `base ++ [...]`)"
+    end
+
     unless Keyword.keyword?(opts) and Keyword.keys(opts) -- allowed == [] and
              Enum.all?(required, &Keyword.has_key?(opts, &1)) do
       raise CompileError,
