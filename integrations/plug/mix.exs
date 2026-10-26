@@ -42,7 +42,7 @@ defmodule Snodo.Transport.Plug.MixProject do
       deps: [
         snodo_dep(:snodo, "../.."),
         {:plug, "~> 1.20"},
-        {:bandit, "~> 1.13", only: [:dev, :test]},
+        {:bandit, "~> 1.14", only: [:dev, :test]},
         {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},
         {:dialyxir, "~> 1.4.7", only: [:dev, :test], runtime: false},
         {:ex_doc, "~> 0.40", only: :dev, runtime: false}

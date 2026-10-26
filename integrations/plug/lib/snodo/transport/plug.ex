@@ -42,11 +42,14 @@ defmodule Snodo.Transport.Plug do
   `Transfer-Encoding` gets 411 without its body being read: an adapter returns
   from a chunked read only once it has the requested bytes, however many
   socket reads that takes, so no deadline checked between reads can bound it.
-  Over HTTP/2, Bandit returns from a read after a slice of DATA, at the end of
-  the stream, or after `:read_timeout` without a frame, and each DATA frame
-  restarts that wait, so a client that keeps sending small or empty frames can
-  hold the request process past the deadline. After a body error over HTTP/1.x
-  the response closes the connection, so the adapter does not read the rest of
+  Over HTTP/2, Bandit 1.12.5 restarted a read's `:read_timeout` wait on every
+  DATA frame, even an empty one, so a client that kept sending small or empty
+  frames could hold a read past the deadline. Bandit 1.14.0 gives each read one
+  deadline that empty frames do not extend and that data extends only in
+  proportion to the bytes delivered (`Bandit.HTTP2.Stream.read_data/2`), so
+  the Plug's deadline bounds the body there too; a test covers this. Use
+  Bandit 1.14 or later for untrusted HTTP/2 clients. After a body error over
+  HTTP/1.x the response closes the connection, so the adapter does not read the rest of
   the body.
   """
 
