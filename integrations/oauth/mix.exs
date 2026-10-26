@@ -3,7 +3,7 @@ defmodule Snodo.OAuth.MixProject do
 
   # release-please bumps the version between these markers.
   # x-release-please-start-version
-  @version "0.4.2"
+  @version "0.4.3"
   # x-release-please-end
   @source_url "https://github.com/joshrotenberg/snodo"
 
