@@ -236,6 +236,21 @@ defmodule Snodo.GenServerToolTest do
     end
   end
 
+  test "composed option lists fail with a message naming the literal-list rule" do
+    assert_raise CompileError, ~r/options must be a literal keyword list/, fn ->
+      Code.compile_string(~S'''
+      defmodule Snodo.GenServerToolTest.ComposedOptions do
+        use Snodo.Server, name: "composed-options", version: "1"
+        import Snodo.Tool.GenServer
+
+        @base [target: Snodo.GenServerToolTest.Counter, input_schema: %{"type" => "object"}]
+
+        genserver_call "composed", @base ++ [message: :get, encode_reply: &%{"v" => &1}]
+      end
+      ''')
+    end
+  end
+
   test "a two-argument builder reads the request context and can refuse" do
     {:ok, limited} = Client.direct(Server.runtime(), auth: %{limit: 5})
     {:ok, anonymous} = Client.direct(Server.runtime())
