@@ -51,10 +51,12 @@ the executor's authenticated isolation. Unsupported Tasks, continuation inputs,
 subscriptions and server requests are not advertised. No Tasks or
 session-manager behavior is added.
 
-Configured capabilities must be valid for every enabled profile. For a mixed
-runtime, use the implemented base tools/prompts/resources/completions capabilities;
-listChanged and subscribe remain unavailable on the initialize-era dialects. Applications
-that need latest-only subscriptions can expose a separate 2026-only runtime.
+Configured capabilities must be implemented by at least one enabled profile.
+On a mixed runtime, `listChanged` and `subscribe` (with a configured
+`subscription_source`) are advertised by `server/discover` for 2026-07-28 and
+left out of the `initialize` result for the initialize-era dialects, which never
+receive those notifications. A surface no enabled dialect implements, such as
+`tasks` on an initialize-era-only runtime, still raises at startup.
 
 ## Official conformance
 

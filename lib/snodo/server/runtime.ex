@@ -379,19 +379,28 @@ defmodule Snodo.Server.Runtime do
   end
 
   defp validate_protocol_capabilities!(capabilities, %Registry{} = registry) do
-    unsupported =
-      registry
-      |> Registry.profiles()
-      |> Enum.flat_map(fn profile ->
-        Enum.map(
-          Profile.unsupported_capabilities(profile, capabilities),
-          fn capability ->
-            {profile.version, capability}
-          end
-        )
+    # A surface only some enabled dialects implement (listChanged, subscribe) is
+    # advertised by those and left out of the others' results, so mixed-era
+    # runtimes work. It is an error only when no enabled dialect implements it.
+    profiles = Registry.profiles(registry)
+
+    per_profile =
+      Enum.map(profiles, fn profile ->
+        {profile.version, Profile.unsupported_capabilities(profile, capabilities)}
       end)
 
-    case unsupported do
+    everywhere =
+      per_profile
+      |> Enum.map(fn {_version, unsupported} -> unsupported end)
+      |> Enum.reduce(fn unsupported, acc -> Enum.filter(acc, &(&1 in unsupported)) end)
+
+    entries =
+      for {version, unsupported} <- per_profile,
+          capability <- unsupported,
+          capability in everywhere,
+          do: {version, capability}
+
+    case entries do
       [] ->
         :ok
 
