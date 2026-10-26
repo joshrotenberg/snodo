@@ -780,14 +780,19 @@ defmodule Snodo.Client do
   end
 
   # A server that dropped the connection's version refuses the request with
-  # -32022 before running it, so one resend under another allowed version from
-  # its `supported` list is safe. The renegotiated client lives for this
+  # -32022 before running it (the version is validated in the dialect's request
+  # validation, ahead of dispatch), so one resend under another allowed version
+  # from its `supported` list is safe. The renegotiated client lives for this
   # request only; a session it opened is ended afterwards. A second refusal,
-  # a handshake request, and a version the client does not allow surface the
-  # error as it came.
+  # a handshake request, a version the client does not allow, and a client
+  # that already holds an initialize-era session (a second `initialize` on its
+  # connection would break the lifecycle) surface the error as it came.
+  # `client.dialects` is empty while the connect-time handshake runs, which is
+  # what keeps the discover probe from renegotiating.
   defp renegotiate(client, method, params, opts, plan, round, error) do
     with false <- Keyword.get(opts, :renegotiated, false),
          false <- method in ["initialize", "server/discover"],
+         :stateless <- client.dialect.era(),
          supported when is_list(supported) <- get_in_data(error, "supported"),
          dialect when not is_nil(dialect) <-
            Enum.find(client.dialects, &(&1 != client.dialect and &1.version() in supported)),

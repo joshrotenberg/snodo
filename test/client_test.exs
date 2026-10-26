@@ -1644,6 +1644,24 @@ defmodule Snodo.ClientTest do
       refute_receive {:canned_request, _message, _opts}, 50
     end
 
+    test "does not renegotiate from an initialize-era session" do
+      client = flexible_client()
+
+      client = %{
+        client
+        | dialect: V2025_11_25,
+          protocol: "2025-11-25",
+          session: %Snodo.Client.Session{id: "s0", version: "2025-11-25"}
+      }
+
+      send(self(), refusal(["2025-06-18"]))
+
+      assert {:error, %Error{code: -32_022}} = Client.request(client, "tools/list")
+
+      assert_receive {:canned_request, %{"method" => "tools/list"}, _opts}, 1_000
+      refute_receive {:canned_request, _message, _opts}, 50
+    end
+
     test "does not resend when the client allows none of the supported versions" do
       client = canned_client()
       send(self(), refusal(["2025-11-25"]))
