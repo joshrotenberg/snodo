@@ -497,7 +497,9 @@ defmodule Snodo.Transport.StreamableHTTP.ServerAcceptanceTest do
     headers =
       request_headers
       |> delete_header("content-length")
-      |> then(&[{"Content-Length", Integer.to_string(byte_size(body))} | &1])
+      |> then(
+        &[{"Content-Length", Integer.to_string(byte_size(body))}, {"Connection", "close"} | &1]
+      )
 
     header_lines = Enum.map(headers, fn {name, value} -> [name, ": ", value, "\r\n"] end)
     [method, " ", path, " HTTP/1.1\r\n", header_lines, "\r\n", body]

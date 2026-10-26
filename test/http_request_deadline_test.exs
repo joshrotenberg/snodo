@@ -86,7 +86,7 @@ defmodule Snodo.HTTPRequestDeadlineTest do
 
     :ok =
       :gen_tcp.send(socket, [
-        "POST /mcp HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n",
+        "POST /mcp HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Type: application/json\r\n",
         "Accept: application/json, text/event-stream\r\nMcp-Protocol-Version: 2026-07-28\r\nMcp-Method: ",
         method,
         "\r\n",

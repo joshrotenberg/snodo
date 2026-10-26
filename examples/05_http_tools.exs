@@ -81,6 +81,7 @@ defmodule Examples.HTTPTools.Client do
   defp encode_request(port, method, path, headers, body) do
     complete_headers = [
       {"Host", "127.0.0.1:#{port}"},
+      {"Connection", "close"},
       {"Content-Length", Integer.to_string(byte_size(body))}
       | headers
     ]

@@ -99,6 +99,40 @@ defmodule Snodo.Transport.StreamableHTTP.ServerLimitsTest do
     assert read_all(second) =~ "HTTP/1.1 200"
   end
 
+  test "a connection serves several requests and closes when idle" do
+    port = start_http(runtime: TestFixtures.runtime(), keepalive_timeout: 300)
+    [head, body] = request_parts(TestFixtures.request("ka-1", "server/discover"), "keep-alive")
+    socket = connect(port)
+
+    for _round <- 1..3 do
+      :ok = :gen_tcp.send(socket, [head, body])
+      response = recv_until(socket, "\r\n\r\n")
+      assert response =~ "HTTP/1.1 200"
+      assert response =~ "Connection: keep-alive"
+      [_head, rest] = String.split(response, "\r\n\r\n", parts: 2)
+      [length] = Regex.run(~r/Content-Length: (\d+)/i, response, capture: :all_but_first)
+      drain_body(socket, rest, String.to_integer(length))
+    end
+
+    assert {:error, :closed} = :gen_tcp.recv(socket, 0, 2_000)
+  end
+
+  test "the last allowed request and Connection: close end the connection" do
+    port = start_http(runtime: TestFixtures.runtime(), max_keepalive_requests: 2)
+    [head, body] = request_parts(TestFixtures.request("ka-2", "server/discover"), "keep-alive")
+    socket = connect(port)
+
+    :ok = :gen_tcp.send(socket, [head, body])
+    assert recv_until(socket, "\r\n\r\n") =~ "Connection: keep-alive"
+    :ok = :gen_tcp.send(socket, [head, body])
+    assert recv_until(socket, "Connection: close") =~ "HTTP/1.1 200"
+
+    closing = connect(port)
+    close_head = String.replace(head, "Connection: keep-alive", "Connection: close")
+    :ok = :gen_tcp.send(closing, [close_head, body])
+    assert read_all(closing) =~ "Connection: close"
+  end
+
   test "a client that trickles the request head is closed at head_timeout" do
     port = start_http(runtime: TestFixtures.runtime(), head_timeout: 300, read_timeout: 1_000)
     # The head deadline runs from accept, which can complete before connect/3
@@ -325,10 +359,11 @@ defmodule Snodo.Transport.StreamableHTTP.ServerLimitsTest do
     socket
   end
 
-  defp request_parts(raw) do
+  defp request_parts(raw, connection \\ "close") do
     body = JSON.encode!(raw)
 
     headers = [
+      {"Connection", connection},
       {"Content-Type", "application/json"},
       {"Accept", "application/json, text/event-stream"},
       {"MCP-Protocol-Version", @protocol},
@@ -369,6 +404,13 @@ defmodule Snodo.Transport.StreamableHTTP.ServerLimitsTest do
       {:ok, chunk} -> read_all(socket, acc <> chunk)
       {:error, _closed_or_reset} -> acc
     end
+  end
+
+  defp drain_body(_socket, acc, length) when byte_size(acc) >= length, do: :ok
+
+  defp drain_body(socket, acc, length) do
+    {:ok, chunk} = :gen_tcp.recv(socket, 0, 2_000)
+    drain_body(socket, acc <> chunk, length)
   end
 
   defp recv_until(socket, pattern, acc \\ "") do
