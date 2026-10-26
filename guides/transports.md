@@ -59,6 +59,19 @@ before the limit applies. Clients that start the server with a pipe, as Python
 and Erlang clients do, are bounded only with `-noinput`: `elixir --erl -noinput`,
 `emu_args` for an escript, or `vm.args` for a release.
 
+An application process can send its own server-to-client notification on an
+open stdio connection, for example a vendor hint while the connection is idle.
+Enable the method names with `:notification_methods` (default `[]`; each must
+start with `notifications/` and not be one the protocol defines), then call
+`Snodo.Transport.Stdio.notify(transport, method, params)` with the transport's
+pid or `:name`. The frame has no id and goes through the same serialized write
+path as responses. A disallowed method or non-map or non-JSON params returns
+`{:error, %Snodo.Error{}}` and writes nothing; a closed connection returns
+`{:error, :closed}`; a failed or timed-out write is terminal, as for any
+output, and returns `{:error, {:output_failed, reason}}`. There is no queue:
+callers wait for their own write, each bounded by the call timeout (default
+10,000 ms), and nothing is retried.
+
 Logger output is redirected away from stdout by default, because stdout carries
 only protocol messages.
 
