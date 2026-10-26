@@ -56,7 +56,7 @@ mix compile && (cd integrations/oauth && mix compile) && (cd interop/official_cl
 mix compile && (cd interop/official_python && uv run --frozen python check.py) # official Python client
 ```
 
-- `mix quality` includes `mix snodo.contract`, which reports 32 evidence groups. A change that moves that count needs a reason in the pull request.
+- `mix quality` includes `mix snodo.contract`, which reports 33 evidence groups. A change that moves that count needs a reason in the pull request.
 - CI's `Hex packaging dry run` is a required check on `main`. It builds the release artifacts for all nine packages.
 - A change to a transport or to what goes on the wire also runs the conformance lanes ([conformance/AGENTS.md](conformance/AGENTS.md)) and the wire-schema check ([interop/AGENTS.md](interop/AGENTS.md)).
 - CI formats with Elixir 1.18 as well, and its formatter wraps some long lines differently. For each changed core file, with Docker available: `docker run --rm -i -w /tmp elixir:1.18-otp-27 mix format - < FILE | diff FILE -` should print nothing. Sibling files that import Ecto formatter settings can report false differences this way.
