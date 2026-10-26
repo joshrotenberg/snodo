@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.4.3](https://github.com/joshrotenberg/snodo/compare/v0.4.2...v0.4.3) (2026-10-26)
+
+
+### Features
+
+* advertise subscription capabilities per protocol dialect on mixed-era runtimes ([#388](https://github.com/joshrotenberg/snodo/issues/388)) ([ec455cf](https://github.com/joshrotenberg/snodo/commit/ec455cfb42e198d3c162517567c1ff919c64765b))
+* **client:** renegotiate the protocol version once on -32022 ([#381](https://github.com/joshrotenberg/snodo/issues/381)) ([b624a4e](https://github.com/joshrotenberg/snodo/commit/b624a4e2fb15da6b53cdee8961fd7303794b35e5))
+* declare metadata-only extensions and read a client's extension settings (closes [#289](https://github.com/joshrotenberg/snodo/issues/289)) ([#334](https://github.com/joshrotenberg/snodo/issues/334)) ([bf74c36](https://github.com/joshrotenberg/snodo/commit/bf74c367dc0cfc96ca04ec9a53f10f2bf1ff9801))
+* forward backend log messages through snodo_proxy ([#338](https://github.com/joshrotenberg/snodo/issues/338)) ([80b2707](https://github.com/joshrotenberg/snodo/commit/80b270768ae920521a65867b36a5eecfa993b5a0))
+* include the component name in dispatch instrumentation ([#374](https://github.com/joshrotenberg/snodo/issues/374)) ([b384338](https://github.com/joshrotenberg/snodo/commit/b38433810d838700630cf88ffc8e260ea0b22604))
+* **oauth:** emit instrumentation events for bearer verification outcomes ([#377](https://github.com/joshrotenberg/snodo/issues/377)) ([5858055](https://github.com/joshrotenberg/snodo/commit/5858055dd8f449272d4a496b7c2bea078f6cce01))
+* **otp:** add snodo_otp, GenServer calls and casts over MCP (refs [#371](https://github.com/joshrotenberg/snodo/issues/371)) ([#372](https://github.com/joshrotenberg/snodo/issues/372)) ([5979756](https://github.com/joshrotenberg/snodo/commit/59797563da8c09a8671a9937ee19b53a64025f3b))
+* pass the request context to Snodo.Tool.GenServer's message builder ([#365](https://github.com/joshrotenberg/snodo/issues/365)) ([6a110c6](https://github.com/joshrotenberg/snodo/commit/6a110c6be3188c2d1d4a20371631593835691584))
+* server logging through notifications/message (closes [#311](https://github.com/joshrotenberg/snodo/issues/311)) ([5e93394](https://github.com/joshrotenberg/snodo/commit/5e933945ceadeb6c63dd4c69f9169302e1f7169b))
+* **stdio:** public API for application-owned server notifications ([#390](https://github.com/joshrotenberg/snodo/issues/390)) ([9c784fe](https://github.com/joshrotenberg/snodo/commit/9c784fe82982d018b5a1231d272b7fa3bf258d3d))
+* **transport:** keep connections alive on the native HTTP listener ([#389](https://github.com/joshrotenberg/snodo/issues/389)) ([74e0119](https://github.com/joshrotenberg/snodo/commit/74e01197a416945fd8505d94fbf84c4ad6d8e013))
+
+
+### Bug Fixes
+
+* align Snodo.Schema.Validator.Basic with JSON Schema for integers, patterns, and lengths (closes [#280](https://github.com/joshrotenberg/snodo/issues/280)) ([#368](https://github.com/joshrotenberg/snodo/issues/368)) ([2f388a4](https://github.com/joshrotenberg/snodo/commit/2f388a41f0ea5cfb7de1fb3b4cb197ff8026498f))
+* **client:** send notifications/cancelled when an initialize-era HTTP request times out (closes [#281](https://github.com/joshrotenberg/snodo/issues/281)) ([#346](https://github.com/joshrotenberg/snodo/issues/346)) ([0f758ad](https://github.com/joshrotenberg/snodo/commit/0f758adc3cb8db257014feacd0570127608acf93))
+* export GenServer tool macros in formatter config ([#356](https://github.com/joshrotenberg/snodo/issues/356)) ([28625bb](https://github.com/joshrotenberg/snodo/commit/28625bb152ed707d4260c3f93dafabf81091f80b))
+* list unsupported profile rules in the contract report ([#350](https://github.com/joshrotenberg/snodo/issues/350)) ([879a4b6](https://github.com/joshrotenberg/snodo/commit/879a4b6709b924a55a2dd932f073810213b02f6c))
+* load the protocol module before checking its subscription shaping callbacks ([#369](https://github.com/joshrotenberg/snodo/issues/369)) ([62ec70b](https://github.com/joshrotenberg/snodo/commit/62ec70b820450c96f3a97012095c2212c77705b2))
+* name enabled versions when initialize reaches a 2026-only server ([#373](https://github.com/joshrotenberg/snodo/issues/373)) ([2edd463](https://github.com/joshrotenberg/snodo/commit/2edd4637abbae1a1517ac086bdd1dae414e51bf0))
+* **oauth:** keep the loopback listener running after a callback with the wrong state ([#366](https://github.com/joshrotenberg/snodo/issues/366)) ([e418672](https://github.com/joshrotenberg/snodo/commit/e41867229b7508635e158025990e06961f9730e1))
+* **plug:** document and test that Bandit 1.14 bounds HTTP/2 body reads ([#380](https://github.com/joshrotenberg/snodo/issues/380)) ([cdb541b](https://github.com/joshrotenberg/snodo/commit/cdb541be6d8cffbf2c201f6c3017e69185864dcf))
+* **plug:** end subscription streams promptly on server shutdown ([#375](https://github.com/joshrotenberg/snodo/issues/375)) ([c792040](https://github.com/joshrotenberg/snodo/commit/c792040a0ca9206ef4e6109124ef231ebef1ea6c))
+* **plug:** explain the error when a body parser consumed the request body ([#378](https://github.com/joshrotenberg/snodo/issues/378)) ([b7af8a8](https://github.com/joshrotenberg/snodo/commit/b7af8a8de9f650a9863c1679448074abcce7c4ee))
+* **proxy:** check Mcp-Param-* headers against the merged catalog's tool schemas (closes [#333](https://github.com/joshrotenberg/snodo/issues/333)) ([#347](https://github.com/joshrotenberg/snodo/issues/347)) ([823d642](https://github.com/joshrotenberg/snodo/commit/823d642496546ba54f3729c95ca6509bc9d44c5f))
+* state that genserver_call and genserver_cast take literal options ([#387](https://github.com/joshrotenberg/snodo/issues/387)) ([34d7a51](https://github.com/joshrotenberg/snodo/commit/34d7a51190b8354aef3be1656d8a17f1eb646ac5))
+* **tasks:** cancel the max_runtime timer when a job finishes ([#367](https://github.com/joshrotenberg/snodo/issues/367)) ([5191c8f](https://github.com/joshrotenberg/snodo/commit/5191c8f5d94fe74451382975436cd550666215b5))
+* treat a 10-byte =?base64?= header value as malformed (closes [#278](https://github.com/joshrotenberg/snodo/issues/278)) ([#343](https://github.com/joshrotenberg/snodo/issues/343)) ([2f46075](https://github.com/joshrotenberg/snodo/commit/2f46075e60c1d19b49d174e573c4f554f03a408f))
+* version header errors and initialize negotiation (closes [#277](https://github.com/joshrotenberg/snodo/issues/277)) ([#345](https://github.com/joshrotenberg/snodo/issues/345)) ([9e4cbe1](https://github.com/joshrotenberg/snodo/commit/9e4cbe19b0e7694b4399bfbd108e940837e939e0))
+
 ## [0.4.2](https://github.com/joshrotenberg/snodo/compare/v0.4.1...v0.4.2) (2026-10-22)
 
 
