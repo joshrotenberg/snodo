@@ -45,7 +45,10 @@ defmodule Snodo.Transport.Plug do
   Over HTTP/2, Bandit returns from a read after a slice of DATA, at the end of
   the stream, or after `:read_timeout` without a frame, and each DATA frame
   restarts that wait, so a client that keeps sending small or empty frames can
-  hold the request process past the deadline. After a body error over HTTP/1.x
+  hold a read past the deadline. The Plug cannot interrupt that read, so over
+  HTTP/2 a watchdog process ends the request process 500 ms after the deadline
+  if the body is still unread. Bandit then resets the stream; the client gets
+  no 408. After a body error over HTTP/1.x
   the response closes the connection, so the adapter does not read the rest of
   the body.
   """
@@ -69,6 +72,9 @@ defmodule Snodo.Transport.Plug do
   # socket read under Bandit, so the deadline is checked after each read.
   @body_slice 65_536
   @http1 [:"HTTP/1", :"HTTP/1.0", :"HTTP/1.1"]
+  # How long past `:body_timeout` an HTTP/2 read may run before the watchdog
+  # ends the request process.
+  @watchdog_grace 500
 
   @impl true
   def init(opts) do
@@ -417,12 +423,47 @@ defmodule Snodo.Transport.Plug do
     case Conn.get_req_header(conn, "transfer-encoding") do
       [] ->
         deadline = System.monotonic_time(:millisecond) + opts.body_timeout
-        read_body(conn, opts, deadline, [], 0)
+        watchdog = arm_watchdog(conn, opts)
+
+        try do
+          read_body(conn, opts, deadline, [], 0)
+        after
+          disarm_watchdog(watchdog)
+        end
 
       _declared ->
         {:error, 411, conn}
     end
   end
+
+  # Over HTTP/1.x a read returns by the deadline, so the check between reads
+  # bounds the body. A Bandit HTTP/2 read restarts its wait on every DATA frame,
+  # even an empty one, so a read can outlast the deadline and the Plug cannot
+  # interrupt it. A watchdog ends the request process shortly after the deadline
+  # instead; Bandit then resets the stream. It cannot answer 408. A read that
+  # returns in time wins and disarms the watchdog.
+  defp arm_watchdog(conn, opts) do
+    if Conn.get_http_protocol(conn) in @http1 do
+      nil
+    else
+      request = self()
+      delay = opts.body_timeout + @watchdog_grace
+
+      spawn(fn ->
+        monitor = Process.monitor(request)
+
+        receive do
+          :disarm -> :ok
+          {:DOWN, ^monitor, :process, ^request, _reason} -> :ok
+        after
+          delay -> Process.exit(request, :kill)
+        end
+      end)
+    end
+  end
+
+  defp disarm_watchdog(nil), do: :ok
+  defp disarm_watchdog(watchdog), do: send(watchdog, :disarm)
 
   defp read_body(conn, opts, deadline, acc, size) do
     remaining = deadline - System.monotonic_time(:millisecond)

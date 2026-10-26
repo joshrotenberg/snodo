@@ -111,7 +111,7 @@ contract.
 | `request_timeout` | 30,000 ms | Finite queue-plus-execution wait; timeout cancels work and returns 504. |
 | `max_body_bytes` | 2,000,000 | Raw-body byte bound before JSON decoding. |
 | `read_timeout` | 5,000 ms | Plug body-read timeout per underlying read, never past `body_timeout`. |
-| `body_timeout` | 10,000 ms | Deadline for the whole request body from when the Plug starts reading it; 408 when it passes. Over HTTP/2 it is checked only when a read returns (below). |
+| `body_timeout` | 10,000 ms | Deadline for the whole request body from when the Plug starts reading it; 408 when it passes. Over HTTP/2 a watchdog resets the stream 500 ms after it if a read has not returned (below). |
 | `subscription_keepalive_ms` | 15,000 ms | Idle SSE comment-write interval; must be finite and positive. |
 | `disconnect_probe_ms` | 5,000 ms | After this long without a result, switch to SSE and write keepalives at this interval so a disconnect cancels the work; `:infinity` keeps JSON. |
 | `max_subscriptions` | 256 | Open `subscriptions/listen` streams; the next one is closed at its source and gets 503. The executor holds the count, so Plugs that share an executor share it. |
@@ -135,10 +135,12 @@ a chunked read returns only once it has the requested bytes, however many socket
 reads that takes. Over HTTP/2 a Bandit read returns after a slice of DATA, at the
 end of the stream, or after `read_timeout` without a frame, and each DATA frame,
 even an empty one, restarts that wait. An HTTP/2 client that keeps sending small
-or empty frames can therefore hold the request process past `body_timeout`.
-Where that matters, serve untrusted clients over HTTP/1.1 only (Bandit's
-`http_2_options: [enabled: false]`) or behind a proxy that buffers request
-bodies. After a body error (400, 408, 411, 413) over HTTP/1.x the response
+or empty frames can therefore hold a read past `body_timeout`, and the Plug
+cannot interrupt it. Over HTTP/2 a watchdog process ends the request process
+500 ms after the deadline if the body is still unread; Bandit then resets the
+stream and the client gets no 408. Where a 408 matters, serve untrusted clients
+over HTTP/1.1 only (Bandit's `http_2_options: [enabled: false]`) or behind a
+proxy that buffers request bodies. After a body error (400, 408, 411, 413) over HTTP/1.x the response
 closes the connection; otherwise Bandit reads the rest of the body after the Plug
 returns, with its own limits.
 The Plug cannot enforce its request deadline while an adapter is blocked inside
