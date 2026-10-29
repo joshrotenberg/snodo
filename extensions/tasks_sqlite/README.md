@@ -15,7 +15,7 @@ Add this package and `ecto_sqlite3` to the host application:
 
 <!-- x-release-please-start-version -->
 ```elixir
-{:snodo_tasks_sqlite, "~> 0.4.3"},
+{:snodo_tasks_sqlite, "~> 0.4.4"},
 {:ecto_sqlite3, "~> 0.24"}
 ```
 <!-- x-release-please-end -->

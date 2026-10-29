@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.4](https://github.com/joshrotenberg/snodo/compare/v0.4.3...v0.4.4) (2026-10-29)
+
+
+### Features
+
+* **otp:** derive the proxy client mapping from the server declaration (closes [#386](https://github.com/joshrotenberg/snodo/issues/386)) ([#391](https://github.com/joshrotenberg/snodo/issues/391)) ([b63fc93](https://github.com/joshrotenberg/snodo/commit/b63fc93b41ee05fb7808acf5aa1109fbacbfc94b))
+
 ## [0.4.3](https://github.com/joshrotenberg/snodo/compare/v0.4.2...v0.4.3) (2026-10-26)
 
 
