@@ -13,7 +13,7 @@ defmodule Snodo.Schema.Validator.JSV.MixProject do
       version: @version,
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
-      description: "JSON Schema 2020-12 validation for snodo through JSV",
+      description: "JSON Schema 2020-12 validation for snodo MCP servers through JSV",
       source_url: @source_url,
       package: [
         licenses: ["MIT"],
