@@ -217,6 +217,8 @@ defmodule Snodo.Session.Manager do
     unless is_function(Keyword.get(opts, :principal, &default_principal/1), 1),
       do: raise(ArgumentError, ":principal must be a function of one argument")
 
+    _registry = Registry.normalize!(Keyword.get(opts, :registry, Registry.Local))
+
     :ok
   end
 end
