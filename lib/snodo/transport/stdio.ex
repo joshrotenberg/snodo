@@ -39,6 +39,17 @@ defmodule Snodo.Transport.Stdio do
   2026-07-28 client does not send `initialize`, and its messages carry no such
   header.
 
+  ## Initialize-era sessions
+
+  With `sessions: true`, the connection is the `Snodo.Session` of an
+  initialize-era client; no session ID is issued. After `initialize`, a
+  handler's input requests are written to the client as server-to-client
+  requests, the client's responses are routed back to them, and
+  `resources/subscribe` and the list changes the runtime's
+  `:subscription_source` publishes are written on the connection. Sessions
+  are off by default, and the dialects then run sessionless. 2026-07-28
+  clients are unaffected either way.
+
   ## Application notifications
 
   An application process can send a server-to-client notification on an open
@@ -79,6 +90,8 @@ defmodule Snodo.Transport.Stdio do
   alias Snodo.Server
   alias Snodo.Server.Executor
   alias Snodo.Server.Runtime
+  alias Snodo.Session
+  alias Snodo.Session.Exchange
   alias Snodo.Subscription
   alias Snodo.Transport.Context, as: TransportContext
   alias Snodo.Transport.Stdio.Framing
@@ -105,6 +118,7 @@ defmodule Snodo.Transport.Stdio do
           notification_methods: [String.t()],
           negotiated_version: String.t() | nil,
           log_level: Snodo.Logging.level() | nil,
+          session: pid() | nil,
           eof?: boolean()
         }
 
@@ -191,6 +205,8 @@ defmodule Snodo.Transport.Stdio do
         do: nil,
         else: Reader.start_link(input, max_line_bytes)
 
+    session = start_session(Keyword.get(opts, :sessions, false), runtime)
+
     {:ok,
      %{
        runtime: runtime,
@@ -214,9 +230,20 @@ defmodule Snodo.Transport.Stdio do
          validate_notification_methods!(Keyword.get(opts, :notification_methods, [])),
        negotiated_version: nil,
        log_level: nil,
+       session: session,
        eof?: false
      }}
   end
+
+  defp start_session(false, _runtime), do: nil
+
+  defp start_session(true, runtime) do
+    {:ok, session} = Session.start_link(runtime: runtime, stream: self())
+    session
+  end
+
+  defp start_session(_invalid, _runtime),
+    do: raise(ArgumentError, ":sessions must be a boolean")
 
   @impl true
   def handle_call(:start_reader, _from, %{reader: nil} = state) do
@@ -238,6 +265,20 @@ defmodule Snodo.Transport.Stdio do
       end
     else
       {:error, %Error{}} = error -> {:reply, error, state}
+    end
+  end
+
+  # A server-to-client request made on behalf of a request in flight.
+  def handle_call({:mcp_stream_message, sink_ref, message}, _from, state) do
+    if Enum.any?(state.executions_by_ref, fn {_ref, entry} ->
+         entry.progress.sink.reference == sink_ref
+       end) do
+      case write_progress(state.writer, message) do
+        :ok -> {:reply, :ok, state}
+        {:error, reason} -> {:stop, {:output_failed, reason}, {:error, :closed}, state}
+      end
+    else
+      {:reply, {:error, :closed}, state}
     end
   end
 
@@ -305,6 +346,23 @@ defmodule Snodo.Transport.Stdio do
       :error -> {:noreply, state}
     end
   end
+
+  # A message on the session's standalone stream, which over stdio is the
+  # connection itself.
+  def handle_info({:mcp_session_message, session, ref, message}, %{session: session} = state) do
+    case write_progress(state.writer, message) do
+      :ok ->
+        send(session, {:mcp_session_written, ref, :ok})
+        {:noreply, state}
+
+      {:error, reason} ->
+        {:stop, {:output_failed, reason}, state}
+    end
+  end
+
+  def handle_info({:EXIT, session, _reason}, %{session: session} = state)
+      when not is_nil(session),
+      do: {:noreply, %{state | session: nil}}
 
   def handle_info({:stdio_read_error, _reason}, state) do
     write_error(state.writer, Error.parse_error("Failed to read stdio input"))
@@ -383,6 +441,7 @@ defmodule Snodo.Transport.Stdio do
       do: Process.exit(state.reader, :shutdown)
 
     if state.owns_executor?, do: stop_executor(state.executor)
+    if state.session, do: Session.close(state.session)
 
     _state = close_all_subscriptions(state, :disconnected)
 
@@ -437,11 +496,14 @@ defmodule Snodo.Transport.Stdio do
   end
 
   # A response object is not work: it must not occupy the client's id or
-  # produce a reply.
+  # produce a reply. On a session it answers a server request.
   defp handle_message(message, state) do
-    if Envelope.response?(message),
-      do: {:noreply, state},
-      else: handle_request_or_notification(message, state)
+    if Envelope.response?(message) do
+      if state.session, do: Session.deliver(state.session, message)
+      {:noreply, state}
+    else
+      handle_request_or_notification(message, state)
+    end
   end
 
   defp handle_request_or_notification(message, state) do
@@ -478,7 +540,13 @@ defmodule Snodo.Transport.Stdio do
     output = state.output
     sink = Progress.sink(self())
 
-    metadata = %{progress_sink: sink, subscription_owner: self(), log_level: state.log_level}
+    metadata =
+      put_session(
+        %{progress_sink: sink, subscription_owner: self(), log_level: state.log_level},
+        state,
+        message
+      )
+
     transport = transport_context(state, message, metadata)
 
     work = fn cancellation ->
@@ -486,7 +554,7 @@ defmodule Snodo.Transport.Stdio do
       transport = put_in(transport.metadata[:cancellation], cancellation)
 
       try do
-        Server.dispatch(runtime, message, transport)
+        Exchange.dispatch(runtime, message, transport)
       after
         Progress.close(sink)
       end
@@ -541,6 +609,18 @@ defmodule Snodo.Transport.Stdio do
 
         mark_executor_unavailable(state)
     end
+  end
+
+  # An initialize-era client's messages belong to the connection's session:
+  # its initialize, and everything after a version was negotiated.
+  defp put_session(metadata, %{session: nil}, _message), do: metadata
+
+  defp put_session(metadata, %{session: session, negotiated_version: version}, message) do
+    if version || match?(%{"method" => "initialize"}, message),
+      do: Map.put(metadata, :session, Session.info(session)),
+      else: metadata
+  catch
+    :exit, _session_gone -> metadata
   end
 
   defp cancel_request(state, request_id, reason) do

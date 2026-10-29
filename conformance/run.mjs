@@ -43,11 +43,15 @@ const lanes = {
   // Tasks and completion not routed).
   "server-proxy": { leg: "server", revision: "2026-07-28", baseline: "expected-failures-proxy.json",
     fixture: { profile: "latest", transport: "proxy" } },
-  // The initialize-era lanes run with sessions on; the sessionless lane keeps
-  // the default, where the dialects issue no session ID.
+  // The initialize-era lanes run with sessions on, natively and on the Plug,
+  // which shares the native baseline; the sessionless lane keeps the default,
+  // where the dialects issue no session ID.
   "server-2025-11-25": { leg: "server", revision: "2025-11-25",
     baseline: "expected-failures-2025-11-25.json",
     fixture: { profile: "legacy", transport: "native", sessions: true } },
+  "server-plug-2025-11-25": { leg: "server", revision: "2025-11-25",
+    baseline: "expected-failures-2025-11-25.json",
+    fixture: { profile: "legacy", transport: "plug", sessions: true } },
   "server-2025-11-25-sessionless": { leg: "server", revision: "2025-11-25",
     baseline: "expected-failures-2025-11-25-sessionless.json",
     fixture: { profile: "legacy", transport: "native", sessions: false } },
