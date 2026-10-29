@@ -76,6 +76,13 @@ defmodule Snodo.Progress do
   def bind(_no_sink, %Context{}), do: nil
 
   @doc false
+  # Lets the next bind/2 succeed. An initialize-era session runs a handler
+  # again on the same request, and its progress continues on the same sink;
+  # the owner's state still requires each value to increase.
+  @spec rebind(Sink.t()) :: :ok
+  def rebind(%Sink{lifecycle: lifecycle}), do: :atomics.put(lifecycle, 3, 0)
+
+  @doc false
   # Moves the binding from the worker `from` to `to`, so a callback the worker
   # runs in another process, such as `Snodo.Component.Wrap.Timeout`'s task,
   # can report. The worker waits while that process runs, so one process

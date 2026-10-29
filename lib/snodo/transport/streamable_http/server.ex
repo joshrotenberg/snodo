@@ -46,6 +46,23 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     * `:drain_timeout` - milliseconds the listener waits on shutdown for open
       connections to finish, default 5,000.
 
+  ## Initialize-era sessions
+
+  `sessions: true`, or a keyword list of `Snodo.Session.Manager` options
+  (`:max_sessions`, `:idle_timeout`, `:registry`, `:principal`), gives clients
+  of the enabled initialize-era dialects a `Snodo.Session`, as described in
+  `Snodo.Transport.StreamableHTTP`. The listener starts its own manager and
+  stops it on shutdown. Sessions are off by default: the dialects then run
+  sessionless and `GET` and `DELETE` get 405. With a `:request_gate`, the
+  identity it returns is the auth value a session is bound to.
+
+  With sessions on, a handler's input requests are written as SSE events on
+  the request's response stream, and `GET` opens the session's standalone
+  stream, which sends a keepalive comment every `:subscription_keepalive_ms`.
+  A `notifications/cancelled` for a request in flight on the session cancels
+  it. Sessions live on this node, so several listeners behind a load balancer
+  need sticky routing by `Mcp-Session-Id`.
+
   ## Shutdown
 
   The listener drains when it terminates, including when its supervisor stops
@@ -90,6 +107,8 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   alias Snodo.Error
   alias Snodo.Progress
   alias Snodo.Server.Executor
+  alias Snodo.Session
+  alias Snodo.Session.Manager, as: SessionManager
   alias Snodo.Subscription
   alias Snodo.Transport.StreamableHTTP
   alias Snodo.Transport.StreamableHTTP.Request
@@ -189,7 +208,8 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     with {:ok, listen_socket} <- :gen_tcp.listen(port, listen_opts),
          {:ok, {bound_ip, bound_port}} <- :inet.sockname(listen_socket),
          {:ok, connection_supervisor} <- Task.Supervisor.start_link(),
-         {:ok, executor, owns_executor?} <- start_executor(opts) do
+         {:ok, executor, owns_executor?} <- start_executor(opts),
+         {:ok, session_manager} <- start_sessions(Keyword.get(opts, :sessions, false)) do
       executor_monitor = Process.monitor(executor)
       server_ref = make_ref()
 
@@ -219,7 +239,8 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
           Keyword.take(opts, [
             :allowed_origin_hosts,
             :allowed_hosts
-          ])
+          ]),
+        sessions: session_manager && SessionManager.config(session_manager)
       }
 
       acceptor_state = %{
@@ -244,7 +265,8 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
          executor_monitor: executor_monitor,
          listen_socket: listen_socket,
          owns_executor?: owns_executor?,
-         server_ref: server_ref
+         server_ref: server_ref,
+         session_manager: session_manager
        }}
     end
   end
@@ -270,6 +292,10 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   def handle_info({:EXIT, supervisor, _reason}, %{connection_supervisor: supervisor} = state),
     do: {:noreply, state}
 
+  def handle_info({:EXIT, manager, reason}, %{session_manager: manager} = state)
+      when not is_nil(manager),
+      do: {:stop, {:session_manager_down, reason}, state}
+
   def handle_info(_message, state), do: {:noreply, state}
 
   @impl true
@@ -280,6 +306,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     Process.demonitor(state.executor_monitor, [:flush])
 
     if state.owns_executor?, do: stop_executor(state.executor)
+    if state.session_manager, do: stop_executor(state.session_manager)
     :ok
   end
 
@@ -496,9 +523,14 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   end
 
   defp execute_request(socket, request, auth, opts) do
-    case StreamableHTTP.prepare(opts.runtime, request, opts.adapter_opts) do
+    adapter_opts = opts.adapter_opts ++ [sessions: opts.sessions, auth: auth]
+
+    case StreamableHTTP.prepare(opts.runtime, request, adapter_opts) do
       {:response, response} ->
         response
+
+      {:standalone, session} ->
+        {:standalone, session}
 
       {:ok, prepared} ->
         prepared = with_auth(prepared, auth, opts.request_gate)
@@ -521,6 +553,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
         try do
           case submit_execution(opts.executor, key, work, opts.request_timeout) do
             {:ok, execution_ref} ->
+              track_request(prepared, opts.executor, key)
               await_execution(socket, opts.executor, execution_ref, key, prepared, opts)
 
             {:error, :overloaded} ->
@@ -550,9 +583,27 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
         after
           Progress.close(sink)
           cancel_request_timer(timer, key)
+          untrack_request(prepared)
         end
     end
   end
+
+  # A request on a session can be cancelled with notifications/cancelled,
+  # which arrives on another connection and reaches it through the session.
+  defp track_request(
+         %{session: %Session{pid: pid}, kind: :request, raw: %{"id" => id}},
+         executor,
+         key
+       ) do
+    Session.track(pid, id, fn reason -> Executor.cancel(executor, key, reason) end)
+  end
+
+  defp track_request(_prepared, _executor, _key), do: :ok
+
+  defp untrack_request(%{session: %Session{pid: pid}, kind: :request, raw: %{"id" => id}}),
+    do: Session.untrack(pid, id)
+
+  defp untrack_request(_prepared), do: :ok
 
   defp with_auth(prepared, _auth, nil), do: prepared
   defp with_auth(prepared, auth, _gate), do: put_in(prepared.transport.metadata[:auth], auth)
@@ -585,6 +636,15 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
 
           {:error, reason} ->
             cancel_execution(executor, key, {:progress_write_failed, reason}, opts.progress.sink)
+        end
+
+      {:"$gen_call", from, {:mcp_stream_message, reference, message}} ->
+        case receive_stream_message(socket, opts, reference, from, message) do
+          {:ok, opts} ->
+            await_execution_message(socket, executor, execution_ref, key, prepared, opts)
+
+          {:error, reason} ->
+            cancel_execution(executor, key, {:stream_write_failed, reason}, opts.progress.sink)
         end
 
       {:tcp_closed, ^socket} ->
@@ -623,6 +683,25 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     end
   end
 
+  # A server-to-client request made on behalf of this request, on its own
+  # response stream.
+  defp receive_stream_message(socket, opts, reference, from, message) do
+    if opts.progress.sink.reference == reference do
+      with :ok <- maybe_start_progress(socket, opts.progress_started?),
+           :ok <- send_sse_message(socket, message) do
+        GenServer.reply(from, :ok)
+        {:ok, %{opts | progress_started?: true}}
+      else
+        {:error, reason} ->
+          GenServer.reply(from, {:error, :closed})
+          {:error, reason}
+      end
+    else
+      GenServer.reply(from, {:error, :wrong_sink})
+      {:ok, opts}
+    end
+  end
+
   defp maybe_start_progress(_socket, true), do: :ok
 
   defp maybe_start_progress(socket, false) do
@@ -632,6 +711,9 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
       {"x-accel-buffering", "no"}
     ])
   end
+
+  # A cancelled request has no response to write on its stream.
+  defp finish_execution(_socket, %Response{body: ""}, %{progress_started?: true}), do: nil
 
   defp finish_execution(socket, %Response{body: body}, %{progress_started?: true}) do
     _send_result = :gen_tcp.send(socket, ["data: ", body, "\r\n\r\n"])
@@ -1022,7 +1104,67 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     serve_subscription(socket, response, opts.server_ref)
   end
 
+  defp maybe_send_response(socket, {:standalone, session}, opts, _keep?) do
+    serve_standalone(socket, session, opts)
+  end
+
   defp maybe_send_response(_socket, _cancelled, _opts, _keep?), do: :ok
+
+  # The session's standalone stream: list changes and resource updates, one
+  # event at a time, each acknowledged to the session once written.
+  defp serve_standalone(socket, %Session{pid: pid}, opts) do
+    case Session.attach_stream(pid, self()) do
+      :ok ->
+        monitor = Process.monitor(pid)
+
+        with :ok <- maybe_start_progress(socket, false),
+             :ok <- arm_socket(socket) do
+          stream_standalone(socket, pid, monitor, opts)
+        end
+
+      {:error, :conflict} ->
+        send_response(
+          socket,
+          basic_error(409, "The session already has a standalone stream"),
+          false
+        )
+
+      {:error, :closed} ->
+        send_response(socket, basic_error(404, "Session not found", -32_001), false)
+    end
+  end
+
+  defp stream_standalone(socket, pid, monitor, opts) do
+    server_ref = opts.server_ref
+
+    receive do
+      {:mcp_session_message, ^pid, ref, message} ->
+        result = send_sse_message(socket, message)
+        send(pid, {:mcp_session_written, ref, result})
+        if result == :ok, do: stream_standalone(socket, pid, monitor, opts), else: :ok
+
+      {:DOWN, ^monitor, :process, ^pid, _reason} ->
+        :ok
+
+      {:tcp, ^socket, _unexpected_data} ->
+        if arm_socket(socket) == :ok, do: stream_standalone(socket, pid, monitor, opts), else: :ok
+
+      {:tcp_closed, ^socket} ->
+        :ok
+
+      {:tcp_error, ^socket, _reason} ->
+        :ok
+
+      {:mcp_http_drain, ^server_ref} ->
+        :ok
+    after
+      opts.subscription_keepalive_ms ->
+        case :gen_tcp.send(socket, ": keepalive\r\n\r\n") do
+          :ok -> stream_standalone(socket, pid, monitor, opts)
+          {:error, _reason} -> :ok
+        end
+    end
+  end
 
   defp serve_subscription(
          socket,
@@ -1222,6 +1364,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   defp reason_phrase(406), do: "Not Acceptable"
   defp reason_phrase(411), do: "Length Required"
   defp reason_phrase(413), do: "Content Too Large"
+  defp reason_phrase(409), do: "Conflict"
   defp reason_phrase(415), do: "Unsupported Media Type"
   defp reason_phrase(431), do: "Request Header Fields Too Large"
   defp reason_phrase(500), do: "Internal Server Error"
@@ -1326,6 +1469,19 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   catch
     :exit, _reason -> :ok
   end
+
+  defp start_sessions(false), do: {:ok, nil}
+  defp start_sessions(nil), do: {:ok, nil}
+  defp start_sessions(true), do: start_sessions([])
+
+  defp start_sessions(opts) when is_list(opts) do
+    if Keyword.has_key?(opts, :name),
+      do: raise(ArgumentError, ":sessions options cannot include :name"),
+      else: SessionManager.start_link(opts)
+  end
+
+  defp start_sessions(_invalid),
+    do: raise(ArgumentError, ":sessions must be a boolean or a keyword list")
 
   defp normalize_ip(ip) when is_tuple(ip), do: ip
 
