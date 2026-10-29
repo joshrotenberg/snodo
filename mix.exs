@@ -112,6 +112,7 @@ defmodule Snodo.MixProject do
         Client: [~r/^Snodo\.Client/],
         Interactive: [~r/^Snodo\.(Elicitation|Sampling|Roots|MRTR)$/],
         Transports: [~r/^Snodo\.Transport/],
+        Sessions: [~r/^Snodo\.Session/],
         Protocol: [~r/^Snodo\.(Protocol|Envelope|Compliance)/]
       ]
     ]

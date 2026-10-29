@@ -36,9 +36,7 @@ defmodule Snodo.Transport.StreamableHTTP do
     * `DELETE` ends the session and is answered with 200.
     * `GET` with `Accept: text/event-stream` returns `{:standalone, session}`.
       The caller opens the session's standalone stream with
-      `Snodo.Session.attach_stream/2` (409 if it already has one) and writes
-      each `{:mcp_session_message, session, ref, message}` it receives as an
-      SSE event, acknowledging it with `{:mcp_session_written, ref, result}`.
+      `Snodo.Session.attach_stream/2` (409 if it already has one).
     * During `execute/3`, a handler's input requests are sent as
       server-to-client requests through the progress sink's owner, which
       receives `{:mcp_stream_message, sink_reference, message}` as a

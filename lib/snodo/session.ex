@@ -95,10 +95,19 @@ defmodule Snodo.Session do
   @spec unsubscribe(pid(), String.t()) :: :ok
   def unsubscribe(pid, uri), do: call(pid, {:unsubscribe, uri}, :ok)
 
-  @doc false
-  # Makes `stream` the standalone stream. The session sends it
-  # `{:mcp_session_message, session, ref, message}` and waits for
-  # `{:mcp_session_written, ref, :ok | {:error, reason}}` before the next one.
+  @doc """
+  Makes `stream` the session's standalone stream.
+
+  For an HTTP stack that serves the `{:standalone, session}` result of
+  `Snodo.Transport.StreamableHTTP.prepare/3` itself. The session sends
+  `stream` `{:mcp_session_message, session_pid, ref, message}` for each
+  notification, and sends the next one only after `stream` replies with
+  `send(session_pid, {:mcp_session_written, ref, :ok | {:error, reason}})`.
+  The session watches `stream` and detaches it when it exits. Returns
+  `{:error, :conflict}` when the session already has a standalone stream,
+  which HTTP answers with 409, and `{:error, :closed}` when the session has
+  ended.
+  """
   @spec attach_stream(pid(), pid()) :: :ok | {:error, :conflict | :closed}
   def attach_stream(pid, stream), do: call(pid, {:attach_stream, stream}, {:error, :closed})
 

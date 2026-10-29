@@ -156,7 +156,10 @@ use Snodo.Server,
 ```
 
 They cover tools, resources, prompts, completion, and pagination, over HTTP
-without sessions and over stdio. They add no session storage.
+and stdio, and run without sessions by default. With the transport's
+`sessions:` option they also get server-initiated elicitation, sampling, and
+roots, `resources/subscribe`, and list_changed notifications; see
+[Initialize-era clients](guides/initialize-era-clients.md).
 
 Against the frozen official conformance suite, all 37 `2026-07-28` server
 scenarios pass; that is the pinned runner's score, not a claim of full revision

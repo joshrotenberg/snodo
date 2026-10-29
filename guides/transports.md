@@ -78,6 +78,9 @@ frame was written; do not assume it was or was not delivered.
 Logger output is redirected away from stdout by default, because stdout carries
 only protocol messages.
 
+`sessions: true` makes the connection the session of an initialize-era client;
+see [Initialize-era sessions](#initialize-era-sessions).
+
 ## Native HTTP listener
 
 ```elixir
@@ -102,7 +105,8 @@ stream, `Connection: close`, or an HTTP/1.0 request. It answers:
 - `application/json` for ordinary results.
 - `text/event-stream` when a handler reports progress, and for
   `subscriptions/listen`, with keepalive comments and proxy buffering disabled.
-- 405 for GET and DELETE at `/mcp`. No session IDs are issued.
+- 405 for GET and DELETE at `/mcp`, and no session IDs, unless
+  [initialize-era sessions](#initialize-era-sessions) are on.
 
 It checks media types, the mirrored `MCP-Protocol-Version`, `Mcp-Method`, and
 `Mcp-Name` headers, the `Mcp-Param-*` headers for a tool's `x-mcp-header`
@@ -189,6 +193,94 @@ must keep it above `:drain_timeout`; a supervisor that kills the listener
 earlier skips the rest of the drain. The release or platform that stops the VM
 must allow for the drain as well.
 
+## Initialize-era sessions
+
+Clients of the opt-in 2025-11-25 and 2025-06-18 dialects (see
+[Initialize-era clients](initialize-era-clients.md)) can have a session. With
+one, a handler's input requests reach them as server-initiated
+`elicitation/create`, `sampling/createMessage`, and `roots/list` requests, and
+`resources/subscribe`, `resources/unsubscribe`, and list_changed notifications
+work. Sessions are off by default; without them the dialects run sessionless.
+2026-07-28 requests never use a session, whatever the setting.
+
+| Transport | Option |
+|---|---|
+| Native HTTP listener | `sessions: true`, or a keyword list of `Snodo.Session.Manager` options. The listener starts its own manager. |
+| `Snodo.Transport.Plug` | `sessions: MyApp.MCPSessions`, the name of a `Snodo.Session.Manager` the application starts before the HTTP server. |
+| Stdio | `sessions: true`. The connection is the session and no ID is issued. |
+
+```elixir
+children = [
+  {Snodo.Subscription.Hub, name: MyApp.Hub},
+  {Snodo.Transport.StreamableHTTP.Server,
+   runtime: MyServer.runtime(subscription_source: Snodo.Subscription.Hub.source(MyApp.Hub)),
+   port: 4000,
+   sessions: [max_sessions: 512, idle_timeout: :timer.minutes(10)]}
+]
+```
+
+A handler written for 2026-07-28 input requests serves these clients
+unchanged. It returns `Snodo.Result.input_required/1`; the transport sends each
+input request to the client as a JSON-RPC request on the original request's
+event stream (or the stdio connection), waits for the answers, and calls the
+handler again with the answers in `Snodo.Context.input_responses` and the
+result's `requestState` in `Snodo.Context.request_state`. Every round runs
+inside the request's `:request_timeout`, so a server that waits for people to
+answer elicitations needs a longer one than the 30-second default. At most 10
+rounds run before the request fails with -32603, and a client that answers an input request with an error fails
+the request with that error. Cancelling the request, or ending the session,
+ends the exchange. A client that did not declare the capability an input
+request needs gets -32021, as on 2026-07-28. A 2025-06-18 client receives form
+elicitations without `mode`, which that revision does not define.
+
+With a `:subscription_source` on the runtime, `initialize` advertises the
+runtime's `listChanged` and `resources.subscribe` settings, and the session
+opens the source for them. Over HTTP the events go out on the session's
+standalone `GET` stream; an event that arrives while no stream is open is
+dropped. A resource the authorization policy does not let the principal read
+is not subscribed, and `resources/subscribe` still answers `{}`.
+
+Over HTTP:
+
+| Request | Answer |
+|---|---|
+| `initialize` | Starts a session and returns its ID in `Mcp-Session-Id` (32 URL-safe base64 characters from `:crypto.strong_rand_bytes/1`). A failed initialization keeps no session. |
+| Any other request, notification, or response without `Mcp-Session-Id` | 400 |
+| An unknown or expired ID, or a session bound to another principal | 404 with JSON-RPC code -32001. The client initializes again. |
+| `MCP-Protocol-Version` that differs from the session's | 400 |
+| A JSON-RPC response object | Routed to the server request waiting for it; 202 |
+| `notifications/cancelled` | Cancels the named request in flight on the session; 202 |
+| `GET` with `Accept: text/event-stream` | The standalone stream, with a keepalive comment every `:subscription_keepalive_ms`. A second one for the same session gets 409. |
+| `DELETE` | Ends the session; 200 |
+
+A session is bound to the principal that created it: the auth value a request
+gate returns, or the Plug's auth assign. Authentication still runs on every
+request, and a request with the session's ID and a different principal is
+answered as if the session did not exist. By default the principal is the
+`:principal` and `:client_id` of an auth map that has a `:principal` key (the
+shape `snodo_oauth` assigns, so a refreshed token for the same subject keeps
+the session), and the whole auth value otherwise; the manager's `:principal`
+option takes a function to change that.
+
+Limits, each with a default and a defined failure:
+
+- `:max_sessions` (default 1,024). An `initialize` over the limit gets 503.
+- `:idle_timeout` (default 1,800,000 ms, 30 minutes). A session with no
+  request, answer, or open stream for that long ends, and its ID gets 404.
+  `:infinity` keeps sessions until `DELETE` or shutdown.
+- One standalone stream per session; a second `GET` gets 409.
+- The request's existing bounds apply to each exchange: `:request_timeout`
+  across all rounds, `:max_body_bytes` for each answer, and 10 rounds.
+
+A session process runs on the node that handled `initialize`. The manager
+finds sessions through a `Snodo.Session.Registry`, `Snodo.Session.Registry.Local`
+by default, and the core does not route requests between nodes. A deployment
+with more than one node behind a load balancer needs sticky routing that sends
+every request carrying a given `Mcp-Session-Id` to the node that issued it;
+otherwise a request that lands elsewhere gets 404 and the client starts over.
+There is no `Last-Event-ID` replay: a dropped stream loses the events sent
+while it was closed, and the client opens a new one with `GET`.
+
 ## Component limits
 
 The opt-in wrappers in `Snodo.Component.Wrap` bound individual tools,
@@ -244,7 +336,9 @@ that share an executor share it. `:body_timeout` (default 10,000 ms from when
 the Plug starts reading) bounds the whole request body and answers 408; a
 request that declares `Transfer-Encoding` gets 411 without being read. Over
 HTTP/2 the deadline is checked only when an adapter read returns, so it does not
-bound a client that keeps sending small DATA frames. See
+bound a client that keeps sending small DATA frames. `:sessions` names a
+`Snodo.Session.Manager` for [initialize-era sessions](#initialize-era-sessions).
+See
 the [`snodo_plug` documentation](https://hexdocs.pm/snodo_plug) and the
 [application stack](application-stack.md) for choosing between the native
 listener and Plug.
