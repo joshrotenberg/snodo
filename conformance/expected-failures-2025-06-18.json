@@ -1,22 +1,5 @@
 {
-  "failures": [
-    {
-      "key": "resources-subscribe:resources-subscribe",
-      "reason": "The initialize-era slice does not implement resources/subscribe."
-    },
-    {
-      "key": "resources-unsubscribe:resources-unsubscribe",
-      "reason": "The initialize-era slice does not implement resources/subscribe or resources/unsubscribe."
-    },
-    {
-      "key": "tools-call-elicitation:tools-call-elicitation",
-      "reason": "Server-initiated elicitation needs a session, which the initialize-era slice does not keep; the fixture has no such tool."
-    },
-    {
-      "key": "tools-call-sampling:tools-call-sampling",
-      "reason": "Server-initiated sampling needs a session, which the initialize-era slice does not keep; the fixture has no such tool."
-    }
-  ],
+  "failures": [],
   "exclusions": [],
   "checkInventory": {
     "completion-complete": {
@@ -109,7 +92,7 @@
     },
     "resources-subscribe": {
       "resources-subscribe": [
-        "FAILURE"
+        "SUCCESS"
       ],
       "wire-schema-valid": [
         "SUCCESS"
@@ -125,7 +108,7 @@
     },
     "resources-unsubscribe": {
       "resources-unsubscribe": [
-        "FAILURE"
+        "SUCCESS"
       ],
       "wire-schema-valid": [
         "SUCCESS"
@@ -136,15 +119,21 @@
         "SUCCESS"
       ],
       "server-session-id-visible-ascii": [
-        "INFO"
+        "SUCCESS"
       ],
       "wire-schema-valid": [
         "SUCCESS"
       ]
     },
     "server-session-lifecycle": {
-      "server-session-lifecycle-skipped": [
-        "INFO"
+      "server-session-initialized-accepted": [
+        "SUCCESS"
+      ],
+      "server-session-delete-accepted": [
+        "SUCCESS"
+      ],
+      "server-session-terminated-returns-404": [
+        "SUCCESS"
       ]
     },
     "tools-call-audio": {
@@ -157,7 +146,7 @@
     },
     "tools-call-elicitation": {
       "tools-call-elicitation": [
-        "FAILURE"
+        "SUCCESS"
       ],
       "wire-schema-valid": [
         "SUCCESS"
@@ -197,7 +186,7 @@
     },
     "tools-call-sampling": {
       "tools-call-sampling": [
-        "FAILURE"
+        "SUCCESS"
       ],
       "wire-schema-valid": [
         "SUCCESS"

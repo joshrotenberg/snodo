@@ -43,10 +43,17 @@ const lanes = {
   // Tasks and completion not routed).
   "server-proxy": { leg: "server", revision: "2026-07-28", baseline: "expected-failures-proxy.json",
     fixture: { profile: "latest", transport: "proxy" } },
+  // The initialize-era lanes run with sessions on; the sessionless lane keeps
+  // the default, where the dialects issue no session ID.
   "server-2025-11-25": { leg: "server", revision: "2025-11-25",
-    baseline: "expected-failures-2025-11-25.json", fixture: { profile: "legacy", transport: "native" } },
+    baseline: "expected-failures-2025-11-25.json",
+    fixture: { profile: "legacy", transport: "native", sessions: true } },
+  "server-2025-11-25-sessionless": { leg: "server", revision: "2025-11-25",
+    baseline: "expected-failures-2025-11-25-sessionless.json",
+    fixture: { profile: "legacy", transport: "native", sessions: false } },
   "server-2025-06-18": { leg: "server", specVersion: "2025-06-18",
-    baseline: "expected-failures-2025-06-18.json", fixture: { profile: "legacy", transport: "native" } },
+    baseline: "expected-failures-2025-06-18.json",
+    fixture: { profile: "legacy", transport: "native", sessions: true } },
 };
 const laneName = process.argv[2] ?? "server";
 assert.ok(Object.hasOwn(lanes, laneName), `unknown lane: ${laneName}`);
@@ -92,7 +99,8 @@ const child = lane.fixture
   ? spawn("mix", ["run", "--no-compile", "--no-deps-check", "../fixture_server.exs"], {
     cwd: path.join(here, "fixture"), stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env, MIX_ENV: "dev", ERL_FLAGS: erlFlags, MCP_PORT: "0", MCP_CONFORMANCE_MANAGED: "1",
-      MCP_FIXTURE_PROFILE: lane.fixture.profile, MCP_FIXTURE_TRANSPORT: lane.fixture.transport },
+      MCP_FIXTURE_PROFILE: lane.fixture.profile, MCP_FIXTURE_TRANSPORT: lane.fixture.transport,
+      MCP_FIXTURE_SESSIONS: lane.fixture.sessions ? "1" : "0" },
   })
   : null;
 const exited = child && once(child, "exit");
