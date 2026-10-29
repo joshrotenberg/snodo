@@ -63,6 +63,9 @@ defmodule Snodo.Session do
         }
 
   @id_bytes 24
+  # The same bound as one subscriptions/listen request; the source and its
+  # worker keep a copy of the list.
+  @max_resource_subscriptions 1_000
 
   @doc false
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts)
@@ -78,10 +81,12 @@ defmodule Snodo.Session do
   def admit(pid, principal), do: call(pid, {:admit, principal}, :error)
 
   @doc false
-  # Records the result of a successful `initialize`.
-  @spec ready(pid(), String.t(), map() | nil, map()) :: :ok
-  def ready(pid, version, client_info, client_capabilities),
-    do: call(pid, {:ready, version, client_info, client_capabilities}, :ok)
+  # Records the result of a successful `initialize`; `auth` is that request's,
+  # which the subscription source sees until a resources/subscribe request
+  # brings its own.
+  @spec ready(pid(), String.t(), map() | nil, map(), term()) :: :ok
+  def ready(pid, version, client_info, client_capabilities, auth),
+    do: call(pid, {:ready, version, client_info, client_capabilities, auth}, :ok)
 
   @doc false
   @spec put_log_level(pid(), Snodo.Logging.level()) :: :ok
@@ -176,9 +181,10 @@ defmodule Snodo.Session do
       outgoing: %{},
       next_id: 1,
       tracked: %{},
-      uris: MapSet.new(),
+      uris: %{},
       auth: nil,
-      subscription: nil
+      subscription: nil,
+      owner: watch_owner(Keyword.get(opts, :owner))
     }
 
     with {:ok, state} <- register(state) do
@@ -186,6 +192,12 @@ defmodule Snodo.Session do
       {:ok, schedule_idle(state)}
     end
   end
+
+  # The process handling initialize. A session whose initialization never
+  # completes, because that request was refused or its client went away,
+  # ends with it rather than waiting for the idle timeout.
+  defp watch_owner(owner) when is_pid(owner), do: Process.monitor(owner)
+  defp watch_owner(nil), do: nil
 
   defp register(%{registry: nil} = state), do: {:ok, state}
 
@@ -212,15 +224,19 @@ defmodule Snodo.Session do
       else: {:reply, :error, state}
   end
 
-  def handle_call({:ready, version, client_info, capabilities}, _from, state) do
+  def handle_call({:ready, version, client_info, capabilities, auth}, _from, state) do
+    _demonitored = if state.owner, do: Process.demonitor(state.owner, [:flush])
+
     state = %{
       state
-      | version: version,
+      | owner: nil,
+        version: version,
         client_info: client_info,
         client_capabilities: capabilities,
+        auth: auth,
         ready?: true,
         log_level: nil,
-        uris: MapSet.new()
+        uris: %{}
     }
 
     {:reply, :ok, state |> reopen_subscription(nil) |> schedule_idle()}
@@ -230,13 +246,27 @@ defmodule Snodo.Session do
     do: {:reply, :ok, %{state | log_level: level}}
 
   def handle_call({:subscribe, uri, context}, _from, state) do
-    state = %{state | uris: MapSet.put(state.uris, uri)}
-    {:reply, :ok, reopen_subscription(state, context)}
+    cond do
+      Map.has_key?(state.uris, uri) ->
+        {:reply, :ok, state}
+
+      map_size(state.uris) >= @max_resource_subscriptions ->
+        error =
+          Snodo.Error.invalid_params(
+            "A session subscribes to at most #{@max_resource_subscriptions} resources"
+          )
+
+        {:reply, {:error, error}, state}
+
+      true ->
+        state = %{state | uris: Map.put(state.uris, uri, true)}
+        {:reply, :ok, reopen_subscription(state, context)}
+    end
   end
 
   def handle_call({:unsubscribe, uri}, _from, state) do
-    if MapSet.member?(state.uris, uri) do
-      state = %{state | uris: MapSet.delete(state.uris, uri)}
+    if Map.has_key?(state.uris, uri) do
+      state = %{state | uris: Map.delete(state.uris, uri)}
       {:reply, :ok, reopen_subscription(state, nil)}
     else
       {:reply, :ok, state}
@@ -296,7 +326,7 @@ defmodule Snodo.Session do
   end
 
   @impl true
-  def handle_info({:mcp_session_idle, timer}, %{idle_timer: timer} = state) do
+  def handle_info({:mcp_session_idle, token}, %{idle_timer: {_timer, token}} = state) do
     if active?(state),
       do: {:noreply, schedule_idle(state)},
       else: {:stop, :normal, state}
@@ -322,6 +352,9 @@ defmodule Snodo.Session do
       do: {:noreply, handle_event(state, outcome)}
 
   def handle_info({:mcp_subscription, _worker, _outcome}, state), do: {:noreply, state}
+
+  def handle_info({:DOWN, monitor, :process, _pid, _reason}, %{owner: monitor} = state),
+    do: {:stop, :normal, state}
 
   def handle_info({:DOWN, monitor, :process, _pid, _reason}, state) do
     {:noreply, handle_down(state, monitor)}
@@ -421,11 +454,13 @@ defmodule Snodo.Session do
 
   defp schedule_idle(%{idle_timeout: :infinity} = state), do: state
 
+  # Each timer carries its own token, so one that fired before it could be
+  # cancelled is recognized as stale.
   defp schedule_idle(state) do
-    if state.idle_timer, do: Process.cancel_timer(state.idle_timer)
-    timer = make_ref()
-    Process.send_after(self(), {:mcp_session_idle, timer}, state.idle_timeout)
-    %{state | idle_timer: timer}
+    _cancelled = with {timer, _token} <- state.idle_timer, do: Process.cancel_timer(timer)
+    token = make_ref()
+    timer = Process.send_after(self(), {:mcp_session_idle, token}, state.idle_timeout)
+    %{state | idle_timer: {timer, token}}
   end
 
   # Subscriptions. The source is opened for the list changes the server
@@ -471,8 +506,8 @@ defmodule Snodo.Session do
   defp put_flag(filter, _key, _setting), do: filter
 
   defp put_uris(filter, uris, true) do
-    if MapSet.size(uris) > 0,
-      do: Map.put(filter, "resourceSubscriptions", uris |> MapSet.to_list() |> Enum.sort()),
+    if map_size(uris) > 0,
+      do: Map.put(filter, "resourceSubscriptions", uris |> Map.keys() |> Enum.sort()),
       else: filter
   end
 

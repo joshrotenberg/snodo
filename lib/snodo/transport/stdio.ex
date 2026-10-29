@@ -499,7 +499,7 @@ defmodule Snodo.Transport.Stdio do
   # produce a reply. On a session it answers a server request.
   defp handle_message(message, state) do
     if Envelope.response?(message) do
-      if state.session, do: Session.deliver(state.session, message)
+      _delivered = if state.session, do: Session.deliver(state.session, message)
       {:noreply, state}
     else
       handle_request_or_notification(message, state)

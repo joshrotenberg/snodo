@@ -131,6 +131,12 @@ defmodule Snodo.SessionStdioTest do
 
     {:ok, _report} = Hub.notify_tools_list_changed(hub)
     assert_receive {:stdout, %{"method" => "notifications/tools/list_changed"}}
+
+    push(connection, request(3, "resources/subscribe", %{"uri" => "not a uri"}))
+    assert_receive {:stdout, %{"id" => 3, "error" => %{"code" => -32_602}}}
+
+    push(connection, request(4, "resources/unsubscribe", %{}))
+    assert_receive {:stdout, %{"id" => 4, "error" => %{"code" => -32_602}}}
     finish(connection)
   end
 

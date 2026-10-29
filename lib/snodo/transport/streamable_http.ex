@@ -366,6 +366,8 @@ defmodule Snodo.Transport.StreamableHTTP do
   @doc false
   @spec reject(Runtime.t(), Prepared.t(), Error.t(), pos_integer()) :: Response.t()
   def reject(%Runtime{} = runtime, %Prepared{} = prepared, %Error{} = error, status) do
+    _closed = discard_session(prepared)
+
     case Server.reject(runtime, prepared.raw, prepared.transport, error) do
       {:ok, nil} -> %Response{status: status}
       {:ok, response} -> json_response(status, response)

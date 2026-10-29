@@ -269,6 +269,8 @@ Limits, each with a default and a defined failure:
   request, answer, or open stream for that long ends, and its ID gets 404.
   `:infinity` keeps sessions until `DELETE` or shutdown.
 - One standalone stream per session; a second `GET` gets 409.
+- 1,000 subscribed resources per session, the bound on one 2026-07-28
+  `subscriptions/listen` request. One more `resources/subscribe` gets -32602.
 - The request's existing bounds apply to each exchange: `:request_timeout`
   across all rounds, `:max_body_bytes` for each answer, and 10 rounds.
 

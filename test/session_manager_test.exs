@@ -79,6 +79,52 @@ defmodule Snodo.SessionManagerTest do
     assert Manager.default_principal(%{"sub" => "p"}) == %{"sub" => "p"}
   end
 
+  test "a session subscribes to at most 1,000 resources" do
+    config = Manager.config(start_supervised!(Manager))
+    assert {:ok, %Session{pid: pid}} = Manager.start_session(config, runtime(), nil)
+    :ok = Session.ready(pid, "2025-11-25", nil, %{}, nil)
+
+    context = %Snodo.Context{
+      protocol_version: "2025-11-25",
+      protocol: V2025_11_25,
+      transport: %Snodo.Transport.Context{}
+    }
+
+    for index <- 1..1_000, do: :ok = Session.subscribe(pid, "test://r/#{index}", context)
+
+    # A URI already subscribed is not counted again.
+    assert :ok = Session.subscribe(pid, "test://r/1", context)
+
+    assert {:error, %Snodo.Error{code: -32_602}} =
+             Session.subscribe(pid, "test://r/1001", context)
+
+    :ok = Session.unsubscribe(pid, "test://r/1")
+    assert :ok = Session.subscribe(pid, "test://r/1001", context)
+  end
+
+  test "a session ends with the process that started it until it is ready" do
+    config = Manager.config(start_supervised!(Manager))
+    test = self()
+
+    start = fn ready? ->
+      spawn(fn ->
+        {:ok, %Session{pid: pid}} = Manager.start_session(config, runtime(), nil)
+        if ready?, do: :ok = Session.ready(pid, "2025-11-25", nil, %{}, nil)
+        send(test, {:started, pid})
+      end)
+
+      assert_receive {:started, pid}
+      pid
+    end
+
+    unready = start.(false)
+    monitor = Process.monitor(unready)
+    assert_receive {:DOWN, ^monitor, :process, ^unready, _reason}
+
+    ready = start.(true)
+    assert {:ok, %Session{ready?: true}} = Session.admit(ready, nil)
+  end
+
   test "max_sessions bounds the sessions a manager starts" do
     config = Manager.config(start_supervised!({Manager, max_sessions: 1}))
     assert {:ok, %Session{pid: pid}} = Manager.start_session(config, runtime(), nil)

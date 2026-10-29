@@ -52,7 +52,7 @@ defmodule Snodo.Session.Exchange do
           run(runtime, raw, transport, session, 1)
       end
 
-    record(result, raw, session)
+    record(result, raw, transport, session)
     result
   end
 
@@ -204,8 +204,8 @@ defmodule Snodo.Session.Exchange do
          {:ok, _inspection} <- Inspector.inspect(protocol.profile(), decoded, :client_to_server),
          {:ok, context} <- protocol.build_context(decoded, runtime),
          {:ok, operation} <- resolve(protocol, decoded),
-         :ok <- protocol.validate_operation(operation, decoded.params, context) do
-      apply_operation(operation, runtime, context, session)
+         :ok <- protocol.validate_operation(operation, decoded.params, context),
+         :ok <- apply_operation(operation, runtime, context, session) do
       reply(decoded)
     else
       {:error, %Error{} = error} -> Server.reject(runtime, raw, transport, error)
@@ -245,19 +245,27 @@ defmodule Snodo.Session.Exchange do
   defp record(
          {:ok, %{"result" => %{"protocolVersion" => version}}},
          %{"method" => "initialize", "params" => params},
+         transport,
          %Session{pid: pid}
        )
        when is_binary(version) do
-    Session.ready(pid, version, params["clientInfo"], Map.get(params, "capabilities", %{}))
+    Session.ready(
+      pid,
+      version,
+      params["clientInfo"],
+      Map.get(params, "capabilities", %{}),
+      transport.metadata[:auth]
+    )
   end
 
   defp record(
          {:ok, %{"result" => _result}},
          %{"method" => "logging/setLevel", "params" => %{"level" => level}},
+         _transport,
          %Session{pid: pid}
        ) do
     Session.put_log_level(pid, Snodo.Logging.parse_level(level))
   end
 
-  defp record(_result, _raw, _session), do: :ok
+  defp record(_result, _raw, _transport, _session), do: :ok
 end

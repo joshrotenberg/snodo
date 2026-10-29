@@ -91,7 +91,8 @@ defmodule Snodo.Session.Manager do
 
   @doc false
   # Starts a session bound to `auth`'s principal. The session is registered
-  # under a new ID before this returns.
+  # under a new ID before this returns. Until initialization succeeds it ends
+  # if the calling process exits.
   @spec start_session(t(), Snodo.Server.Runtime.t(), term()) ::
           {:ok, Session.t()} | {:error, :limit | term()}
   def start_session(%__MODULE__{} = config, runtime, auth) do
@@ -100,7 +101,8 @@ defmodule Snodo.Session.Manager do
        runtime: runtime,
        principal: config.principal.(auth),
        registry: config.registry,
-       idle_timeout: config.idle_timeout}
+       idle_timeout: config.idle_timeout,
+       owner: self()}
 
     case DynamicSupervisor.start_child(config.supervisor, spec) do
       {:ok, pid} -> {:ok, Session.info(pid)}

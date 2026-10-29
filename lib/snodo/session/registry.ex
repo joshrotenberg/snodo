@@ -23,7 +23,7 @@ defmodule Snodo.Session.Registry do
   @type options :: term()
   @type id :: String.t()
 
-  @callback child_spec(options()) :: Supervisor.child_spec() | nil
+  @callback child_spec(options()) :: Supervisor.child_spec() | Supervisor.module_spec() | nil
   @callback register(options(), id(), pid()) :: :ok | {:error, :taken}
   @callback lookup(options(), id()) :: {:ok, pid()} | :error
   @callback unregister(options(), id()) :: :ok

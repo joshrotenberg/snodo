@@ -283,6 +283,7 @@ defmodule Snodo.Transport.Plug do
     prepared = install_progress(prepared, sink)
     prepared = put_in(prepared.transport.metadata[:subscription_owner], lease)
     key = request_key(conn, opts, prepared.raw["id"])
+    tracked = tracked_request(prepared)
 
     work = fn cancellation ->
       try do
@@ -298,7 +299,7 @@ defmodule Snodo.Transport.Plug do
     try do
       case submit(opts.executor, key, work, opts.request_timeout, lease) do
         {:ok, reference, executor} ->
-          track_request(prepared, executor, key)
+          track_request(tracked, executor, key)
           await(conn, opts, prepared, {reference, key, executor}, sink)
 
         {:error, :overloaded} ->
@@ -321,21 +322,23 @@ defmodule Snodo.Transport.Plug do
     after
       Progress.close(sink)
       Lease.stop(lease)
-      untrack_request(prepared)
+      untrack_request(tracked)
     end
   end
 
   # A request on a session can be cancelled with notifications/cancelled,
-  # which reaches it through the session.
-  defp track_request(%{session: %Session{pid: pid}, raw: %{"id" => id}}, executor, key),
+  # which reaches it through the session. Only the session and the request ID
+  # are kept, so an open stream does not hold the request body.
+  defp tracked_request(%{session: %Session{pid: pid}, raw: %{"id" => id}}), do: {pid, id}
+  defp tracked_request(_prepared), do: nil
+
+  defp track_request({pid, id}, executor, key),
     do: Session.track(pid, id, fn reason -> cancel(executor, key, reason) end)
 
-  defp track_request(_prepared, _executor, _key), do: :ok
+  defp track_request(nil, _executor, _key), do: :ok
 
-  defp untrack_request(%{session: %Session{pid: pid}, raw: %{"id" => id}}),
-    do: Session.untrack(pid, id)
-
-  defp untrack_request(_prepared), do: :ok
+  defp untrack_request({pid, id}), do: Session.untrack(pid, id)
+  defp untrack_request(nil), do: :ok
 
   # Runs in the executor task. The stream process holds the slot, so the
   # executor returns it when the stream ends for any reason.

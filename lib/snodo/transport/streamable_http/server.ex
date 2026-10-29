@@ -533,77 +533,80 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
         {:standalone, session}
 
       {:ok, prepared} ->
-        prepared = with_auth(prepared, auth, opts.request_gate)
-        sink = Progress.sink(self())
-        prepared = put_in(prepared.transport.metadata[:progress_sink], sink)
-        prepared = put_in(prepared.transport.metadata[:subscription_owner], self())
-        opts = Map.merge(opts, %{progress: Progress.state(sink), progress_started?: false})
+        execute_prepared(socket, request, prepared, auth, opts)
+    end
+  end
 
-        work = fn cancellation ->
-          try do
-            StreamableHTTP.execute(opts.runtime, prepared, cancellation)
-          after
-            Progress.close(sink)
-          end
-        end
+  defp execute_prepared(socket, request, prepared, auth, opts) do
+    prepared = with_auth(prepared, auth, opts.request_gate)
+    sink = Progress.sink(self())
+    prepared = put_in(prepared.transport.metadata[:progress_sink], sink)
+    prepared = put_in(prepared.transport.metadata[:subscription_owner], self())
+    opts = Map.merge(opts, %{progress: Progress.state(sink), progress_started?: false})
 
-        key = {:streamable_http, opts.server_ref, request.connection_ref}
-        timer = start_request_timer(key, opts.deadline_timeout)
+    work = fn cancellation ->
+      try do
+        StreamableHTTP.execute(opts.runtime, prepared, cancellation)
+      after
+        Progress.close(sink)
+      end
+    end
 
-        try do
-          case submit_execution(opts.executor, key, work, opts.request_timeout) do
-            {:ok, execution_ref} ->
-              track_request(prepared, opts.executor, key)
-              await_execution(socket, opts.executor, execution_ref, key, prepared, opts)
+    key = {:streamable_http, opts.server_ref, request.connection_ref}
+    tracked = tracked_request(prepared)
+    timer = start_request_timer(key, opts.deadline_timeout)
 
-            {:error, :overloaded} ->
-              StreamableHTTP.reject(
-                opts.runtime,
-                prepared,
-                Error.internal("Server execution capacity exhausted"),
-                503
-              )
+    try do
+      case submit_execution(opts.executor, key, work, opts.request_timeout) do
+        {:ok, execution_ref} ->
+          track_request(tracked, opts.executor, key)
+          await_execution(socket, opts.executor, execution_ref, key, prepared, opts)
 
-            {:error, :duplicate_key} ->
-              StreamableHTTP.reject(
-                opts.runtime,
-                prepared,
-                Error.invalid_request("Duplicate in-flight HTTP request"),
-                400
-              )
+        {:error, :overloaded} ->
+          StreamableHTTP.reject(
+            opts.runtime,
+            prepared,
+            Error.internal("Server execution capacity exhausted"),
+            503
+          )
 
-            {:error, {:executor_unavailable, reason}} ->
-              StreamableHTTP.reject(
-                opts.runtime,
-                prepared,
-                Error.internal("Request executor unavailable", reason),
-                500
-              )
-          end
-        after
-          Progress.close(sink)
-          cancel_request_timer(timer, key)
-          untrack_request(prepared)
-        end
+        {:error, :duplicate_key} ->
+          StreamableHTTP.reject(
+            opts.runtime,
+            prepared,
+            Error.invalid_request("Duplicate in-flight HTTP request"),
+            400
+          )
+
+        {:error, {:executor_unavailable, reason}} ->
+          StreamableHTTP.reject(
+            opts.runtime,
+            prepared,
+            Error.internal("Request executor unavailable", reason),
+            500
+          )
+      end
+    after
+      Progress.close(sink)
+      cancel_request_timer(timer, key)
+      untrack_request(tracked)
     end
   end
 
   # A request on a session can be cancelled with notifications/cancelled,
   # which arrives on another connection and reaches it through the session.
-  defp track_request(
-         %{session: %Session{pid: pid}, kind: :request, raw: %{"id" => id}},
-         executor,
-         key
-       ) do
-    Session.track(pid, id, fn reason -> Executor.cancel(executor, key, reason) end)
-  end
+  defp tracked_request(%{session: %Session{pid: pid}, kind: :request, raw: %{"id" => id}}),
+    do: {pid, id}
 
-  defp track_request(_prepared, _executor, _key), do: :ok
+  defp tracked_request(_prepared), do: nil
 
-  defp untrack_request(%{session: %Session{pid: pid}, kind: :request, raw: %{"id" => id}}),
-    do: Session.untrack(pid, id)
+  defp track_request({pid, id}, executor, key),
+    do: Session.track(pid, id, fn reason -> Executor.cancel(executor, key, reason) end)
 
-  defp untrack_request(_prepared), do: :ok
+  defp track_request(nil, _executor, _key), do: :ok
+
+  defp untrack_request({pid, id}), do: Session.untrack(pid, id)
+  defp untrack_request(nil), do: :ok
 
   defp with_auth(prepared, _auth, nil), do: prepared
   defp with_auth(prepared, auth, _gate), do: put_in(prepared.transport.metadata[:auth], auth)
