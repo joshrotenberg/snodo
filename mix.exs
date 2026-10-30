@@ -10,7 +10,7 @@ defmodule Snodo.MixProject do
       version: @version,
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
-      description: "Model Context Protocol servers and clients for Elixir",
+      description: "MCP (Model Context Protocol) servers and clients for Elixir",
       source_url: @source_url,
       package: package(),
       docs: docs(),

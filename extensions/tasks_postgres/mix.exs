@@ -13,7 +13,7 @@ defmodule Snodo.Extensions.Tasks.Postgres.MixProject do
       version: @version,
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
-      description: "PostgreSQL store for snodo Tasks",
+      description: "PostgreSQL store for snodo MCP Tasks",
       source_url: @source_url,
       package: [
         licenses: ["MIT"],
