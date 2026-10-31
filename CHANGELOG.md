@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.5](https://github.com/joshrotenberg/snodo/compare/v0.4.4...v0.4.5) (2026-10-31)
+
+
+### Features
+
+* helpers, guide, and an example for the MCP Apps extension (closes [#397](https://github.com/joshrotenberg/snodo/issues/397)) ([#404](https://github.com/joshrotenberg/snodo/issues/404)) ([dd30bea](https://github.com/joshrotenberg/snodo/commit/dd30bea2d007a76e031bf1adf7e88291434f06e2))
+
 ## [0.4.4](https://github.com/joshrotenberg/snodo/compare/v0.4.3...v0.4.4) (2026-10-29)
 
 

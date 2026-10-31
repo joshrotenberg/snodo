@@ -13,8 +13,8 @@ for the remote GenServer, so application code keeps `GenServer.call/3` and
 ```elixir
 def deps do
   [
-    {:snodo, "~> 0.4.4"},
-    {:snodo_otp, "~> 0.4.4"}
+    {:snodo, "~> 0.4.5"},
+    {:snodo_otp, "~> 0.4.5"}
   ]
 end
 ```
