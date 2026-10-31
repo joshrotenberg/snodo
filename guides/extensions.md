@@ -61,10 +61,79 @@ tool "sales_chart" do
 end
 ```
 
-For a published extension such as MCP Apps (`io.modelcontextprotocol/ui`),
-attach the `_meta` keys its specification defines. A declared extension has no
-routes, middleware, or negotiation callback; write a `Snodo.Extension` module
-when you need any of those.
+For a published extension, attach the `_meta` keys its specification defines.
+A declared extension has no routes, middleware, or negotiation callback; write
+a `Snodo.Extension` module when you need any of those.
+
+## MCP Apps
+
+MCP Apps (`io.modelcontextprotocol/ui`, specification 2026-01-26) links a tool
+to a `ui://` resource holding an HTML document that the host renders in a
+sandboxed frame. It is a declared extension, and `Snodo.Apps` returns the
+shapes the specification defines:
+
+```elixir
+use Snodo.Server,
+  name: "weather",
+  version: "1.0.0",
+  extensions: [Snodo.Apps.extension()]
+
+tool "forecast", metadata: Snodo.Apps.tool_metadata("ui://weather/forecast") do
+  argument("city", :string, required: true)
+
+  @impl true
+  def call(%{"city" => city}, context) do
+    if Snodo.Apps.supported?(context) do
+      {:ok, Snodo.Result.structured(%{"city" => city, "celsius" => 21})}
+    else
+      {:ok, "#{city}: sunny, 21 C"}
+    end
+  end
+end
+
+resource "forecast_view",
+  uri: "ui://weather/forecast",
+  mime_type: "text/html;profile=mcp-app" do
+  @impl true
+  def read(_params, _context) do
+    {:ok,
+     Snodo.Result.resource_read(
+       Snodo.Apps.html("ui://weather/forecast", File.read!("priv/forecast.html"),
+         csp: [connect_domains: ["https://api.weather.example"]],
+         prefers_border: true
+       )
+     )}
+  end
+end
+```
+
+`tool_metadata/2` writes `_meta.ui.resourceUri`. With `visibility: [:app]`
+the host hides the tool from the model and accepts calls to it only from the
+UI, for actions such as a refresh button.
+
+A host that does not implement MCP Apps ignores `_meta.ui` and shows the
+tool's content, so the content should make sense as text. A host that does
+implement it declares the extension with `mimeTypes` in its capabilities;
+`Snodo.Apps.supported?/1` checks for `text/html;profile=mcp-app` there, so a
+handler can return data for the UI to such a host and plain text to any other.
+Negotiation uses `capabilities["extensions"]`, which only the 2026-07-28
+dialect carries, so on the initialize-era dialects `supported?/1` is `false`.
+
+The view's Content Security Policy goes in the content's `_meta`, which
+`html/3` builds from its options. Without `:csp` the host allows no external
+origins. `:connect_domains`, `:resource_domains`, `:frame_domains`, and
+`:base_uri_domains` list the origins for network requests, static assets,
+nested frames, and the base URI. `:permissions` asks for `:camera`,
+`:microphone`, `:geolocation`, or `:clipboard_write`. `:domain` requests a
+dedicated sandbox origin in the format the host documents, and
+`:prefers_border` asks the host to draw or omit a border. A host may restrict
+any of these further.
+
+Resource options are compile-time literals, so the listing's `mimeType` is
+written out. `html/3` sets the content's MIME type and checks its `ui://` URI. `Snodo.Apps.client_capabilities/0` is the host side of the
+declaration, for `Snodo.Client` in tests.
+
+See `examples/35_mcp_apps.exs`.
 
 ## Tasks
 

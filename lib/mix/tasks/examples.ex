@@ -26,7 +26,8 @@ defmodule Mix.Tasks.Examples do
     {"examples/29_sampling_and_roots.exs", "29_sampling_and_roots: ok"},
     {"examples/30_component_wrappers.exs", "30_component_wrappers: ok"},
     {"examples/31_client_cache.exs", "31_client_cache: ok"},
-    {"examples/34_server_logging.exs", "34_server_logging: ok"}
+    {"examples/34_server_logging.exs", "34_server_logging: ok"},
+    {"examples/35_mcp_apps.exs", "35_mcp_apps: ok"}
   ]
 
   @tasks_examples [
