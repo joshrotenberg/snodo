@@ -33,8 +33,8 @@ mix run examples/01_direct_tools.exs --check
 
 Or run the complete no-external-service set, with every script launched in a
 fresh Elixir VM. The root task delegates examples 07–09, 17, and 26 to Tasks and example
-11 to the SQLite sibling; examples 01–06, 12–16, 18–20, 23–25, 27–31, and 34 remain in core. Examples
-21, 22, 32, and 33 run in their integration packages. All 33 default scripts run
+11 to the SQLite sibling; examples 01–06, 12–16, 18–20, 23–25, 27–31, 34, and 35 remain in core. Examples
+21, 22, 32, and 33 run in their integration packages. All 34 default scripts run
 without external services:
 
 ```sh
@@ -112,6 +112,7 @@ not have that requirement.
 | [`32_proxy.exs`](32_proxy.exs) | `snodo_proxy`: two backends merged with prefixed names, routed calls, rewritten resource URIs, health, and removing a backend |
 | [`33_oauth_resource_server.exs`](33_oauth_resource_server.exs) | `snodo_oauth` resource server on the native listener: static JWKS key, JWT verification, the verified principal in a tool, 401 without a token, 403 without the scope |
 | [`34_server_logging.exs`](34_server_logging.exs) | `Snodo.Logging.log/4` from a tool, a client's `:log_level` and `:on_log`, no messages without a level on 2026-07-28, and the runtime's `:log_level` for an initialize-era client |
+| [`35_mcp_apps.exs`](35_mcp_apps.exs) | MCP Apps through `Snodo.Apps`: a declared extension, a tool linked to a `ui://` HTML resource, an app-only tool, CSP metadata, and plain text for a client without the extension |
 
 The unnumbered stdio files remain interoperability and subprocess acceptance
 fixtures. DETS in example 08 is deliberately a local single-node reference
