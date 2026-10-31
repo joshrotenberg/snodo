@@ -67,6 +67,24 @@ defmodule Snodo.SessionStdioTest do
     end
   end
 
+  # Refuses any filter with resource subscriptions and otherwise opens the hub.
+  defmodule RefusingSource do
+    @moduledoc false
+    @behaviour Snodo.Subscription.Source
+
+    @impl true
+    def open(%{"resourceSubscriptions" => _uris}, _context, _hub),
+      do: {:error, Snodo.Error.invalid_params("Resource subscriptions are refused")}
+
+    def open(filter, context, hub), do: Hub.open(filter, context, hub)
+
+    @impl true
+    def next(handle, hub), do: Hub.next(handle, hub)
+
+    @impl true
+    def close(handle, reason, hub), do: Hub.close(handle, reason, hub)
+  end
+
   setup do
     hub = start_supervised!(Hub)
 
@@ -137,6 +155,28 @@ defmodule Snodo.SessionStdioTest do
 
     push(connection, request(4, "resources/unsubscribe", %{}))
     assert_receive {:stdout, %{"id" => 4, "error" => %{"code" => -32_602}}}
+    finish(connection)
+  end
+
+  test "a refused subscription answers with the source's error and keeps the list changes", %{
+    hub: hub,
+    runtime: runtime
+  } do
+    runtime = %{
+      runtime
+      | subscription_source: Snodo.Subscription.Source.normalize!({RefusingSource, hub})
+    }
+
+    connection = connect(runtime, sessions: true)
+    initialize(connection, "2025-11-25")
+
+    push(connection, request(2, "resources/subscribe", %{"uri" => "test://static"}))
+
+    assert_receive {:stdout,
+                    %{"id" => 2, "error" => %{"message" => "Resource subscriptions are refused"}}}
+
+    {:ok, _report} = Hub.notify_tools_list_changed(hub)
+    assert_receive {:stdout, %{"method" => "notifications/tools/list_changed"}}
     finish(connection)
   end
 

@@ -60,9 +60,11 @@ defmodule Snodo.Transport.Plug do
   defaults to `nil`, which keeps the dialects sessionless and answers `GET`
   and `DELETE` with 405. A session is bound to the value of the auth assign.
   A handler's input requests are written on the request's event stream, `GET`
-  opens the session's standalone stream with a keepalive every
-  `:subscription_keepalive_ms`, and `notifications/cancelled` cancels a
-  request in flight on the same session. Sessions live on the node that
+  opens the session's standalone stream with a keepalive at the shorter of
+  `:subscription_keepalive_ms` and `:disconnect_probe_ms`, and
+  `notifications/cancelled` cancels a request in flight on the same session.
+  Only a request that uses a session calls the manager, so 2026-07-28
+  requests are served while it is down. Sessions live on the node that
   created them, so several nodes need sticky routing by `Mcp-Session-Id`.
   """
 
@@ -77,7 +79,6 @@ defmodule Snodo.Transport.Plug do
   alias Snodo.Server.Executor
   alias Snodo.Server.Runtime
   alias Snodo.Session
-  alias Snodo.Session.Manager, as: SessionManager
   alias Snodo.Transport.Plug.Lease
   alias Snodo.Transport.Plug.Stream
   alias Snodo.Transport.StreamableHTTP
@@ -205,8 +206,10 @@ defmodule Snodo.Transport.Plug do
 
   defp adapter_opts(%{sessions: nil} = opts, _auth), do: opts.adapter_opts
 
+  # The manager is passed by name: only a request that needs a session asks
+  # it for anything, so a 2026-07-28 request never waits on it.
   defp adapter_opts(opts, auth),
-    do: opts.adapter_opts ++ [sessions: SessionManager.config(opts.sessions), auth: auth]
+    do: opts.adapter_opts ++ [sessions: opts.sessions, auth: auth]
 
   # The session's standalone stream: list changes and resource updates, each
   # acknowledged to the session once written.
@@ -245,7 +248,9 @@ defmodule Snodo.Transport.Plug do
       {:DOWN, ^monitor, :process, ^pid, _reason} ->
         conn
     after
-      opts.subscription_keepalive_ms ->
+      # As often as the other event streams, so a dropped client is noticed
+      # within the disconnect probe and its next GET is not refused with 409.
+      keepalive_interval(opts) ->
         case Conn.chunk(conn, ": keepalive\r\n\r\n") do
           {:ok, conn} -> stream_standalone(conn, pid, monitor, opts)
           {:error, _reason} -> conn
@@ -269,7 +274,7 @@ defmodule Snodo.Transport.Plug do
 
   defp dispatch(conn, %{kind: :notification} = prepared, opts) do
     case Server.resolve_notification(opts.runtime, prepared.raw, prepared.transport) do
-      {:ok, {:cancel, id, reason}} -> cancel_scoped(conn, opts, id, reason)
+      {:ok, {:cancel, id, reason}} -> cancel_scoped(conn, opts, prepared, id, reason)
       _other -> :ok
     end
 
@@ -282,7 +287,7 @@ defmodule Snodo.Transport.Plug do
     sink = Progress.sink(owner)
     prepared = install_progress(prepared, sink)
     prepared = put_in(prepared.transport.metadata[:subscription_owner], lease)
-    key = request_key(conn, opts, prepared.raw["id"])
+    key = request_key(conn, opts, prepared, prepared.raw["id"])
     tracked = tracked_request(prepared)
 
     work = fn cancellation ->
@@ -523,8 +528,10 @@ defmodule Snodo.Transport.Plug do
     Conn.halt(state.conn)
   end
 
-  defp cancel_scoped(conn, opts, id, reason) do
-    if scope(conn, opts) != nil, do: cancel(opts.executor, request_key(conn, opts, id), reason)
+  defp cancel_scoped(conn, opts, prepared, id, reason) do
+    if scope(conn, opts) != nil,
+      do: cancel(opts.executor, request_key(conn, opts, prepared, id), reason)
+
     :ok
   end
 
@@ -535,9 +542,14 @@ defmodule Snodo.Transport.Plug do
     :exit, _reason -> :ok
   end
 
-  defp request_key(conn, opts, id) do
-    {__MODULE__, opts.instance, scope(conn, opts) || make_ref(), id}
+  # Two sessions of one principal reuse JSON-RPC ids, so a request on a
+  # session is keyed by its session too.
+  defp request_key(conn, opts, prepared, id) do
+    {__MODULE__, opts.instance, scope(conn, opts) || make_ref(), session_id(prepared), id}
   end
+
+  defp session_id(%{transport: %{metadata: %{session: %Session{id: id}}}}), do: id
+  defp session_id(_prepared), do: nil
 
   defp scope(conn, opts) do
     case {Map.get(conn.assigns, opts.auth_assign),

@@ -18,21 +18,23 @@ defmodule Snodo.Transport.StreamableHTTP do
 
   ## Initialize-era sessions
 
-  With `sessions: manager` (the configuration `Snodo.Session.Manager.config/1`
-  returns) and `auth:` (the request's trusted auth value, or `nil`), requests
+  With `sessions: manager` (a running `Snodo.Session.Manager`, or the
+  configuration `Snodo.Session.Manager.config/1` returns) and `auth:` (the request's trusted auth value, or `nil`), requests
   of the initialize-era dialects belong to a `Snodo.Session`:
 
     * An `initialize` request starts a session. `execute/3` returns its ID in
       the `Mcp-Session-Id` response header when initialization succeeds, and
       ends the session otherwise. At the manager's `:max_sessions` the request
-      gets 503.
+      gets 503. An `initialize` sent as a notification starts none.
     * Every later request, notification, and response must carry that header.
       A missing header is 400. An unknown or expired ID, or a session bound to
       a different principal, is 404 with JSON-RPC code -32001, and the client
       initializes again. An `MCP-Protocol-Version` that differs from the
       session's version is 400.
     * A JSON-RPC response object is routed to the server request waiting for
-      it and answered with 202.
+      it and answered with 202. One without the header is accepted with 202,
+      as without sessions, unless its `MCP-Protocol-Version` names an
+      initialize-era version.
     * `DELETE` ends the session and is answered with 200.
     * `GET` with `Accept: text/event-stream` returns `{:standalone, session}`.
       The caller opens the session's standalone stream with
@@ -43,7 +45,9 @@ defmodule Snodo.Transport.StreamableHTTP do
       `GenServer.call/3` and replies `:ok` once the message is written on
       the request's event stream.
 
-  2026-07-28 requests are never part of a session.
+  2026-07-28 requests are never part of a session. A `GET` or `DELETE` whose
+  `MCP-Protocol-Version` names a version without sessions gets 405, as
+  without sessions.
   """
 
   alias Snodo.Authorization
@@ -94,13 +98,15 @@ defmodule Snodo.Transport.StreamableHTTP do
   def prepare(%Runtime{} = runtime, %Request{} = request, opts \\ []) do
     sessions = Keyword.get(opts, :sessions)
 
-    with :ok <- validate_http_method(request, sessions),
+    with :ok <- validate_http_method(runtime, request, sessions),
          :ok <- validate_origin(request, opts),
          :ok <- validate_host(request, opts) do
       prepare_method(runtime, request, opts, sessions)
     else
       {:http_error, status, %Error{} = error, id} ->
-        {:response, error_response(status, error, id, sessions)}
+        # A 405 lists GET and DELETE only to a client that can use them.
+        allowed = if sessions && session_version?(runtime, request), do: sessions
+        {:response, error_response(status, error, id, allowed)}
     end
   rescue
     _exception -> {:response, error_response(500, Error.internal(), nil)}
@@ -129,11 +135,11 @@ defmodule Snodo.Transport.StreamableHTTP do
   end
 
   defp prepare_method(_runtime, %Request{method: "DELETE"} = request, opts, sessions) do
-    case admit_session(request, sessions, opts, nil) do
-      {:ok, session} ->
-        :ok = Session.close(session.pid)
-        {:response, %Response{status: 200}}
-
+    with {:ok, session} <- admit_session(request, sessions, opts, nil),
+         :ok <- validate_session_version(request, session, nil) do
+      :ok = Session.close(session.pid)
+      {:response, %Response{status: 200}}
+    else
       {:http_error, status, %Error{} = error, id} ->
         {:response, error_response(status, error, id)}
     end
@@ -141,7 +147,7 @@ defmodule Snodo.Transport.StreamableHTTP do
 
   # The body is decoded once; errors after this point answer with its id.
   defp prepare_decoded(runtime, request, raw, opts) do
-    with :ok <- route_response_object(raw, request, opts),
+    with :ok <- route_response_object(runtime, raw, request, opts),
          transport = transport_context(request),
          {:ok, envelope} <- decode_envelope(raw, transport),
          {:ok, protocol} <- select_protocol(runtime, envelope),
@@ -206,6 +212,7 @@ defmodule Snodo.Transport.StreamableHTTP do
 
     case Exchange.dispatch(runtime, prepared.raw, transport) do
       {:ok, nil} ->
+        _closed = discard_session(prepared)
         %Response{status: 202}
 
       {:ok, response} when is_map(response) ->
@@ -278,8 +285,13 @@ defmodule Snodo.Transport.StreamableHTTP do
       is_nil(sessions) or protocol.era() != :session ->
         {:ok, nil, false}
 
-      envelope.method == "initialize" ->
+      # An initialize sent as a notification gets no response, so it could
+      # never hand the client an ID; it gets no session either.
+      envelope.method == "initialize" and envelope.kind == :request ->
         start_session(sessions, runtime, opts, envelope.id)
+
+      envelope.method == "initialize" ->
+        {:ok, nil, false}
 
       true ->
         with {:ok, session} <- admit_session(request, sessions, opts, envelope.id),
@@ -338,18 +350,26 @@ defmodule Snodo.Transport.StreamableHTTP do
   # A response object has nothing to answer. The transport accepts it with
   # 202 and no body, as it does a notification. On a session it is the
   # client's answer to a server request, routed to the request waiting for it.
-  defp route_response_object(raw, request, opts) do
+  # Without a session ID, only a response naming an initialize-era version
+  # is refused; one from a 2026-07-28 client is accepted as before.
+  defp route_response_object(runtime, raw, request, opts) do
     sessions = Keyword.get(opts, :sessions)
 
     cond do
       not Envelope.response?(raw) ->
         :ok
 
-      is_nil(sessions) or header_values(request.headers, @session_header) == [] ->
+      is_nil(sessions) ->
+        :response_object
+
+      header_values(request.headers, @session_header) == [] and
+          (header_values(request.headers, @protocol_header) == [] or
+             not session_version?(runtime, request)) ->
         :response_object
 
       true ->
-        with {:ok, session} <- admit_session(request, sessions, opts, nil) do
+        with {:ok, session} <- admit_session(request, sessions, opts, nil),
+             :ok <- validate_session_version(request, session, nil) do
           _delivered = Session.deliver(session.pid, raw)
           :response_object
         end
@@ -374,19 +394,40 @@ defmodule Snodo.Transport.StreamableHTTP do
     end
   end
 
-  defp validate_http_method(%Request{method: "POST"}, _sessions), do: :ok
+  defp validate_http_method(_runtime, %Request{method: "POST"}, _sessions), do: :ok
 
-  defp validate_http_method(%Request{method: method}, sessions)
-       when method in ["GET", "DELETE"] and not is_nil(sessions),
-       do: :ok
+  # GET and DELETE exist only for sessions, so a request naming a version
+  # without them, such as 2026-07-28, is answered as a sessionless server would.
+  defp validate_http_method(runtime, %Request{method: method} = request, sessions)
+       when method in ["GET", "DELETE"] and not is_nil(sessions) do
+    if session_version?(runtime, request),
+      do: :ok,
+      else: validate_http_method(runtime, request, nil)
+  end
 
-  defp validate_http_method(%Request{}, nil) do
+  defp validate_http_method(_runtime, %Request{}, nil) do
     {:http_error, 405, Error.invalid_request("Streamable HTTP accepts POST only"), nil}
   end
 
-  defp validate_http_method(%Request{}, _sessions) do
+  defp validate_http_method(_runtime, %Request{}, _sessions) do
     {:http_error, 405, Error.invalid_request("Streamable HTTP accepts GET, POST, and DELETE"),
      nil}
+  end
+
+  defp session_version?(runtime, request) do
+    case header_values(request.headers, @protocol_header) do
+      [] ->
+        true
+
+      [version] ->
+        case Registry.fetch(runtime.protocol_registry, version) do
+          {:ok, protocol} -> protocol.era() == :session
+          {:error, _error} -> false
+        end
+
+      _repeated ->
+        false
+    end
   end
 
   defp validate_origin(%Request{} = request, opts) do

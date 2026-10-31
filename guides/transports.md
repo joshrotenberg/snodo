@@ -238,19 +238,22 @@ runtime's `listChanged` and `resources.subscribe` settings, and the session
 opens the source for them. Over HTTP the events go out on the session's
 standalone `GET` stream; an event that arrives while no stream is open is
 dropped. A resource the authorization policy does not let the principal read
-is not subscribed, and `resources/subscribe` still answers `{}`.
+is not subscribed, and `resources/subscribe` still answers `{}`. A source
+that refuses the changed filter answers the request with its error, and the
+session keeps the resources and the subscription it had.
 
 Over HTTP:
 
 | Request | Answer |
 |---|---|
-| `initialize` | Starts a session and returns its ID in `Mcp-Session-Id` (32 URL-safe base64 characters from `:crypto.strong_rand_bytes/1`). A failed initialization keeps no session. |
-| Any other request, notification, or response without `Mcp-Session-Id` | 400 |
+| `initialize` | Starts a session and returns its ID in `Mcp-Session-Id` (32 URL-safe base64 characters from `:crypto.strong_rand_bytes/1`). A failed initialization keeps no session, and an `initialize` sent as a notification starts none. |
+| Any other request, notification, or response without `Mcp-Session-Id` | 400. A response object that names no initialize-era version gets 202, as without sessions. |
 | An unknown or expired ID, or a session bound to another principal | 404 with JSON-RPC code -32001. The client initializes again. |
 | `MCP-Protocol-Version` that differs from the session's | 400 |
 | A JSON-RPC response object | Routed to the server request waiting for it; 202 |
 | `notifications/cancelled` | Cancels the named request in flight on the session; 202 |
-| `GET` with `Accept: text/event-stream` | The standalone stream, with a keepalive comment every `:subscription_keepalive_ms`. A second one for the same session gets 409. |
+| `GET` with `Accept: text/event-stream` | The standalone stream, with a keepalive comment every `:subscription_keepalive_ms` (the Plug's at most every `:disconnect_probe_ms`). A second one for the same session gets 409. |
+| `GET` or `DELETE` naming 2026-07-28 | 405 with `Allow: POST`, as without sessions |
 | `DELETE` | Ends the session; 200 |
 
 A session is bound to the principal that created it: the auth value a request

@@ -92,10 +92,14 @@ defmodule Snodo.Session.Manager do
   @doc false
   # Starts a session bound to `auth`'s principal. The session is registered
   # under a new ID before this returns. Until initialization succeeds it ends
-  # if the calling process exits.
-  @spec start_session(t(), Snodo.Server.Runtime.t(), term()) ::
+  # if the calling process exits. `manager` is a configuration or a running
+  # manager, so a caller that holds only the name asks for the configuration
+  # only when it needs a session.
+  @spec start_session(GenServer.server() | t(), Snodo.Server.Runtime.t(), term()) ::
           {:ok, Session.t()} | {:error, :limit | term()}
-  def start_session(%__MODULE__{} = config, runtime, auth) do
+  def start_session(manager, runtime, auth) do
+    config = config(manager)
+
     spec =
       {Session,
        runtime: runtime,
@@ -117,16 +121,20 @@ defmodule Snodo.Session.Manager do
   # Finds an open session and checks that `auth` is the principal it is bound
   # to. A session bound to someone else is reported as not found, so an ID
   # alone never confirms that a session exists.
-  @spec admit(t(), String.t(), term()) :: {:ok, Session.t()} | :error
-  def admit(%__MODULE__{} = config, id, auth) when is_binary(id) do
+  # A manager that is not running has no sessions to find.
+  @spec admit(GenServer.server() | t(), String.t(), term()) :: {:ok, Session.t()} | :error
+  def admit(manager, id, auth) when is_binary(id) do
+    config = config(manager)
     {module, options} = config.registry
 
     with {:ok, pid} <- module.lookup(options, id) do
       Session.admit(pid, config.principal.(auth))
     end
+  catch
+    :exit, _reason -> :error
   end
 
-  def admit(%__MODULE__{}, _id, _auth), do: :error
+  def admit(_manager, _id, _auth), do: :error
 
   @impl true
   def init(opts) do

@@ -197,6 +197,57 @@ defmodule Snodo.SessionHTTPTest do
       assert Manager.count(manager(server)) == 0
     end
 
+    test "an initialize sent as a notification starts no session", %{hub: hub} do
+      %{server: server, port: port} = listen(runtime(hub))
+
+      notification = %{
+        "jsonrpc" => "2.0",
+        "method" => "initialize",
+        "params" => %{"protocolVersion" => "2025-11-25", "capabilities" => %{}}
+      }
+
+      # The connection stays open, as a client's would, so a session tied to
+      # it would still be counted.
+      body = JSON.encode!(notification)
+      {:ok, socket} = :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: false])
+
+      head =
+        Enum.map(
+          [{"Content-Length", Integer.to_string(byte_size(body))} | post_headers(nil, nil)],
+          fn {name, value} -> [name, ": ", value, "\r\n"] end
+        )
+
+      :ok = :gen_tcp.send(socket, ["POST /mcp HTTP/1.1\r\n", head, "\r\n", body])
+      response = recv_until(socket, "\r\n\r\n", "")
+      assert response =~ "HTTP/1.1 400"
+      refute response =~ ~r/mcp-session-id/i
+      assert Manager.count(manager(server)) == 0
+      :gen_tcp.close(socket)
+    end
+
+    test "GET and DELETE naming 2026-07-28 are refused as on a sessionless server", %{hub: hub} do
+      %{port: port} = listen(runtime(hub))
+      headers = [{"Accept", "text/event-stream"}, {"MCP-Protocol-Version", "2026-07-28"}]
+
+      assert %{status: 405, headers: %{"allow" => "POST"}} =
+               raw_request(port, "GET", headers, "")
+
+      assert %{status: 405} = raw_request(port, "DELETE", headers, "")
+    end
+
+    test "a response object is checked against the session it names", %{hub: hub} do
+      %{port: port} = listen(runtime(hub))
+      assert %{headers: %{"mcp-session-id" => id}} = initialize(port, "2025-11-25")
+      response = answer(9, "name", "Ada")
+
+      assert %{status: 400} = post(port, response, "2025-11-25", nil)
+      assert %{status: 400} = post(port, response, "2025-06-18", id)
+      assert %{status: 202} = post(port, response, "2025-11-25", id)
+
+      # A 2026-07-28 client's stray response object is accepted as before.
+      assert %{status: 202} = post(port, response, "2026-07-28", nil)
+    end
+
     test "2026-07-28 requests are not part of a session", %{hub: hub} do
       %{port: port} = listen(runtime(hub))
       raw = TestFixtures.request(1, "tools/list")

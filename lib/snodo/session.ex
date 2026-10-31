@@ -97,7 +97,7 @@ defmodule Snodo.Session do
   def subscribe(pid, uri, context), do: call(pid, {:subscribe, uri, context}, :ok)
 
   @doc false
-  @spec unsubscribe(pid(), String.t()) :: :ok
+  @spec unsubscribe(pid(), String.t()) :: :ok | {:error, Snodo.Error.t()}
   def unsubscribe(pid, uri), do: call(pid, {:unsubscribe, uri}, :ok)
 
   @doc """
@@ -239,7 +239,15 @@ defmodule Snodo.Session do
         uris: %{}
     }
 
-    {:reply, :ok, state |> reopen_subscription(nil) |> schedule_idle()}
+    # A source that refuses the list changes leaves the session without them,
+    # as one that is not configured does.
+    state =
+      case reopen_subscription(state, nil) do
+        {:ok, state} -> state
+        {:error, _error} -> stop_subscription(state, :complete)
+      end
+
+    {:reply, :ok, schedule_idle(state)}
   end
 
   def handle_call({:log_level, level}, _from, state),
@@ -259,18 +267,14 @@ defmodule Snodo.Session do
         {:reply, {:error, error}, state}
 
       true ->
-        state = %{state | uris: Map.put(state.uris, uri, true)}
-        {:reply, :ok, reopen_subscription(state, context)}
+        change_uris(state, Map.put(state.uris, uri, true), context)
     end
   end
 
   def handle_call({:unsubscribe, uri}, _from, state) do
-    if Map.has_key?(state.uris, uri) do
-      state = %{state | uris: Map.delete(state.uris, uri)}
-      {:reply, :ok, reopen_subscription(state, nil)}
-    else
-      {:reply, :ok, state}
-    end
+    if Map.has_key?(state.uris, uri),
+      do: change_uris(state, Map.delete(state.uris, uri), nil),
+      else: {:reply, :ok, state}
   end
 
   def handle_call({:attach_stream, _stream}, _from, %{stream: %{}} = state),
@@ -468,11 +472,31 @@ defmodule Snodo.Session do
   # when that set changes. `context` carries the auth of the request that
   # changed it; the first request's auth is kept otherwise.
 
+  # A refused open answers the request with the source's error and leaves the
+  # session's resources and subscription as they were.
+  defp change_uris(state, uris, context) do
+    case reopen_subscription(%{state | uris: uris}, context) do
+      {:ok, changed} -> {:reply, :ok, changed}
+      {:error, error} -> {:reply, {:error, error}, state}
+    end
+  end
+
+  # The new subscription is opened before the old one is closed, so the old
+  # one still runs when the source refuses the new filter.
   defp reopen_subscription(state, context) do
-    close_subscription(state.subscription, :complete)
-    state = %{state | subscription: nil, writing: nil}
     state = if context, do: %{state | auth: context.auth}, else: state
 
+    case open_subscription(state) do
+      {:ok, subscription} ->
+        close_subscription(state.subscription, :complete)
+        {:ok, %{state | subscription: subscription, writing: nil}}
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
+  defp open_subscription(state) do
     with %{subscription_source: source} when not is_nil(source) <- state.runtime,
          true <- state.ready?,
          filter when map_size(filter) > 0 <- requested_filter(state),
@@ -486,9 +510,11 @@ defmodule Snodo.Session do
            ) do
       {worker, monitor} = Subscription.start_worker(subscription, self())
       :ok = Subscription.continue(worker)
-      %{state | subscription: %{subscription: subscription, worker: worker, monitor: monitor}}
+      {:ok, %{subscription: subscription, worker: worker, monitor: monitor}}
     else
-      _none -> state
+      {:error, %Snodo.Error{} = error} -> {:error, error}
+      {:error, _reason} -> {:error, Snodo.Error.internal("Could not open the subscription")}
+      _none -> {:ok, nil}
     end
   end
 

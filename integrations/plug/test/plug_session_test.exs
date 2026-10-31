@@ -30,6 +30,38 @@ defmodule Snodo.Transport.PlugSessionTest do
     end
   end
 
+  defmodule Slow do
+    @moduledoc false
+    use Snodo.Tool, name: "slow"
+
+    @impl true
+    def call(_arguments, _context) do
+      Process.sleep(300)
+      {:ok, Snodo.Result.text("done")}
+    end
+  end
+
+  # Gives every request the same principal and cancellation scope, as one
+  # user's two clients would have.
+  defmodule SameUser do
+    @moduledoc false
+    @behaviour Plug
+
+    alias Plug.Conn
+    alias Snodo.Transport.Plug, as: MCPPlug
+
+    @impl true
+    def init(opts), do: MCPPlug.init(opts)
+
+    @impl true
+    def call(conn, opts) do
+      conn
+      |> Conn.assign(:mcp_auth, %{principal: "alice"})
+      |> Conn.assign(:mcp_cancellation_scope, "alice-client")
+      |> MCPPlug.call(opts)
+    end
+  end
+
   setup do
     hub = start_supervised!(Hub)
     executor = :"plug_session_executor_#{System.unique_integer([:positive])}"
@@ -39,7 +71,10 @@ defmodule Snodo.Transport.PlugSessionTest do
 
     runtime =
       Snodo.Server.Runtime.new(
-        router: Snodo.Router.register_tool(Snodo.Router.new(), Ask),
+        router:
+          Snodo.Router.new()
+          |> Snodo.Router.register_tool(Ask)
+          |> Snodo.Router.register_tool(Slow),
         protocols: [V2026_07_28, V2025_11_25, V2025_06_18],
         server_info: %{"name" => "plug-sessions", "version" => "0.1.0"},
         capabilities: %{"tools" => %{"listChanged" => true}},
@@ -58,7 +93,15 @@ defmodule Snodo.Transport.PlugSessionTest do
       )
 
     {:ok, {_ip, port}} = ThousandIsland.listener_info(listener)
-    %{hub: hub, port: port, url: "http://127.0.0.1:#{port}/mcp", manager: manager}
+
+    %{
+      hub: hub,
+      port: port,
+      url: "http://127.0.0.1:#{port}/mcp",
+      manager: manager,
+      runtime: runtime,
+      executor: executor
+    }
   end
 
   test "Snodo.Client answers an elicitation over the Plug", %{url: url} do
@@ -92,6 +135,75 @@ defmodule Snodo.Transport.PlugSessionTest do
     assert {404, _headers, _body} = request(port, "DELETE", session_headers(id), "")
     assert Manager.count(manager) == 0
     :gen_tcp.close(stream)
+  end
+
+  test "a cancellation on one session does not reach another session of the same user", %{
+    runtime: runtime,
+    executor: executor,
+    manager: manager
+  } do
+    listener =
+      start_supervised!(
+        {Bandit,
+         plug: {SameUser, runtime: runtime, executor: executor, sessions: manager},
+         ip: {127, 0, 0, 1},
+         port: 0,
+         startup_log: false},
+        id: :same_user
+      )
+
+    {:ok, {_ip, port}} = ThousandIsland.listener_info(listener)
+    {200, first_headers, _body} = request(port, "POST", initialize_headers(), initialize())
+    {200, second_headers, _body} = request(port, "POST", initialize_headers(), initialize())
+    first = header(first_headers, "mcp-session-id")
+    second = header(second_headers, "mcp-session-id")
+
+    call =
+      JSON.encode!(%{
+        "jsonrpc" => "2.0",
+        "id" => 7,
+        "method" => "tools/call",
+        "params" => %{"name" => "slow", "arguments" => %{}}
+      })
+
+    headers = fn id -> initialize_headers() ++ session_headers(id) end
+    slow = Task.async(fn -> request(port, "POST", headers.(first), call) end)
+    Process.sleep(50)
+
+    # The same id on the second session is its own request, not a duplicate.
+    assert {200, _headers, body} = request(port, "POST", headers.(second), call)
+    assert body =~ "done"
+
+    cancel =
+      JSON.encode!(%{
+        "jsonrpc" => "2.0",
+        "method" => "notifications/cancelled",
+        "params" => %{"requestId" => 7}
+      })
+
+    assert {202, _headers, _body} = request(port, "POST", headers.(second), cancel)
+    assert {200, _headers, body} = Task.await(slow)
+    assert body =~ "done"
+  end
+
+  test "a request that needs no session works while the manager is down", %{
+    port: port,
+    url: url
+  } do
+    :ok = stop_supervised(Manager)
+
+    {:ok, client} = Client.connect({:http, url}, protocol: "2026-07-28")
+    assert {:ok, tools} = Client.list_tools(client)
+    assert "slow" in Enum.map(tools, & &1["name"])
+    Client.close(client)
+
+    list =
+      JSON.encode!(%{"jsonrpc" => "2.0", "id" => 1, "method" => "tools/list", "params" => %{}})
+
+    assert {404, _headers, _body} =
+             request(port, "POST", initialize_headers() ++ session_headers("gone"), list)
+
+    assert {500, _headers, _body} = request(port, "POST", initialize_headers(), initialize())
   end
 
   defp initialize do
