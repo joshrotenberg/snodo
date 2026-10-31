@@ -6,7 +6,8 @@
 #
 # MCP_FIXTURE_PROFILE picks the runtime: "latest" (default) is the combined
 # 2026-07-28 fixture with Tasks, input_required, and subscriptions; "legacy"
-# enables the initialize-era dialects next to 2026-07-28. MCP_FIXTURE_TRANSPORT
+# enables the initialize-era dialects next to 2026-07-28. MCP_FIXTURE_SESSIONS=1
+# gives the initialize-era clients sessions on the native or Plug listener. MCP_FIXTURE_TRANSPORT
 # picks the listener: "native" (default), "plug" for Snodo.Transport.Plug
 # on Bandit, or "proxy", which serves the runtime as a direct backend of
 # Snodo.Proxy on the native listener.
@@ -33,10 +34,20 @@ runtime =
       SnodoTest.Conformance.Fixture.runtime()
 
     "legacy" ->
+      {:ok, _hub} =
+        Snodo.Subscription.Hub.start_link(name: SnodoTest.Conformance.Sessions.hub())
+
       SnodoTest.Conformance.Fixture.legacy_runtime()
 
     other ->
       raise "MCP_FIXTURE_PROFILE must be latest or legacy, got: #{inspect(other)}"
+  end
+
+sessions =
+  case System.get_env("MCP_FIXTURE_SESSIONS", "0") do
+    "1" -> true
+    "0" -> false
+    other -> raise "MCP_FIXTURE_SESSIONS must be 0 or 1, got: #{inspect(other)}"
   end
 
 {stop, url} =
@@ -49,7 +60,8 @@ runtime =
           port: port,
           path: "/mcp",
           max_concurrency: 32,
-          max_queue: 256
+          max_queue: 256,
+          sessions: sessions
         )
 
       {fn -> GenServer.stop(server) end, Snodo.Transport.StreamableHTTP.Server.url(server)}
@@ -62,10 +74,19 @@ runtime =
           max_queue: 256
         )
 
+      plug_sessions =
+        if sessions do
+          {:ok, _manager} =
+            Snodo.Session.Manager.start_link(name: SnodoTest.Conformance.SessionManager)
+
+          SnodoTest.Conformance.SessionManager
+        end
+
       {:ok, listener} =
         Bandit.start_link(
           plug:
-            {Snodo.Transport.Plug, runtime: runtime, executor: SnodoTest.Conformance.Executor},
+            {Snodo.Transport.Plug,
+             runtime: runtime, executor: SnodoTest.Conformance.Executor, sessions: plug_sessions},
           ip: {127, 0, 0, 1},
           port: port,
           startup_log: false,

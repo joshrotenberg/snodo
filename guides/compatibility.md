@@ -49,7 +49,8 @@ and its dependencies in `uv.lock`.
 [`protocol.yml`](https://github.com/joshrotenberg/snodo/blob/main/.github/workflows/protocol.yml) adds independent jobs:
 the exact frozen alpha.12 conformance runner's server and client legs, the same
 server fixture through the Plug adapter, the initialize-era dialects at
-2025-11-25 and 2025-06-18, each with a strict per-check regression baseline, and
+2025-11-25 (with sessions, natively and through the Plug, and without) and
+2025-06-18 (with sessions), each with a strict per-check regression baseline, and
 AJV validation of representative real emitted messages against a
 digest-pinned official schema. Both upload their local evidence as artifacts.
 A weekly [canary](https://github.com/joshrotenberg/snodo/blob/main/.github/workflows/canary.yml)

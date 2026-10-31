@@ -132,20 +132,29 @@ defmodule Snodo.Protocol.Profile do
 
   @standard_capabilities ~w(completions logging prompts resources tools)
   @open_capabilities ~w(experimental extensions)
+  # Each setting lists alternative method sets; a profile supports the setting
+  # when it implements every method of one of them.
   @capability_setting_requirements %{
     {"prompts", "listChanged"} => [
-      {"notifications/prompts/list_changed", :server_to_client}
+      [{"notifications/prompts/list_changed", :server_to_client}]
     ],
     {"resources", "listChanged"} => [
-      {"notifications/resources/list_changed", :server_to_client}
+      [{"notifications/resources/list_changed", :server_to_client}]
     ],
     {"resources", "subscribe"} => [
-      {"subscriptions/listen", :client_to_server},
-      {"notifications/subscriptions/acknowledged", :server_to_client},
-      {"notifications/resources/updated", :server_to_client}
+      [
+        {"subscriptions/listen", :client_to_server},
+        {"notifications/subscriptions/acknowledged", :server_to_client},
+        {"notifications/resources/updated", :server_to_client}
+      ],
+      [
+        {"resources/subscribe", :client_to_server},
+        {"resources/unsubscribe", :client_to_server},
+        {"notifications/resources/updated", :server_to_client}
+      ]
     ],
     {"tools", "listChanged"} => [
-      {"notifications/tools/list_changed", :server_to_client}
+      [{"notifications/tools/list_changed", :server_to_client}]
     ]
   }
 
@@ -248,10 +257,10 @@ defmodule Snodo.Protocol.Profile do
   end
 
   defp unsupported_capability_settings(profile, capabilities) do
-    for {{capability, setting}, requirements} <- @capability_setting_requirements,
+    for {{capability, setting}, alternatives} <- @capability_setting_requirements,
         capability in profile.capabilities,
         get_in(capabilities, [capability, setting]) == true,
-        not implemented_requirements?(profile, requirements) do
+        not Enum.any?(alternatives, &implemented_requirements?(profile, &1)) do
       "#{capability}.#{setting}"
     end
   end

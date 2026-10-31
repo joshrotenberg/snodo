@@ -19,10 +19,11 @@ TRANSPORTS = ("stdio", "http")
 
 
 @asynccontextmanager
-async def server(fixture: Path, transport: str, version: str | None = None):
+async def server(fixture: Path, transport: str, version: str | None = None, *extra: str):
     args = [str(fixture), f"--{transport}"]
     if version is not None:
         args.append(version)
+    args.extend(extra)
 
     if transport == "stdio":
         yield stdio_client(StdioServerParameters(command=ELIXIR, args=args, cwd=ROOT, env=ENV))
@@ -115,6 +116,35 @@ async def mrtr(transport: str):
             return {"transport": transport, "mrtr": "tool/resource/prompt, state and URL"}
 
 
+async def answer_session_elicitation(_context, params):
+    assert params.requested_schema["required"] == ["name"]
+    return types.ElicitResult(action="accept", content={"name": "Python"})
+
+
+async def answer_sampling(_context, params):
+    assert params.max_tokens == 20
+    return types.CreateMessageResult(
+        role="assistant",
+        content=types.TextContent(type="text", text="sampled"),
+        model="python-model",
+        stop_reason="endTurn",
+    )
+
+
+async def sessions(transport: str, version: str):
+    async with server(HERE / "fixture.exs", transport, version, "--sessions") as target:
+        async with Client(
+            target,
+            mode="legacy",
+            elicitation_callback=answer_session_elicitation,
+            sampling_callback=answer_sampling,
+        ) as client:
+            assert client.protocol_version == version
+            assert text_result(await client.call_tool("elicit", {})) == "Hello, Python"
+            assert text_result(await client.call_tool("sample", {})) == "python-model: sampled"
+            return {"transport": transport, "version": version, "server_requests": 2}
+
+
 async def progress(transport: str):
     async with server(HERE.parent / "official_client/progress_fixture.exs", transport) as target:
         async with Client(target, mode="auto", elicitation_callback=answer_elicitation) as client:
@@ -156,7 +186,21 @@ async def main():
     ]
     mrtr_checks = [await mrtr(transport) for transport in TRANSPORTS]
     progress_checks = [await progress(transport) for transport in TRANSPORTS]
-    print(json.dumps({"baseline": baseline_checks, "mrtr": mrtr_checks, "progress": progress_checks}))
+    session_checks = [
+        await sessions(transport, version)
+        for transport in TRANSPORTS
+        for version in ("2025-11-25", "2025-06-18")
+    ]
+    print(
+        json.dumps(
+            {
+                "baseline": baseline_checks,
+                "mrtr": mrtr_checks,
+                "progress": progress_checks,
+                "sessions": session_checks,
+            }
+        )
+    )
 
 
 if __name__ == "__main__":

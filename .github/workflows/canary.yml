@@ -26,7 +26,7 @@ jobs:
       fail-fast: false
       matrix:
         runner: [alpha, upstream-main]
-        lane: [server, server-plug, server-proxy, server-2025-11-25, server-2025-06-18, client, client-2025-11-25]
+        lane: [server, server-plug, server-proxy, server-2025-11-25, server-plug-2025-11-25, server-2025-11-25-sessionless, server-2025-06-18, client, client-2025-11-25]
     env:
       MIX_ENV: dev
       RUNNER: ${{ matrix.runner }}
@@ -178,7 +178,7 @@ jobs:
           cd "$RUNNER_TEMP/canary"
           # Only fixed runner and lane names determine paths and issue titles.
           runners=(alpha upstream-main)
-          lanes=(server server-plug server-proxy server-2025-11-25 server-2025-06-18 client client-2025-11-25)
+          lanes=(server server-plug server-proxy server-2025-11-25 server-plug-2025-11-25 server-2025-11-25-sessionless server-2025-06-18 client client-2025-11-25)
           open=""
           for lane in "${lanes[@]}"; do
             files=()

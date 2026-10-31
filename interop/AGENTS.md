@@ -18,7 +18,7 @@ The `*_fixture.exs` files are the servers under test. A change to wire shapes, t
 
 ## official_python
 
-The unmodified official Python `mcp` client (version pinned in `official_python/pyproject.toml`, dependencies locked in `uv.lock`) checks stdio and HTTP across 2026-07-28, 2025-11-25, and 2025-06-18. Modern MRTR elicitation and progress run on both transports.
+The unmodified official Python `mcp` client (version pinned in `official_python/pyproject.toml`, dependencies locked in `uv.lock`) checks stdio and HTTP across 2026-07-28, 2025-11-25, and 2025-06-18. Modern MRTR elicitation and progress run on both transports, and so do initialize-era sessions, whose server-initiated elicitation and sampling the client's callbacks answer.
 
 ```sh
 mix compile

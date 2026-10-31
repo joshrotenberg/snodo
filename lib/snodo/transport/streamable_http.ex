@@ -3,7 +3,9 @@ defmodule Snodo.Transport.StreamableHTTP do
   Protocol-driven adapter for stateless Streamable HTTP requests.
 
   The default dialect is 2026-07-28. Explicitly enabled initialize-era dialects
-  share admission and execution without creating HTTP sessions.
+  share admission and execution. They run without HTTP sessions unless the
+  caller passes a `Snodo.Session.Manager` as the `:sessions` option of
+  `prepare/3`; see "Initialize-era sessions" below.
 
   `prepare/3` performs HTTP and mirrored-header admission without invoking an
   application handler. `execute/3` runs one prepared message through the shared
@@ -13,6 +15,35 @@ defmodule Snodo.Transport.StreamableHTTP do
   Complete JSON responses and long-lived SSE descriptors are deliberately
   transport-server agnostic so Plug, Bandit, Cowboy, or a custom listener can
   translate them without changing protocol code.
+
+  ## Initialize-era sessions
+
+  With `sessions: manager` (the configuration `Snodo.Session.Manager.config/1`
+  returns) and `auth:` (the request's trusted auth value, or `nil`), requests
+  of the initialize-era dialects belong to a `Snodo.Session`:
+
+    * An `initialize` request starts a session. `execute/3` returns its ID in
+      the `Mcp-Session-Id` response header when initialization succeeds, and
+      ends the session otherwise. At the manager's `:max_sessions` the request
+      gets 503.
+    * Every later request, notification, and response must carry that header.
+      A missing header is 400. An unknown or expired ID, or a session bound to
+      a different principal, is 404 with JSON-RPC code -32001, and the client
+      initializes again. An `MCP-Protocol-Version` that differs from the
+      session's version is 400.
+    * A JSON-RPC response object is routed to the server request waiting for
+      it and answered with 202.
+    * `DELETE` ends the session and is answered with 200.
+    * `GET` with `Accept: text/event-stream` returns `{:standalone, session}`.
+      The caller opens the session's standalone stream with
+      `Snodo.Session.attach_stream/2` (409 if it already has one).
+    * During `execute/3`, a handler's input requests are sent as
+      server-to-client requests through the progress sink's owner, which
+      receives `{:mcp_stream_message, sink_reference, message}` as a
+      `GenServer.call/3` and replies `:ok` once the message is written on
+      the request's event stream.
+
+  2026-07-28 requests are never part of a session.
   """
 
   alias Snodo.Authorization
@@ -22,6 +53,9 @@ defmodule Snodo.Transport.StreamableHTTP do
   alias Snodo.Protocol.Registry
   alias Snodo.Server
   alias Snodo.Server.Runtime
+  alias Snodo.Session
+  alias Snodo.Session.Exchange
+  alias Snodo.Session.Manager
   alias Snodo.Tool
   alias Snodo.Transport.Context, as: TransportContext
   alias Snodo.Transport.ParamHeaders
@@ -33,6 +67,7 @@ defmodule Snodo.Transport.StreamableHTTP do
 
   @json_content_type "application/json"
   @protocol_header "mcp-protocol-version"
+  @session_header "mcp-session-id"
   @default_local_origin_hosts ["127.0.0.1", "localhost", "::1"]
   @error_statuses %{
     -32_700 => 400,
@@ -45,29 +80,68 @@ defmodule Snodo.Transport.StreamableHTTP do
     -32_022 => 400
   }
 
-  @type prepare_result :: {:ok, Prepared.t()} | {:response, Response.t()}
+  @type prepare_result ::
+          {:ok, Prepared.t()} | {:response, Response.t()} | {:standalone, Session.t()}
 
-  @doc "Admits and decodes one HTTP request without executing its MCP handler."
+  @doc """
+  Admits and decodes one HTTP request without executing its MCP handler.
+
+  Options are `:allowed_origin_hosts`, `:allowed_hosts`, and, for
+  initialize-era sessions, `:sessions` and `:auth` (see the module
+  documentation). `{:standalone, session}` is returned only with `:sessions`.
+  """
   @spec prepare(Runtime.t(), Request.t(), keyword()) :: prepare_result()
   def prepare(%Runtime{} = runtime, %Request{} = request, opts \\ []) do
-    with :ok <- validate_http_method(request),
+    sessions = Keyword.get(opts, :sessions)
+
+    with :ok <- validate_http_method(request, sessions),
          :ok <- validate_origin(request, opts),
-         :ok <- validate_host(request, opts),
-         :ok <- validate_content_type(request),
-         :ok <- validate_accept(request),
-         {:ok, raw} <- decode_body(request.body) do
-      prepare_decoded(runtime, request, raw)
+         :ok <- validate_host(request, opts) do
+      prepare_method(runtime, request, opts, sessions)
     else
       {:http_error, status, %Error{} = error, id} ->
-        {:response, error_response(status, error, id)}
+        {:response, error_response(status, error, id, sessions)}
     end
   rescue
     _exception -> {:response, error_response(500, Error.internal(), nil)}
   end
 
+  defp prepare_method(runtime, %Request{method: "POST"} = request, opts, _sessions) do
+    with :ok <- validate_content_type(request),
+         :ok <- validate_accept(request),
+         {:ok, raw} <- decode_body(request.body) do
+      prepare_decoded(runtime, request, raw, opts)
+    else
+      {:http_error, status, %Error{} = error, id} ->
+        {:response, error_response(status, error, id)}
+    end
+  end
+
+  defp prepare_method(_runtime, %Request{method: "GET"} = request, opts, sessions) do
+    with :ok <- validate_event_stream_accept(request),
+         {:ok, session} <- admit_session(request, sessions, opts, nil),
+         :ok <- validate_session_version(request, session, nil) do
+      {:standalone, session}
+    else
+      {:http_error, status, %Error{} = error, id} ->
+        {:response, error_response(status, error, id)}
+    end
+  end
+
+  defp prepare_method(_runtime, %Request{method: "DELETE"} = request, opts, sessions) do
+    case admit_session(request, sessions, opts, nil) do
+      {:ok, session} ->
+        :ok = Session.close(session.pid)
+        {:response, %Response{status: 200}}
+
+      {:http_error, status, %Error{} = error, id} ->
+        {:response, error_response(status, error, id)}
+    end
+  end
+
   # The body is decoded once; errors after this point answer with its id.
-  defp prepare_decoded(runtime, request, raw) do
-    with :ok <- reject_response_object(raw),
+  defp prepare_decoded(runtime, request, raw, opts) do
+    with :ok <- route_response_object(raw, request, opts),
          transport = transport_context(request),
          {:ok, envelope} <- decode_envelope(raw, transport),
          {:ok, protocol} <- select_protocol(runtime, envelope),
@@ -84,16 +158,19 @@ defmodule Snodo.Transport.StreamableHTTP do
          {tool_mirrors, tool_authorization} =
            tool_parameter_mirrors(policy, runtime, protocol.version(), envelope),
          {:ok, deferred} <-
-           validate_tool_mirrors(request, raw, tool_mirrors, tool_authorization, envelope.id) do
+           validate_tool_mirrors(request, raw, tool_mirrors, tool_authorization, envelope.id),
+         {:ok, session, new_session?} <- session_for(runtime, request, envelope, protocol, opts) do
       {:ok,
        %Prepared{
          raw: raw,
-         transport: transport,
+         transport: put_session(transport, session),
          protocol: protocol,
          kind: envelope.kind,
          policy: %{policy | mirrored_headers: Map.merge(policy.mirrored_headers, tool_mirrors)},
          deferred_error: deferred,
-         deferred_authorization: tool_authorization
+         deferred_authorization: tool_authorization,
+         session: session,
+         new_session?: new_session?
        }}
     else
       :response_object ->
@@ -127,12 +204,15 @@ defmodule Snodo.Transport.StreamableHTTP do
       | metadata: Map.put(prepared.transport.metadata, :cancellation, cancellation)
     }
 
-    case Server.dispatch(runtime, prepared.raw, transport) do
+    case Exchange.dispatch(runtime, prepared.raw, transport) do
       {:ok, nil} ->
         %Response{status: 202}
 
       {:ok, response} when is_map(response) ->
-        json_response(execution_status(prepared.protocol, response), response)
+        prepared.protocol
+        |> execution_status(response)
+        |> json_response(response)
+        |> keep_session(prepared, response)
 
       {:stream, subscription} when prepared.policy.stream_mode == :sse ->
         %StreamResponse{subscription: subscription}
@@ -147,31 +227,166 @@ defmodule Snodo.Transport.StreamableHTTP do
         )
     end
   rescue
-    _exception -> error_response(500, Error.internal(), readable_id(prepared.raw))
+    _exception ->
+      _closed = discard_session(prepared)
+      error_response(500, Error.internal(), readable_id(prepared.raw))
   end
 
-  @doc "Runs admission and execution synchronously for embedding in another HTTP stack."
+  @doc """
+  Runs admission and execution synchronously for embedding in another HTTP stack.
+
+  A standalone `GET` stream cannot be served this way and is answered with 405.
+  """
   @spec handle(Runtime.t(), Request.t(), keyword()) :: Response.t() | StreamResponse.t()
   def handle(%Runtime{} = runtime, %Request{} = request, opts \\ []) do
     case prepare(runtime, request, opts) do
-      {:ok, prepared} -> execute(runtime, prepared)
-      {:response, response} -> response
+      {:ok, prepared} ->
+        execute(runtime, prepared)
+
+      {:response, response} ->
+        response
+
+      {:standalone, _session} ->
+        error_response(405, Error.invalid_request("Standalone streams are not served here"), nil)
     end
+  end
+
+  # A session started by initialize is kept only when initialization
+  # succeeded, and its ID goes back in the response header.
+  defp keep_session(response, %Prepared{new_session?: true, session: session}, %{"result" => _}),
+    do: %{response | headers: [{@session_header, session.id} | response.headers]}
+
+  defp keep_session(response, %Prepared{} = prepared, _body) do
+    _closed = discard_session(prepared)
+    response
+  end
+
+  defp discard_session(%Prepared{new_session?: true, session: %Session{pid: pid}}),
+    do: Session.close(pid)
+
+  defp discard_session(_prepared), do: :ok
+
+  defp put_session(transport, nil), do: transport
+
+  defp put_session(transport, session),
+    do: %{transport | metadata: Map.put(transport.metadata, :session, session)}
+
+  defp session_for(runtime, request, envelope, protocol, opts) do
+    sessions = Keyword.get(opts, :sessions)
+
+    cond do
+      is_nil(sessions) or protocol.era() != :session ->
+        {:ok, nil, false}
+
+      envelope.method == "initialize" ->
+        start_session(sessions, runtime, opts, envelope.id)
+
+      true ->
+        with {:ok, session} <- admit_session(request, sessions, opts, envelope.id),
+             :ok <- validate_session_version(request, session, envelope.id) do
+          {:ok, session, false}
+        end
+    end
+  end
+
+  defp start_session(sessions, runtime, opts, id) do
+    case Manager.start_session(sessions, runtime, Keyword.get(opts, :auth)) do
+      {:ok, session} ->
+        {:ok, session, true}
+
+      {:error, :limit} ->
+        {:http_error, 503, Error.internal("Server session capacity exhausted"), id}
+
+      {:error, _reason} ->
+        {:http_error, 500, Error.internal("Could not start a session"), id}
+    end
+  end
+
+  defp admit_session(request, sessions, opts, id) do
+    case header_values(request.headers, @session_header) do
+      [value] ->
+        case Manager.admit(sessions, value, Keyword.get(opts, :auth)) do
+          {:ok, session} -> {:ok, session}
+          :error -> {:http_error, 404, session_not_found(), id}
+        end
+
+      [] ->
+        {:http_error, 400, Error.invalid_request("Missing Mcp-Session-Id header"), id}
+
+      _repeated ->
+        {:http_error, 400, Error.invalid_request("Repeated Mcp-Session-Id header"), id}
+    end
+  end
+
+  defp session_not_found,
+    do: %Error{code: -32_001, message: "Session not found", kind: :transport}
+
+  defp validate_session_version(request, session, id) do
+    case header_values(request.headers, @protocol_header) do
+      [] ->
+        :ok
+
+      [version] when version == session.protocol_version ->
+        :ok
+
+      _other ->
+        {:http_error, 400, Error.invalid_request("Protocol version does not match the session"),
+         id}
+    end
+  end
+
+  # A response object has nothing to answer. The transport accepts it with
+  # 202 and no body, as it does a notification. On a session it is the
+  # client's answer to a server request, routed to the request waiting for it.
+  defp route_response_object(raw, request, opts) do
+    sessions = Keyword.get(opts, :sessions)
+
+    cond do
+      not Envelope.response?(raw) ->
+        :ok
+
+      is_nil(sessions) or header_values(request.headers, @session_header) == [] ->
+        :response_object
+
+      true ->
+        with {:ok, session} <- admit_session(request, sessions, opts, nil) do
+          _delivered = Session.deliver(session.pid, raw)
+          :response_object
+        end
+    end
+  end
+
+  defp validate_event_stream_accept(%Request{} = request) do
+    if "text/event-stream" in media_types(request.headers, "accept"),
+      do: :ok,
+      else:
+        {:http_error, 406, Error.invalid_request("Accept must include text/event-stream"), nil}
   end
 
   @doc false
   @spec reject(Runtime.t(), Prepared.t(), Error.t(), pos_integer()) :: Response.t()
   def reject(%Runtime{} = runtime, %Prepared{} = prepared, %Error{} = error, status) do
+    _closed = discard_session(prepared)
+
     case Server.reject(runtime, prepared.raw, prepared.transport, error) do
       {:ok, nil} -> %Response{status: status}
       {:ok, response} -> json_response(status, response)
     end
   end
 
-  defp validate_http_method(%Request{method: "POST"}), do: :ok
+  defp validate_http_method(%Request{method: "POST"}, _sessions), do: :ok
 
-  defp validate_http_method(%Request{}) do
+  defp validate_http_method(%Request{method: method}, sessions)
+       when method in ["GET", "DELETE"] and not is_nil(sessions),
+       do: :ok
+
+  defp validate_http_method(%Request{}, nil) do
     {:http_error, 405, Error.invalid_request("Streamable HTTP accepts POST only"), nil}
+  end
+
+  defp validate_http_method(%Request{}, _sessions) do
+    {:http_error, 405, Error.invalid_request("Streamable HTTP accepts GET, POST, and DELETE"),
+     nil}
   end
 
   defp validate_origin(%Request{} = request, opts) do
@@ -290,12 +505,6 @@ defmodule Snodo.Transport.StreamableHTTP do
       {:ok, raw} -> {:ok, raw}
       {:error, _reason} -> {:http_error, 400, Error.parse_error(), nil}
     end
-  end
-
-  # A response object has nothing to answer. The transport accepts it with
-  # 202 and no body, as it does a notification.
-  defp reject_response_object(raw) do
-    if Envelope.response?(raw), do: :response_object, else: :ok
   end
 
   defp decode_envelope(raw, transport) do
@@ -606,7 +815,7 @@ defmodule Snodo.Transport.StreamableHTTP do
     }
   end
 
-  defp error_response(status, %Error{} = error, id) do
+  defp error_response(status, %Error{} = error, id, sessions \\ nil) do
     response =
       json_response(status, %{
         "jsonrpc" => "2.0",
@@ -614,9 +823,15 @@ defmodule Snodo.Transport.StreamableHTTP do
         "error" => Error.to_json_rpc(error)
       })
 
-    case status do
-      405 -> %{response | headers: [{"allow", "POST"} | response.headers]}
-      _other -> response
+    case {status, sessions} do
+      {405, nil} ->
+        %{response | headers: [{"allow", "POST"} | response.headers]}
+
+      {405, _sessions} ->
+        %{response | headers: [{"allow", "GET, POST, DELETE"} | response.headers]}
+
+      _other ->
+        response
     end
   end
 

@@ -53,7 +53,8 @@ request may log; `Snodo.Component.Wrap.Timeout` hands that right to its task.
 |---|---|---|
 | 2026-07-28 | `_meta["io.modelcontextprotocol/logLevel"]` on each request | no messages |
 | 2025-11-25, 2025-06-18 over stdio | `logging/setLevel`, for the rest of the connection | the runtime's `:log_level` |
-| 2025-11-25, 2025-06-18 over HTTP | `logging/setLevel` is answered with `{}` but keeps no state, since these dialects keep no session | the runtime's `:log_level` |
+| 2025-11-25, 2025-06-18 over HTTP with sessions | `logging/setLevel`, for the rest of the session | the runtime's `:log_level` |
+| 2025-11-25, 2025-06-18 over HTTP without sessions | `logging/setLevel` is answered with `{}` but keeps no state | the runtime's `:log_level` |
 
 The runtime's `:log_level` option defaults to `:info`. The initialize-era
 specifications let a server choose what to send until the client sets a level;
