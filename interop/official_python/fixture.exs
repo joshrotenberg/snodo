@@ -37,7 +37,58 @@ defmodule OfficialPython.Prompt do
        Snodo.Result.prompt_get(Snodo.Prompt.message(:user, Snodo.Prompt.text("Hello, #{name}")))}
 end
 
-case System.argv() do
+defmodule OfficialPython.Elicit do
+  @moduledoc false
+  # On an initialize-era session the input request reaches the client as an
+  # elicitation/create request, and the answer comes back as inputResponses.
+  use Snodo.Tool, name: "elicit", description: "Ask the user for a name"
+
+  @impl true
+  def call(_arguments, context) do
+    request =
+      Snodo.Elicitation.form("Your name?", %{
+        "type" => "object",
+        "properties" => %{"name" => %{"type" => "string"}},
+        "required" => ["name"]
+      })
+
+    case Snodo.Elicitation.response(context, "name", request) do
+      :missing -> {:ok, Snodo.Result.input_required(input_requests: %{"name" => request})}
+      {:ok, %{"content" => %{"name" => name}}} -> {:ok, Snodo.Result.text("Hello, #{name}")}
+      {:ok, %{"action" => action}} -> {:ok, Snodo.Result.text(action)}
+    end
+  end
+end
+
+defmodule OfficialPython.Sample do
+  @moduledoc false
+  use Snodo.Tool, name: "sample", description: "Ask the client to sample a reply"
+
+  @impl true
+  def call(_arguments, context) do
+    request =
+      Snodo.Sampling.create_message(
+        [Snodo.Prompt.message(:user, Snodo.Prompt.text("Say something"))],
+        max_tokens: 20
+      )
+
+    case Snodo.Sampling.response(context, "reply", request) do
+      :missing ->
+        {:ok, Snodo.Result.input_required(input_requests: %{"reply" => request})}
+
+      {:ok, %{"model" => model, "content" => %{"text" => text}}} ->
+        {:ok, Snodo.Result.text("#{model}: #{text}")}
+    end
+  end
+end
+
+{argv, sessions} =
+  case System.argv() do
+    [transport, version, "--sessions"] -> {[transport, version], true}
+    argv -> {argv, false}
+  end
+
+case argv do
   [transport, version] when transport in ["--stdio", "--http"] ->
     protocol =
       case version do
@@ -52,6 +103,14 @@ case System.argv() do
       |> Snodo.Router.register_tool(OfficialPython.Echo)
       |> Snodo.Router.register_resource(OfficialPython.Resource)
       |> Snodo.Router.register_prompt(OfficialPython.Prompt)
+      |> then(fn router ->
+        if sessions,
+          do:
+            router
+            |> Snodo.Router.register_tool(OfficialPython.Elicit)
+            |> Snodo.Router.register_tool(OfficialPython.Sample),
+          else: router
+      end)
 
     runtime =
       Snodo.Server.Runtime.new(
@@ -62,11 +121,15 @@ case System.argv() do
 
     case transport do
       "--stdio" ->
-        :ok = Snodo.Transport.Stdio.serve(runtime)
+        :ok = Snodo.Transport.Stdio.serve(runtime, sessions: sessions)
 
       "--http" ->
         {:ok, listener} =
-          Snodo.Transport.StreamableHTTP.Server.start_link(runtime: runtime, port: 0)
+          Snodo.Transport.StreamableHTTP.Server.start_link(
+            runtime: runtime,
+            port: 0,
+            sessions: sessions
+          )
 
         IO.puts(JSON.encode!(%{"url" => Snodo.Transport.StreamableHTTP.Server.url(listener)}))
         _input = IO.read(:stdio, :eof)
@@ -74,5 +137,5 @@ case System.argv() do
     end
 
   _arguments ->
-    raise "usage: elixir fixture.exs --stdio|--http VERSION"
+    raise "usage: elixir fixture.exs --stdio|--http VERSION [--sessions]"
 end

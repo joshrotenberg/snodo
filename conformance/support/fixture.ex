@@ -1,6 +1,7 @@
 Code.require_file("logging.ex", __DIR__)
 Code.require_file("mrtr.ex", __DIR__)
 Code.require_file("progress.ex", __DIR__)
+Code.require_file("sessions.ex", __DIR__)
 Code.require_file("stateless.ex", __DIR__)
 
 defmodule SnodoTest.Conformance.Tools.SimpleText do
@@ -348,6 +349,7 @@ defmodule SnodoTest.Conformance.Fixture do
   alias SnodoTest.Conformance.Resources.StaticBinary
   alias SnodoTest.Conformance.Resources.StaticText
   alias SnodoTest.Conformance.Resources.TemplateData
+  alias SnodoTest.Conformance.Sessions
   alias SnodoTest.Conformance.Stateless
   alias SnodoTest.Conformance.Tasks, as: TasksFixture
   alias SnodoTest.Conformance.Tools.AudioContent
@@ -376,21 +378,23 @@ defmodule SnodoTest.Conformance.Fixture do
   @resources [StaticText, StaticBinary, TemplateData] ++ MRTRFixture.resources()
   @prompts [Simple, WithArguments, WithEmbeddedResource, WithImage] ++ MRTRFixture.prompts()
 
-  # The initialize-era slice serves tools, resources, prompts, and completion;
-  # Tasks, input_required, and subscriptions are 2026-07-28 only.
+  # The initialize-era slice serves tools, resources, prompts, and completion.
+  # Its input requests and resources/subscribe need a session, which the
+  # fixture server turns on with MCP_FIXTURE_SESSIONS; Tasks are 2026-07-28
+  # only.
   @legacy_tools [
-    HeaderProbe,
-    SimpleText,
-    ImageContent,
-    AudioContent,
-    EmbeddedResource,
-    MixedContent,
-    ErrorHandling,
-    JSONSchema2020,
-    ProgressTool,
-    LoggingTool
-  ]
-  @legacy_resources [StaticText, StaticBinary, TemplateData]
+                  HeaderProbe,
+                  SimpleText,
+                  ImageContent,
+                  AudioContent,
+                  EmbeddedResource,
+                  MixedContent,
+                  ErrorHandling,
+                  JSONSchema2020,
+                  ProgressTool,
+                  LoggingTool
+                ] ++ Sessions.tools()
+  @legacy_resources [StaticText, StaticBinary, TemplateData] ++ Sessions.resources()
   @legacy_prompts [Simple, WithArguments, WithEmbeddedResource, WithImage]
 
   def runtime do
@@ -418,19 +422,23 @@ defmodule SnodoTest.Conformance.Fixture do
     )
   end
 
-  @doc "The same components for initialize-era clients, with 2026-07-28 still enabled."
+  @doc """
+  The same components for initialize-era clients, with 2026-07-28 still
+  enabled. Start `Sessions.hub/0` first.
+  """
   def legacy_runtime do
     Runtime.new(
       router: router(@legacy_tools, @legacy_resources, @legacy_prompts),
       protocols: [V2026_07_28, V2025_11_25, V2025_06_18],
       server_info: %{"name" => "snodo-conformance", "version" => "0.1.0"},
       capabilities: %{
-        "tools" => %{},
+        "tools" => %{"listChanged" => true},
         "prompts" => %{},
-        "resources" => %{},
+        "resources" => %{"subscribe" => true},
         "completions" => %{},
         "logging" => %{}
       },
+      subscription_source: Snodo.Subscription.Hub.source(Sessions.hub()),
       tools_cache: [ttl_ms: 0, scope: "private"],
       prompts_cache: [ttl_ms: 0, scope: "private"],
       resources_cache: [ttl_ms: 0, scope: "private"]

@@ -12,10 +12,11 @@ defmodule Snodo.Logging do
       request's `_meta`. Messages below that level are dropped, and a request
       without a level gets no messages at all.
     * 2025-11-25 and 2025-06-18: the client sets a level with
-      `logging/setLevel`. Over stdio that level holds for the connection. Over
-      HTTP these dialects keep no session, so a request uses the runtime's
-      `:log_level` (default `:info`), which the older specifications allow
-      when the client has not set one.
+      `logging/setLevel`. Over stdio that level holds for the connection, and
+      over HTTP for the session when the transport keeps sessions. A
+      sessionless HTTP request uses the runtime's `:log_level` (default
+      `:info`), which the older specifications allow when the client has not
+      set one.
 
   `log/4` returns `:ok` both when the message was written and when it was
   dropped on purpose (no `"logging"` capability, below the level, no level, or

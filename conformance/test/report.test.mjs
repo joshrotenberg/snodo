@@ -236,9 +236,9 @@ test("an auth check that regresses to a warning fails the client gate", async ()
   assert.equal(report.score.passedScenarios, 30);
 });
 
-test("the frozen 2025-11-25 lane inventory passes without waiving its partial score", async () => {
-  const evidence = await frozenEvidence("2026-10-23-2025-11-25-alpha.12-checks.json",
-    "expected-failures-2025-11-25.json", "2025-11-25");
+test("the frozen 2025-11-25 sessionless lane inventory passes without waiving its partial score", async () => {
+  const evidence = await frozenEvidence("2026-10-29-2025-11-25-sessionless-alpha.12-checks.json",
+    "expected-failures-2025-11-25-sessionless.json", "2025-11-25");
   const report = summarize(evidence.manifest, evidence.results, evidence.baseline);
   assert.equal(report.regression.passed, true);
   assert.equal(report.score.requiredScenarios, 30);
@@ -246,9 +246,23 @@ test("the frozen 2025-11-25 lane inventory passes without waiving its partial sc
   assert.equal(report.score.status, "partial");
 });
 
+test("the frozen 2025-11-25 session lane passes every required scenario", async () => {
+  const evidence = await frozenEvidence("2026-10-29-2025-11-25-alpha.12-checks.json",
+    "expected-failures-2025-11-25.json", "2025-11-25");
+  const report = summarize(evidence.manifest, evidence.results, evidence.baseline);
+  assert.equal(report.regression.passed, true);
+  assert.equal(report.score.passedScenarios, 30);
+  assert.equal(report.score.status, "complete");
+  // The sessionless evidence does not satisfy the session lane's baseline.
+  const sessionless = await frozenEvidence("2026-10-29-2025-11-25-sessionless-alpha.12-checks.json",
+    "expected-failures-2025-11-25.json", "2025-11-25");
+  assert.equal(summarize(sessionless.manifest, sessionless.results, sessionless.baseline).regression.passed,
+    false);
+});
+
 test("the 2025-06-18 lane scores nothing, and its inventory still gates", async () => {
   const json = async (file) => JSON.parse(await readFile(new URL(file, import.meta.url), "utf8"));
-  const results = await json("../results/2026-10-23-2025-06-18-alpha.12-checks.json");
+  const results = await json("../results/2026-10-29-2025-06-18-alpha.12-checks.json");
   const baseline = await json("../expected-failures-2025-06-18.json");
   const manifest = { server: [], not_scored: Object.keys(results).map((scenario) =>
     ({ scenario, leg: "server", reason: "no frozen requirement set for 2025-06-18" })) };

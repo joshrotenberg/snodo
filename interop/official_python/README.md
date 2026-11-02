@@ -19,7 +19,10 @@ checking version negotiation or discovery, tool listing and calls, resource
 listing and reads, and prompt listing and retrieval. A separate modern-protocol
 check covers automatic MRTR retries with form and URL elicitation for tools,
 resources, and prompts. The progress check verifies callbacks across an MRTR
-retry on each transport.
+retry on each transport. The session checks start the fixture with
+`--sessions` and run 2025-11-25 and 2025-06-18 on each transport: the client's
+elicitation and sampling callbacks answer the requests the server sends during
+a tool call.
 
 The HTTP fixtures bind to loopback on an ephemeral port and stop on stdin EOF.
 The checks do not visit elicitation URLs or call public services. A passing

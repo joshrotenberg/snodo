@@ -8,7 +8,8 @@ the combined fixture. The [client leg](#client-leg) runs `Snodo.Client` against
 the runner's own scenario servers. `run.mjs` runs them as lanes, each with its
 own score and baseline: `server`, `client`, `client-2025-11-25`, and the
 [additional server lanes](#additional-server-lanes) `server-plug`,
-`server-proxy`, `server-2025-11-25`, and `server-2025-06-18`.
+`server-proxy`, `server-2025-11-25`, `server-plug-2025-11-25`,
+`server-2025-11-25-sessionless`, and `server-2025-06-18`.
 
 ## Latest external measurement
 
@@ -62,6 +63,8 @@ npm run check:client:2025-11-25
 npm run check:plug
 npm run check:proxy
 npm run check:2025-11-25
+npm run check:plug:2025-11-25
+npm run check:2025-11-25-sessionless
 npm run check:2025-06-18
 ```
 
@@ -200,25 +203,37 @@ validation.
   are for the fixture served directly. Its own baseline is
   [expected-failures-proxy.json](expected-failures-proxy.json).
 - `server-2025-11-25` enables the initialize-era dialects next to 2026-07-28 on
-  a fixture with tools, resources, prompts, and completion, and runs the frozen
-  2025-11-25 requirement set. That set is the upstream reconstruction from
-  alpha.10 (see the header of
+  a fixture with tools, resources, prompts, completion, the sampling and
+  elicitation tools, and a subscribable resource, starts the native listener
+  with `sessions: true`, and runs the frozen 2025-11-25 requirement set. That
+  set is the upstream reconstruction from alpha.10 (see the header of
   [requirements/2025-11-25.yaml](requirements/2025-11-25.yaml)), pinned by
-  SHA-256. It passes **23/30** required scenarios. The failures are features
-  the initialize-era slice does not implement: server-initiated sampling and
-  elicitation (which need a session), `resources/subscribe`, and SSE session
-  IDs. They are listed with reasons in
-  [expected-failures-2025-11-25.json](expected-failures-2025-11-25.json).
+  SHA-256. It passes **30/30** required scenarios, with no expected failures
+  in [expected-failures-2025-11-25.json](expected-failures-2025-11-25.json).
+- `server-plug-2025-11-25` runs the same requirement set through
+  `Snodo.Transport.Plug` on Bandit with a `Snodo.Session.Manager`, and shares
+  the native lane's baseline, so any difference between the two listeners
+  fails a gate.
+- `server-2025-11-25-sessionless` runs the same fixture and set with sessions
+  off, the default, and passes **23/30**. The failures are the scenarios that
+  need a session: server-initiated sampling and elicitation,
+  `resources/subscribe` and `resources/unsubscribe`, and the warning that no
+  session ID is issued. They are listed with reasons in
+  [expected-failures-2025-11-25-sessionless.json](expected-failures-2025-11-25-sessionless.json).
 - `server-2025-06-18` runs `--spec-version 2025-06-18 --suite active` on the
-  same fixture. No frozen requirement set exists for 2025-06-18, so all 27
-  scenarios are unscored; 23 pass, and the other 4 fail for the same missing
-  features. The per-check baseline in
+  same fixture with sessions on. No frozen requirement set exists for
+  2025-06-18, so all 27 scenarios are unscored; all 27 pass. The per-check
+  baseline in
   [expected-failures-2025-06-18.json](expected-failures-2025-06-18.json) still
   gates every change.
 
 Results: [Plug](results/2026-10-22-plug-alpha.12-summary.md),
-[2025-11-25](results/2026-10-23-2025-11-25-alpha.12-summary.md),
-[2025-06-18](results/2026-10-23-2025-06-18-alpha.12-summary.md). Under alpha.12
+[2025-11-25](results/2026-10-29-2025-11-25-alpha.12-summary.md),
+[2025-11-25 sessionless](results/2026-10-29-2025-11-25-sessionless-alpha.12-summary.md),
+[2025-06-18](results/2026-10-29-2025-06-18-alpha.12-summary.md). On 2026-10-29
+the session lanes began passing the scenarios that need a session, and the
+sessionless lane's per-check results were identical to the 2026-10-23
+2025-11-25 run. Under alpha.12
 the 2025-06-18 lane no longer runs `tools-list:tools-name-format`, the Plug lane
 changes exactly as the native lane does, and the 2025-11-25 lane is unchanged.
 On 2026-10-23 `logging-set-level` and `tools-call-with-logging` began passing in

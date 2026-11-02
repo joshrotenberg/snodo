@@ -13,15 +13,20 @@ initialization and conflicting version headers fail. Subsequent requests use
 `MCP-Protocol-Version`; missing headers are rejected because the March 2025
 fallback dialect is not implemented. Initialization does not require that header.
 `notifications/initialized` returns an empty HTTP 202 response. Ping is supported.
-GET and DELETE return 405. JSON-RPC errors from executing a request, such as an
+JSON-RPC errors from executing a request, such as an
 unknown tool or method, are returned with HTTP 200, because clients of these
 revisions treat a non-2xx answer as a transport failure and 404 as an expired
 session. Admission failures (media type, Origin, a missing or unsupported
-`MCP-Protocol-Version`) keep their 4xx statuses. There is no HTTP session ID, session process, retained
-client capability state, or lifecycle registry. Authentication remains application
-owned and is evaluated for each request; session or client metadata never becomes
-an identity. Applications must supply the existing cancellation scope for peers
-that need separate request-id namespaces.
+`MCP-Protocol-Version`) keep their 4xx statuses. Authentication remains
+application owned and is evaluated for each request; session or client metadata
+never becomes an identity.
+
+By default the dialects run sessionless: GET and DELETE return 405, and there
+is no HTTP session ID, session process, or retained client capability state.
+Applications must supply the existing cancellation scope for peers that need
+separate request-id namespaces. With the transport's `sessions:` option,
+`initialize` starts a `Snodo.Session` and returns `Mcp-Session-Id`, and later
+requests must carry it; see [Sessions](#sessions).
 
 ## Stdio
 
@@ -34,7 +39,8 @@ selection, validation, and result shaping are the same as over HTTP.
 negotiates again. A request sent before `initialize` carries no version and is
 not handled by a legacy dialect. A 2026-07-28 client never sends `initialize`,
 so its messages are unaffected. Progress and `notifications/cancelled` work as
-they do for 2026-07-28 clients on the same transport.
+they do for 2026-07-28 clients on the same transport. With `sessions: true` the
+connection is the client's session, with no ID.
 
 ## Shared behavior
 
@@ -47,25 +53,61 @@ object. A tool whose input or output schema is not an object is left out of
 dialect is enabled. The 2026-07-28 dialect still lists and calls them.
 Execution errors retain readable content with isError; protocol errors
 remain JSON-RPC errors. Request-bound progress can use SSE; cancellation retains
-the executor's authenticated isolation. Unsupported Tasks, continuation inputs,
-subscriptions and server requests are not advertised. No Tasks or
-session-manager behavior is added.
+the executor's authenticated isolation. Tasks are not implemented. Clients may
+not send `inputResponses` or `requestState`: on a session the server supplies
+them itself.
 
 Configured capabilities must be implemented by at least one enabled profile.
-On a mixed runtime, `listChanged` and `subscribe` (with a configured
-`subscription_source`) are advertised by `server/discover` for 2026-07-28 and
-left out of the `initialize` result for the initialize-era dialects, which never
-receive those notifications. A surface no enabled dialect implements, such as
-`tasks` on an initialize-era-only runtime, still raises at startup.
+`listChanged` and `subscribe` (with a configured `subscription_source`) are
+advertised by `server/discover` for 2026-07-28, and in the `initialize` result
+only to a client that gets a session; a sessionless client never receives
+those notifications. A surface no enabled dialect implements, such as `tasks`
+on an initialize-era-only runtime, still raises at startup.
+
+## Sessions
+
+Sessions are a separate opt-in from the dialects, so enabling 2025-11-25 or
+2025-06-18 changes nothing until a transport is also given `sessions:`. The
+options, limits, status codes, and the sticky load balancing a multi-node
+deployment needs are in the
+[transports guide](transports.md#initialize-era-sessions).
+
+On a session:
+
+- A handler's input requests reach the client as server-initiated requests. A
+  handler written for 2026-07-28 returns `Snodo.Result.input_required/1` with
+  `Snodo.Elicitation`, `Snodo.Sampling`, or `Snodo.Roots` requests; the
+  transport sends each one as `elicitation/create`, `sampling/createMessage`,
+  or `roots/list` on the request's response stream, and calls the handler
+  again with the answers in `Snodo.Context.input_responses`. One handler
+  serves both eras. Without a session the result fails with -32603, as before.
+- `resources/subscribe` and `resources/unsubscribe` change the resources the
+  session watches, and `notifications/resources/updated`,
+  `notifications/tools/list_changed`, `notifications/prompts/list_changed`,
+  and `notifications/resources/list_changed` carry the runtime's
+  `:subscription_source` events. One `Snodo.Subscription.Hub` can feed
+  2026-07-28 `subscriptions/listen` streams and initialize-era sessions.
+  Without a session these methods answer -32601.
+- `logging/setLevel` holds for the rest of the session.
+- `notifications/cancelled` cancels a request in flight on the same session,
+  over HTTP as well as stdio.
+- `Snodo.Context.session` is the session's `Snodo.Session` snapshot, and
+  `Snodo.Context.client_capabilities` and `client_info` are the ones the client
+  sent with `initialize`.
+
+`Last-Event-ID` resumability is not implemented.
 
 ## Official conformance
 
 The official runner's frozen 2025-11-25 requirement set runs in CI against a
-fixture with these dialects enabled: 23 of 30 required scenarios pass. The
-2025-06-18 run has no frozen set; 23 of its 27 scenarios pass. The failures are
-server-initiated sampling and elicitation and `resources/subscribe`, which these
-dialects do not implement, plus a warning that no session ID is issued.
-`logging/setLevel` is implemented; see the [logging guide](logging.md). See the
+fixture with these dialects enabled. With sessions on, all 30 required
+scenarios pass, on the native listener and on the Plug. A separate sessionless
+lane keeps the default mode gated: 23 of 30 pass there, and the failures are
+the server-initiated sampling and elicitation and `resources/subscribe`
+scenarios, which need a session, plus a warning that no session ID is issued.
+The 2025-06-18 run has no frozen set; with sessions on, all 27 of its scenarios
+pass. `logging/setLevel` is implemented; see the [logging guide](logging.md).
+See the
 [conformance lanes](https://github.com/joshrotenberg/snodo/blob/main/conformance/README.md#additional-server-lanes).
 
 ## Snodo.Client as an initialize-era client

@@ -225,7 +225,7 @@ defmodule Snodo.ClientTest do
     test "the negotiated version refuses methods its catalog does not define" do
       {:ok, client} = Client.direct(TestFixtures.runtime(@legacy_fixture))
 
-      for method <- ["server/discover", "tasks/get", "resources/subscribe"] do
+      for method <- ["server/discover", "tasks/get"] do
         assert {:error,
                 %Error{
                   code: -32_601,
@@ -235,6 +235,10 @@ defmodule Snodo.ClientTest do
       end
 
       assert {:error, %Error{code: -32_601}} = Client.discover(client)
+
+      # resources/subscribe is in the catalog, and a sessionless server refuses it.
+      assert {:error, %Error{code: -32_601, message: "Method not found: resources/subscribe"}} =
+               Client.request(client, "resources/subscribe", %{"uri" => "test://a"})
 
       # The initialize-era catalogs have no subscriptions/listen either.
       assert {:error, %Error{code: -32_601, data: %{"method" => "subscriptions/listen"}}} =

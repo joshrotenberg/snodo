@@ -1,36 +1,6 @@
 {
-  "failures": [
-    {
-      "key": "tools-call-sampling:tools-call-sampling",
-      "reason": "Server-initiated sampling needs a session, which the initialize-era slice does not keep; the fixture has no such tool."
-    },
-    {
-      "key": "tools-call-elicitation:tools-call-elicitation",
-      "reason": "Server-initiated elicitation needs a session, which the initialize-era slice does not keep; the fixture has no such tool."
-    },
-    {
-      "key": "elicitation-sep1034-defaults:elicitation-sep1034-general",
-      "reason": "Server-initiated elicitation needs a session, which the initialize-era slice does not keep; the fixture has no such tool."
-    },
-    {
-      "key": "elicitation-sep1330-enums:elicitation-sep1330-general",
-      "reason": "Server-initiated elicitation needs a session, which the initialize-era slice does not keep; the fixture has no such tool."
-    },
-    {
-      "key": "resources-subscribe:resources-subscribe",
-      "reason": "The initialize-era slice does not implement resources/subscribe."
-    },
-    {
-      "key": "resources-unsubscribe:resources-unsubscribe",
-      "reason": "The initialize-era slice does not implement resources/subscribe or resources/unsubscribe."
-    }
-  ],
-  "exclusions": [
-    {
-      "key": "server-sse-multiple-streams",
-      "reason": "The initialize-era slice issues no session IDs, so the multiple-stream check only warns."
-    }
-  ],
+  "failures": [],
+  "exclusions": [],
   "checkInventory": {
     "completion-complete": {
       "completion-complete": [
@@ -49,16 +19,40 @@
       ]
     },
     "elicitation-sep1034-defaults": {
-      "elicitation-sep1034-general": [
-        "FAILURE"
+      "elicitation-sep1034-string-default": [
+        "SUCCESS"
+      ],
+      "elicitation-sep1034-integer-default": [
+        "SUCCESS"
+      ],
+      "elicitation-sep1034-number-default": [
+        "SUCCESS"
+      ],
+      "elicitation-sep1034-enum-default": [
+        "SUCCESS"
+      ],
+      "elicitation-sep1034-boolean-default": [
+        "SUCCESS"
       ],
       "wire-schema-valid": [
         "SUCCESS"
       ]
     },
     "elicitation-sep1330-enums": {
-      "elicitation-sep1330-general": [
-        "FAILURE"
+      "elicitation-sep1330-untitled-single": [
+        "SUCCESS"
+      ],
+      "elicitation-sep1330-titled-single": [
+        "SUCCESS"
+      ],
+      "elicitation-sep1330-legacy-enumnames": [
+        "SUCCESS"
+      ],
+      "elicitation-sep1330-untitled-multi": [
+        "SUCCESS"
+      ],
+      "elicitation-sep1330-titled-multi": [
+        "SUCCESS"
       ],
       "wire-schema-valid": [
         "SUCCESS"
@@ -172,7 +166,7 @@
     },
     "resources-subscribe": {
       "resources-subscribe": [
-        "FAILURE"
+        "SUCCESS"
       ],
       "wire-schema-valid": [
         "SUCCESS"
@@ -188,7 +182,7 @@
     },
     "resources-unsubscribe": {
       "resources-unsubscribe": [
-        "FAILURE"
+        "SUCCESS"
       ],
       "wire-schema-valid": [
         "SUCCESS"
@@ -199,26 +193,32 @@
         "SUCCESS"
       ],
       "server-session-id-visible-ascii": [
-        "INFO"
+        "SUCCESS"
       ],
       "wire-schema-valid": [
         "SUCCESS"
       ]
     },
     "server-session-lifecycle": {
-      "server-session-lifecycle-skipped": [
-        "INFO"
+      "server-session-initialized-accepted": [
+        "SUCCESS"
+      ],
+      "server-session-delete-accepted": [
+        "SUCCESS"
+      ],
+      "server-session-terminated-returns-404": [
+        "SUCCESS"
       ]
     },
     "server-sse-multiple-streams": {
-      "server-sse-multiple-streams-session": [
-        "WARNING"
+      "server-accepts-multiple-post-streams": [
+        "SUCCESS"
+      ],
+      "server-sse-streams-functional": [
+        "INFO"
       ]
     },
     "server-sse-polling": {
-      "server-sse-polling-session": [
-        "WARNING"
-      ],
       "outgoing-request": [
         "INFO"
       ],
@@ -239,7 +239,7 @@
     },
     "tools-call-elicitation": {
       "tools-call-elicitation": [
-        "FAILURE"
+        "SUCCESS"
       ],
       "wire-schema-valid": [
         "SUCCESS"
@@ -279,7 +279,7 @@
     },
     "tools-call-sampling": {
       "tools-call-sampling": [
-        "FAILURE"
+        "SUCCESS"
       ],
       "wire-schema-valid": [
         "SUCCESS"

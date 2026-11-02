@@ -291,12 +291,12 @@ See the
 [client leg notes](https://github.com/joshrotenberg/snodo/blob/main/conformance/README.md#client-leg)
 for the remaining gaps.
 
-Three more server lanes run in CI. The same fixture served through
+More server lanes run in CI. The same fixture served through
 `Snodo.Transport.Plug` on Bandit matches the native listener check for check.
-The initialize-era dialects pass 23 of 30 required scenarios of the frozen
-2025-11-25 set, and 23 of 27 unscored 2025-06-18 scenarios. The remaining
-failures are server-initiated sampling and elicitation, `resources/subscribe`,
-and SSE sessions, which that slice does not implement.
+With sessions on, the initialize-era dialects pass all 30 required scenarios
+of the frozen 2025-11-25 set, natively and through the Plug, and all 27
+unscored 2025-06-18 scenarios. A sessionless lane keeps the default gated: 23
+of 30 pass, and the failures are the scenarios that need a session.
 See the
 [additional server lanes](https://github.com/joshrotenberg/snodo/blob/main/conformance/README.md#additional-server-lanes).
 

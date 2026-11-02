@@ -51,6 +51,21 @@ defmodule Snodo.Transport.Plug do
   Bandit 1.14 or later for untrusted HTTP/2 clients. After a body error over
   HTTP/1.x the response closes the connection, so the adapter does not read the rest of
   the body.
+
+  ## Initialize-era sessions
+
+  `:sessions` names a `Snodo.Session.Manager` the application supervises,
+  which gives clients of the enabled initialize-era dialects a
+  `Snodo.Session` as described in `Snodo.Transport.StreamableHTTP`. It
+  defaults to `nil`, which keeps the dialects sessionless and answers `GET`
+  and `DELETE` with 405. A session is bound to the value of the auth assign.
+  A handler's input requests are written on the request's event stream, `GET`
+  opens the session's standalone stream with a keepalive at the shorter of
+  `:subscription_keepalive_ms` and `:disconnect_probe_ms`, and
+  `notifications/cancelled` cancels a request in flight on the same session.
+  Only a request that uses a session calls the manager, so 2026-07-28
+  requests are served while it is down. Sessions live on the node that
+  created them, so several nodes need sticky routing by `Mcp-Session-Id`.
   """
 
   @behaviour Plug
@@ -63,6 +78,7 @@ defmodule Snodo.Transport.Plug do
   alias Snodo.Server
   alias Snodo.Server.Executor
   alias Snodo.Server.Runtime
+  alias Snodo.Session
   alias Snodo.Transport.Plug.Lease
   alias Snodo.Transport.Plug.Stream
   alias Snodo.Transport.StreamableHTTP
@@ -108,7 +124,8 @@ defmodule Snodo.Transport.Plug do
       subscription_keepalive_ms: positive_option!(opts, :subscription_keepalive_ms, 15_000),
       max_subscriptions: positive_option!(opts, :max_subscriptions, 256),
       disconnect_probe_ms: probe_option!(opts),
-      adapter_opts: Keyword.take(opts, [:allowed_origin_hosts, :allowed_hosts])
+      adapter_opts: Keyword.take(opts, [:allowed_origin_hosts, :allowed_hosts]),
+      sessions: sessions_option!(opts)
     }
   end
 
@@ -172,20 +189,92 @@ defmodule Snodo.Transport.Plug do
       connection_ref: make_ref()
     }
 
-    case StreamableHTTP.prepare(opts.runtime, request, opts.adapter_opts) do
+    auth = Map.get(conn.assigns, opts.auth_assign)
+
+    case StreamableHTTP.prepare(opts.runtime, request, adapter_opts(opts, auth)) do
       {:response, response} ->
         send_response(conn, response, opts)
 
+      {:standalone, session} ->
+        serve_standalone(conn, session, opts)
+
       {:ok, prepared} ->
-        auth = Map.get(conn.assigns, opts.auth_assign)
         prepared = put_in(prepared.transport.metadata[:auth], auth)
         dispatch(conn, prepared, opts)
     end
   end
 
+  defp adapter_opts(%{sessions: nil} = opts, _auth), do: opts.adapter_opts
+
+  # The manager is passed by name: only a request that needs a session asks
+  # it for anything, so a 2026-07-28 request never waits on it.
+  defp adapter_opts(opts, auth),
+    do: opts.adapter_opts ++ [sessions: opts.sessions, auth: auth]
+
+  # The session's standalone stream: list changes and resource updates, each
+  # acknowledged to the session once written.
+  defp serve_standalone(conn, %Session{pid: pid}, opts) do
+    case Session.attach_stream(pid, self()) do
+      :ok ->
+        monitor = Process.monitor(pid)
+
+        try do
+          conn |> progress_connection() |> stream_standalone(pid, monitor, opts) |> Conn.halt()
+        after
+          Process.demonitor(monitor, [:flush])
+        end
+
+      {:error, :conflict} ->
+        send_resp_error(conn, 409, -32_600, "The session already has a standalone stream")
+
+      {:error, :closed} ->
+        send_resp_error(conn, 404, -32_001, "Session not found")
+    end
+  end
+
+  defp stream_standalone(conn, pid, monitor, opts) do
+    receive do
+      {:mcp_session_message, ^pid, ref, message} ->
+        case Conn.chunk(conn, sse(JSON.encode!(message))) do
+          {:ok, conn} ->
+            send(pid, {:mcp_session_written, ref, :ok})
+            stream_standalone(conn, pid, monitor, opts)
+
+          {:error, reason} ->
+            send(pid, {:mcp_session_written, ref, {:error, reason}})
+            conn
+        end
+
+      {:DOWN, ^monitor, :process, ^pid, _reason} ->
+        conn
+    after
+      # As often as the other event streams, so a dropped client is noticed
+      # within the disconnect probe and its next GET is not refused with 409.
+      keepalive_interval(opts) ->
+        case Conn.chunk(conn, ": keepalive\r\n\r\n") do
+          {:ok, conn} -> stream_standalone(conn, pid, monitor, opts)
+          {:error, _reason} -> conn
+        end
+    end
+  end
+
+  defp send_resp_error(conn, status, code, message) do
+    body =
+      JSON.encode!(%{
+        "jsonrpc" => "2.0",
+        "id" => nil,
+        "error" => %{"code" => code, "message" => message}
+      })
+
+    conn
+    |> Conn.put_resp_content_type("application/json")
+    |> Conn.send_resp(status, body)
+    |> Conn.halt()
+  end
+
   defp dispatch(conn, %{kind: :notification} = prepared, opts) do
     case Server.resolve_notification(opts.runtime, prepared.raw, prepared.transport) do
-      {:ok, {:cancel, id, reason}} -> cancel_scoped(conn, opts, id, reason)
+      {:ok, {:cancel, id, reason}} -> cancel_scoped(conn, opts, prepared, id, reason)
       _other -> :ok
     end
 
@@ -198,7 +287,8 @@ defmodule Snodo.Transport.Plug do
     sink = Progress.sink(owner)
     prepared = install_progress(prepared, sink)
     prepared = put_in(prepared.transport.metadata[:subscription_owner], lease)
-    key = request_key(conn, opts, prepared.raw["id"])
+    key = request_key(conn, opts, prepared, prepared.raw["id"])
+    tracked = tracked_request(prepared)
 
     work = fn cancellation ->
       try do
@@ -214,6 +304,7 @@ defmodule Snodo.Transport.Plug do
     try do
       case submit(opts.executor, key, work, opts.request_timeout, lease) do
         {:ok, reference, executor} ->
+          track_request(tracked, executor, key)
           await(conn, opts, prepared, {reference, key, executor}, sink)
 
         {:error, :overloaded} ->
@@ -236,8 +327,23 @@ defmodule Snodo.Transport.Plug do
     after
       Progress.close(sink)
       Lease.stop(lease)
+      untrack_request(tracked)
     end
   end
+
+  # A request on a session can be cancelled with notifications/cancelled,
+  # which reaches it through the session. Only the session and the request ID
+  # are kept, so an open stream does not hold the request body.
+  defp tracked_request(%{session: %Session{pid: pid}, raw: %{"id" => id}}), do: {pid, id}
+  defp tracked_request(_prepared), do: nil
+
+  defp track_request({pid, id}, executor, key),
+    do: Session.track(pid, id, fn reason -> cancel(executor, key, reason) end)
+
+  defp track_request(nil, _executor, _key), do: :ok
+
+  defp untrack_request({pid, id}), do: Session.untrack(pid, id)
+  defp untrack_request(nil), do: :ok
 
   # Runs in the executor task. The stream process holds the slot, so the
   # executor returns it when the stream ends for any reason.
@@ -318,6 +424,9 @@ defmodule Snodo.Transport.Plug do
 
       {:"$gen_call", from, {:mcp_progress, ^progress_reference, report}} ->
         report_progress(state, opts, prepared, from, report)
+
+      {:"$gen_call", from, {:mcp_stream_message, ^progress_reference, message}} ->
+        send_stream_message(state, opts, prepared, from, message)
     after
       wait_time(state, opts) -> tick(state, opts, prepared)
     end
@@ -350,6 +459,22 @@ defmodule Snodo.Transport.Plug do
       {:error, reason} ->
         Progress.reply(from, report, {:error, reason})
         await_message(state, opts, prepared)
+    end
+  end
+
+  # A server-to-client request made on behalf of this request, on its own
+  # event stream.
+  defp send_stream_message(state, opts, prepared, from, message) do
+    conn = progress_connection(state.conn)
+
+    case Conn.chunk(conn, sse(JSON.encode!(message))) do
+      {:ok, conn} ->
+        GenServer.reply(from, :ok)
+        await_message(%{state | conn: conn}, opts, prepared)
+
+      {:error, _reason} ->
+        GenServer.reply(from, {:error, :disconnected})
+        disconnect(%{state | conn: conn})
     end
   end
 
@@ -403,8 +528,10 @@ defmodule Snodo.Transport.Plug do
     Conn.halt(state.conn)
   end
 
-  defp cancel_scoped(conn, opts, id, reason) do
-    if scope(conn, opts) != nil, do: cancel(opts.executor, request_key(conn, opts, id), reason)
+  defp cancel_scoped(conn, opts, prepared, id, reason) do
+    if scope(conn, opts) != nil,
+      do: cancel(opts.executor, request_key(conn, opts, prepared, id), reason)
+
     :ok
   end
 
@@ -415,9 +542,14 @@ defmodule Snodo.Transport.Plug do
     :exit, _reason -> :ok
   end
 
-  defp request_key(conn, opts, id) do
-    {__MODULE__, opts.instance, scope(conn, opts) || make_ref(), id}
+  # Two sessions of one principal reuse JSON-RPC ids, so a request on a
+  # session is keyed by its session too.
+  defp request_key(conn, opts, prepared, id) do
+    {__MODULE__, opts.instance, scope(conn, opts) || make_ref(), session_id(prepared), id}
   end
+
+  defp session_id(%{transport: %{metadata: %{session: %Session{id: id}}}}), do: id
+  defp session_id(_prepared), do: nil
 
   defp scope(conn, opts) do
     case {Map.get(conn.assigns, opts.auth_assign),
@@ -516,6 +648,14 @@ defmodule Snodo.Transport.Plug do
     case Keyword.get(opts, key, default) do
       value when is_integer(value) and value > 0 -> value
       _invalid -> raise ArgumentError, "#{inspect(key)} must be a positive integer"
+    end
+  end
+
+  defp sessions_option!(opts) do
+    case Keyword.get(opts, :sessions) do
+      nil -> nil
+      name when is_atom(name) -> name
+      _invalid -> raise ArgumentError, ":sessions must be the name of a Snodo.Session.Manager"
     end
   end
 

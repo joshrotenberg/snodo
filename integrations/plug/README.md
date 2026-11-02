@@ -6,9 +6,11 @@ package, not to the core. Bandit is a development/test dependency here; an
 application chooses and directly depends on its HTTP server.
 
 It serves whichever dialects the runtime enables: **2026-07-28** by default,
-and the opt-in initialize-era dialects without HTTP sessions. It does not add
-sessions, authentication policy, OAuth, or a second protocol implementation. HTTP admission, JSON-RPC shaping, capability checks,
-mirrored headers, and extension dispatch remain in the core adapter.
+and the opt-in initialize-era dialects, sessionless unless `sessions` names a
+`Snodo.Session.Manager`. It does not add authentication policy, OAuth, or a
+second protocol implementation. HTTP admission, JSON-RPC shaping, capability
+checks, mirrored headers, session admission, and extension dispatch remain in
+the core adapter.
 
 ## Application-owned startup
 
@@ -119,6 +121,7 @@ contract.
 | `max_subscriptions` | 256 | Open `subscriptions/listen` streams; the next one is closed at its source and gets 503. The executor holds the count, so Plugs that share an executor share it. |
 | `allowed_origin_hosts` | localhost / loopback | Existing core host-based Origin allowlist, not a full CORS policy. An entry with a port (`"localhost:3000"`) pins the port. |
 | `allowed_hosts` | unset (any Host) | When set, the `Host` header must name one of these hosts or the request gets 403. Leave unset behind a proxy that forwards a public `Host`. |
+| `sessions` | unset | The name of an application-supervised `Snodo.Session.Manager`, which gives initialize-era clients sessions. The manager holds their limits (`max_sessions` 1,024 with 503 past it, `idle_timeout` 30 minutes then 404); see the core [transports guide](https://hexdocs.pm/snodo/transports.html#initialize-era-sessions). Without it `GET` and `DELETE` get 405. |
 
 Configure Bandit/reverse-proxy connection counts, header/read limits, timeouts,
 TLS, and shutdown policy separately. Executor capacity bounds pending application
@@ -204,6 +207,8 @@ The checked-in lock currently resolves Plug 1.20.3 and Bandit 1.12.5. Tests star
 real Bandit listeners on ephemeral loopback ports and use literal HTTP requests,
 not only Plug test connections. They cover trusted auth, admission, raw-body
 limits and deadlines, the chunked-body refusal, ignored legacy session headers,
+initialize-era sessions (an elicitation round trip, the standalone stream,
+`DELETE`),
 saturated/cross-principal cancellation, queue deadlines, ordinary owner-death
 cleanup, and SSE ordering, completion, keepalive disconnects, abrupt owner-death
 cleanup, the subscription limit, and what an open stream retains. HTTP/2 is

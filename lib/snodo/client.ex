@@ -380,8 +380,8 @@ defmodule Snodo.Client do
   `logging/setLevel`.
 
   Only the initialize-era versions define `logging/setLevel`. Over stdio the
-  level holds for the connection; over HTTP those versions keep no session,
-  so the server applies its own default. On 2026-07-28 the level travels with
+  level holds for the connection. Over HTTP it holds for the session when the
+  server keeps sessions; a sessionless server applies its own default. On 2026-07-28 the level travels with
   each request instead (the `:log_level` option), and this returns -32601
   without sending anything. Options are those of `request/4`.
   """

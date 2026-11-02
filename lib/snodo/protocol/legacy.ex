@@ -3,9 +3,11 @@ defmodule Snodo.Protocol.Legacy do
 
   alias Snodo.Authorization
 
-  alias Snodo.{Context, Envelope, Error, Progress, Prompt, Resource, Result, Router, Tool}
+  alias Snodo.{Context, Envelope, Error, MRTR, Progress, Prompt, Resource, Result, Router, Tool}
   alias Snodo.Protocol.Profile
   alias Snodo.Protocol.Profile.Method
+  alias Snodo.Session
+  alias Snodo.Subscription.Event, as: SubscriptionEvent
   alias Snodo.TraceContext
   alias Snodo.Transport.Context, as: TransportContext
   alias Snodo.Transport.Policy
@@ -18,6 +20,15 @@ defmodule Snodo.Protocol.Legacy do
     "resources/templates/list" => :resource_templates_list
   }
   @named %{"tools/call" => :tools_call, "prompts/get" => :prompt_get}
+  @session_operations %{
+    "resources/subscribe" => :resource_subscribe,
+    "resources/unsubscribe" => :resource_unsubscribe
+  }
+  @list_changed %{
+    tools_list_changed: "notifications/tools/list_changed",
+    prompts_list_changed: "notifications/prompts/list_changed",
+    resources_list_changed: "notifications/resources/list_changed"
+  }
 
   defmacro __using__(version: version) do
     quote do
@@ -56,6 +67,8 @@ defmodule Snodo.Protocol.Legacy do
       @impl true
       defdelegate transport_policy(envelope), to: Legacy
       @impl true
+      defdelegate shape_subscription_event(event, id, context), to: Legacy
+      @impl true
       def server_discovery(_runtime), do: :unsupported
       @impl true
       def request_metadata(_capabilities), do: %{}
@@ -74,7 +87,9 @@ defmodule Snodo.Protocol.Legacy do
       {"resources/templates/list", :optional, "resources"},
       {"resources/read", :required, "resources"},
       {"completion/complete", :required, "completions"},
-      {"logging/setLevel", :required, "logging"}
+      {"logging/setLevel", :required, "logging"},
+      {"resources/subscribe", :required, "resources"},
+      {"resources/unsubscribe", :required, "resources"}
     ]
 
     methods =
@@ -91,13 +106,50 @@ defmodule Snodo.Protocol.Legacy do
 
     notifications =
       Enum.map(
-        [{"notifications/initialized", :optional}, {"notifications/cancelled", :required}],
+        [
+          {"notifications/initialized", :optional},
+          {"notifications/cancelled", :required},
+          {"notifications/roots/list_changed", :optional}
+        ],
         fn {name, params} ->
           Method.new!(
             name: name,
             kind: :notification,
             directions: [:client_to_server],
             params: params,
+            status: :implemented
+          )
+        end
+      )
+
+    # Sent only on a session: server-initiated requests carry a handler's input
+    # requests, and the notifications carry subscription source events.
+    server_requests =
+      Enum.map(["sampling/createMessage", "elicitation/create", "roots/list"], fn name ->
+        Method.new!(
+          name: name,
+          kind: :request,
+          directions: [:server_to_client],
+          params: if(name == "roots/list", do: :optional, else: :required),
+          status: :implemented
+        )
+      end)
+
+    server_notifications =
+      Enum.map(
+        [
+          {"notifications/tools/list_changed", :optional, "tools"},
+          {"notifications/prompts/list_changed", :optional, "prompts"},
+          {"notifications/resources/list_changed", :optional, "resources"},
+          {"notifications/resources/updated", :required, "resources"}
+        ],
+        fn {name, params, capability} ->
+          Method.new!(
+            name: name,
+            kind: :notification,
+            directions: [:server_to_client],
+            params: params,
+            capability: capability,
             status: :implemented
           )
         end
@@ -129,13 +181,13 @@ defmodule Snodo.Protocol.Legacy do
               capability: "logging",
               status: :implemented
             )
-          ],
+          ] ++ server_requests ++ server_notifications,
       capabilities: ["tools", "prompts", "resources", "completions", "logging"],
       transports: %{direct: :tested, streamable_http: :tested, stdio: :tested},
       limitations: %{
-        http_sessions: :unsupported,
-        server_requests: :unsupported,
-        subscriptions: :unsupported,
+        http_sessions: :opt_in,
+        server_requests: :opt_in,
+        subscriptions: :opt_in,
         tasks: :unsupported,
         missing_http_version: :unsupported,
         lifecycle_enforcement: :client_owned
@@ -162,6 +214,8 @@ defmodule Snodo.Protocol.Legacy do
              runtime.authorization
            ) do
       initialize? = envelope.method == "initialize"
+      metadata = envelope.transport.metadata
+      session = session(metadata)
 
       context = %Context{
         protocol_version: protocol.version(),
@@ -172,29 +226,25 @@ defmodule Snodo.Protocol.Legacy do
         request_params: envelope.params,
         auth: envelope.transport.metadata[:auth],
         cancellation: envelope.transport.metadata[:cancellation],
-        session: nil,
+        session: session,
         server_info: implementation(runtime.server_info, protocol.version()),
-        server_capabilities:
-          runtime.capabilities
-          |> Map.take(["tools", "prompts", "resources", "completions", "logging", "experimental"])
-          |> Map.new(fn
-            {"experimental", value} -> {"experimental", value}
-            {key, _value} -> {key, %{}}
-          end),
-        client_info: if(initialize?, do: envelope.params["clientInfo"]),
-        client_capabilities:
-          if(initialize?, do: Map.get(envelope.params, "capabilities", %{}), else: %{}),
+        server_capabilities: server_capabilities(runtime, session),
+        client_info: client_info(envelope, session, initialize?),
+        client_capabilities: client_capabilities(envelope, session, initialize?),
+        input_responses: Map.get(metadata, :input_responses) || %{},
+        request_state: Map.get(metadata, :request_state),
         metadata: Map.get(envelope.params, "_meta", %{}),
         trace_context: TraceContext.from_metadata(Map.get(envelope.params, "_meta", %{}))
       }
 
       sink = envelope.transport.metadata[:progress_sink]
 
-      # Over stdio, logging/setLevel sets the connection's level. Otherwise the
-      # client has set none, and these revisions let the server choose.
+      # Over stdio, and on a session, logging/setLevel sets the level for later
+      # requests. Otherwise the client has set none, and these revisions let
+      # the server choose.
       log_level =
         if Map.has_key?(runtime.capabilities, "logging"),
-          do: envelope.transport.metadata[:log_level] || runtime.log_level
+          do: metadata[:log_level] || session_log_level(session) || runtime.log_level
 
       {:ok,
        %{
@@ -204,6 +254,48 @@ defmodule Snodo.Protocol.Legacy do
        }}
     end
   end
+
+  defp session(%{session: %Session{} = session}), do: session
+  defp session(_metadata), do: nil
+
+  defp session_log_level(%Session{log_level: level}), do: level
+  defp session_log_level(nil), do: nil
+
+  defp client_info(envelope, _session, true), do: envelope.params["clientInfo"]
+  defp client_info(_envelope, %Session{client_info: info}, false), do: info
+  defp client_info(_envelope, nil, false), do: nil
+
+  defp client_capabilities(envelope, _session, true),
+    do: Map.get(envelope.params, "capabilities", %{})
+
+  defp client_capabilities(_envelope, %Session{client_capabilities: capabilities}, false),
+    do: capabilities
+
+  defp client_capabilities(_envelope, nil, false), do: %{}
+
+  # listChanged and subscribe are advertised only on a session with a
+  # subscription source, the only place these clients can receive those
+  # notifications. Other capability settings are not part of these revisions'
+  # results.
+  defp server_capabilities(runtime, session) do
+    notifications? = not is_nil(session) and not is_nil(runtime.subscription_source)
+
+    runtime.capabilities
+    |> Map.take(["tools", "prompts", "resources", "completions", "logging", "experimental"])
+    |> Map.new(fn
+      {"experimental", value} ->
+        {"experimental", value}
+
+      {key, settings} when notifications? and key in ["tools", "prompts", "resources"] ->
+        {key, Map.filter(settings, fn {name, value} -> notification_setting?(name, value) end)}
+
+      {key, _value} ->
+        {key, %{}}
+    end)
+  end
+
+  defp notification_setting?(name, value),
+    do: name in ["listChanged", "subscribe"] and value == true
 
   # The default preserves the initialize-era error before policy dispatch.
   # Concealment defers it until the router has checked authorization.
@@ -319,6 +411,12 @@ defmodule Snodo.Protocol.Legacy do
     {:ok, {:cancel, id, params["reason"]}}
   end
 
+  # The URI is checked in validate_operation/3, after the session, so these
+  # methods answer -32601 without one whatever their arguments.
+  def resolve_operation(%Envelope{method: method, params: params})
+      when is_map_key(@session_operations, method),
+      do: {:ok, {Map.fetch!(@session_operations, method), params["uri"]}}
+
   def resolve_operation(%Envelope{method: method, params: params}) do
     cond do
       Map.has_key?(@lists, method) ->
@@ -327,7 +425,12 @@ defmodule Snodo.Protocol.Legacy do
       Map.has_key?(@named, method) and is_binary(params["name"]) and params["name"] != "" ->
         {:ok, {Map.fetch!(@named, method), params["name"]}}
 
-      method in ["resources/read", "notifications/cancelled", "tools/call", "prompts/get"] ->
+      method in [
+        "resources/read",
+        "notifications/cancelled",
+        "tools/call",
+        "prompts/get"
+      ] ->
         {:error, Error.invalid_params("Missing or invalid operation arguments")}
 
       true ->
@@ -365,6 +468,15 @@ defmodule Snodo.Protocol.Legacy do
     end
   end
 
+  # Subscriptions belong to a session; without one these methods do not exist.
+  def validate_operation({kind, uri}, params, context)
+      when kind in [:resource_subscribe, :resource_unsubscribe] do
+    if match?(%Session{ready?: true}, context.session) and
+         get_in(context.server_capabilities, ["resources", "subscribe"]) == true,
+       do: validate_subscription_uri(uri, params),
+       else: {:error, Error.method_not_found(context.request_method)}
+  end
+
   def validate_operation({:cancel, _id, reason}, _params, _context)
       when is_nil(reason) or is_binary(reason) do
     :ok
@@ -378,6 +490,12 @@ defmodule Snodo.Protocol.Legacy do
          :ok <- optional_cursor(params),
          do: validate_arguments(operation, params)
   end
+
+  defp validate_subscription_uri(uri, params) when is_binary(uri),
+    do: validate_arguments({:resource_read, uri}, params)
+
+  defp validate_subscription_uri(_uri, _params),
+    do: {:error, Error.invalid_params("Missing or invalid operation arguments")}
 
   defp require_capability(operation, context) do
     capability =
@@ -419,8 +537,16 @@ defmodule Snodo.Protocol.Legacy do
 
   defp validate_arguments(_operation, _params), do: :ok
 
+  # Input requests reach these clients as server-initiated requests, which
+  # need a session to carry them.
+  def validate_result(operation, %Result{kind: :input_required} = result, context) do
+    if match?(%Context{session: %Session{ready?: true}}, context),
+      do: MRTR.validate_result(operation, result, context),
+      else: {:error, Error.internal("Input requests need an initialize-era session")}
+  end
+
   def validate_result(_operation, %Result{kind: kind}, _context)
-      when kind in [:input_required, :subscription, :wire],
+      when kind in [:subscription, :wire],
       do: {:error, Error.internal("Result kind is not supported by this legacy dialect")}
 
   def validate_result({:tools_call, _}, %Result{kind: :structured, value: value}, _context)
@@ -444,6 +570,11 @@ defmodule Snodo.Protocol.Legacy do
   def validate_result(_operation, _result, _context), do: :ok
   defp object_schema?(%{"type" => "object"}), do: true
   defp object_schema?(_schema), do: false
+
+  # Never written to the client: Snodo.Session.Exchange sends the requests
+  # and calls the handler again.
+  def shape_result(_operation, %Result{kind: :input_required, value: value}, _context),
+    do: Map.put(value, "resultType", "input_required")
 
   def shape_result(operation, result, context) do
     operation |> shape(result, context) |> metadata(result)
@@ -576,6 +707,20 @@ defmodule Snodo.Protocol.Legacy do
       "method" => "notifications/progress",
       "params" => Map.put(fields, "progressToken", token)
     }
+
+  def shape_subscription_event(%SubscriptionEvent{kind: :resource_updated} = event, _id, _context) do
+    %{
+      "jsonrpc" => "2.0",
+      "method" => "notifications/resources/updated",
+      "params" => Map.put(event.params, "uri", event.uri)
+    }
+  end
+
+  def shape_subscription_event(%SubscriptionEvent{kind: kind} = event, _id, _context)
+      when is_map_key(@list_changed, kind) do
+    notification = %{"jsonrpc" => "2.0", "method" => Map.fetch!(@list_changed, kind)}
+    if event.params == %{}, do: notification, else: Map.put(notification, "params", event.params)
+  end
 
   def transport_policy(%Envelope{method: "initialize"}), do: %Policy{allowed_methods: ["POST"]}
 
