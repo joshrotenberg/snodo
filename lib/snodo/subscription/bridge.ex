@@ -70,19 +70,20 @@ defmodule Snodo.Subscription.Bridge do
   supervise a shared scope separately when bridges have independent lifetimes.
 
   With `start_scope: false`, the caller must start the scope first. If it is
-  absent when the scope child starts, including if it disappears during
-  startup, this returns the standard supervisor startup error:
+  absent when the scope child starts, this returns the standard supervisor
+  startup error:
 
       {:error,
        {:shutdown,
         {:failed_to_start_child, Snodo.Subscription.Bridge.Scope, {:scope_not_started, scope}}}}
 
-  The usual supervisor startup and linking semantics apply. The bridge never
-  starts or waits for an external scope. If it stays absent after a failure,
-  immediate restart failures exhaust
-  the bridge supervisor's restart intensity and the supervisor exits. Put the
-  scope and its bridges under a `:rest_for_one` parent, with the scope first,
-  so it restarts the scope before restarting the bridges.
+  If the scope exits later during startup, this may fail on a later child or
+  succeed and then restart as usual. The usual supervisor startup and linking
+  semantics apply. The bridge never starts or waits for an external scope. If
+  it stays absent after a failure, immediate restart failures exhaust the
+  bridge supervisor's restart intensity and the supervisor exits. Put the scope
+  and its bridges under a `:rest_for_one` parent, with the scope first, so it
+  restarts the scope before restarting the bridges.
   """
   @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts \\ []) when is_list(opts) do
