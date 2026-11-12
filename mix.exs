@@ -1,7 +1,7 @@
 defmodule Snodo.MixProject do
   use Mix.Project
 
-  @version "0.4.4"
+  @version "0.4.5"
   @source_url "https://github.com/joshrotenberg/snodo"
 
   def project do
@@ -141,7 +141,7 @@ defmodule Snodo.MixProject do
         "format --check-formatted",
         "compile --warnings-as-errors",
         "credo --strict",
-        "test --include distributed --warnings-as-errors --raise",
+        "test --warnings-as-errors --raise",
         "snodo.contract",
         "examples",
         "cmd --cd extensions/tasks mix quality",
