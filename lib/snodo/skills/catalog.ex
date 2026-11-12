@@ -18,8 +18,10 @@ defmodule Snodo.Skills.Catalog do
   # The default Snodo.Client accepts responses up to 16 MiB over HTTP
   # (:max_response_bytes) and stdio (:max_line_bytes).
   @default_max_response_bytes 16_777_216
-  # Left for the JSON-RPC envelope, the result's other fields, a cursor, and
-  # SSE framing around the encoded entries or content.
+  # Left for the JSON-RPC envelope and request id, the result's other fields,
+  # a cursor, SSE framing, and on resources/read the _meta carrying the whole
+  # server_info. Nothing here can check that those fit: the guarantee is
+  # conditional on it, as guides/transports.md says.
   @envelope_bytes 4_096
   @directory_mime_type "inode/directory"
 
@@ -168,7 +170,9 @@ defmodule Snodo.Skills.Catalog do
   # them), with its type, size, and modification time. @external_resource
   # only covers the files present at compile time; comparing this hash in
   # __mix_recompile__?/0 also catches a file added or removed. It never
-  # raises: an unreadable entry is hashed as its error.
+  # raises: an unreadable entry is hashed as its error. Contents are not
+  # hashed, to keep the check cheap on every compile, so a same-size edit
+  # within the same whole second of mtime goes unnoticed here (documented).
   @spec fingerprint(String.t()) :: binary()
   def fingerprint(root) when is_binary(root) do
     :crypto.hash(:sha256, :erlang.term_to_binary(listing(root), [:deterministic]))
@@ -230,8 +234,10 @@ defmodule Snodo.Skills.Catalog do
     end
   end
 
-  # Every response the module sends must fit a client limit of
-  # :max_response_bytes on HTTP and on stdio (see encoded_size/1): each
+  # The skills part of every response the module sends (file content,
+  # entries, directory children) must fit a client limit of
+  # :max_response_bytes on HTTP and on stdio (see encoded_size/1), with
+  # @envelope_bytes assumed to cover the rest, server_info included: each
   # file's resources/read content and each
   # skills/get entry are checked here, with @envelope_bytes to spare, and
   # skills/list and resources/directory/read pages are cut to the same budget

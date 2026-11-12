@@ -32,7 +32,10 @@ defmodule Snodo.Skills do
   recompiles when a file under `:directory` is added, removed, or changed:
   it records the path, size, and modification time of every entry when it
   compiles, and its `__mix_recompile__?/0` compares them on each
-  `mix compile`. A symbolic link anywhere under
+  `mix compile`. Modification times are in whole seconds and contents are
+  not compared, so this check misses a change that keeps a file's size and
+  lands in the same second as the file's previous modification; touch the
+  file again or run `mix compile --force`. A symbolic link anywhere under
   `:directory` raises `ArgumentError` rather than being followed, so a link
   cannot publish a file from outside it. A skill's file count and sizes are
   checked against the limits below before any of its files is read. The
@@ -71,7 +74,11 @@ defmodule Snodo.Skills do
       cut to that size. Sizes are the larger of the HTTP encoding (raw
       UTF-8) and the stdio framing, which writes every character outside
       ASCII as a `\\uXXXX` escape, so an "é" counts as 6 bytes and a
-      character above U+FFFF as 12. Must be greater than 4,096.
+      character above U+FFFF as 12. Must be greater than 4,096. The whole
+      response fits only if the rest of it, including the request id and,
+      on `resources/read`, the server's `server_info` under `_meta`, fits in
+      the 4,096 bytes; neither is checked here. The Skills limits section of
+      the transports guide says what happens otherwise.
     * `:max_skill_files` - files per skill, SKILL.md included. Defaults to
       512.
     * `:max_skill_bytes` - the total size of a skill's files. Defaults to

@@ -163,7 +163,10 @@ end
 Every directory under `priv/skills` that holds a `SKILL.md` is a skill, at
 any depth: `priv/skills/acme/pdf-processing/SKILL.md` is served as
 `skill://acme/pdf-processing/SKILL.md`. The module recompiles when a file
-under the directory is added, removed, or changed. `:entries` adds skills the application supplies as a path and a map
+under the directory is added, removed, or changed. It compares paths, sizes,
+and whole-second modification times, not contents, so a change that keeps a
+file's size within the same second as its last modification can be missed;
+run `mix compile --force` then. `:entries` adds skills the application supplies as a path and a map
 of file contents, alone or next to `:directory`. The frontmatter `name` must
 equal the directory name and follow the naming rules (1 to 64 lowercase
 letters, digits, and single hyphens), and `description` must be present. A
