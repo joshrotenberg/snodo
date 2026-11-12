@@ -166,6 +166,53 @@ defmodule Snodo.Skills.FrontmatterTest do
       end
     end
 
+    test "refuses a number outside the double range instead of raising" do
+      for yaml <- ["value: 1e9999", "value: -1e9999", "values: [1, 1e9999]"] do
+        assert {:error, %Error{reason: :unsupported, line: 2, message: message}} = parse(yaml)
+        assert message =~ "out of range"
+      end
+
+      assert {:ok, %{"value" => 1.0e300}} = parse("value: 1e300")
+    end
+
+    test "refuses a blank or comment line inside a multi-line plain scalar" do
+      assert {:error, %Error{reason: :unsupported, line: 4}} =
+               parse("description: first\n\n  second")
+
+      assert {:error, %Error{reason: :unsupported, line: 4}} =
+               parse("description: first\n  # note\n  second")
+
+      assert {:ok, %{"description" => "first second", "next" => 1}} =
+               parse("description: first\n  second\n\nnext: 1")
+
+      assert {:ok, %{"steps" => ["a", "b"]}} = parse("steps:\n  - a\n\n  - b")
+    end
+
+    test "refuses a comment inside a flow sequence" do
+      for yaml <- [
+            "tools: [read # hidden, write]",
+            "tools: [\"read\" # hidden, write]",
+            "tools: [read, # c]"
+          ] do
+        assert {:error, %Error{reason: :unsupported, message: message}} = parse(yaml), yaml
+        assert message =~ "comment inside a flow sequence"
+      end
+
+      assert {:ok, %{"tools" => ["read", "write#1"]}} = parse("tools: [read, write#1] # trailing")
+    end
+
+    test "requires exactly the hexadecimal digits of an escape" do
+      for escape <- ["\\u+041", "\\u-041", "\\x+4", "\\u 041", "\\U+0000041"] do
+        assert {:error, %Error{reason: :invalid, message: message}} =
+                 parse("x: \"#{escape}\""),
+               escape
+
+        assert message =~ "hexadecimal escape"
+      end
+
+      assert {:ok, %{"x" => "AAA"}} = parse("x: \"\\x41\\u0041\\U00000041\"")
+    end
+
     test "refuses a frontmatter block that is not a mapping" do
       assert {:error, %Error{reason: :not_object}} = parse("- a\n- b")
     end

@@ -142,6 +142,18 @@ defmodule Snodo.Skills.ClientTest do
 
     assert %{"reason" => "frontmatter_unreadable"} =
              failure(Skills.verify(dynamic, @skill_md, unreadable))
+
+    # A value the subset cannot represent is reported, not raised.
+    overflow = %{
+      "contents" => [
+        %{"uri" => @skill_md, "text" => "---\nname: pdf-processing\nlimit: 1e9999\n---\n"}
+      ]
+    }
+
+    assert %{"reason" => "frontmatter_unreadable", "detail" => detail} =
+             failure(Skills.verify(dynamic, @skill_md, overflow))
+
+    assert detail =~ "out of range"
   end
 
   test "reads frontmatter with a configured parser", %{client: client, entry: entry} do

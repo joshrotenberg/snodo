@@ -20,8 +20,13 @@ defmodule Snodo.Skills.Frontmatter do
     * comments and blank lines.
 
   Anything else, such as block scalars (`|`, `>`), anchors, aliases, tags,
-  flow mappings, multi-line quoted strings, or deeper nesting, is refused
-  with a `Snodo.Skills.Frontmatter.Error` whose reason is `:unsupported`.
+  flow mappings, multi-line quoted strings, deeper nesting, a comment inside
+  a flow sequence, a blank or comment line inside a multi-line plain scalar,
+  or a number outside the range of a double, is refused with a
+  `Snodo.Skills.Frontmatter.Error` whose reason is `:unsupported`. Each of
+  those is valid YAML that the subset would otherwise read differently from a
+  full YAML parser. Malformed escapes, such as a signed `\\u+041`, are
+  `:invalid`.
   Pass `parser:` to `parse/2`, or `:frontmatter_parser` to `use Snodo.Skills`
   and `Snodo.Skills.Client`, to read full YAML with a library instead.
 
@@ -205,12 +210,23 @@ defmodule Snodo.Skills.Frontmatter do
   defp value(inline, children, number), do: continuation(inline, children, number)
 
   # A plain scalar may continue on more deeply indented lines; YAML folds the
-  # line breaks into single spaces.
+  # line breaks into single spaces. YAML keeps a newline for an empty line
+  # inside the scalar, and a comment line ends it, so a gap in the line numbers
+  # (lines/1 dropped a blank or comment line there) is refused rather than
+  # folded into a value a YAML parser would read differently.
   defp continuation(inline, children, number) do
     if quoted_or_flow?(inline),
       do: fail(:unsupported, number, "a quoted string or flow sequence spanning lines")
 
     parts = [{number, inline} | Enum.map(children, fn {n, _indent, c} -> {n, c} end)]
+
+    parts
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.each(fn [{previous, _}, {n, _}] ->
+      if n != previous + 1,
+        do: fail(:unsupported, n, "a blank or comment line inside a multi-line plain scalar")
+    end)
+
     last = length(parts) - 1
 
     parts
@@ -397,7 +413,7 @@ defmodule Snodo.Skills.Frontmatter do
         text |> binary_part(2, byte_size(text) - 2) |> String.to_integer(16)
 
       Regex.match?(~r/\A[-+]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)([eE][-+]?[0-9]+)?\z/, text) ->
-        float(text)
+        float(text, number)
 
       Regex.match?(~r/\A[-+]?\.(inf|Inf|INF)\z|\A\.(nan|NaN|NAN)\z/, text) ->
         fail(:unsupported, number, "#{text} has no JSON value")
@@ -407,8 +423,8 @@ defmodule Snodo.Skills.Frontmatter do
     end
   end
 
-  defp float(text) do
-    text = String.trim_leading(text, "+")
+  defp float(original, number) do
+    text = String.trim_leading(original, "+")
 
     {sign, digits} =
       case text do
@@ -423,8 +439,12 @@ defmodule Snodo.Skills.Frontmatter do
       |> String.replace(~r/\.(?=[eE]|\z)/, ".0")
       |> then(&if String.contains?(&1, "."), do: &1, else: String.replace(&1, ~r/[eE]/, ".0e"))
 
-    {value, ""} = Float.parse(sign <> digits)
-    value
+    # Float.parse/1 returns :error for a value outside the double range, such
+    # as 1e9999, which has no JSON number either.
+    case Float.parse(sign <> digits) do
+      {value, ""} -> value
+      _out_of_range -> fail(:unsupported, number, "#{original} is out of range for a JSON number")
+    end
   end
 
   defp flow_sequence(text, number, acc) do
@@ -446,6 +466,10 @@ defmodule Snodo.Skills.Frontmatter do
   defp flow_separator("," <> rest, number, acc), do: flow_sequence(rest, number, acc)
   defp flow_separator("]" <> _rest = rest, number, acc), do: flow_sequence(rest, number, acc)
 
+  # A comment ends the line, so the sequence would continue on the next one.
+  defp flow_separator("#" <> _rest, number, _acc),
+    do: fail(:unsupported, number, "a comment inside a flow sequence")
+
   defp flow_separator("", number, _acc),
     do: fail(:unsupported, number, "a flow sequence spanning lines")
 
@@ -463,6 +487,9 @@ defmodule Snodo.Skills.Frontmatter do
         [plain, rest] -> [plain, rest]
         [plain] -> [plain, ""]
       end
+
+    if String.starts_with?(plain, "#") or Regex.match?(~r/[ \t]#/, plain),
+      do: fail(:unsupported, number, "a comment inside a flow sequence")
 
     plain = String.trim(plain)
     if mapping_like?(plain), do: fail(:unsupported, number, "a mapping inside a flow sequence")
@@ -501,8 +528,10 @@ defmodule Snodo.Skills.Frontmatter do
   defp escape("", number), do: fail(:unsupported, number, "a quoted string spanning lines")
 
   defp hex_escape(text, digits, number) do
+    # Integer.parse/2 accepts a sign, so the digits are checked first.
     with true <- byte_size(text) >= digits,
          {hex, rest} = :erlang.split_binary(text, digits),
+         true <- Regex.match?(~r/\A[0-9A-Fa-f]+\z/, hex),
          {code, ""} <- Integer.parse(hex, 16),
          true <- code in 0..0xD7FF or code in 0xE000..0x10FFFF do
       {<<code::utf8>>, rest}
