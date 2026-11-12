@@ -3,8 +3,10 @@
 `Snodo.Instrumentation` is a dependency-free, opt-in event sink. It keeps
 observability outside protocol semantics and lets an application bridge the
 same events to `:telemetry`, OpenTelemetry, Logger, a metrics process, or a
-test collector. The `snodo_telemetry` package ships the `:telemetry` bridge;
-see [Forwarding to :telemetry](#forwarding-to-telemetry).
+test collector. The `snodo_telemetry` package ships the `:telemetry` bridge
+and a handler that turns its events into OpenTelemetry spans; see
+[Forwarding to :telemetry](#forwarding-to-telemetry) and
+[OpenTelemetry spans](#opentelemetry-spans).
 
 A sink implements one callback:
 
@@ -150,3 +152,73 @@ The opt-in Tasks [contention and soak harness](https://github.com/joshrotenberg/
 job and transition events directly. Its exact lifecycle invariants illustrate
 one way to build correctness evidence without coupling the framework to a
 metrics dependency or a machine-specific latency threshold.
+
+## OpenTelemetry spans
+
+`snodo_telemetry` also provides `Snodo.Instrumentation.Telemetry.OpenTelemetry`,
+a `:telemetry` handler that starts and ends OpenTelemetry spans from the
+dispatch and runner job events of `Snodo.Instrumentation.Telemetry`. The
+module is compiled only when the application depends on `opentelemetry_api`.
+The application configures the OpenTelemetry SDK and exporter as usual.
+
+```elixir
+{:opentelemetry_api, "~> 1.5"},
+{:opentelemetry, "~> 1.7"}
+```
+
+Configure `Snodo.Instrumentation.Telemetry` as the sink, as above, and attach
+the handler once, for example in `Application.start/2`:
+
+```elixir
+:ok = Snodo.Instrumentation.Telemetry.OpenTelemetry.attach()
+```
+
+`attach` takes an optional `:handler_id`, and `detach` removes the handler.
+
+| Events | Span name | Kind |
+|---|---|---|
+| `[:snodo, :server, :dispatch, *]` | the method, then a space and the component when one is named, such as `tools/call echo` | `:server` |
+| `[:snodo, :tasks, :runner, :job, *]` | `snodo.tasks.runner.job` | `:internal` |
+
+A dispatch whose method is reported as `:invalid` is named
+`snodo.server.dispatch`. A component the router does not register is
+reported as `:unknown` and left out of the span name, so the requested name
+never reaches it.
+
+Span attributes are the event metadata, each under its key with a `snodo.`
+prefix, with atoms recorded as strings:
+
+- dispatch: `snodo.method`, `snodo.request_id`, `snodo.transport`,
+  `snodo.component`, `snodo.outcome`, `snodo.error_code`, and, for an
+  exception, `snodo.kind` and `snodo.reason_class`;
+- runner job: `snodo.task_id`, `snodo.revision`, `snodo.source`,
+  `snodo.outcome`, `snodo.store_outcome`, and `snodo.release_outcome`.
+
+The events carry no payloads, so neither do the spans. A dispatch span's
+status is set to error for a JSON-RPC error response or an exception, with the
+error code or the exception class as the message. A runner job span's status
+is set to error when the job outcome is `:failed`, `:invalid`,
+`:worker_terminated`, or `:max_runtime`.
+
+When request `_meta` carries a valid `traceparent`, the dispatch span's parent
+is that remote span, and a valid `tracestate` is kept with it. Otherwise the
+parent is the current OpenTelemetry context of the dispatching process, such as
+a span from an HTTP server instrumentation. While the dispatch runs, its span
+is the current span in that process, so spans a handler starts are its
+children; the previous context is restored when the dispatch ends. Sampling
+is the SDK's: with its default parent-based sampler, a `traceparent` whose
+sampled flag is not set gives an unrecorded dispatch span.
+
+Runner job events carry no trace context and are emitted in the runner
+process, so a job span is not linked to the dispatch that created the task.
+It starts a new trace unless the runner process has a current context, and it
+is not made current, because jobs for different tasks interleave in the
+runner.
+
+Open spans are kept in the process dictionary of the emitting process, keyed
+by the `telemetry_span_context` reference, and removed by the matching stop or
+exception. The handler adds no limit: the entries in a process are the spans
+open in it. A stop or exception with no recorded start is ignored. A span
+whose process exits before its stop, such as a job span in a runner that
+stops with jobs still running, is never ended, and its entry goes with the
+process. The OAuth verification events are not turned into spans.

@@ -79,6 +79,46 @@ or the runner. Keep handlers fast and hand expensive work to another process.
 `:telemetry` detaches a handler that raises; the operation being observed is
 not affected.
 
+## OpenTelemetry spans
+
+`Snodo.Instrumentation.Telemetry.OpenTelemetry` is a `:telemetry` handler
+that starts and ends OpenTelemetry spans from the dispatch and runner job
+events this sink emits. It is compiled only when the application depends on
+`opentelemetry_api`, which is an optional dependency of this package. The
+application configures the OpenTelemetry SDK and exporter.
+
+```elixir
+{:opentelemetry_api, "~> 1.5"},
+{:opentelemetry, "~> 1.7"}
+```
+
+With the sink configured, attach the handler once, for example in
+`Application.start/2`:
+
+```elixir
+:ok = Snodo.Instrumentation.Telemetry.OpenTelemetry.attach()
+```
+
+- A dispatch becomes a `:server` span named for the method and, when the
+  router registers it, the tool, prompt, or direct resource: `tools/call echo`.
+  A runner job becomes an `:internal` span named `snodo.tasks.runner.job`.
+- Attributes are the event metadata under `snodo.`-prefixed keys, such as
+  `snodo.method`, `snodo.component`, `snodo.outcome`, `snodo.error_code`, and
+  `snodo.task_id`. No payloads are recorded, because the events carry none.
+- A valid `traceparent` in request `_meta`, with its `tracestate`, is the
+  dispatch span's parent. Without one, the parent is the dispatching process's
+  current context. The dispatch span is current while the dispatch runs, so
+  spans a handler starts are its children.
+- Runner job events carry no trace context, so a job span is not linked to
+  the dispatch that created the task.
+- Open spans live in the emitting process's dictionary until the matching
+  stop or exception. The handler adds no limit; a stop with no recorded start
+  is ignored.
+
+The module documentation and the
+[instrumentation guide](https://hexdocs.pm/snodo/instrumentation.html#opentelemetry-spans)
+give the full rules for names, attributes, status, and parents.
+
 ## Verification
 
 From this package directory:
@@ -93,5 +133,8 @@ mix quality.types
 tests. The tests attach `:telemetry` handlers to every event in the catalog
 and check each event's name, measurements, and metadata through a server
 dispatch, a subscription hub lifecycle, and a Tasks runner job, including the
-shared span context and its absence from point events. The Tasks extension is
-a test-only dependency.
+shared span context and its absence from point events. Further tests export
+the OpenTelemetry spans to the test process with the SDK's `otel_exporter_pid`
+and check their names, kinds, attributes, status, parents from a
+`traceparent`, and the absence of payloads. The Tasks extension and the
+OpenTelemetry SDK are test-only dependencies.
