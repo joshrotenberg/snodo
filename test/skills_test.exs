@@ -761,18 +761,21 @@ defmodule Snodo.SkillsTest do
       assert error.message =~ "its resources/directory/read entry in skill://dir/docs is"
     end
 
-    test "requires :max_response_bytes above the envelope" do
-      for value <- [4_096, 0, "big"] do
+    test "requires :max_response_bytes to hold the envelope and an empty page" do
+      for value <- [4_097, 4_096, 0, "big"] do
         error =
           assert_raise ArgumentError, fn ->
-            build(
-              entries: [[path: "a", files: %{"SKILL.md" => skill_md("a")}]],
-              max_response_bytes: value
-            )
+            build(entries: [], max_response_bytes: value)
           end
 
-        assert error.message =~ ":max_response_bytes must be an integer greater than 4096"
+        assert error.message =~ ":max_response_bytes must be an integer of at least 4098"
       end
+
+      # At the minimum, an empty catalog's skills/list page, [], is the budget.
+      {catalog, []} = build(entries: [], max_response_bytes: 4_098)
+      assert catalog.response_budget == 2
+      assert [[]] = pages(catalog, :skills_list, %{}, "skills")
+      assert encoded([]) == catalog.response_budget
     end
   end
 

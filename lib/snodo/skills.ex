@@ -77,12 +77,15 @@ defmodule Snodo.Skills do
       budget. Sizes are the larger of the HTTP encoding (raw UTF-8) and the
       stdio framing, which writes every character outside ASCII as a
       `\\uXXXX` escape, so an "é" counts as 6 bytes and a character above
-      U+FFFF as 12. Must be greater than 4,096. The whole response fits only
-      if the rest of it fits in the 4,096 bytes. The request id is bounded
-      by the core (a string of at most 256 bytes or an int64), but on
-      `resources/read` the rest also holds the server's `server_info` under
-      `_meta`, which nothing bounds; the Skills limits section of the
-      transports guide gives the sizes and says what happens otherwise.
+      U+FFFF as 12. Must be at least 4,098, so the budget holds the 2-byte
+      `[]` an empty `skills/list` sends. The whole response fits only if the
+      rest of it fits in the 4,096 bytes. The request id is bounded by the
+      core (a string of at most 256 bytes or an int64), and the rest grows
+      by one byte for each digit of `ttlMs` after the first; on
+      `resources/read` it also holds the server's `server_info` under
+      `_meta`, which nothing bounds. The Skills limits section of the
+      transports guide gives the exact sizes and says what happens
+      otherwise.
     * `:max_skill_files` - files per skill, SKILL.md included. Defaults to
       512.
     * `:max_skill_bytes` - the total size of a skill's files. Defaults to

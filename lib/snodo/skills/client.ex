@@ -58,8 +58,9 @@ defmodule Snodo.Skills.Client do
       within 16 MiB less 4,096 bytes on HTTP and stdio, so the response fits
       unless the rest of it is over those 4,096 bytes, which with any
       request id the core accepts happens only when the server's encoded
-      `server_info` is over 2,407 bytes. See the Skills limits in the
-      transports guide.
+      `server_info` is over 2,408 − d bytes, d being the number of digits
+      of the server's `resources/read` `ttlMs` (2,407 bytes for a `ttlMs`
+      of 0 to 9). See the Skills limits in the transports guide.
     * `:frontmatter_parser` - a `t:Snodo.Skills.Frontmatter.parser/0` for
       reading SKILL.md frontmatter.
     * `:max_pages` - for `list/2`, the most `skills/list` pages to request.

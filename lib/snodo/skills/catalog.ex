@@ -21,9 +21,10 @@ defmodule Snodo.Skills.Catalog do
   # Left for the JSON-RPC envelope and request id, the result's other fields,
   # a cursor, SSE framing, and on resources/read the _meta carrying the whole
   # server_info. Snodo.Envelope bounds the id (256-byte strings, int64), so
-  # all but server_info take at most 1,689 bytes; nothing here can check
-  # server_info, so the guarantee is conditional on it, as
-  # guides/transports.md says.
+  # all but server_info take at most 1,688 + d bytes on resources/read and
+  # 1,710 + d on the extension results, d being the digits of ttlMs, which
+  # is not bounded; nothing here can check server_info, so the guarantee is
+  # conditional on it, as guides/transports.md says.
   @envelope_bytes 4_096
   # The "[" and "]" around the elements of the array the skills part of a
   # response is measured as.
@@ -229,13 +230,16 @@ defmodule Snodo.Skills.Catalog do
   end
 
   defp max_response_bytes!(opts) do
+    # The smallest skills part of a response is the empty array, "[]", which
+    # skills/list sends for an empty catalog, so the budget must hold it.
+    minimum = @envelope_bytes + @array_bytes
+
     case Keyword.get(opts, :max_response_bytes, @default_max_response_bytes) do
-      value when is_integer(value) and value > @envelope_bytes ->
+      value when is_integer(value) and value >= minimum ->
         value
 
       _invalid ->
-        raise ArgumentError,
-              ":max_response_bytes must be an integer greater than #{@envelope_bytes}"
+        raise ArgumentError, ":max_response_bytes must be an integer of at least #{minimum}"
     end
   end
 
