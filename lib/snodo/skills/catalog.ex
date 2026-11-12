@@ -91,7 +91,7 @@ defmodule Snodo.Skills.Catalog do
     }
 
     sources =
-      directory_sources(Keyword.get(opts, :directory)) ++
+      directory_sources(Keyword.get(opts, :directory), limits) ++
         entry_sources(Keyword.get(opts, :entries, []))
 
     skills =
@@ -163,25 +163,56 @@ defmodule Snodo.Skills.Catalog do
 
   # Sources: %{path, files: [{relative path, bytes}], origin, external}.
 
-  defp directory_sources(nil), do: []
+  defp directory_sources(nil, _limits), do: []
 
-  defp directory_sources(directory) when is_binary(directory) do
+  defp directory_sources(directory, limits) when is_binary(directory) do
     root = Path.expand(directory)
 
     unless File.dir?(root) do
       raise ArgumentError, "Snodo.Skills :directory #{inspect(directory)} is not a directory"
     end
 
-    root
-    |> Path.join("**/SKILL.md")
-    |> Path.wildcard()
-    |> Enum.map(&directory_source(&1, root))
+    # One walk records every regular file and its size without reading it or
+    # following a link; skills are then cut from that list.
+    files = walk!(root)
+
+    files
+    |> Enum.filter(fn {path, _size} -> Path.basename(path) == "SKILL.md" end)
+    |> Enum.map(fn {skill_md, _size} -> directory_source(skill_md, root, files, limits) end)
   end
 
-  defp directory_sources(_directory),
+  defp directory_sources(_directory, _limits),
     do: raise(ArgumentError, "Snodo.Skills :directory must be a path string")
 
-  defp directory_source(skill_md, root) do
+  # Symbolic links are refused rather than followed, so a link cannot make a
+  # file outside :directory a public resource. Dotfiles and dot directories
+  # are skipped. Only regular files and directories are allowed.
+  defp walk!(directory) do
+    directory
+    |> File.ls!()
+    |> Enum.reject(&String.starts_with?(&1, "."))
+    |> Enum.sort()
+    |> Enum.flat_map(fn name ->
+      path = Path.join(directory, name)
+
+      case File.lstat!(path) do
+        %File.Stat{type: :regular, size: size} ->
+          [{path, size}]
+
+        %File.Stat{type: :directory} ->
+          walk!(path)
+
+        %File.Stat{type: :symlink} ->
+          raise ArgumentError,
+                "#{path}: Snodo.Skills does not follow symbolic links; copy the file into the skill"
+
+        %File.Stat{type: type} ->
+          raise ArgumentError, "#{path}: Snodo.Skills serves regular files only, not #{type}"
+      end
+    end)
+  end
+
+  defp directory_source(skill_md, root, files, limits) do
     skill_directory = Path.dirname(skill_md)
 
     if skill_directory == root do
@@ -189,19 +220,38 @@ defmodule Snodo.Skills.Catalog do
             "#{skill_md}: SKILL.md is at the root of :directory; put each skill in its own directory"
     end
 
-    paths =
-      skill_directory
-      |> Path.join("**/*")
-      |> Path.wildcard()
-      |> Enum.filter(&File.regular?/1)
-      |> Enum.sort()
+    prefix = skill_directory <> "/"
+    stats = Enum.filter(files, fn {path, _size} -> String.starts_with?(path, prefix) end)
+    check_listed_limits!(stats, skill_directory, limits)
 
     %{
       path: Path.relative_to(skill_directory, root),
-      files: Enum.map(paths, &{Path.relative_to(&1, skill_directory), File.read!(&1)}),
+      files: read_within_budget!(stats, skill_directory, limits.bytes),
       origin: skill_directory,
-      external: paths
+      external: Enum.map(stats, &elem(&1, 0))
     }
+  end
+
+  # The count and the sizes the walk recorded are checked before any file is
+  # read, so an oversized skill fails without being loaded.
+  defp check_listed_limits!(stats, origin, %{files: max_files, bytes: max_bytes}) do
+    check_count!(length(stats), origin, max_files)
+    check_total!(stats |> Enum.map(&elem(&1, 1)) |> Enum.sum(), origin, max_bytes)
+  end
+
+  # A file can grow between the walk and the read, so the byte budget is also
+  # enforced on what is actually read.
+  @doc false
+  def read_within_budget!(stats, skill_directory, max_bytes) do
+    {files, _total} =
+      Enum.map_reduce(stats, 0, fn {path, _size}, total ->
+        bytes = File.read!(path)
+        total = total + byte_size(bytes)
+        check_total!(total, skill_directory, max_bytes)
+        {{Path.relative_to(path, skill_directory), bytes}, total}
+      end)
+
+    files
   end
 
   defp entry_sources(entries) when is_list(entries), do: Enum.map(entries, &entry_source/1)
@@ -267,7 +317,8 @@ defmodule Snodo.Skills.Catalog do
               "digits, and single hyphens, not starting or ending with a hyphen"
     end
 
-    unless Enum.all?(prefix, &Regex.match?(@segment, &1)) do
+    # "." and ".." would give a URI whose normalized form names another path.
+    unless Enum.all?(prefix, &(Regex.match?(@segment, &1) and &1 not in [".", ".."])) do
       raise ArgumentError, "#{origin}: the skill path #{inspect(path)} has an invalid segment"
     end
 
@@ -289,15 +340,23 @@ defmodule Snodo.Skills.Catalog do
   end
 
   defp check_limits!(files, origin, %{files: max_files, bytes: max_bytes}) do
-    count = length(files)
+    check_count!(length(files), origin, max_files)
 
+    check_total!(
+      files |> Enum.map(fn {_name, bytes} -> byte_size(bytes) end) |> Enum.sum(),
+      origin,
+      max_bytes
+    )
+  end
+
+  defp check_count!(count, origin, max_files) do
     if count > max_files do
       raise ArgumentError,
             "#{origin}: the skill has #{count} files, more than :max_skill_files (#{max_files})"
     end
+  end
 
-    total = files |> Enum.map(fn {_name, bytes} -> byte_size(bytes) end) |> Enum.sum()
-
+  defp check_total!(total, origin, max_bytes) do
     if total > max_bytes do
       raise ArgumentError,
             "#{origin}: the skill's files total #{total} bytes, more than :max_skill_bytes (#{max_bytes})"

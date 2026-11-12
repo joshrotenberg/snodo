@@ -331,9 +331,13 @@ reading it:
 | `:max_file_bytes` | `Snodo.Skills.Client` | 16,777,216 bytes (16 MiB) per file, by the listed size | -32000 with `"reason" => "too_large"`; nothing is read |
 | `:max_pages` | `Snodo.Skills.Client.list/2` | the client's `:max_pages`, 1,000 | -32000 transport error |
 
-The skill limits follow the sizes SEP-2640 recommends a server not exceed. A
-skill entry is never split across `skills/list` pages, so one page can carry
-up to `:page_size` entries of up to `:max_skill_files` files each.
+The skill limits follow the sizes SEP-2640 recommends a server not exceed. For
+`:directory`, the file count and the file sizes are checked before any file of
+the skill is read, and the byte total is checked again as files are read, in
+case one grew in between. A symbolic link under `:directory` raises
+`ArgumentError` instead of being followed. A skill entry is never split across
+`skills/list` pages, so one page can carry up to `:page_size` entries of up to
+`:max_skill_files` files each.
 
 ## Plug and Bandit
 

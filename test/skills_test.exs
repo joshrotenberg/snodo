@@ -249,6 +249,102 @@ defmodule Snodo.SkillsTest do
   defp skill_md(name, extra \\ ""),
     do: "---\nname: #{name}\ndescription: A test skill\n#{extra}---\nBody\n"
 
+  describe "reading a skill directory" do
+    defp write_skill!(directory, name, files \\ %{}) do
+      skill = Path.join(directory, name)
+      File.mkdir_p!(skill)
+      File.write!(Path.join(skill, "SKILL.md"), skill_md(name))
+
+      for {relative, bytes} <- files do
+        path = Path.join(skill, relative)
+        File.mkdir_p!(Path.dirname(path))
+        File.write!(path, bytes)
+      end
+
+      skill
+    end
+
+    defp build_error(opts) do
+      error = assert_raise ArgumentError, fn -> build(opts) end
+      error.message
+    end
+
+    @tag :tmp_dir
+    test "refuses a symlinked supporting file instead of serving its target", %{tmp_dir: tmp} do
+      outside = Path.join(tmp, "outside.txt")
+      File.write!(outside, "secret")
+      skills = Path.join(tmp, "skills")
+      skill = write_skill!(skills, "linked")
+      File.ln_s!(outside, Path.join(skill, "notes.txt"))
+
+      assert build_error(directory: skills) =~ "does not follow symbolic links"
+    end
+
+    @tag :tmp_dir
+    test "refuses a symlinked SKILL.md and a symlinked ancestor directory", %{tmp_dir: tmp} do
+      elsewhere = Path.join(tmp, "elsewhere")
+      write_skill!(elsewhere, "remote")
+
+      linked_md = Path.join(tmp, "md")
+      File.mkdir_p!(Path.join(linked_md, "remote"))
+
+      File.ln_s!(
+        Path.join([elsewhere, "remote", "SKILL.md"]),
+        Path.join([linked_md, "remote", "SKILL.md"])
+      )
+
+      assert build_error(directory: linked_md) =~ "does not follow symbolic links"
+
+      linked_dir = Path.join(tmp, "dir")
+      File.mkdir_p!(linked_dir)
+      File.ln_s!(elsewhere, Path.join(linked_dir, "acme"))
+      assert build_error(directory: linked_dir) =~ "does not follow symbolic links"
+    end
+
+    @tag :tmp_dir
+    test "checks the byte budget from file sizes before reading anything", %{tmp_dir: tmp} do
+      skills = Path.join(tmp, "skills")
+      skill = write_skill!(skills, "big", %{"data.bin" => String.duplicate("x", 64)})
+      # Unreadable: reading it first would raise File.Error instead.
+      File.chmod!(Path.join(skill, "data.bin"), 0o000)
+      on_exit(fn -> File.chmod(Path.join(skill, "data.bin"), 0o644) end)
+
+      assert build_error(directory: skills, max_skill_bytes: 32) =~ ":max_skill_bytes (32)"
+    end
+
+    @tag :tmp_dir
+    test "checks the file count before reading anything", %{tmp_dir: tmp} do
+      skills = Path.join(tmp, "skills")
+      skill = write_skill!(skills, "many", %{"a.txt" => "a", "b.txt" => "b"})
+      File.chmod!(Path.join(skill, "b.txt"), 0o000)
+      on_exit(fn -> File.chmod(Path.join(skill, "b.txt"), 0o644) end)
+
+      assert build_error(directory: skills, max_skill_files: 2) =~ ":max_skill_files (2)"
+    end
+
+    @tag :tmp_dir
+    test "enforces the byte budget on what is read when a file outgrows its size", %{tmp_dir: tmp} do
+      path = Path.join(tmp, "grown.txt")
+      File.write!(path, String.duplicate("x", 20))
+
+      error =
+        assert_raise ArgumentError, fn -> Catalog.read_within_budget!([{path, 0}], tmp, 10) end
+
+      assert error.message =~ ":max_skill_bytes (10)"
+      assert [{"grown.txt", _bytes}] = Catalog.read_within_budget!([{path, 0}], tmp, 20)
+    end
+
+    @tag :tmp_dir
+    test "skips dotfiles and reads nested directories", %{tmp_dir: tmp} do
+      skills = Path.join(tmp, "skills")
+      write_skill!(skills, "plain", %{".hidden" => "x", "a/b/c.txt" => "c"})
+
+      {catalog, _resources} = build(directory: skills)
+      assert [%{files: files}] = catalog.skills
+      assert Enum.map(files, & &1.path) == ["SKILL.md", "a/b/c.txt"]
+    end
+  end
+
   describe "building a catalog" do
     test "can leave out resources/directory/read" do
       {catalog, [resource]} =
@@ -268,6 +364,12 @@ defmodule Snodo.SkillsTest do
         {[entries: [[path: "Bad_Name", files: %{"SKILL.md" => skill_md("Bad_Name")}]]],
          "skill name"},
         {[entries: [[path: "a--b", files: %{"SKILL.md" => skill_md("a--b")}]]], "skill name"},
+        {[entries: [[path: "acme/../pdf", files: %{"SKILL.md" => skill_md("pdf")}]]],
+         "invalid segment"},
+        {[entries: [[path: "./pdf", files: %{"SKILL.md" => skill_md("pdf")}]]],
+         "invalid segment"},
+        {[entries: [[path: "acme//pdf", files: %{"SKILL.md" => skill_md("pdf")}]]],
+         "invalid segment"},
         {[entries: [[path: "other", files: %{"SKILL.md" => skill_md("mismatch")}]]],
          "must equal"},
         {[entries: [[path: "a", files: %{"SKILL.md" => "---\nname: a\n---\n"}]]], "description"},
