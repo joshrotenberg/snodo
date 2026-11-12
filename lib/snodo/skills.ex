@@ -84,8 +84,11 @@ defmodule Snodo.Skills do
 
   An invalid skill, such as a missing SKILL.md, a name that breaks the naming
   rules, unreadable frontmatter, a skill over `:max_skill_files` or
-  `:max_skill_bytes`, or a file or skill entry over `:max_response_bytes`,
-  raises `ArgumentError` and the module does not compile. A file within
+  `:max_skill_bytes`, or a file, skill entry, or `resources/directory/read`
+  child over `:max_response_bytes`, raises `ArgumentError` and the module
+  does not compile. A directory child carries both the URI and the file or
+  directory name, so a very long name can fail this check alone; the check
+  is skipped with `directory_read: false`. A file within
   `:max_skill_bytes` can still be over `:max_response_bytes` once encoded:
   base64 makes a binary file a third larger, JSON escapes a control
   character in a text file as six bytes, and the stdio framing makes
@@ -304,7 +307,7 @@ defmodule Snodo.Skills do
            page(
              children,
              params,
-             &directory_page_length(catalog, children, &1),
+             &directory_page_length(catalog, directory, &1),
              "resources/directory/read",
              directory_scope(catalog.scope, directory)
            ) do
@@ -377,18 +380,19 @@ defmodule Snodo.Skills do
     end
   end
 
-  # Children are small, so their sizes are computed as the page fills.
-  defp directory_page_length(catalog, children, offset) do
-    children
-    |> Stream.drop(offset)
-    |> Stream.map(&Catalog.encoded_size/1)
+  # The catalog measured every child when it compiled.
+  defp directory_page_length(catalog, directory, offset) do
+    catalog.directory_bytes
+    |> Map.fetch!(directory)
+    |> Enum.drop(offset)
     |> fit(catalog.directory_page_size, catalog.response_budget)
   end
 
   # How many of `sizes` (encoded byte sizes, each followed by a comma) fit in
-  # `budget`, up to `max_count`. The first always does: the catalog checked
-  # that every entry and every file URI fits on its own, so a page is never
-  # empty and paging always advances.
+  # `budget`, up to `max_count`. The first is taken whatever its size, and
+  # it fits: the catalog refused, at compile time, any skill entry or
+  # directory child larger than the budget. So a page is never empty, every
+  # page but the last advances the offset, and no page passes the budget.
   defp fit(sizes, max_count, budget) do
     sizes
     |> Enum.reduce_while({0, 0}, fn size, {count, total} ->

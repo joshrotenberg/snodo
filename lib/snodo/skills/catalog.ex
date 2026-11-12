@@ -70,6 +70,7 @@ defmodule Snodo.Skills.Catalog do
           response_budget: pos_integer(),
           by_uri: %{optional(String.t()) => map()},
           directories: %{optional(String.t()) => [map()]},
+          directory_bytes: %{optional(String.t()) => [pos_integer()]},
           directory_read: boolean(),
           page_size: pos_integer(),
           directory_page_size: pos_integer(),
@@ -86,6 +87,7 @@ defmodule Snodo.Skills.Catalog do
             response_budget: @default_max_response_bytes - @envelope_bytes,
             by_uri: %{},
             directories: %{},
+            directory_bytes: %{},
             directory_read: true,
             page_size: @default_page_size,
             directory_page_size: @default_directory_page_size,
@@ -128,8 +130,15 @@ defmodule Snodo.Skills.Catalog do
       |> Enum.sort_by(& &1.path)
       |> reject_overlapping_paths!()
 
+    directory_read = boolean!(opts, :directory_read, true)
+
     # Checked before any resource module is generated.
     entry_bytes = check_responses!(skills, max_response_bytes, budget)
+    directories = skills |> Enum.map(&directories/1) |> Enum.reduce(%{}, &Map.merge/2)
+
+    directory_bytes =
+      check_directories!(directories, directory_read, max_response_bytes, budget)
+
     {skills, resources} = define_resources!(skills, module, env)
     entries = Enum.map(skills, &Skill.entry/1)
 
@@ -139,8 +148,9 @@ defmodule Snodo.Skills.Catalog do
       entry_bytes: entry_bytes,
       response_budget: budget,
       by_uri: Map.new(entries, &{&1["uri"], &1}),
-      directories: skills |> Enum.map(&directories/1) |> Enum.reduce(%{}, &Map.merge/2),
-      directory_read: boolean!(opts, :directory_read, true),
+      directories: directories,
+      directory_bytes: directory_bytes,
+      directory_read: directory_read,
       page_size: positive!(opts, :page_size, @default_page_size),
       directory_page_size: positive!(opts, :directory_page_size, @default_directory_page_size),
       cache: cache!(Keyword.get(opts, :cache, [])),
@@ -241,6 +251,35 @@ defmodule Snodo.Skills.Catalog do
 
       size
     end)
+  end
+
+  # A directory child carries the URI and the basename, so a long name can
+  # make it larger than any file response or entry, which were checked
+  # above. Each child must fit a page on its own, so that every page holds
+  # at least one child and paging always advances. Returns the children's
+  # sizes, in order, per directory URI, for the paging. Without
+  # resources/directory/read no listing is sent, so nothing is refused.
+  defp check_directories!(directories, directory_read, max_response_bytes, budget) do
+    Map.new(directories, fn {uri, children} ->
+      sizes = Enum.map(children, &encoded_size/1)
+
+      if directory_read do
+        children
+        |> Enum.zip(sizes)
+        |> Enum.each(&check_directory_child!(&1, uri, max_response_bytes, budget))
+      end
+
+      {uri, sizes}
+    end)
+  end
+
+  defp check_directory_child!({child, size}, uri, max_response_bytes, budget) do
+    if size > budget do
+      raise ArgumentError,
+            "#{child["uri"]}: its resources/directory/read entry in #{uri} is #{size} bytes, " <>
+              "more than :max_response_bytes (#{max_response_bytes}) less " <>
+              "#{@envelope_bytes} bytes for the envelope"
+    end
   end
 
   defp check_file_response!(skill, file, max_response_bytes, budget) do

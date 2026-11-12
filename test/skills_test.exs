@@ -635,6 +635,66 @@ defmodule Snodo.SkillsTest do
       assert Enum.all?(pages, &(encoded(&1) <= budget and length(&1) < 100))
     end
 
+    test "refuses a directory child that cannot fit a page on its own" do
+      # The file response and the entry carry the 7,000-byte name once, in
+      # the URI, and fit 8,192 bytes; the directory child carries it twice.
+      long = String.duplicate("n", 7_000)
+      files = %{"SKILL.md" => skill_md("dir"), "docs/#{long}" => "x"}
+
+      error =
+        assert_raise ArgumentError, fn ->
+          build(entries: [[path: "dir", files: files]], max_response_bytes: 12_288)
+        end
+
+      assert error.message =~ "skill://dir/docs/#{long}: its resources/directory/read entry"
+      assert error.message =~ "in skill://dir/docs is 14"
+
+      # Nothing lists it without resources/directory/read.
+      {catalog, _resources} =
+        build(
+          entries: [[path: "dir", files: files]],
+          max_response_bytes: 12_288,
+          directory_read: false
+        )
+
+      refute catalog.directory_read
+
+      # On stdio: 400 "é" in a name are 2,400 bytes percent-encoded in the URI
+      # and 2,400 escaped in the name, about 3,250 bytes over HTTP.
+      accents = String.duplicate("é", 400)
+
+      error =
+        assert_raise ArgumentError, fn ->
+          build(
+            entries: [[path: "dir", files: %{"SKILL.md" => skill_md("dir"), accents => "x"}]],
+            max_response_bytes: 8_192
+          )
+        end
+
+      assert error.message =~ "its resources/directory/read entry in skill://dir is"
+    end
+
+    test "every directory page but the last advances, and none passes the budget" do
+      files =
+        for n <- 1..40, into: %{"SKILL.md" => skill_md("dir")} do
+          {"docs/#{String.duplicate("n", 100 + n * 10)}", "x"}
+        end
+
+      {wide, _resources} = build(entries: [[path: "dir", files: files]])
+      [entry_bytes] = wide.entry_bytes
+      max_response_bytes = entry_bytes + 4_096
+
+      {catalog, _resources} =
+        build(entries: [[path: "dir", files: files]], max_response_bytes: max_response_bytes)
+
+      sizes = catalog.directory_bytes["skill://dir/docs"]
+      assert Enum.max(sizes) <= catalog.response_budget
+      pages = pages(catalog, :directory_read, %{"uri" => "skill://dir/docs"}, "resources")
+      assert length(pages) > 1
+      assert Enum.all?(pages, &(&1 != [] and encoded(&1) <= catalog.response_budget))
+      assert Enum.concat(pages) == catalog.directories["skill://dir/docs"]
+    end
+
     test "requires :max_response_bytes above the envelope" do
       for value <- [4_096, 0, "big"] do
         error =
