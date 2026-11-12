@@ -43,14 +43,25 @@ defmodule Snodo.OTP.ProxyTest do
   end
 
   test "the caller's timeout governs and a late result is dropped, proxy stays alive", %{
-    proxy: proxy
+    proxy: proxy,
+    counter: counter
   } do
-    assert catch_exit(GenServer.call(proxy, {:slow, 300}, 50)) |> elem(0) == :timeout
-    assert Process.alive?(proxy)
+    # The remote target cannot answer until the caller has given up, so the
+    # result reaches the proxy late, while the request holds the in-flight slot.
+    :ok = :sys.suspend(counter)
 
-    # This call goes out once the slow one's late result has arrived and been
-    # dropped.
-    assert GenServer.call(proxy, :get) == 0
+    try do
+      assert catch_exit(GenServer.call(proxy, {:add, 1}, 50)) |> elem(0) == :timeout
+      # Handled after the call message, so the request has been sent and is waiting.
+      assert %{in_flight: {_ref, _monitor, _from, "counter_add"}} = :sys.get_state(proxy)
+    after
+      :ok = :sys.resume(counter)
+    end
+
+    assert Process.alive?(proxy)
+    # Queued behind the late request, so it runs after that result arrived.
+    assert GenServer.call(proxy, :get) == 1
+    refute_received {_tag, 1}
     assert Process.alive?(proxy)
   end
 
