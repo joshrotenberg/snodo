@@ -152,11 +152,81 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
                method: "unknown/method"
              )
 
-    assert_receive {:span, span(name: "unknown/method") = exported}
+    assert_receive {:span, span(name: "mcp.request") = exported}
 
     assert span(exported, :status) == status(code: :error, message: "JSON-RPC error -32601")
-    assert %{"snodo.outcome" => "error", "snodo.error_code" => -32_601} = attributes(exported)
+
+    assert %{
+             "snodo.method" => "unknown/method",
+             "snodo.outcome" => "error",
+             "snodo.error_code" => -32_601
+           } = attributes(exported)
+
     assert_clean_process()
+  end
+
+  describe "span names" do
+    test "a routed method with a result is the span name" do
+      runtime = TracedServer.runtime(instrumentation: Telemetry)
+
+      assert {:ok, %{"result" => _result}} =
+               Snodo.Test.dispatch(runtime,
+                 id: "otel-list",
+                 protocol: "2026-07-28",
+                 method: "tools/list"
+               )
+
+      assert_receive {:span, span(name: "tools/list") = exported}
+      assert %{"snodo.method" => "tools/list", "snodo.outcome" => "ok"} = attributes(exported)
+      assert_clean_process()
+    end
+
+    test "methods nothing routes keep the fixed name and stay an attribute" do
+      runtime = TracedServer.runtime(instrumentation: Telemetry)
+      chosen = for index <- 1..3, do: "client/chosen-#{index}-" <> String.duplicate("x", 100)
+      longest = String.duplicate("y", 128)
+
+      for method <- [longest | chosen] do
+        assert {:ok, %{"error" => %{"code" => -32_601}}} =
+                 Snodo.Test.dispatch(runtime, id: method, protocol: "2026-07-28", method: method)
+      end
+
+      # A notification is never answered, so it says nothing about routing.
+      notification = %{
+        "jsonrpc" => "2.0",
+        "method" => "notifications/client-chosen",
+        "params" => %{"_meta" => Snodo.Protocol.V2026_07_28.request_metadata(%{})}
+      }
+
+      assert {:ok, nil} =
+               Snodo.Server.dispatch(runtime, notification, %Snodo.Transport.Context{
+                 transport: :direct
+               })
+
+      exported =
+        for _span <- 1..5 do
+          assert_receive {:span, span(name: "mcp.request") = exported}
+          attributes(exported)["snodo.method"]
+        end
+
+      assert Enum.sort(exported) ==
+               Enum.sort(["notifications/client-chosen", longest | chosen])
+
+      refute_received {:span, _other}
+      assert_clean_process()
+    end
+
+    test "a method over the length limit is reported as invalid and keeps the fixed name" do
+      runtime = TracedServer.runtime(instrumentation: Telemetry)
+      method = String.duplicate("z", 129)
+
+      assert {:ok, %{"error" => _error}} =
+               Snodo.Test.dispatch(runtime, id: "too-long", protocol: "2026-07-28", method: method)
+
+      assert_receive {:span, span(name: "mcp.request") = exported}
+      assert %{"snodo.method" => "invalid"} = attributes(exported)
+      refute inspect(exported) =~ method
+    end
   end
 
   test "an unregistered tool is left out of the span name" do
@@ -170,9 +240,12 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
                params: %{"name" => "client-chosen-name", "arguments" => %{}}
              )
 
-    assert_receive {:span, span(name: "tools/call") = exported}
+    # The unknown tool is an error, so the method is left out of the name too.
+    assert_receive {:span, span(name: "mcp.request") = exported}
 
-    assert %{"snodo.component" => "unknown"} = attributes(exported)
+    assert %{"snodo.method" => "tools/call", "snodo.component" => "unknown"} =
+             attributes(exported)
+
     refute inspect(exported) =~ "client-chosen-name"
   end
 
@@ -190,7 +263,7 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
       )
     end
 
-    assert_receive {:span, span(name: "tools/call") = exported}
+    assert_receive {:span, span(name: "mcp.request") = exported}
 
     assert span(exported, :status) == status(code: :error, message: "RuntimeError")
 
@@ -243,7 +316,7 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
     # span context and are ignored too.
     :ok = :telemetry.execute(@dispatch ++ [:start], %{system_time: 0}, %{method: "no-context"})
 
-    Instrumentation.span(config, @dispatch, %{method: "marker"}, fn -> :ok end, fn _ -> %{} end)
+    marker(config)
 
     assert_receive {:span, span(name: "marker")}
     refute_received {:span, _other}
@@ -364,13 +437,7 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
       })
 
       # A lost parent would give a sampled root span; a kept one is unsampled.
-      Instrumentation.span(
-        Instrumentation.normalize!(Telemetry),
-        @dispatch,
-        %{method: "marker"},
-        fn -> :ok end,
-        fn _result -> %{} end
-      )
+      marker(Instrumentation.normalize!(Telemetry))
 
       assert_receive {:span, span(name: "marker")}
       refute_received {:span, span(name: "tools/call echo")}
@@ -666,15 +733,17 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
 
       abandoned = Instrumentation.span(config, @dispatch, %{method: "abandoned"}, detach, finish)
 
-      refute_received {:span, span(name: "abandoned")}
+      refute_received {:span, _abandoned}
       assert [_entry] = Map.values(Process.get({Spans, :open_spans}))
       assert :otel_tracer.current_span_ctx() == abandoned
       assert {:error, :not_found} = Spans.detach(open_spans: :abandon)
 
       # The test owns the abandoned span now: end it, then clear what the
-      # handler left in this process.
+      # handler left in this process. It never got an outcome, so it keeps the
+      # name it started with.
       _ended = :otel_span.end_span(abandoned)
-      assert_receive {:span, span(name: "abandoned")}
+      assert_receive {:span, span(name: "mcp.request") = exported}
+      assert %{"snodo.method" => "abandoned"} = attributes(exported)
       _entry = Process.delete({Spans, :open_spans})
       _previous = :otel_ctx.attach(:otel_ctx.new())
     end
@@ -703,6 +772,14 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
                method: "tools/call",
                params: %{"name" => "echo", "arguments" => %{"text" => "x"}, "_meta" => meta}
              )
+  end
+
+  # A dispatch span named "marker". The simple processor exports a span
+  # before end_span returns, so every span ended earlier arrives first.
+  defp marker(config) do
+    Instrumentation.span(config, @dispatch, %{method: "marker"}, fn -> :ok end, fn _result ->
+      %{outcome: :ok}
+    end)
   end
 
   defp attributes(exported), do: :otel_attributes.map(span(exported, :attributes))

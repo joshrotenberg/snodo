@@ -99,9 +99,14 @@ With the sink configured, attach the handler once, for example in
 :ok = Snodo.Instrumentation.Telemetry.OpenTelemetry.attach()
 ```
 
-- A dispatch becomes a `:server` span named for the method and, when the
-  router registers it, the tool, prompt, or direct resource: `tools/call echo`.
-  A runner job becomes an `:internal` span named `snodo.tasks.runner.job`.
+- A dispatch becomes a `:server` span. It is named for the method and the
+  tool, prompt, or direct resource when the router registers that component,
+  such as `tools/call echo`. Otherwise it starts as `mcp.request` and is
+  renamed to the method only when the dispatch returns a result, which only a
+  route the server registers can produce. Errors, notifications, and
+  exceptions keep `mcp.request`, so a client cannot add span names; the method
+  is still the `snodo.method` attribute. A runner job becomes an `:internal`
+  span named `snodo.tasks.runner.job`.
 - Attributes are the event metadata under `snodo.`-prefixed keys, such as
   `snodo.method`, `snodo.component`, `snodo.outcome`, `snodo.error_code`, and
   `snodo.task_id`. No payloads are recorded, because the events carry none.

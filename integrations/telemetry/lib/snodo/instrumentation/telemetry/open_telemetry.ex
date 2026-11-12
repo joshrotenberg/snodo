@@ -23,13 +23,28 @@ if Code.ensure_loaded?(:otel_tracer) do
 
     | Events | Span name | Kind |
     |---|---|---|
-    | `[:snodo, :server, :dispatch, *]` | the method, followed by a space and the component when one is named, such as `tools/call echo` | `:server` |
+    | `[:snodo, :server, :dispatch, *]` | the method and the component, such as `tools/call echo`, when a component is named; otherwise `mcp.request`, renamed to the method when the dispatch returns a result | `:server` |
     | `[:snodo, :tasks, :runner, :job, *]` | `snodo.tasks.runner.job` | `:internal` |
 
-    A dispatch whose method is reported as `:invalid` is named
-    `snodo.server.dispatch`. The component is the registered tool or prompt
-    name, or the URI of a registered direct resource. An unregistered name is
-    reported as `:unknown` and left out of the span name.
+    The method is chosen by the client, so it is put in a dispatch span name
+    only when the server's configuration bounds it:
+
+      * The component is the registered tool or prompt name, or the URI of a
+        registered direct resource, for `tools/call`, `prompts/get`, and
+        `resources/read`. An unregistered name is reported as `:unknown` and
+        left out of the span name. A span with a named component has its name
+        from the start.
+      * Otherwise the span starts as `mcp.request`. When the dispatch ends
+        with outcome `:ok` or `:stream`, which only a route the server
+        registers can produce, the span is renamed to the method.
+      * A JSON-RPC error, a notification (outcome `:no_reply`), an exception,
+        a method reported as `:invalid`, and a dispatch that never ends keep
+        `mcp.request`, because those can come from a method nothing routes,
+        such as one answered with method not found.
+
+    The method is still recorded as the `snodo.method` attribute;
+    `Snodo.Server` reports a method longer than 128 bytes as `:invalid`. A
+    sampler sees the name the span starts with.
 
     Attributes come from the event metadata, under the metadata key with a
     `snodo.` prefix: `snodo.method`, `snodo.request_id`, `snodo.transport`,
@@ -107,7 +122,7 @@ if Code.ensure_loaded?(:otel_tracer) do
 
     A failure while starting a span opens no span and emits
     `[:snodo, :open_telemetry, :span, :skipped]`. Ending a span is three
-    operations: annotate (attributes and status), end, and restore the
+    operations: annotate (attributes, name, and status), end, and restore the
     previous context. A failing operation emits
     `[:snodo, :open_telemetry, :span, :failed]` and the following operations
     still run, so the previous context is restored.
@@ -173,6 +188,9 @@ if Code.ensure_loaded?(:otel_tracer) do
     @job_attributes [:task_id, :revision, :source, :outcome, :store_outcome, :release_outcome]
 
     @failed_job_outcomes [:failed, :invalid, :worker_terminated, :max_runtime]
+
+    @request_name "mcp.request"
+    @routed_outcomes [:ok, :stream]
 
     @ows ~r/\A[ \t]+|[ \t]+\z/
 
@@ -309,7 +327,7 @@ if Code.ensure_loaded?(:otel_tracer) do
       parent = parent_context(prepared.remote)
       span = :otel_tracer.start_span(parent, tracer(), prepared.name, start_options(prepared))
       token = :otel_ctx.attach(:otel_tracer.set_current_span(parent, span))
-      %{type: :dispatch, span: span, restore: {:token, token}}
+      %{type: :dispatch, span: span, name: prepared.name, restore: {:token, token}}
     end
 
     defp sdk_start(:job, prepared) do
@@ -321,7 +339,7 @@ if Code.ensure_loaded?(:otel_tracer) do
           start_options(prepared)
         )
 
-      %{type: :job, span: span, restore: :none}
+      %{type: :job, span: span, name: prepared.name, restore: :none}
     end
 
     defp start_options(prepared), do: %{kind: prepared.kind, attributes: prepared.attributes}
@@ -334,18 +352,18 @@ if Code.ensure_loaded?(:otel_tracer) do
         {nil, _open} ->
           :ok
 
-        {%{type: type, span: span, restore: restore}, rest} ->
+        {%{type: type, span: span, name: name, restore: restore}, rest} ->
           put_open_spans(rest)
-          annotate(type, span, metadata)
+          annotate(type, span, name, metadata)
           sdk_operation(type, :end, fn -> :otel_span.end_span(span) end)
           restore(type, restore)
       end
     end
 
-    defp annotate(type, span, metadata) do
-      case attempt(:handler_failure, fn -> prepare_finish(type, metadata) end) do
-        {:ok, {attributes, status}} ->
-          sdk_operation(type, :annotate, fn -> apply_annotation(span, attributes, status) end)
+    defp annotate(type, span, started_name, metadata) do
+      case attempt(:handler_failure, fn -> prepare_finish(type, started_name, metadata) end) do
+        {:ok, annotation} ->
+          sdk_operation(type, :annotate, fn -> apply_annotation(span, annotation) end)
 
         {:error, failure} ->
           failed(type, Map.put(failure, :operation, :annotate))
@@ -357,18 +375,31 @@ if Code.ensure_loaded?(:otel_tracer) do
 
     defp restore(_type, :none), do: :ok
 
-    defp prepare_finish(:dispatch, metadata),
-      do: {attributes(metadata, @dispatch_attributes), dispatch_status(metadata)}
-
-    defp prepare_finish(:job, metadata),
-      do: {attributes(metadata, @job_attributes), job_status(metadata)}
-
-    defp apply_annotation(span, attributes, nil), do: :otel_span.set_attributes(span, attributes)
-
-    defp apply_annotation(span, attributes, message) do
-      _set = :otel_span.set_attributes(span, attributes)
-      :otel_span.set_status(span, :error, message)
+    defp prepare_finish(:dispatch, started_name, metadata) do
+      %{
+        attributes: attributes(metadata, @dispatch_attributes),
+        status: dispatch_status(metadata),
+        rename: rename(started_name, dispatch_name(metadata))
+      }
     end
+
+    defp prepare_finish(:job, _started_name, metadata),
+      do: %{attributes: attributes(metadata, @job_attributes), status: job_status(metadata)}
+
+    defp rename(same, same), do: nil
+    defp rename(_started_name, name), do: name
+
+    defp apply_annotation(span, annotation) do
+      _set = :otel_span.set_attributes(span, annotation.attributes)
+      _renamed = update_name(span, Map.get(annotation, :rename))
+      set_error_status(span, annotation.status)
+    end
+
+    defp update_name(_span, nil), do: false
+    defp update_name(span, name), do: :otel_span.update_name(span, name)
+
+    defp set_error_status(_span, nil), do: false
+    defp set_error_status(span, message), do: :otel_span.set_status(span, :error, message)
 
     defp dispatch_status(%{reason_class: reason_class}), do: attribute_value(reason_class)
 
@@ -487,12 +518,23 @@ if Code.ensure_loaded?(:otel_tracer) do
     defp tracestate(nil), do: :otel_tracestate.new()
     defp tracestate(members), do: {:tracestate, members}
 
+    # The method is client-chosen, so it goes into the span name only when the
+    # server's configuration bounds it. A component is named only when the
+    # router registers it, and only for tools/call, prompts/get, and
+    # resources/read. A result or a stream comes only from a route the server
+    # registers, so the method is known once the outcome is :ok or :stream; the
+    # start metadata has no outcome, so the span starts as mcp.request and is
+    # renamed when it ends. Errors, notifications, and exceptions can come
+    # from methods nothing routes, so they keep the fixed name.
     defp dispatch_name(%{method: method, component: component})
          when is_binary(method) and is_binary(component),
          do: method <> " " <> component
 
-    defp dispatch_name(%{method: method}) when is_binary(method), do: method
-    defp dispatch_name(_metadata), do: "snodo.server.dispatch"
+    defp dispatch_name(%{method: method, outcome: outcome})
+         when is_binary(method) and outcome in @routed_outcomes,
+         do: method
+
+    defp dispatch_name(_metadata), do: @request_name
 
     defp attributes(metadata, keys) do
       for key <- keys,

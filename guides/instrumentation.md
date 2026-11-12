@@ -179,13 +179,29 @@ described below.
 
 | Events | Span name | Kind |
 |---|---|---|
-| `[:snodo, :server, :dispatch, *]` | the method, then a space and the component when one is named, such as `tools/call echo` | `:server` |
+| `[:snodo, :server, :dispatch, *]` | the method and the component, such as `tools/call echo`, when a component is named; otherwise `mcp.request`, renamed to the method when the dispatch returns a result | `:server` |
 | `[:snodo, :tasks, :runner, :job, *]` | `snodo.tasks.runner.job` | `:internal` |
 
-A dispatch whose method is reported as `:invalid` is named
-`snodo.server.dispatch`. A component the router does not register is
-reported as `:unknown` and left out of the span name, so the requested name
-never reaches it.
+The method is chosen by the client, so a dispatch span name holds it only
+when the server's configuration bounds it, which keeps the number of span
+names bounded:
+
+- A component is named for `tools/call`, `prompts/get`, and `resources/read`
+  when the router registers the tool, prompt, or direct resource. A component
+  the router does not register is reported as `:unknown` and left out of the
+  span name, so the requested name never reaches it. A span with a named
+  component has its name from the start.
+- Otherwise the span starts as `mcp.request` and is renamed to the method
+  when the dispatch ends with outcome `:ok` or `:stream`, which only a route
+  the server registers can produce.
+- A JSON-RPC error, a notification (outcome `:no_reply`), an exception, a
+  method reported as `:invalid`, and a dispatch that never ends keep
+  `mcp.request`, because any of them can come from a method nothing routes,
+  such as one answered with method not found.
+
+The method is always recorded as the `snodo.method` attribute, and
+`Snodo.Server` reports a method longer than 128 bytes as `:invalid`. A
+sampler sees the name a span starts with.
 
 Span attributes are the event metadata, each under its key with a `snodo.`
 prefix, with atoms recorded as strings:
@@ -249,7 +265,7 @@ separately, so a raise, throw, or exit is caught and reported with reason
 failing span processor or an SDK that is shutting down; a handler failure
 means the event metadata broke its contract or the handler has a bug. At
 start, no span is opened and the skipped event is emitted. Ending a span is
-three operations, annotate (attributes and status), end, and restore the
+three operations, annotate (attributes, name, and status), end, and restore the
 previous context; a failing operation emits
 `[:snodo, :open_telemetry, :span, :failed]` and the remaining operations still
 run, so the previous context is restored.
