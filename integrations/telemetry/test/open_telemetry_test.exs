@@ -11,6 +11,7 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
   alias Snodo.Instrumentation
   alias Snodo.Instrumentation.Telemetry
   alias Snodo.Instrumentation.Telemetry.OpenTelemetry, as: Spans
+  alias SnodoTest.Telemetry.Blocking
   alias SnodoTest.Telemetry.FailingProcessor
   alias SnodoTest.Telemetry.Tasks, as: TasksFixtures
   alias SnodoTest.Telemetry.TracedServer
@@ -396,6 +397,85 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
     assert_clean_process()
   end
 
+  # Stdio runs each request in a task of its executor: a new process, with an
+  # empty OpenTelemetry context, that the executor kills on timeout or cancel.
+  describe "through the stdio transport" do
+    test "the parent comes from a traceparent only, and handler spans are children" do
+      outer = start_outer_span()
+
+      responses =
+        serve_stdio([
+          stdio_call("stdio-traced", "traced", %{}, %{"traceparent" => @traceparent}),
+          stdio_call("stdio-untraced", "echo", %{"text" => "x"}, %{})
+        ])
+
+      assert %{"stdio-traced" => %{"result" => _traced}, "stdio-untraced" => %{"result" => _echo}} =
+               responses
+
+      assert_receive {:span, span(name: "handler work") = child}
+      assert_receive {:span, span(name: "tools/call traced") = traced}
+      assert_receive {:span, span(name: "tools/call echo") = untraced}
+
+      assert span(traced, :trace_id) == String.to_integer(@trace_id, 16)
+      assert span(traced, :parent_span_id) == String.to_integer(@parent_id, 16)
+      assert %{"snodo.transport" => "stdio"} = attributes(traced)
+
+      # The tool runs in the executor task, the process that emitted the start.
+      assert span(child, :parent_span_id) == span(traced, :span_id)
+
+      # The test process has a current span, but the executor task does not
+      # inherit it: without a traceparent the dispatch span is a root.
+      assert span(untraced, :parent_span_id) == :undefined
+      refute span(untraced, :trace_id) == :otel_span.trace_id(outer)
+      assert_clean_process(outer)
+    end
+
+    test "a dispatch killed on timeout ends no span and the handler stays attached" do
+      token = Integer.to_string(System.unique_integer([:positive]))
+      :yes = :global.register_name({Blocking, token}, self())
+      on_exit(fn -> :global.unregister_name({Blocking, token}) end)
+
+      request =
+        stdio_call("stdio-timeout", "blocking", %{"token" => token}, %{
+          "traceparent" => @traceparent
+        })
+
+      assert %{"stdio-timeout" => %{"error" => %{"message" => "Request execution timed out"}}} =
+               serve_stdio([request], request_timeout: 250)
+
+      # The span was started in the worker, which the executor then killed.
+      assert_received {:blocking, worker, dispatch_span}
+      refute Process.alive?(worker)
+      assert :otel_span.trace_id(dispatch_span) == String.to_integer(@trace_id, 16)
+
+      # Neither a stop nor an exception was emitted, so nothing was exported.
+      marker(Instrumentation.normalize!(Telemetry))
+      assert_receive {:span, span(name: "marker")}
+      refute_received {:span, span(name: "tools/call blocking")}
+      assert_clean_process()
+
+      attached =
+        for event <- Spans.events(),
+            %{function: function} <- :telemetry.list_handlers(event),
+            function == (&Spans.handle_event/4),
+            do: event
+
+      assert Enum.sort(attached) == Enum.sort(Spans.events())
+
+      assert %{"stdio-after" => %{"result" => _result}} =
+               serve_stdio([stdio_call("stdio-after", "echo", %{"text" => "x"}, %{})])
+
+      assert_receive {:span, span(name: "tools/call echo")}
+
+      # The unended span stays in the SDK until its sweeper drops it. The test
+      # ends it so it does not outlive the test; it has no outcome.
+      _ended = :otel_span.end_span(dispatch_span)
+      assert_receive {:span, span(name: "tools/call blocking") = abandoned}
+      refute Map.has_key?(attributes(abandoned), "snodo.outcome")
+      assert_clean_process()
+    end
+  end
+
   describe "parent context" do
     test "a dispatch restores an existing current context" do
       outer = start_outer_span()
@@ -772,6 +852,36 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
                method: "tools/call",
                params: %{"name" => "echo", "arguments" => %{"text" => "x"}, "_meta" => meta}
              )
+  end
+
+  # Serves the requests over stdio until EOF and every request has finished,
+  # and returns the responses by id.
+  defp serve_stdio(requests, options \\ []) do
+    input = Enum.map_join(requests, &(JSON.encode!(&1) <> "\n"))
+    {:ok, io} = StringIO.open(input)
+    runtime = TracedServer.runtime(instrumentation: Telemetry)
+
+    assert :ok = Snodo.Transport.Stdio.serve(runtime, Keyword.merge(options, input: io, output: io))
+
+    {_input, output} = StringIO.contents(io)
+
+    for line <- String.split(output, "\n", trim: true),
+        response = JSON.decode!(line),
+        into: %{},
+        do: {response["id"], response}
+  end
+
+  defp stdio_call(id, tool, arguments, meta) do
+    %{
+      "jsonrpc" => "2.0",
+      "id" => id,
+      "method" => "tools/call",
+      "params" => %{
+        "name" => tool,
+        "arguments" => arguments,
+        "_meta" => Map.merge(Snodo.Protocol.V2026_07_28.request_metadata(%{}), meta)
+      }
+    }
   end
 
   # A dispatch span named "marker". The simple processor exports a span

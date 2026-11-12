@@ -33,6 +33,24 @@ defmodule SnodoTest.Telemetry.Traced do
   end
 end
 
+defmodule SnodoTest.Telemetry.Blocking do
+  @moduledoc false
+  use Snodo.Tool, name: "blocking"
+
+  # Sends its pid and the current span context, the dispatch span, to the
+  # process registered globally under {__MODULE__, token}, then waits until
+  # the executor kills it.
+  @impl true
+  def call(%{"token" => token}, _context) do
+    owner = :global.whereis_name({__MODULE__, token})
+    send(owner, {:blocking, self(), :otel_tracer.current_span_ctx()})
+
+    receive do
+      :release -> {:ok, Snodo.Result.text("released")}
+    end
+  end
+end
+
 defmodule SnodoTest.Telemetry.TracedServer do
   @moduledoc false
 
@@ -44,6 +62,7 @@ defmodule SnodoTest.Telemetry.TracedServer do
 
   tool(SnodoTest.Telemetry.Echo)
   tool(SnodoTest.Telemetry.Traced)
+  tool(SnodoTest.Telemetry.Blocking)
 end
 
 defmodule SnodoTest.Telemetry.Tasks do
