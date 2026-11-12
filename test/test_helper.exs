@@ -1,6 +1,14 @@
-unless Node.alive?() do
+ExUnit.start(
+  assert_receive_timeout: 1_000,
+  exclude: [:distributed] ++ Keyword.get(ExUnit.configuration(), :exclude, [])
+)
+
+distributed? =
+  Enum.any?(ExUnit.configuration()[:include], &(&1 in [:distributed, {:distributed, true}]))
+
+if distributed? and not Node.alive?() do
   if epmd = System.find_executable("epmd"), do: System.cmd(epmd, ["-daemon"])
-  name = :"snodo_test_#{System.unique_integer([:positive])}"
+  name = :peer.random_name(~c"snodo_test")
 
   case :net_kernel.start([name, :shortnames]) do
     {:ok, _pid} ->
@@ -16,5 +24,3 @@ unless Node.alive?() do
       end
   end
 end
-
-ExUnit.start(assert_receive_timeout: 1_000)

@@ -271,7 +271,7 @@ defmodule Snodo.SubscriptionBridgeDistributedTest do
     scope = :"#{__MODULE__}.#{context.test}"
     group = :events
     bridge = start_supervised!({Bridge, name: nil, scope: scope, group: group})
-    peer_name = :"snodo_bridge_peer_#{System.unique_integer([:positive])}"
+    peer_name = :peer.random_name(~c"snodo_bridge_peer")
     {:ok, bridge: bridge, scope: scope, group: group, peer_name: peer_name}
   end
 
@@ -291,6 +291,23 @@ defmodule Snodo.SubscriptionBridgeDistributedTest do
     assert params["_meta"]["io.modelcontextprotocol/subscriptionId"] == "bridge-listen"
     assert :ok = Subscription.close(subscription, :cancelled)
     assert :ok = Subscription.stop_worker(worker, monitor)
+  end
+
+  test "publishes on this node into a subscriptions/listen stream on a peer", config do
+    {peer, remote_bridge, _node} = start_peer(config)
+    subscription = :peer.call(peer, Helpers, :listen, [remote_bridge])
+
+    {worker, monitor} =
+      :peer.call(peer, Subscription, :start_worker, [subscription, self()])
+
+    assert :ok = :peer.call(peer, Subscription, :continue, [worker])
+    event = Event.tools_list_changed(metadata: %{"origin" => "local"})
+
+    assert {:ok, %{matched: 0}} = Bridge.publish(config.bridge, event)
+    assert_receive {:mcp_subscription, ^worker, {:ok, ^event}}, 5_000
+
+    assert :ok = :peer.call(peer, Subscription, :close, [subscription, :cancelled])
+    assert :ok = :peer.call(peer, Subscription, :stop_worker, [worker, monitor])
   end
 
   test "removes a stopped node and rejoins when the same node restarts", config do

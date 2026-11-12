@@ -140,7 +140,7 @@ defmodule Snodo.MixProject do
         "format --check-formatted",
         "compile --warnings-as-errors",
         "credo --strict",
-        "test --warnings-as-errors --raise",
+        "test --include distributed --warnings-as-errors --raise",
         "snodo.contract",
         "examples",
         "cmd --cd extensions/tasks mix quality",
