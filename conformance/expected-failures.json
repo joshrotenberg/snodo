@@ -1,5 +1,34 @@
 {
-  "failures": [],
+  "failures": [
+    {
+      "key": "sep-2640-skills-directory:sep-2640-directory-read-method-registered",
+      "reason": "Option B: Snodo.Skills answers resources/directory/read only for clients that declare io.modelcontextprotocol/skills, and the runner does not declare it, so the read gets -32021."
+    },
+    {
+      "key": "sep-2640-skills-directory:sep-2640-directory-read-result-resources-shape",
+      "reason": "Option B: the directory read the shape check inspects was refused with -32021 because the runner does not declare the skills extension."
+    },
+    {
+      "key": "sep-2640-skills-directory:sep-2640-directory-read-subdir-mimetype",
+      "reason": "Option B: the directory read was refused with -32021 because the runner does not declare the skills extension, so the fixture's references/ subdirectory is never listed."
+    },
+    {
+      "key": "sep-2640-skills-directory:sep-2640-directory-read-invalid-params",
+      "reason": "Option B: the non-directory probe gets -32021, not -32602, because the runner does not declare the skills extension; a declaring client gets -32602."
+    },
+    {
+      "key": "sep-2640-skills-directory:sep-2640-directory-read-pagination",
+      "reason": "Option B: no directory read result to page, because the runner does not declare the skills extension and the read gets -32021."
+    },
+    {
+      "key": "sep-2640-skills-enumeration:sep-2640-capability-commits-to-methods",
+      "reason": "Option B: skills/list gets -32021 because the runner does not declare io.modelcontextprotocol/skills; Snodo.Skills answers only declaring clients."
+    },
+    {
+      "key": "sep-2640-skills-enumeration:sep-2640-skills-list-implemented",
+      "reason": "Option B: skills/list gets -32021 because the runner does not declare io.modelcontextprotocol/skills; Snodo.Skills answers only declaring clients."
+    }
+  ],
   "exclusions": [],
   "checkInventory": {
     "caching": {
@@ -149,6 +178,56 @@
       "sep-2164-no-empty-contents": ["SUCCESS"],
       "sep-2164-error-code": ["SUCCESS"],
       "sep-2164-data-uri": ["SUCCESS"],
+      "wire-schema-valid": ["SUCCESS"]
+    },
+    "sep-2640-skills-directory": {
+      "sep-2640-capability-directory-read-flag": ["SUCCESS"],
+      "sep-2640-directory-read-method-registered": ["FAILURE"],
+      "sep-2640-directory-read-result-resources-shape": ["FAILURE"],
+      "sep-2640-directory-read-subdir-mimetype": ["FAILURE"],
+      "sep-2640-directory-read-invalid-params": ["FAILURE"],
+      "sep-2640-directory-read-pagination": ["FAILURE"],
+      "wire-schema-valid": ["SUCCESS"]
+    },
+    "sep-2640-skills-enumeration": {
+      "sep-2640-capability-empty-object": ["SUCCESS"],
+      "sep-2640-capability-declaration-inline": ["SUCCESS"],
+      "sep-2640-capability-requires-resources": ["SUCCESS"],
+      "sep-2640-capability-commits-to-methods": ["FAILURE"],
+      "sep-2640-skills-list-implemented": ["FAILURE"],
+      "sep-2640-skills-list-pagination": ["SKIPPED"],
+      "sep-2640-skills-list-entry-atomic": ["SKIPPED"],
+      "sep-2640-entry-uri-required": ["SKIPPED"],
+      "sep-2640-entry-frontmatter-required": ["SKIPPED"],
+      "sep-2640-entry-uri-matches-frontmatter-name": ["SKIPPED"],
+      "sep-2640-skill-uri-scheme": ["SKIPPED"],
+      "sep-2640-entry-resources-required": ["SKIPPED"],
+      "sep-2640-resources-complete": ["SKIPPED"],
+      "sep-2640-resources-uri-within-skill": ["SKIPPED"],
+      "sep-2640-resources-digest-format": ["SKIPPED"],
+      "sep-2640-resources-size-required": ["SKIPPED"],
+      "sep-2640-limit-resources-per-skill": ["SKIPPED"],
+      "sep-2640-limit-total-size": ["SKIPPED"],
+      "sep-2640-metadata-reserved-prefix": ["SKIPPED"],
+      "sep-2640-name-naming-rules": ["SKIPPED"],
+      "sep-2640-authority-reg-name": ["SKIPPED"],
+      "sep-2640-names-should-be-unique": ["SKIPPED"],
+      "sep-2640-skills-get-implemented": ["SKIPPED"],
+      "sep-2640-skills-get-entry-shape": ["SKIPPED"],
+      "sep-2640-skills-get-cache-attributes": ["SKIPPED"],
+      "sep-2640-skills-get-no-cursor": ["SKIPPED"],
+      "sep-2640-skills-get-unknown-uri-invalid-params": ["SKIPPED"],
+      "sep-2640-skillmd-required": ["SKIPPED"],
+      "sep-2640-skillmd-frontmatter": ["SKIPPED"],
+      "sep-2640-entry-frontmatter-identical": ["SKIPPED"],
+      "wire-schema-valid": ["SUCCESS"]
+    },
+    "sep-2640-skills-manifest": {
+      "sep-2640-skillmd-mimetype": ["SUCCESS"],
+      "sep-2640-final-segment-equals-name": ["SUCCESS"],
+      "sep-2640-skillmd-metadata-name": ["SUCCESS"],
+      "sep-2640-skillmd-metadata-description": ["SUCCESS"],
+      "sep-2640-meta-prefix": ["SUCCESS"],
       "wire-schema-valid": ["SUCCESS"]
     },
     "server-sse-multiple-streams": {

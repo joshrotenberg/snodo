@@ -8,6 +8,28 @@ test("the upstream root is definitions-only; unknown definition names fail close
   assert.throws(() => validate("DiscoverResultResponse", {}));
 });
 
+test("skills results are checked against the pinned generic definitions they extend", () => {
+  const cache = { resultType: "complete", ttlMs: 0, cacheScope: "private" };
+  const entry = { uri: "skill://a/SKILL.md", frontmatter: { name: "a", description: "d" },
+    resources: [{ uri: "skill://a/SKILL.md", digest: `sha256:${"0".repeat(64)}`, size: 1 }] };
+  const list = { jsonrpc: "2.0", id: 1, result: { ...cache, skills: [entry] } };
+  assert.deepEqual(validateEmission("skills/list", list),
+    ["JSONRPCResultResponse", "CacheableResult", "PaginatedResult"]);
+  assert.throws(() => validateEmission("skills/list", { ...list, result: { ...cache, skills: [entry], cacheScope: "shared" } }),
+    /CacheableResult:/);
+  assert.throws(() => validateEmission("skills/list", { ...list, result: { resultType: "complete", skills: [entry] } }),
+    /CacheableResult:/);
+  assert.throws(() => validateEmission("skills/list", { ...list, result: { ...cache, skills: [{ uri: 7 }] } }),
+    /malformed skill entry/);
+  assert.throws(() => validateEmission("skills/get", { ...list, result: { ...cache, skill: entry, nextCursor: "x" } }),
+    /no cursor/);
+  const child = { uri: "skill://a/refs", name: "refs", mimeType: "inode/directory" };
+  const directory = { jsonrpc: "2.0", id: 2, result: { ...cache, resources: [child] } };
+  assert.ok(validateEmission("resources/directory/read", directory).includes("Resource"));
+  assert.throws(() => validateEmission("resources/directory/read",
+    { ...directory, result: { ...cache, resources: [{ uri: "skill://a/refs" }] } }), /Resource:/);
+});
+
 test("concrete complete branch rejects malformed content despite permissive MRTR union", () => {
   const message = { jsonrpc: "2.0", id: 1, result: { resultType: "complete", content: [{ type: "text", text: "ok" }] } };
   validateEmission("tools/call", message);

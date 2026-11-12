@@ -135,6 +135,118 @@ declaration, for `Snodo.Client` in tests.
 
 See `examples/35_mcp_apps.exs`.
 
+## Skills
+
+The Skills extension (`io.modelcontextprotocol/skills`, SEP-2640) serves
+agent skills. A skill is a directory with a `SKILL.md` file, whose YAML
+frontmatter gives the skill's `name` and `description`, and any supporting
+files. Each file is a resource under `skill://<skill-path>/<file>`, where the
+last segment of the skill path is the skill name. `Snodo.Skills` builds the
+catalog when the module compiles:
+
+```elixir
+defmodule MyApp.Skills do
+  use Snodo.Skills, directory: "priv/skills"
+end
+
+defmodule MyApp.Server do
+  use Snodo.Server,
+    name: "my-app",
+    version: "1.0.0",
+    extensions: [MyApp.Skills],
+    capabilities: MyApp.Skills.capabilities(%{"tools" => %{}})
+
+  for file <- MyApp.Skills.resources(), do: resource(file)
+end
+```
+
+Every directory under `priv/skills` that holds a `SKILL.md` is a skill, at
+any depth: `priv/skills/acme/pdf-processing/SKILL.md` is served as
+`skill://acme/pdf-processing/SKILL.md`. The module recompiles when a file
+under the directory is added, removed, or changed. It compares paths, sizes,
+and whole-second modification times, not contents, so a change that keeps a
+file's size within the same second as its last modification can be missed;
+run `mix compile --force` then. `:entries` adds skills the application supplies as a path and a map
+of file contents, alone or next to `:directory`. The frontmatter `name` must
+equal the directory name and follow the naming rules (1 to 64 lowercase
+letters, digits, and single hyphens), and `description` must be present. A
+skill that breaks a rule or a limit fails compilation with `ArgumentError`.
+
+The module is the extension. It answers:
+
+- `skills/list`: one entry per skill, with its SKILL.md URI, its frontmatter
+  as JSON, and a `{"uri", "digest", "size"}` object for every file. The
+  digest is `sha256:` followed by the SHA-256 of the file's bytes in
+  lowercase hex, computed at compile time. Entries are paged whole.
+- `skills/get`: one entry by SKILL.md URI, or -32602 for a URI the server
+  does not serve.
+- `resources/directory/read`: the direct children of a skill directory, with
+  subdirectories as `inode/directory`, or -32602 for a URI that is not a
+  skill directory. `directory_read: false` leaves the method out and drops
+  `"directoryRead": true` from the declaration.
+
+`resources/0` returns one generated `Snodo.Resource` module per file, which
+the server registers, so `resources/read` serves the bytes (text when they are
+UTF-8, a blob otherwise) and `resources/list` lists the files. A SKILL.md
+resource takes its name and description from the frontmatter.
+`capabilities/1` adds `"resources"` and the extension's declaration to a
+capabilities map.
+
+As with every extension module, the three methods are answered only when the
+client declares `io.modelcontextprotocol/skills` in its capabilities; a client
+that does not gets -32021 with the extension in `requiredCapabilities`. The
+skill files remain ordinary resources that any client can read. The
+extension routes are 2026-07-28 only.
+
+### Frontmatter
+
+The core has no YAML dependency, so `Snodo.Skills.Frontmatter` reads a subset
+of YAML: a top-level mapping of plain or quoted keys, plain scalars typed by
+the YAML 1.2 core schema, quoted strings, flow and block sequences of scalars,
+and one level of nested mapping such as `metadata:`. Block scalars (`|`, `>`),
+anchors, aliases, tags, flow mappings, and deeper nesting are refused with an
+`:unsupported` `Snodo.Skills.Frontmatter.Error`. As in YAML, only spaces and
+tabs are trimmed, so a no-break space stays part of a value. Frontmatter over
+1 MiB, and a number with more than 1,000 digits, are refused with
+`:too_large`. To read full YAML, pass a parser, for example one backed by a
+YAML library in your application:
+
+```elixir
+use Snodo.Skills,
+  directory: "priv/skills",
+  frontmatter_parser: &MyApp.YAML.decode/1
+```
+
+The parser takes the text between the `---` lines and returns `{:ok, map}` or
+`{:error, reason}`. `Snodo.Skills.Client` takes the same option.
+
+### Client
+
+`Snodo.Skills.Client` works over a `Snodo.Client` that declares the
+extension:
+
+```elixir
+{:ok, client} =
+  Snodo.Client.connect({:http, url}, client_capabilities: Snodo.Skills.Client.capabilities())
+
+{:ok, entries} = Snodo.Skills.Client.list(client)
+entry = Enum.find(entries, &(&1["frontmatter"]["name"] == "pdf-processing"))
+
+{:ok, skill_md} = Snodo.Skills.Client.load(client, entry)
+{:ok, forms} = Snodo.Skills.Client.read(client, entry, "skill://pdf-processing/references/FORMS.md")
+```
+
+Listing and getting read no files; a host reads a skill's files when it uses
+the skill. `load/3` reads SKILL.md and `read/4` any listed file. Before either
+returns content, it checks that the file is listed, that its listed size is
+within `:max_file_bytes`, that the byte length and digest match the entry, and,
+for SKILL.md, that the parsed frontmatter matches the entry field by field. A
+failed check returns a -32000 error with `kind: :extension` and a `"reason"`
+in its data, such as `"digest_mismatch"`, and the content is not returned.
+The limits are listed in [Transports](transports.md#skills-limits).
+
+See `examples/36_skills.exs`.
+
 ## Tasks
 
 `snodo_tasks` implements the `io.modelcontextprotocol/tasks` extension on those

@@ -2,6 +2,7 @@ Code.require_file("logging.ex", __DIR__)
 Code.require_file("mrtr.ex", __DIR__)
 Code.require_file("progress.ex", __DIR__)
 Code.require_file("sessions.ex", __DIR__)
+Code.require_file("skills.ex", __DIR__)
 Code.require_file("stateless.ex", __DIR__)
 
 defmodule SnodoTest.Conformance.Tools.SimpleText do
@@ -350,6 +351,7 @@ defmodule SnodoTest.Conformance.Fixture do
   alias SnodoTest.Conformance.Resources.StaticText
   alias SnodoTest.Conformance.Resources.TemplateData
   alias SnodoTest.Conformance.Sessions
+  alias SnodoTest.Conformance.Skills
   alias SnodoTest.Conformance.Stateless
   alias SnodoTest.Conformance.Tasks, as: TasksFixture
   alias SnodoTest.Conformance.Tools.AudioContent
@@ -397,9 +399,13 @@ defmodule SnodoTest.Conformance.Fixture do
   @legacy_resources [StaticText, StaticBinary, TemplateData] ++ Sessions.resources()
   @legacy_prompts [Simple, WithArguments, WithEmbeddedResource, WithImage]
 
+  # MCP_FIXTURE_SKILLS=1 adds the skills extension and its skill files. The
+  # skills methods answer only clients that declare the extension.
   def runtime do
     SnodoTest.Conformance.MRTR.Workflow.configure()
-    router = router(@tools, @resources, @prompts)
+    skills? = System.get_env("MCP_FIXTURE_SKILLS", "0") == "1"
+    resources = if skills?, do: @resources ++ Skills.resources(), else: @resources
+    router = router(@tools, resources, @prompts)
 
     capabilities =
       TasksFixture.capabilities()
@@ -408,11 +414,12 @@ defmodule SnodoTest.Conformance.Fixture do
       |> Map.put("prompts", %{"listChanged" => true})
       |> Map.put("resources", %{})
       |> Map.put("logging", %{})
+      |> then(&if skills?, do: Skills.capabilities(&1), else: &1)
 
     Runtime.new(
       router: router,
       protocols: [V2026_07_28],
-      extensions: [TasksFixture.extension()],
+      extensions: [TasksFixture.extension()] ++ if(skills?, do: [Skills], else: []),
       server_info: %{"name" => "snodo-conformance", "version" => "0.1.0"},
       capabilities: capabilities,
       subscription_source: Snodo.Subscription.Hub.source(Stateless.hub()),

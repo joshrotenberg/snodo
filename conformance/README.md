@@ -6,7 +6,8 @@ unsupported, unmeasured, and official evidence buckets stay separate.
 The official runner has two legs. The server leg runs its scenarios against
 the combined fixture. The [client leg](#client-leg) runs `Snodo.Client` against
 the runner's own scenario servers. `run.mjs` runs them as lanes, each with its
-own score and baseline: `server`, `client`, `client-2025-11-25`, and the
+own score and baseline, and runs the [skills scenarios](#skills-scenarios) in
+the `server`, `server-plug`, and `client` lanes: `server`, `client`, `client-2025-11-25`, and the
 [additional server lanes](#additional-server-lanes) `server-plug`,
 `server-proxy`, `server-2025-11-25`, `server-plug-2025-11-25`,
 `server-2025-11-25-sessionless`, and `server-2025-06-18`.
@@ -126,7 +127,8 @@ repeats a check ID for parameterized cases, the report preserves each occurrence
 with a numbered suffix.
 
 Its human-readable `checkInventory` also pins every check ID and its ordered
-status occurrences across all 50 required and unscored scenarios. Repeated IDs
+status occurrences across all 53 required and unscored scenarios, including the
+three [skills scenarios](#skills-scenarios). Repeated IDs
 retain every occurrence rather than collapsing to one status. This inventory is
 checked in from reviewed raw evidence; the runner never updates it automatically.
 
@@ -183,6 +185,45 @@ validation probes pass 8/8, 14/14, and 10/10 checks. The custom-header scenario
 calls the fixture's `custom_header_region` tool, whose `region` argument carries
 `x-mcp-header`. These results do not establish general complete schema
 validation.
+
+## Skills scenarios
+
+The pinned runner has seven SEP-2640 skills scenarios that its frozen
+requirement sets do not list. `run.mjs` runs them in the lanes that name them
+in `extensions`, each with `--scenario` after the requirement set, into the
+same run directory, and reports them as unscored with reason `extension`. The
+frozen manifests stay untouched. For the server lanes, `run.mjs` starts the
+fixture with `MCP_FIXTURE_SKILLS=1`, which adds `SnodoTest.Conformance.Skills`
+(one skill with a `references/` subdirectory) to the 2026-07-28 runtime.
+
+- `server` and `server-plug` run `sep-2640-skills-directory`,
+  `sep-2640-skills-enumeration`, and `sep-2640-skills-manifest`. On
+  2026-11-12 `sep-2640-skills-manifest` passes all five of its checks: the
+  SKILL.md resource is `text/markdown`, takes its name and description from
+  the frontmatter, and its last path segment equals the name. The other two
+  scenarios fail seven checks, recorded in `expected-failures.json`, because
+  the runner does not declare `io.modelcontextprotocol/skills` in its client
+  capabilities and `Snodo.Skills`, like every `Snodo.Extension`, answers
+  `skills/list`, `skills/get`, and `resources/directory/read` only for
+  clients that declare it. The runner gets -32021, and the 25 checks that need
+  a listing are skipped. The four capability checks pass. The
+  Plug lane matches the native lane check for check.
+- `client` runs `sep-2640-client-no-prefetch`,
+  `sep-2640-client-verify-digest`, `sep-2640-client-verify-size`, and
+  `sep-2640-client-verify-frontmatter`. All four checks pass: the harness
+  lists skills without reading a file, and `Snodo.Skills.Client.load/3`
+  refuses the tampered SKILL.md for a digest, size, or frontmatter mismatch,
+  so the supporting file is never read.
+
+The scenario lists live in [extensions.mjs](extensions.mjs), which `run.mjs`
+and the runner-script tests share. The 2026-11-12 per-check outcomes of both
+lanes, skills scenarios included, are retained in
+[results/2026-11-12-alpha.12-checks.json](results/2026-11-12-alpha.12-checks.json)
+and
+[results/2026-11-12-client-alpha.12-checks.json](results/2026-11-12-client-alpha.12-checks.json);
+`npm test` scores them against the reviewed baselines, and checks that the
+seven option-B failures are the only expected server failures and do not mask
+a regression in another skills check.
 
 ## Additional server lanes
 
@@ -286,8 +327,9 @@ capabilities. The first run on 2026-09-26, before `Snodo.Client` sent
 - [Historical September 26 client report](results/2026-09-26-client-alpha.11-summary.md)
 
 [expected-failures-client.json](expected-failures-client.json) follows the
-same policy as the server baseline, with every check of all 39 scenarios
-pinned. The remaining gaps:
+same policy as the server baseline, with every check of all 43 scenarios
+pinned, including the four [skills scenarios](#skills-scenarios). The
+remaining gaps:
 
 - The unscored `auth/dpop`, `auth/dpop-nonce`,
   `auth/enterprise-managed-authorization`, and `auth/wif-jwt-bearer`

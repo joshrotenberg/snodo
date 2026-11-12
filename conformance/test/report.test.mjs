@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { parse } from "yaml";
+import { skillsClientScenarios, skillsServerScenarios, withExtensions } from "../extensions.mjs";
 import { summarize } from "../report.mjs";
 
 const manifest = { server: ["one"], not_scored: [{ scenario: "optional", leg: "server", reason: "extension" }] };
@@ -148,20 +149,71 @@ async function frozenEvidence(results = "2026-10-22-alpha.12-checks.json", basel
   };
 }
 
+// The 2026-07-28 lanes also run the SEP-2640 extension scenarios, so their
+// retained evidence is scored with the same unscored entries run.mjs adds.
+const lanes2026 = {
+  server: ["2026-11-12-alpha.12-checks.json", "expected-failures.json", skillsServerScenarios],
+  client: ["2026-11-12-client-alpha.12-checks.json", "expected-failures-client.json", skillsClientScenarios],
+};
+
+async function laneEvidence(leg) {
+  const [results, baseline, extensions] = lanes2026[leg];
+  const evidence = await frozenEvidence(results, baseline);
+  return { ...evidence, manifest: withExtensions(evidence.manifest, leg, extensions) };
+}
+
+// The server checks that fail because the runner does not declare the skills
+// extension (option B on #398). They are the only expected server failures.
+const optionBFailures = [
+  "sep-2640-skills-directory:sep-2640-directory-read-invalid-params",
+  "sep-2640-skills-directory:sep-2640-directory-read-method-registered",
+  "sep-2640-skills-directory:sep-2640-directory-read-pagination",
+  "sep-2640-skills-directory:sep-2640-directory-read-result-resources-shape",
+  "sep-2640-skills-directory:sep-2640-directory-read-subdir-mimetype",
+  "sep-2640-skills-enumeration:sep-2640-capability-commits-to-methods",
+  "sep-2640-skills-enumeration:sep-2640-skills-list-implemented",
+];
+
 test("the complete frozen check inventory passes and its score is the runner's, not a waiver", async () => {
-  const evidence = await frozenEvidence();
-  assert.equal(Object.keys(evidence.baseline.checkInventory).length, 50);
+  const evidence = await laneEvidence("server");
+  assert.equal(Object.keys(evidence.baseline.checkInventory).length, 53);
   const report = summarize(evidence.manifest, evidence.results, evidence.baseline);
   assert.equal(report.regression.passed, true);
   assert.deepEqual(report.regression.checkStatusDrift, []);
   assert.equal(report.score.passedScenarios, 37);
   assert.equal(report.score.status, "complete");
   assert.equal(report.regression.unexpectedFailures.length, 0);
-  assert.equal(evidence.baseline.failures.length, 0);
+  // No required scenario has an expected failure; the only ones are option B,
+  // in unscored extension scenarios.
+  assert.deepEqual(evidence.baseline.failures.map((entry) => entry.key).sort(), optionBFailures);
+  assert.deepEqual([...report.failures].sort(), optionBFailures);
+  const skills = report.notScored.filter((entry) => skillsServerScenarios.includes(entry.scenario));
+  assert.deepEqual(skills.map((entry) => entry.reason), ["extension", "extension", "extension"]);
+});
+
+test("the option-B skills failures do not mask a skills regression on either leg", async () => {
+  const server = await laneEvidence("server");
+  for (const check of server.results["sep-2640-skills-manifest"]) {
+    if (check.id === "sep-2640-skillmd-mimetype") check.status = "FAILURE";
+  }
+  const serverReport = summarize(server.manifest, server.results, server.baseline);
+  assert.equal(serverReport.regression.passed, false);
+  assert.deepEqual(serverReport.regression.unexpectedFailures,
+    ["sep-2640-skills-manifest:sep-2640-skillmd-mimetype"]);
+  assert.deepEqual(serverReport.regression.staleFailures, []);
+  assert.equal(serverReport.score.passedScenarios, 37);
+
+  const client = await laneEvidence("client");
+  client.results["sep-2640-client-verify-digest"][0].status = "FAILURE";
+  const clientReport = summarize(client.manifest, client.results, client.baseline, "client");
+  assert.equal(clientReport.regression.passed, false);
+  assert.deepEqual(clientReport.regression.unexpectedFailures,
+    ["sep-2640-client-verify-digest:sep-2640-host-verify-digest"]);
+  assert.equal(clientReport.score.passedScenarios, 31);
 });
 
 test("the Tasks lifecycle success-to-skipped regression is caught though the scenario is unscored", async () => {
-  const evidence = await frozenEvidence();
+  const evidence = await laneEvidence("server");
   for (const check of evidence.results["tasks-lifecycle"]) {
     if (check.status === "SUCCESS") check.status = "SKIPPED";
   }
@@ -173,7 +225,7 @@ test("the Tasks lifecycle success-to-skipped regression is caught though the sce
 });
 
 test("a sampling or roots check that fails again is a new failure, not a stale baseline entry", async () => {
-  const evidence = await frozenEvidence();
+  const evidence = await laneEvidence("server");
   const regressed = ["input-required-result-basic-sampling", "input-required-result-basic-list-roots",
     "input-required-result-multiple-input-requests", "input-required-result-capability-check"];
   for (const scenario of regressed) evidence.results[scenario][0].status = "FAILURE";
@@ -183,14 +235,15 @@ test("a sampling or roots check that fails again is a new failure, not a stale b
   const report = summarize(evidence.manifest, evidence.results, evidence.baseline);
   assert.equal(report.regression.passed, false);
   assert.equal(report.regression.unexpectedFailures.length, 5);
+  assert.ok(report.regression.unexpectedFailures.every((key) => !key.startsWith("sep-2640-")));
   assert.deepEqual(report.regression.staleFailures, []);
   assert.equal(report.score.passedScenarios, 32);
   assert.equal(report.score.status, "partial");
 });
 
 test("the frozen client check inventory passes without waiving its partial score", async () => {
-  const evidence = await frozenEvidence("2026-10-22-client-alpha.12-checks.json", "expected-failures-client.json");
-  assert.equal(Object.keys(evidence.baseline.checkInventory).length, 39);
+  const evidence = await laneEvidence("client");
+  assert.equal(Object.keys(evidence.baseline.checkInventory).length, 43);
   const report = summarize(evidence.manifest, evidence.results, evidence.baseline, "client");
   assert.equal(report.regression.passed, true);
   assert.deepEqual(report.regression.checkStatusDrift, []);
@@ -202,7 +255,7 @@ test("the frozen client check inventory passes without waiving its partial score
 });
 
 test("a regression in the Mcp-Param checks fails the client gate", async () => {
-  const evidence = await frozenEvidence("2026-10-22-client-alpha.12-checks.json", "expected-failures-client.json");
+  const evidence = await laneEvidence("client");
   for (const check of evidence.results["http-custom-headers"]) {
     if (check.id !== "sep-2243-client-omit-null") check.status = "FAILURE";
   }
@@ -213,7 +266,7 @@ test("a regression in the Mcp-Param checks fails the client gate", async () => {
 });
 
 test("a client that stops declaring sampling or roots is drift, not an allowed skip", async () => {
-  const evidence = await frozenEvidence("2026-10-22-client-alpha.12-checks.json", "expected-failures-client.json");
+  const evidence = await laneEvidence("client");
   for (const check of evidence.results["request-metadata"]) {
     if (check.id.startsWith("sep-2575-client-declares-")) check.status = "SKIPPED";
   }
@@ -225,7 +278,7 @@ test("a client that stops declaring sampling or roots is drift, not an allowed s
 });
 
 test("an auth check that regresses to a warning fails the client gate", async () => {
-  const evidence = await frozenEvidence("2026-10-22-client-alpha.12-checks.json", "expected-failures-client.json");
+  const evidence = await laneEvidence("client");
   for (const check of evidence.results["auth/scope-step-up"]) {
     if (check.id === "sep-2350-scope-union-on-reauth") check.status = "WARNING";
   }

@@ -28,7 +28,10 @@
 # authorization server, the harness stands in for the browser by following
 # the authorization redirect to the loopback listener, and the context
 # supplies pre-registered or client-credentials settings when the scenario
-# has them. The runner starts this script from conformance/fixture, whose
+# has them. The SEP-2640 skills scenarios declare the skills extension, list
+# the skills, and load the first one with Snodo.Skills.Client, which verifies
+# SKILL.md before the other files are read; sep-2640-client-no-prefetch
+# only lists. The runner starts this script from conformance/fixture, whose
 # build puts snodo_oauth on the code path. Scenarios without a flow exit 1
 # without a request.
 
@@ -37,6 +40,7 @@ defmodule Snodo.Conformance.ClientHarness do
 
   alias Snodo.Client
   alias Snodo.OAuth.Client, as: OAuth
+  alias Snodo.Skills.Client, as: Skills
 
   @max_rounds 4
   @client_metadata_url "https://conformance-test.local/client-metadata.json"
@@ -54,6 +58,12 @@ defmodule Snodo.Conformance.ClientHarness do
     "json-schema-ref-no-deref",
     "json-schema-2020-12-preservation"
   ]
+  @skills_scenarios [
+    "sep-2640-client-no-prefetch",
+    "sep-2640-client-verify-digest",
+    "sep-2640-client-verify-size",
+    "sep-2640-client-verify-frontmatter"
+  ]
 
   def main(argv) do
     url = List.last(argv) || fail("expected the server URL as the last argument")
@@ -68,7 +78,29 @@ defmodule Snodo.Conformance.ClientHarness do
     do: flow(scenario, url, oauth_options(scenario, url, context()))
 
   defp run(scenario, url) when scenario in @scenarios, do: flow(scenario, url, [])
+  defp run(scenario, url) when scenario in @skills_scenarios, do: skills_flow(scenario, url)
   defp run(scenario, _url), do: fail("#{scenario}: no harness flow for this scenario")
+
+  # A host that uses skills: list them, which reads no files; then load the
+  # first skill, which reads and verifies its SKILL.md, and read the rest of
+  # its files only if that succeeded. no-prefetch only lists.
+  defp skills_flow(scenario, url) do
+    client =
+      connect(scenario, url, client_capabilities: Snodo.Skills.Client.capabilities())
+
+    capabilities(client)
+
+    with {:ok, [entry | _rest]} <- log("skills/list", Skills.list(client)),
+         false <- scenario == "sep-2640-client-no-prefetch",
+         {:ok, _skill_md} <- log("load #{entry["uri"]}", Skills.load(client, entry)) do
+      entry["resources"]
+      |> Enum.map(& &1["uri"])
+      |> Enum.reject(&(&1 == entry["uri"]))
+      |> Enum.each(&log("read #{&1}", Skills.read(client, entry, &1)))
+    end
+
+    Client.close(client)
+  end
 
   defp flow(scenario, url, transport_opts) do
     context = context()

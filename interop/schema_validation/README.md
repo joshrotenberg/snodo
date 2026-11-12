@@ -27,7 +27,7 @@ The same public-API fixture runs in three fresh subprocesses: direct dispatch
 through a JSON-lines adapter, real stdio transport, and the native Streamable HTTP
 listener. No private test helpers or captured success responses are imported.
 
-Each transport executes 27 operations and validates 33 emitted JSON messages:
+Each transport executes 32 operations and validates 38 emitted JSON messages:
 
 - Discovery, tool listing, normal tool results, tool-domain errors, and typed
   JSON-RPC errors.
@@ -42,11 +42,21 @@ Each transport executes 27 operations and validates 33 emitted JSON messages:
   refusal a tool gets when the client did not declare `sampling`.
 - A finite subscription: acknowledgement, tool-list event, resource-update event,
   and correlated terminal result. HTTP is parsed from its real SSE response body.
+- The SEP-2640 skills methods for a client that declares
+  `io.modelcontextprotocol/skills`: `skills/list`, `skills/get`, and
+  `resources/directory/read`, then the `-32602` answer for an unknown skill
+  and the `-32021` refusal for a client that does not declare the extension.
+  The pinned schema defines no skills messages, so the results are validated
+  against the pinned generic definitions they extend
+  (`JSONRPCResultResponse`, `CacheableResult`, `PaginatedResult`, and
+  `Resource` for each directory child), with payload negative controls. The
+  skill entry itself has no pinned definition and only its container shape is
+  checked; this lane does not invent a skills schema.
 
-Across the three transports this is **81 operations / 99 emissions**, covering
-31 explicitly selected response, result, input-request, error, and notification
+Across the three transports this is **96 operations / 114 emissions**, covering
+35 explicitly selected response, result, input-request, error, and notification
 definitions plus their referenced schemas. Every emission is also cloned and
-deliberately damaged to prove rejection: 99 negative envelope controls. Nine
+deliberately damaged to prove rejection: 114 negative envelope controls. Ten
 separate unit tests exercise deep content/schema failures, concrete embedded
 request and named error branches, absent required
 cache/completion/subscription structure, progress field types, definition

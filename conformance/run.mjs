@@ -7,6 +7,7 @@ import path from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
+import { skillsClientScenarios, skillsServerScenarios, withExtensions } from "./extensions.mjs";
 import { renderMarkdown, summarize } from "./report.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -30,14 +31,23 @@ const requirementSets = {
 // requirement set, so its lane runs the runner's active suite for that version
 // and every scenario is unscored. The Plug lane shares the native server
 // baseline, so any difference between the two listeners fails a gate.
+//
+// `extensions` lists extension scenarios that the frozen requirement set does
+// not contain. Each runs on its own with --scenario after the requirement set,
+// writes into the same run directory, and is reported as unscored with reason
+// "extension" (see extensions.mjs). A lane with `fixture.skills` serves the
+// SEP-2640 skills fixture.
 const lanes = {
   server: { leg: "server", revision: "2026-07-28", baseline: "expected-failures.json",
-    fixture: { profile: "latest", transport: "native" } },
-  client: { leg: "client", revision: "2026-07-28", baseline: "expected-failures-client.json" },
+    fixture: { profile: "latest", transport: "native", skills: true },
+    extensions: skillsServerScenarios },
+  client: { leg: "client", revision: "2026-07-28", baseline: "expected-failures-client.json",
+    extensions: skillsClientScenarios },
   "client-2025-11-25": { leg: "client", revision: "2025-11-25",
     baseline: "expected-failures-client-2025-11-25.json" },
   "server-plug": { leg: "server", revision: "2026-07-28", baseline: "expected-failures.json",
-    fixture: { profile: "latest", transport: "plug" } },
+    fixture: { profile: "latest", transport: "plug", skills: true },
+    extensions: skillsServerScenarios },
   // The same fixture behind Snodo.Proxy. Its baseline differs from the native
   // one where the proxy changes behavior by design (rewritten resource URIs,
   // Tasks and completion not routed).
@@ -104,7 +114,8 @@ const child = lane.fixture
     cwd: path.join(here, "fixture"), stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env, MIX_ENV: "dev", ERL_FLAGS: erlFlags, MCP_PORT: "0", MCP_CONFORMANCE_MANAGED: "1",
       MCP_FIXTURE_PROFILE: lane.fixture.profile, MCP_FIXTURE_TRANSPORT: lane.fixture.transport,
-      MCP_FIXTURE_SESSIONS: lane.fixture.sessions ? "1" : "0" },
+      MCP_FIXTURE_SESSIONS: lane.fixture.sessions ? "1" : "0",
+      MCP_FIXTURE_SKILLS: lane.fixture.skills ? "1" : "0" },
   })
   : null;
 const exited = child && once(child, "exit");
@@ -115,6 +126,24 @@ let runner;
 let runnerExit;
 let runnerLog = "";
 let report;
+// Runs the official runner once and returns its exit code, 0 or 1.
+async function runRunner(args, timeoutMs) {
+  runner = spawn(process.execPath, [path.join(runnerPackage, "dist/index.js"), ...args,
+    "--output-dir", runDir],
+  { cwd: path.join(here, "fixture"), stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, MIX_ENV: "dev", ERL_FLAGS: erlFlags, SNODO_CLIENT_PROTOCOL: revision } });
+  runnerExit = once(runner, "exit");
+  const capture = (chunk) => { runnerLog += chunk; process.stdout.write(chunk); };
+  runner.stdout.on("data", capture);
+  runner.stderr.on("data", capture);
+  let timeout = false;
+  const timer = setTimeout(() => { timeout = true; runner.kill("SIGKILL"); }, timeoutMs);
+  let code;
+  try { [code] = await runnerExit; } finally { clearTimeout(timer); }
+  assert.equal(timeout, false, "external runner timed out");
+  assert.ok(code === 0 || code === 1, `unexpected runner exit: ${code}`);
+  return code;
+}
 try {
   let args;
   if (leg === "server") {
@@ -143,20 +172,12 @@ try {
   const selection = requirementSet
     ? ["--requirements", revision]
     : ["--spec-version", revision, "--suite", "active"];
-  runner = spawn(process.execPath, [path.join(runnerPackage, "dist/index.js"), ...args,
-    ...selection, "--output-dir", runDir],
-  { cwd: path.join(here, "fixture"), stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, MIX_ENV: "dev", ERL_FLAGS: erlFlags, SNODO_CLIENT_PROTOCOL: revision } });
-  runnerExit = once(runner, "exit");
-  const capture = (chunk) => { runnerLog += chunk; process.stdout.write(chunk); };
-  runner.stdout.on("data", capture);
-  runner.stderr.on("data", capture);
-  let timeout = false;
-  const timer = setTimeout(() => { timeout = true; runner.kill("SIGKILL"); }, 240_000);
-  let code;
-  try { [code] = await runnerExit; } finally { clearTimeout(timer); }
-  assert.equal(timeout, false, "external runner timed out");
-  assert.ok(code === 0 || code === 1, `unexpected runner exit: ${code}`);
+  const code = await runRunner([...args, ...selection], 240_000);
+  const extensions = lane.extensions ?? [];
+  const extensionExitCodes = {};
+  for (const scenario of extensions) {
+    extensionExitCodes[scenario] = await runRunner([...args, "--scenario", scenario], 60_000);
+  }
   // Scenario names such as auth/metadata-default nest their artifact directory.
   const scenarios = {};
   for (const entry of await readdir(runDir, { recursive: true })) {
@@ -168,13 +189,17 @@ try {
     scenarios[match[1]] = JSON.parse(await readFile(path.join(runDir, entry)));
   }
   const baseline = JSON.parse(await readFile(path.join(here, lane.baseline)));
-  // Without a frozen set, every scenario the runner ran is unscored.
-  const scored = manifest ?? { [leg]: [], not_scored: Object.keys(scenarios).sort().map((scenario) =>
-    ({ scenario, leg, reason: `no frozen requirement set for ${revision}` })) };
+  // Without a frozen set, every scenario the runner ran is unscored. The
+  // lane's extension scenarios join the frozen set's unscored entries.
+  const scored = manifest
+    ? withExtensions(manifest, leg, extensions)
+    : { [leg]: [], not_scored: Object.keys(scenarios).sort().map((scenario) =>
+      ({ scenario, leg, reason: `no frozen requirement set for ${revision}` })) };
   report = {
     schemaVersion: 2, leg, lane: laneName, runDate: new Date().toISOString().slice(0, 10),
     protocolVersion: revision, runner: `@modelcontextprotocol/conformance@${runnerVersion}`,
     runnerExitCode: code,
+    ...(extensions.length > 0 ? { extensionRunnerExitCodes: extensionExitCodes } : {}),
     requirements: requirementSet
       ? { attemptedScenarios: manifest[leg].length, requiredScenarios: requirementSet.required[leg],
         requirementsAnchor: requirementSet.anchor, requirementsCommit: requirementSet.commit,

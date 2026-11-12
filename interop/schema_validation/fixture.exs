@@ -222,18 +222,36 @@ defmodule SchemaFixture.Source do
   end
 end
 
+defmodule SchemaFixture.Skills do
+  @moduledoc false
+  # One SEP-2640 skill with a subdirectory, so resources/directory/read has a
+  # file and an inode/directory child to emit.
+  use Snodo.Skills,
+    entries: [
+      [
+        path: "schema-skill",
+        files: %{
+          "SKILL.md" => "---\nname: schema-skill\ndescription: A wire-schema skill\n---\nBody\n",
+          "references/NOTES.md" => "Notes\n"
+        }
+      ]
+    ]
+end
+
 defmodule SchemaFixture.Server do
   @moduledoc false
   use Snodo.Server,
     name: "wire-schema-fixture",
     version: "1.0.0",
     protocols: [Snodo.Protocol.V2026_07_28],
-    capabilities: %{
-      "tools" => %{"listChanged" => true},
-      "resources" => %{"subscribe" => true},
-      "prompts" => %{},
-      "completions" => %{}
-    },
+    extensions: [SchemaFixture.Skills],
+    capabilities:
+      SchemaFixture.Skills.capabilities(%{
+        "tools" => %{"listChanged" => true},
+        "resources" => %{"subscribe" => true},
+        "prompts" => %{},
+        "completions" => %{}
+      }),
     subscription_source: SchemaFixture.Source
 
   tool(SchemaFixture.Tool)
@@ -241,6 +259,7 @@ defmodule SchemaFixture.Server do
   resource(SchemaFixture.InputResource)
   resource(SchemaFixture.Template)
   prompt(SchemaFixture.Prompt)
+  for file <- SchemaFixture.Skills.resources(), do: resource(file)
 end
 
 defmodule SchemaFixture.Direct do
