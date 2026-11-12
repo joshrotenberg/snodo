@@ -469,6 +469,29 @@ defmodule Snodo.SkillsTest do
       end
     end
 
+    test "refuses a skill inside another even when a sibling sorts between them" do
+      # "a-b" sorts between "a" and "a/b", so a check of sorted neighbours
+      # alone would accept "a/b" inside "a".
+      skill = fn path ->
+        [path: path, files: %{"SKILL.md" => skill_md(path |> String.split("/") |> List.last())}]
+      end
+
+      for paths <- [["a", "a-b", "a/b"], ["a/b", "a-b", "a"], ["x/a", "x/a-b", "x/a-c", "x/a/c"]] do
+        error = assert_raise ArgumentError, fn -> build(entries: Enum.map(paths, skill)) end
+        assert error.message =~ "skills do not nest", inspect(paths)
+      end
+
+      error =
+        assert_raise ArgumentError, fn ->
+          build(entries: Enum.map(["acme/a", "acme/a-b", "acme/a/b/c"], skill))
+        end
+
+      assert error.message =~ ~s(the skill "acme/a/b/c" is inside the skill "acme/a")
+
+      {catalog, _resources} = build(entries: Enum.map(["a", "a-b", "ab/c", "b/a"], skill))
+      assert Enum.map(catalog.skills, & &1.path) == ["a", "a-b", "ab/c", "b/a"]
+    end
+
     test "reads frontmatter with a configured parser" do
       parser = fn _yaml -> {:ok, %{"name" => "custom", "description" => "From the parser"}} end
 

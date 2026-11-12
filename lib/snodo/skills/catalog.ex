@@ -425,24 +425,36 @@ defmodule Snodo.Skills.Catalog do
     end
   end
 
+  # Every ancestor of every path is looked up in the set of all paths. Sorted
+  # neighbours are not enough: "a", "a-b", "a/b" sort in that order, because
+  # "-" sorts before "/", so "a/b" is not next to "a".
   defp reject_overlapping_paths!(skills) do
-    skills
-    |> Enum.chunk_every(2, 1, :discard)
-    |> Enum.each(fn [left, right] ->
-      cond do
-        left.path == right.path ->
-          raise ArgumentError, "two skills use the path #{inspect(left.path)}"
+    counts = Enum.frequencies_by(skills, & &1.path)
 
-        String.starts_with?(right.path, left.path <> "/") ->
-          raise ArgumentError,
-                "the skill #{inspect(right.path)} is inside the skill #{inspect(left.path)}; skills do not nest"
+    Enum.each(skills, fn skill ->
+      if Map.fetch!(counts, skill.path) > 1 do
+        raise ArgumentError, "two skills use the path #{inspect(skill.path)}"
+      end
 
-        true ->
+      case Enum.find(ancestor_paths(skill.path), &Map.has_key?(counts, &1)) do
+        nil ->
           :ok
+
+        ancestor ->
+          raise ArgumentError,
+                "the skill #{inspect(skill.path)} is inside the skill #{inspect(ancestor)}; skills do not nest"
       end
     end)
 
     skills
+  end
+
+  # "a/b/c" -> ["a", "a/b"]
+  defp ancestor_paths(path) do
+    segments = String.split(path, "/")
+
+    for count <- 1..(length(segments) - 1)//1,
+        do: segments |> Enum.take(count) |> Enum.join("/")
   end
 
   # One resource module per file, named after the server module and the
