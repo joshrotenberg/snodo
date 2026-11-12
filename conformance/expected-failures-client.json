@@ -2128,6 +2128,26 @@
         "SUCCESS"
       ]
     },
+    "sep-2640-client-no-prefetch": {
+      "sep-2640-host-no-prefetch": [
+        "SUCCESS"
+      ]
+    },
+    "sep-2640-client-verify-digest": {
+      "sep-2640-host-verify-digest": [
+        "SUCCESS"
+      ]
+    },
+    "sep-2640-client-verify-frontmatter": {
+      "sep-2640-host-frontmatter-comparison": [
+        "SUCCESS"
+      ]
+    },
+    "sep-2640-client-verify-size": {
+      "sep-2640-host-size-mismatch-failure": [
+        "SUCCESS"
+      ]
+    },
     "tools_call": {
       "tool-add-numbers": [
         "SUCCESS"
