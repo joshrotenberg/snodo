@@ -96,22 +96,34 @@ if Code.ensure_loaded?(:otel_tracer) do
 
     ## Failures
 
-    The handler never raises, so `:telemetry` does not detach it. Every call
-    into the OpenTelemetry API and SDK is isolated: a raise, throw, or exit
-    from the SDK, such as a span processor that fails or an SDK that is
-    shutting down, is caught. A failure while starting a span opens no span
-    and emits `[:snodo, :open_telemetry, :span, :skipped]` with reason
-    `:sdk_failure`. While ending a span, setting the attributes and status,
-    ending the span, and restoring the previous context are separate steps:
-    a failing step emits `[:snodo, :open_telemetry, :span, :failed]` and the
-    following steps still run, so the previous context is restored.
+    The handler never raises, so `:telemetry` does not detach it. Its own
+    preparation (the span name, the attributes, the status message, and the
+    parsed remote parent) and its calls into the OpenTelemetry API and SDK
+    are isolated separately, so a raise, throw, or exit is caught and
+    reported as `:handler_failure` or `:sdk_failure`. An SDK failure can come
+    from a span processor that fails or an SDK that is shutting down; a
+    handler failure means the event metadata broke its contract or the
+    handler has a bug.
+
+    A failure while starting a span opens no span and emits
+    `[:snodo, :open_telemetry, :span, :skipped]`. Ending a span is three
+    operations: annotate (attributes and status), end, and restore the
+    previous context. A failing operation emits
+    `[:snodo, :open_telemetry, :span, :failed]` and the following operations
+    still run, so the previous context is restored.
 
     ## Diagnostic events
 
     | Event | Measurements | Metadata |
     |---|---|---|
-    | `[:snodo, :open_telemetry, :span, :skipped]` | `open_spans` in the process | `span` (`:dispatch` or `:job`), `reason` (`:max_open_spans` or `:sdk_failure`) |
-    | `[:snodo, :open_telemetry, :span, :failed]` | none | `span`, `step` (`:annotate`, `:end`, or `:restore`), `error_kind` (`:error`, `:throw`, or `:exit`) |
+    | `[:snodo, :open_telemetry, :span, :skipped]` | `open_spans` in the process | `span`, `operation` (`:start`), `reason` (`:max_open_spans`, `:handler_failure`, or `:sdk_failure`); a failure adds `error_kind` and `error_class` |
+    | `[:snodo, :open_telemetry, :span, :failed]` | none | `span`, `operation` (`:annotate`, `:end`, or `:restore`), `reason` (`:handler_failure` or `:sdk_failure`), `error_kind`, `error_class` |
+
+    `span` is `:dispatch` or `:job`. `error_kind` is `:error`, `:throw`, or
+    `:exit`. `error_class` is the exception module for `:error`, such as
+    `RuntimeError` or `ArgumentError` (a raw Erlang error is normalized, so
+    `:badarg` is `ArgumentError`), and is `:throw` or `:exit` for those kinds.
+    Exception messages and raw reasons are never included.
 
     ## Detaching
 
@@ -257,45 +269,65 @@ if Code.ensure_loaded?(:otel_tracer) do
       open = open_spans()
 
       if map_size(open) >= limit(config),
-        do: skipped(type, :max_open_spans, open),
+        do: skipped(type, open, %{operation: :start, reason: :max_open_spans}),
         else: open_and_record(type, ref, metadata, open)
     end
 
+    # The handler's own preparation and the SDK calls are isolated separately,
+    # so a failure is reported as :handler_failure or :sdk_failure.
     defp open_and_record(type, ref, metadata, open) do
-      case isolated(fn -> open_span(type, metadata) end) do
-        {:ok, entry} -> put_open_spans(Map.put(open, ref, entry))
-        {:error, _kind} -> skipped(type, :sdk_failure, open)
+      with {:ok, prepared} <- attempt(:handler_failure, fn -> prepare_start(type, metadata) end),
+           {:ok, entry} <- attempt(:sdk_failure, fn -> sdk_start(type, prepared) end) do
+        put_open_spans(Map.put(open, ref, entry))
+      else
+        {:error, failure} -> skipped(type, open, Map.put(failure, :operation, :start))
       end
     end
 
     defp limit(%{max_open_spans: limit}) when is_integer(limit) and limit > 0, do: limit
     defp limit(_config), do: @default_max_open_spans
 
-    defp open_span(:dispatch, metadata) do
-      parent = parent_context(metadata)
+    defp prepare_start(:dispatch, metadata) do
+      %{
+        name: dispatch_name(metadata),
+        kind: :server,
+        attributes: attributes(metadata, @dispatch_attributes),
+        remote: remote_parent(metadata)
+      }
+    end
 
-      span =
-        :otel_tracer.start_span(parent, tracer(), dispatch_name(metadata), %{
-          kind: :server,
-          attributes: attributes(metadata, @dispatch_attributes)
-        })
+    defp prepare_start(:job, metadata) do
+      %{
+        name: "snodo.tasks.runner.job",
+        kind: :internal,
+        attributes: attributes(metadata, @job_attributes),
+        remote: nil
+      }
+    end
 
+    defp sdk_start(:dispatch, prepared) do
+      parent = parent_context(prepared.remote)
+      span = :otel_tracer.start_span(parent, tracer(), prepared.name, start_options(prepared))
       token = :otel_ctx.attach(:otel_tracer.set_current_span(parent, span))
       %{type: :dispatch, span: span, restore: {:token, token}}
     end
 
-    defp open_span(:job, metadata) do
+    defp sdk_start(:job, prepared) do
       span =
-        :otel_tracer.start_span(:otel_ctx.get_current(), tracer(), "snodo.tasks.runner.job", %{
-          kind: :internal,
-          attributes: attributes(metadata, @job_attributes)
-        })
+        :otel_tracer.start_span(
+          :otel_ctx.get_current(),
+          tracer(),
+          prepared.name,
+          start_options(prepared)
+        )
 
       %{type: :job, span: span, restore: :none}
     end
 
-    # The entry is removed first, so a failing step below cannot leave it
-    # behind; each step is isolated, so the context is restored even when
+    defp start_options(prepared), do: %{kind: prepared.kind, attributes: prepared.attributes}
+
+    # The entry is removed first, so a failing operation below cannot leave it
+    # behind; each operation is isolated, so the context is restored even when
     # annotating or ending the span fails.
     defp finish_span(ref, metadata) do
       case Map.pop(open_spans(), ref) do
@@ -304,65 +336,91 @@ if Code.ensure_loaded?(:otel_tracer) do
 
         {%{type: type, span: span, restore: restore}, rest} ->
           put_open_spans(rest)
-          step(type, :annotate, fn -> annotate(type, span, metadata) end)
-          step(type, :end, fn -> :otel_span.end_span(span) end)
+          annotate(type, span, metadata)
+          sdk_operation(type, :end, fn -> :otel_span.end_span(span) end)
           restore(type, restore)
       end
     end
 
-    defp restore(type, {:token, token}),
-      do: step(type, :restore, fn -> :otel_ctx.detach(token) end)
+    defp annotate(type, span, metadata) do
+      case attempt(:handler_failure, fn -> prepare_finish(type, metadata) end) do
+        {:ok, {attributes, status}} ->
+          sdk_operation(type, :annotate, fn -> apply_annotation(span, attributes, status) end)
 
-    defp restore(_type, :none), do: :ok
-
-    defp annotate(:dispatch, span, metadata) do
-      _set = :otel_span.set_attributes(span, attributes(metadata, @dispatch_attributes))
-      set_dispatch_status(span, metadata)
-    end
-
-    defp annotate(:job, span, metadata) do
-      _set = :otel_span.set_attributes(span, attributes(metadata, @job_attributes))
-
-      if metadata[:outcome] in @failed_job_outcomes,
-        do: :otel_span.set_status(span, :error, attribute_value(metadata.outcome)),
-        else: false
-    end
-
-    defp set_dispatch_status(span, %{reason_class: reason_class}),
-      do: :otel_span.set_status(span, :error, attribute_value(reason_class))
-
-    defp set_dispatch_status(span, %{outcome: :error} = metadata),
-      do: :otel_span.set_status(span, :error, error_message(metadata))
-
-    defp set_dispatch_status(_span, _metadata), do: false
-
-    defp error_message(%{error_code: code}) when is_integer(code),
-      do: "JSON-RPC error " <> Integer.to_string(code)
-
-    defp error_message(_metadata), do: "JSON-RPC error"
-
-    defp step(type, step, fun) do
-      case isolated(fun) do
-        {:ok, _result} ->
-          :ok
-
-        {:error, kind} ->
-          :telemetry.execute(@failed_event, %{}, %{span: type, step: step, error_kind: kind})
+        {:error, failure} ->
+          failed(type, Map.put(failure, :operation, :annotate))
       end
     end
 
-    defp skipped(type, reason, open) do
-      :telemetry.execute(@skipped_event, %{open_spans: map_size(open)}, %{
-        span: type,
-        reason: reason
-      })
+    defp restore(type, {:token, token}),
+      do: sdk_operation(type, :restore, fn -> :otel_ctx.detach(token) end)
+
+    defp restore(_type, :none), do: :ok
+
+    defp prepare_finish(:dispatch, metadata),
+      do: {attributes(metadata, @dispatch_attributes), dispatch_status(metadata)}
+
+    defp prepare_finish(:job, metadata),
+      do: {attributes(metadata, @job_attributes), job_status(metadata)}
+
+    defp apply_annotation(span, attributes, nil), do: :otel_span.set_attributes(span, attributes)
+
+    defp apply_annotation(span, attributes, message) do
+      _set = :otel_span.set_attributes(span, attributes)
+      :otel_span.set_status(span, :error, message)
     end
 
-    defp isolated(fun) do
+    defp dispatch_status(%{reason_class: reason_class}), do: attribute_value(reason_class)
+
+    defp dispatch_status(%{outcome: :error, error_code: code}) when is_integer(code),
+      do: "JSON-RPC error " <> Integer.to_string(code)
+
+    defp dispatch_status(%{outcome: :error}), do: "JSON-RPC error"
+    defp dispatch_status(_metadata), do: nil
+
+    defp job_status(%{outcome: outcome}) when outcome in @failed_job_outcomes,
+      do: attribute_value(outcome)
+
+    defp job_status(_metadata), do: nil
+
+    defp sdk_operation(type, operation, fun) do
+      case attempt(:sdk_failure, fun) do
+        {:ok, _result} -> :ok
+        {:error, failure} -> failed(type, Map.put(failure, :operation, operation))
+      end
+    end
+
+    defp failed(type, failure) do
+      :telemetry.execute(@failed_event, %{}, Map.put(failure, :span, type))
+    end
+
+    defp skipped(type, open, details) do
+      :telemetry.execute(
+        @skipped_event,
+        %{open_spans: map_size(open)},
+        Map.put(details, :span, type)
+      )
+    end
+
+    # Runs fun and turns a raise, throw, or exit into a bounded failure: the
+    # reason, the kind, and the exception module for an error or the kind
+    # itself for a throw or exit. Messages and raw reasons are not kept.
+    defp attempt(reason, fun) do
       {:ok, fun.()}
     catch
-      kind, _reason -> {:error, kind}
+      kind, caught ->
+        {:error,
+         %{
+           reason: reason,
+           error_kind: kind,
+           error_class: classify(kind, caught, __STACKTRACE__)
+         }}
     end
+
+    defp classify(:error, caught, stacktrace),
+      do: Exception.normalize(:error, caught, stacktrace).__struct__
+
+    defp classify(kind, _caught, _stacktrace), do: kind
 
     defp open_spans, do: Process.get(@open_spans_key, %{})
 
@@ -380,46 +438,54 @@ if Code.ensure_loaded?(:otel_tracer) do
     # validated, and a tracestate only alongside one. The remote span context
     # is built from those fields rather than parsed again by
     # otel_propagator_trace_context, which drops a parent whose flags are
-    # anything but 00 or 01.
-    defp parent_context(
+    # anything but 00 or 01. Parsing is the handler's own work; building the
+    # span context is left to parent_context/1, inside the SDK isolation.
+    defp remote_parent(
            %{
              traceparent:
                <<_version::binary-size(2), "-", trace_id::binary-size(32), "-",
                  span_id::binary-size(16), "-", flags::binary-size(2), _rest::binary>>
            } = metadata
          ) do
-      remote =
-        :otel_tracer.from_remote_span(
-          String.to_integer(trace_id, 16),
-          String.to_integer(span_id, 16),
-          String.to_integer(flags, 16)
-        )
+      %{
+        trace_id: String.to_integer(trace_id, 16),
+        span_id: String.to_integer(span_id, 16),
+        flags: String.to_integer(flags, 16),
+        tracestate_members: tracestate_members(metadata)
+      }
+    end
+
+    defp remote_parent(_metadata), do: nil
+
+    defp parent_context(nil), do: :otel_ctx.get_current()
+
+    defp parent_context(remote) do
+      span_ctx =
+        :otel_tracer.from_remote_span(remote.trace_id, remote.span_id, remote.flags)
 
       :otel_tracer.set_current_span(
         :otel_ctx.get_current(),
-        span_ctx(remote, tracestate: tracestate(metadata))
+        span_ctx(span_ctx, tracestate: tracestate(remote.tracestate_members))
       )
     end
-
-    defp parent_context(_metadata), do: :otel_ctx.get_current()
 
     # otel_tracestate's parser and its add/3 reject W3C Trace Context Level 2
     # keys that Snodo.TraceContext accepts, such as "a@b@c", and decoding
     # drops the whole header on one such key. The members are therefore put
     # into the otel_tracestate:t() record directly, in header order, after the
     # same optional-whitespace trimming Snodo.TraceContext applied.
-    defp tracestate(%{tracestate: state}) when is_binary(state) do
-      members =
-        for raw_member <- String.split(state, ","),
-            member <- [Regex.replace(@ows, raw_member, "")],
-            member != "",
-            [key, value] <- [String.split(member, "=", parts: 2)],
-            do: {key, value}
-
-      {:tracestate, members}
+    defp tracestate_members(%{tracestate: state}) when is_binary(state) do
+      for raw_member <- String.split(state, ","),
+          member <- [Regex.replace(@ows, raw_member, "")],
+          member != "",
+          [key, value] <- [String.split(member, "=", parts: 2)],
+          do: {key, value}
     end
 
-    defp tracestate(_metadata), do: :otel_tracestate.new()
+    defp tracestate_members(_metadata), do: nil
+
+    defp tracestate(nil), do: :otel_tracestate.new()
+    defp tracestate(members), do: {:tracestate, members}
 
     defp dispatch_name(%{method: method, component: component})
          when is_binary(method) and is_binary(component),

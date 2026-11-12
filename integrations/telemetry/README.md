@@ -136,11 +136,14 @@ keep the limit at or above the runner's `:max_jobs` (32 by default).
 ### Failures and detaching
 
 The handler never raises, so `:telemetry` never detaches it. A raise, throw,
-or exit from the SDK, such as a failing span processor, is caught: at start
-no span is opened and `[:snodo, :open_telemetry, :span, :skipped]` is emitted
-with reason `:sdk_failure`; at the end, a failing step emits
-`[:snodo, :open_telemetry, :span, :failed]` and the remaining steps, including
-restoring the previous context, still run.
+or exit is caught and reported as `:handler_failure` (the handler's own
+preparation) or `:sdk_failure` (a call into the OpenTelemetry SDK, such as a
+failing span processor): at start no span is opened and
+`[:snodo, :open_telemetry, :span, :skipped]` is emitted; at the end, a failing
+operation emits `[:snodo, :open_telemetry, :span, :failed]` and the remaining
+operations, including restoring the previous context, still run. The
+diagnostic metadata names the operation and a bounded `error_class`, such as
+the exception module, never a message or raw reason.
 
 `detach()` stops new spans and keeps ending the spans already open.
 `detach(open_spans: :abandon)` removes the handler entirely; spans open at

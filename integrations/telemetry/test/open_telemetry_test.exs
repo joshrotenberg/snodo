@@ -440,8 +440,15 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
 
       dispatch_echo(runtime, %{})
 
-      assert_receive {:diagnostic, @failed, %{},
-                      %{span: :dispatch, step: :end, error_kind: :error}}
+      assert_receive {:diagnostic, @failed, %{}, metadata}
+
+      assert metadata == %{
+               span: :dispatch,
+               operation: :end,
+               reason: :sdk_failure,
+               error_kind: :error,
+               error_class: RuntimeError
+             }
 
       # The failing processor runs before the exporting one, so nothing is
       # exported, but the context is restored and the handler stays attached.
@@ -463,7 +470,16 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
                  %{outcome: :completed}
                end)
 
-      assert_receive {:diagnostic, @failed, %{}, %{span: :job, step: :end, error_kind: :exit}}
+      assert_receive {:diagnostic, @failed, %{}, metadata}
+
+      assert metadata == %{
+               span: :job,
+               operation: :end,
+               reason: :sdk_failure,
+               error_kind: :exit,
+               error_class: :exit
+             }
+
       assert_clean_process()
     end
 
@@ -475,10 +491,55 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
 
       dispatch_echo(runtime, %{})
 
-      assert_receive {:diagnostic, @skipped, %{open_spans: 0},
-                      %{span: :dispatch, reason: :sdk_failure}}
+      assert_receive {:diagnostic, @skipped, %{open_spans: 0}, metadata}
+
+      # The bounded classification only: no message and no raw reason.
+      assert metadata == %{
+               span: :dispatch,
+               operation: :start,
+               reason: :sdk_failure,
+               error_kind: :error,
+               error_class: RuntimeError
+             }
 
       refute_received {:span, span(name: "tools/call echo")}
+      refute_received {:diagnostic, @failed, _measurements, _metadata}
+      assert_clean_process(outer)
+    end
+  end
+
+  describe "handler failures" do
+    test "metadata that breaks the contract is reported apart from SDK failures" do
+      outer = Tracer.start_span("outer")
+      Tracer.set_current_span(outer)
+      ref = make_ref()
+
+      # Shaped like a traceparent but not hex, which Snodo.TraceContext would
+      # never pass on, so the handler's own parsing fails.
+      bad = "00-#{String.duplicate("z", 32)}-#{String.duplicate("z", 16)}-01"
+
+      :telemetry.execute(@dispatch ++ [:start], %{system_time: 0}, %{
+        method: "tools/list",
+        traceparent: bad,
+        telemetry_span_context: ref
+      })
+
+      assert_receive {:diagnostic, @skipped, %{open_spans: 0}, metadata}
+
+      assert metadata == %{
+               span: :dispatch,
+               operation: :start,
+               reason: :handler_failure,
+               error_kind: :error,
+               error_class: ArgumentError
+             }
+
+      :telemetry.execute(@dispatch ++ [:stop], %{duration: 1}, %{
+        outcome: :ok,
+        telemetry_span_context: ref
+      })
+
+      refute_received {:span, span(name: "tools/list")}
       refute_received {:diagnostic, @failed, _measurements, _metadata}
       assert_clean_process(outer)
     end
@@ -498,7 +559,9 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
       assert :inner = Instrumentation.span(config, @dispatch, %{method: "outer"}, inner, finish)
 
       assert_receive {:diagnostic, @skipped, %{open_spans: 1},
-                      %{span: :dispatch, reason: :max_open_spans}}
+                      %{span: :dispatch, operation: :start, reason: :max_open_spans} = metadata}
+
+      assert map_size(metadata) == 3
 
       assert_receive {:span, span(name: "outer")}
       refute_received {:span, span(name: "inner")}
@@ -519,7 +582,7 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
       end
 
       assert_receive {:diagnostic, @skipped, %{open_spans: 2},
-                      %{span: :job, reason: :max_open_spans}}
+                      %{span: :job, operation: :start, reason: :max_open_spans}}
 
       assert map_size(Process.get({Spans, :open_spans})) == 2
 

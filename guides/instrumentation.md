@@ -241,18 +241,29 @@ keep the limit at or above the runner's `:max_jobs` (32 by default).
 :ok = Snodo.Instrumentation.Telemetry.OpenTelemetry.attach(max_open_spans: 4_096)
 ```
 
-The handler never raises, so `:telemetry` never detaches it. A raise, throw,
-or exit from the OpenTelemetry SDK, such as a failing span processor or an SDK
-that is shutting down, is caught. At start, no span is opened and the skipped
-event is emitted with reason `:sdk_failure`. At the end, setting attributes
-and status, ending the span, and restoring the previous context are separate
-steps; a failing step emits `[:snodo, :open_telemetry, :span, :failed]` and
-the remaining steps still run, so the previous context is restored.
+The handler never raises, so `:telemetry` never detaches it. The handler's own
+preparation (span name, attributes, status message, and the parsed remote
+parent) and its calls into the OpenTelemetry API and SDK are isolated
+separately, so a raise, throw, or exit is caught and reported with reason
+`:handler_failure` or `:sdk_failure`. An SDK failure comes from, for example, a
+failing span processor or an SDK that is shutting down; a handler failure
+means the event metadata broke its contract or the handler has a bug. At
+start, no span is opened and the skipped event is emitted. Ending a span is
+three operations, annotate (attributes and status), end, and restore the
+previous context; a failing operation emits
+`[:snodo, :open_telemetry, :span, :failed]` and the remaining operations still
+run, so the previous context is restored.
 
 | Event | Measurements | Metadata |
 |---|---|---|
-| `[:snodo, :open_telemetry, :span, :skipped]` | `open_spans` in the process | `span` (`:dispatch` or `:job`), `reason` (`:max_open_spans` or `:sdk_failure`) |
-| `[:snodo, :open_telemetry, :span, :failed]` | none | `span`, `step` (`:annotate`, `:end`, or `:restore`), `error_kind` (`:error`, `:throw`, or `:exit`) |
+| `[:snodo, :open_telemetry, :span, :skipped]` | `open_spans` in the process | `span`, `operation` (`:start`), `reason` (`:max_open_spans`, `:handler_failure`, or `:sdk_failure`); a failure adds `error_kind` and `error_class` |
+| `[:snodo, :open_telemetry, :span, :failed]` | none | `span`, `operation` (`:annotate`, `:end`, or `:restore`), `reason` (`:handler_failure` or `:sdk_failure`), `error_kind`, `error_class` |
+
+`span` is `:dispatch` or `:job`. `error_kind` is `:error`, `:throw`, or
+`:exit`. `error_class` is the exception module for `:error`, such as
+`RuntimeError` or `ArgumentError` (a raw Erlang error is normalized, so
+`:badarg` becomes `ArgumentError`), and `:throw` or `:exit` for those kinds.
+The metadata never includes an exception message or a raw reason.
 
 `detach()` stops new spans at once and keeps the handler for stop and
 exception events attached, so spans already open are ended and their contexts
