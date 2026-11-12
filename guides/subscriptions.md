@@ -101,14 +101,28 @@ children = [
    scope: MyApp.SubscriptionGroup,
    start_scope: false}
 ]
+
+{:ok, _supervisor} = Supervisor.start_link(children, strategy: :rest_for_one)
 ```
 
-In this mode the bridge never starts the scope. If it is absent at startup,
-`start_link/1` returns `{:error, {:scope_not_started, scope}}`. After a scope
-failure, the bridge waits up to 5 seconds for the owner to register a replacement
-before the scope child fails with `{:scope_not_started, scope}` under the
-supervisor's restart policy. The source configuration resolves the current hub
-each time a stream opens. Opening a stream or publishing returns
+Use a `:rest_for_one` parent with the scope first and its bridges after it.
+When the scope fails, the parent stops the bridges and restarts the scope before
+restarting them, so they rejoin with a live scope.
+
+In this mode the bridge never starts or waits for the scope. If it is absent
+when the scope child starts, including if it disappears during startup,
+`start_link/1` returns the standard supervisor startup error:
+
+```elixir
+{:error,
+ {:shutdown,
+  {:failed_to_start_child, Snodo.Subscription.Bridge.Scope, {:scope_not_started, scope}}}}
+```
+
+The usual supervisor startup and linking semantics apply. If the scope
+stays absent after a failure, immediate restart failures exhaust the bridge
+supervisor's restart intensity and it exits. The source configuration resolves
+the current hub each time a stream opens. Opening a stream or publishing returns
 `{:error, :unavailable}` if the relevant supervisor or child is unavailable or
 exits during the call. An event may already have reached listeners when a
 publication fails during the call.

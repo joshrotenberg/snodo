@@ -9,7 +9,7 @@ unless Node.alive?() do
     {:error, reason} ->
       message = "Erlang distribution unavailable: #{inspect(reason)}"
 
-      if System.get_env("CI") do
+      if System.get_env("CI") in ["true", "1"] do
         raise message
       else
         IO.puts(:stderr, message <> "; distributed tests will skip")

@@ -8,8 +8,10 @@ defmodule Snodo.Subscription.Bridge do
   `:rest_for_one` supervisor. By default the bridge starts the scope or monitors
   an existing one, and may start a replacement if it dies. For a scope owned by
   another supervisor, set `start_scope: false` so only that supervisor can
-  restart it. Losing either scope or hub restarts the forwarding worker so it
-  rejoins with a live hub.
+  restart it. Put the scope first and its bridges after it under a
+  `:rest_for_one` parent so a scope failure restarts the bridges after a live
+  replacement is available. Losing the local hub restarts the forwarding
+  worker so it rejoins with a live hub.
 
       children = [{Snodo.Subscription.Bridge, name: MyApp.SubscriptionBridge}]
 
@@ -67,11 +69,20 @@ defmodule Snodo.Subscription.Bridge do
   groups may share a scope. Stopping a bridge stops a scope it started, so
   supervise a shared scope separately when bridges have independent lifetimes.
 
-  With `start_scope: false`, the caller must start the scope first. An absent
-  scope returns `{:error, {:scope_not_started, scope}}`. After a scope failure,
-  the bridge waits up to 5 seconds for its owner to register a replacement.
-  If none appears, the scope child fails with `{:scope_not_started, scope}`
-  under the supervisor's restart policy. It never starts the external scope.
+  With `start_scope: false`, the caller must start the scope first. If it is
+  absent when the scope child starts, including if it disappears during
+  startup, this returns the standard supervisor startup error:
+
+      {:error,
+       {:shutdown,
+        {:failed_to_start_child, Snodo.Subscription.Bridge.Scope, {:scope_not_started, scope}}}}
+
+  The usual supervisor startup and linking semantics apply. The bridge never
+  starts or waits for an external scope. If it stays absent after a failure,
+  immediate restart failures exhaust
+  the bridge supervisor's restart intensity and the supervisor exits. Put the
+  scope and its bridges under a `:rest_for_one` parent, with the scope first,
+  so it restarts the scope before restarting the bridges.
   """
   @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts \\ []) when is_list(opts) do
@@ -100,13 +111,9 @@ defmodule Snodo.Subscription.Bridge do
       hub_options: Keyword.get(opts, :hub_options, [])
     }
 
-    if not start_scope and is_nil(Process.whereis(scope)) do
-      {:error, {:scope_not_started, scope}}
-    else
-      case Keyword.get(opts, :name, __MODULE__) do
-        nil -> Supervisor.start_link(__MODULE__, config)
-        name -> Supervisor.start_link(__MODULE__, config, name: name)
-      end
+    case Keyword.get(opts, :name, __MODULE__) do
+      nil -> Supervisor.start_link(__MODULE__, config)
+      name -> Supervisor.start_link(__MODULE__, config, name: name)
     end
   end
 
@@ -179,8 +186,6 @@ defmodule Snodo.Subscription.Bridge.Scope do
 
   use GenServer
 
-  @scope_timeout 5_000
-
   @doc false
   def start_link({scope, true}) do
     case :pg.start_link(scope) do
@@ -190,7 +195,10 @@ defmodule Snodo.Subscription.Bridge.Scope do
   end
 
   def start_link({scope, false}) do
-    await_scope(scope, System.monotonic_time(:millisecond) + @scope_timeout)
+    case Process.whereis(scope) do
+      nil -> {:error, {:scope_not_started, scope}}
+      pid -> GenServer.start_link(__MODULE__, pid)
+    end
   end
 
   @impl GenServer
@@ -199,23 +207,6 @@ defmodule Snodo.Subscription.Bridge.Scope do
   @impl GenServer
   def handle_info({:DOWN, ref, :process, _pid, reason}, ref) do
     {:stop, {:scope_down, reason}, ref}
-  end
-
-  defp await_scope(scope, deadline) do
-    case Process.whereis(scope) do
-      nil ->
-        if System.monotonic_time(:millisecond) >= deadline do
-          {:error, {:scope_not_started, scope}}
-        else
-          receive do
-          after
-            10 -> await_scope(scope, deadline)
-          end
-        end
-
-      pid ->
-        GenServer.start_link(__MODULE__, pid)
-    end
   end
 end
 

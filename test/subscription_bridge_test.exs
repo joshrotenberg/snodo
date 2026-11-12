@@ -63,29 +63,36 @@ defmodule Snodo.SubscriptionBridgeTest do
   end
 
   @tag :capture_log
-  test "waits for an external owner to restart its scope without taking ownership", config do
+  test "a rest_for_one parent restarts the external scope before its bridge", config do
+    children = [
+      %{id: :scope, start: {:pg, :start_link, [config.scope]}},
+      {Bridge, name: nil, scope: config.scope, group: config.group, start_scope: false}
+    ]
+
     owner =
       start_supervised!(%{
         id: :scope_owner,
         type: :supervisor,
-        start:
-          {Supervisor, :start_link,
-           [
-             [%{id: :scope, start: {:pg, :start_link, [config.scope]}}],
-             [strategy: :one_for_one]
-           ]}
+        start: {Supervisor, :start_link, [children, [strategy: :rest_for_one]]}
       })
 
     scope = Process.whereis(config.scope)
-    bridge = start_bridge(config, :bridge, start_scope: false)
-    old_hub = hub(bridge)
-    old_worker = worker(bridge)
-    monitor = Process.monitor(old_worker)
-    :ok = Supervisor.terminate_child(owner, :scope)
 
-    assert_receive {:DOWN, ^monitor, :process, ^old_worker, :shutdown}, 1_000
-    assert Process.whereis(config.scope) == nil
-    assert {:ok, replacement} = Supervisor.restart_child(owner, :scope)
+    {Bridge, old_bridge, :supervisor, _modules} =
+      List.keyfind(Supervisor.which_children(owner), Bridge, 0)
+
+    old_hub = hub(old_bridge)
+    old_worker = worker(old_bridge)
+    monitor = Process.monitor(old_bridge)
+    Process.exit(scope, :kill)
+
+    assert_receive {:DOWN, ^monitor, :process, ^old_bridge, :shutdown}, 1_000
+
+    {Bridge, bridge, :supervisor, _modules} =
+      List.keyfind(Supervisor.which_children(owner), Bridge, 0)
+
+    replacement = Process.whereis(config.scope)
+    refute bridge == old_bridge
     refute replacement == scope
     assert {:links, links} = Process.info(replacement, :links)
     assert owner in links
@@ -94,16 +101,57 @@ defmodule Snodo.SubscriptionBridgeTest do
     assert [new_worker] = Helpers.await_members(config.scope, config.group, 1, [old_worker])
     refute new_worker == old_worker
     assert {:ok, %{matched: 0}} = Bridge.publish(bridge, Event.tools_list_changed())
-    assert :ok = stop_supervised(:bridge)
+    assert :ok = Supervisor.terminate_child(owner, Bridge)
     assert Process.alive?(replacement)
     assert Process.alive?(owner)
   end
 
+  @tag :capture_log
+  test "fails promptly and exhausts restart intensity when an external scope never returns",
+       config do
+    {:ok, scope} = :pg.start_link(config.scope)
+    Process.unlink(scope)
+    {:ok, bridge} = Bridge.start_link(name: nil, scope: config.scope, start_scope: false)
+    Process.unlink(bridge)
+
+    on_exit(fn ->
+      if Process.alive?(bridge), do: Process.exit(bridge, :kill)
+      if Process.alive?(scope), do: Process.exit(scope, :kill)
+    end)
+
+    bridge_monitor = Process.monitor(bridge)
+    old_worker = worker(bridge)
+    worker_monitor = Process.monitor(old_worker)
+    Process.exit(scope, :kill)
+    assert_receive {:DOWN, ^worker_monitor, :process, ^old_worker, :shutdown}
+
+    publication = Task.async(fn -> Bridge.publish(bridge, Event.tools_list_changed()) end)
+    ref = publication.ref
+    assert_receive {^ref, {:error, :unavailable}}
+    assert_receive {:DOWN, ^ref, :process, _caller, :normal}
+    assert_receive {:DOWN, ^bridge_monitor, :process, ^bridge, :shutdown}
+
+    context = %Snodo.Context{
+      protocol_version: "2026-07-28",
+      protocol: Snodo.Protocol.V2026_07_28,
+      transport: %Snodo.Transport.Context{transport: :direct}
+    }
+
+    assert {:error, :unavailable} = Bridge.open(%{}, context, bridge)
+    assert Process.whereis(config.scope) == nil
+  end
+
+  @tag :capture_log
   test "fails when an external scope has not been started", config do
-    assert {:error, {:scope_not_started, scope}} =
+    Process.flag(:trap_exit, true)
+    assert {:error, {:scope_not_started, scope}} = Bridge.Scope.start_link({config.scope, false})
+    assert scope == config.scope
+
+    assert {:error, {:shutdown, {:failed_to_start_child, Bridge.Scope, reason}}} =
              Bridge.start_link(name: nil, scope: config.scope, start_scope: false)
 
-    assert scope == config.scope
+    assert reason == {:scope_not_started, scope}
+
     assert Process.whereis(scope) == nil
   end
 
