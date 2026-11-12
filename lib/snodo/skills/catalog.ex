@@ -227,17 +227,7 @@ defmodule Snodo.Skills.Catalog do
   # for that paging.
   defp check_responses!(skills, max_response_bytes, budget) do
     Enum.map(skills, fn skill ->
-      for file <- skill.files do
-        size = file |> content_map() |> JSON.encode!() |> byte_size()
-
-        if size > budget do
-          raise ArgumentError,
-                "#{skill.path}/#{file.path}: resources/read would send #{size} bytes of content, " <>
-                  "more than :max_response_bytes (#{max_response_bytes}) less " <>
-                  "#{@envelope_bytes} bytes for the envelope"
-        end
-      end
-
+      Enum.each(skill.files, &check_file_response!(skill, &1, max_response_bytes, budget))
       size = skill |> Skill.entry() |> JSON.encode!() |> byte_size()
 
       if size > budget do
@@ -249,6 +239,17 @@ defmodule Snodo.Skills.Catalog do
 
       size
     end)
+  end
+
+  defp check_file_response!(skill, file, max_response_bytes, budget) do
+    size = file |> content_map() |> JSON.encode!() |> byte_size()
+
+    if size > budget do
+      raise ArgumentError,
+            "#{skill.path}/#{file.path}: resources/read would send #{size} bytes of content, " <>
+              "more than :max_response_bytes (#{max_response_bytes}) less " <>
+              "#{@envelope_bytes} bytes for the envelope"
+    end
   end
 
   # The resources/read content of one file: text when the bytes are UTF-8,
