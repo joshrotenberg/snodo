@@ -105,8 +105,9 @@ defmodule Snodo.Skills do
 
   `skills/get` for a URI that is not a served skill's SKILL.md, and
   `resources/directory/read` for a URI that is not a served skill directory,
-  answer -32602 with the URI in the error data. An invalid or expired cursor
-  answers -32602.
+  answer -32602 with the URI in the error data. An invalid or expired cursor,
+  one longer than 1,024 bytes, or one issued for another listing or directory
+  answers -32602. Cursors the server issues are under 100 bytes.
   """
 
   alias Snodo.Context
@@ -268,7 +269,7 @@ defmodule Snodo.Skills do
              params,
              catalog.directory_page_size,
              "resources/directory/read",
-             catalog.scope <> directory
+             directory_scope(catalog.scope, directory)
            ) do
       {:ok, Result.raw(complete(catalog, %{"resources" => page}, next))}
     end
@@ -283,6 +284,14 @@ defmodule Snodo.Skills do
       kind: :extension,
       data: %{"requiredCapabilities" => %{"extensions" => %{@id => %{}}}}
     }
+  end
+
+  # The directory is hashed into a fixed-size scope, so a cursor stays far
+  # below @max_cursor_bytes however long the directory URI is.
+  defp directory_scope(catalog_scope, directory) do
+    :crypto.hash(:sha256, [catalog_scope, 0, directory])
+    |> binary_part(0, 12)
+    |> Base.url_encode64(padding: false)
   end
 
   defp fetch_directory(catalog, directory, uri) do

@@ -335,7 +335,13 @@ The skill limits follow the sizes SEP-2640 recommends a server not exceed. For
 `:directory`, the file count and the file sizes are checked before any file of
 the skill is read, and the byte total is checked again as files are read, in
 case one grew in between. A symbolic link under `:directory` raises
-`ArgumentError` instead of being followed. A skill entry is never split across
+`ArgumentError` instead of being followed.
+
+`skills/list` and `resources/directory/read` cursors are opaque and stay under
+100 bytes whatever the length of the directory URI, because the directory is
+hashed into them. A cursor over 1,024 bytes, or one issued for another
+listing, another directory, or another build of the catalog, gets -32602. A
+skill entry is never split across
 `skills/list` pages, so one page can carry up to `:page_size` entries of up to
 `:max_skill_files` files each.
 

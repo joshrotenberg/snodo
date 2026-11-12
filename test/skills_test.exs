@@ -345,6 +345,51 @@ defmodule Snodo.SkillsTest do
     end
   end
 
+  describe "directory cursors" do
+    test "stay small for a long directory URI and are bound to their directory" do
+      prefix = Enum.map_join(1..4, "/", fn index -> String.duplicate("p#{index}", 100) end)
+      path = prefix <> "/long-skill"
+
+      files =
+        for n <- 1..3,
+            into: %{"SKILL.md" => skill_md("long-skill")},
+            do: {"docs/f#{n}.md", "#{n}"}
+
+      {catalog, _resources} = build(entries: [[path: path, files: files]], directory_page_size: 1)
+      directory = "skill://#{path}/docs"
+      assert byte_size(directory) > 800
+
+      context = %Snodo.Context{
+        protocol_version: "2026-07-28",
+        protocol: Snodo.Protocol.V2026_07_28,
+        transport: %Snodo.Transport.Context{transport: :direct}
+      }
+
+      read = fn params -> Snodo.Skills.dispatch(catalog, :directory_read, params, context) end
+
+      names =
+        Stream.unfold(%{"uri" => directory}, fn
+          nil ->
+            nil
+
+          params ->
+            assert {:ok, %Snodo.Result{value: result}} = read.(params)
+            cursor = result["nextCursor"]
+            if cursor, do: assert(byte_size(cursor) < 128)
+            next = if cursor, do: %{"uri" => directory, "cursor" => cursor}
+            {Enum.map(result["resources"], & &1["name"]), next}
+        end)
+        |> Enum.concat()
+
+      assert names == ["f1.md", "f2.md", "f3.md"]
+
+      {:ok, %Snodo.Result{value: %{"nextCursor" => cursor}}} = read.(%{"uri" => directory})
+
+      assert {:error, %Snodo.Error{code: -32_602}} =
+               read.(%{"uri" => "skill://#{path}", "cursor" => cursor})
+    end
+  end
+
   describe "building a catalog" do
     test "can leave out resources/directory/read" do
       {catalog, [resource]} =
