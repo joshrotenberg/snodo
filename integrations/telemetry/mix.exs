@@ -54,6 +54,11 @@ defmodule Snodo.Instrumentation.Telemetry.MixProject do
       # The tests run a Tasks runner through the sink.
       snodo_dep(:snodo_tasks, "../../extensions/tasks", only: :test),
       {:telemetry, "~> 1.0"},
+      # Snodo.Instrumentation.Telemetry.OpenTelemetry is compiled only when the
+      # application includes the API.
+      {:opentelemetry_api, "~> 1.5", optional: true},
+      # The SDK provides the test exporter. The tests configure and start it.
+      {:opentelemetry, "~> 1.7", only: :test, runtime: false},
       {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.40", only: :dev, runtime: false}

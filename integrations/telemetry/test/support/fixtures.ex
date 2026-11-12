@@ -18,6 +18,34 @@ defmodule SnodoTest.Telemetry.Server do
   tool(SnodoTest.Telemetry.Echo)
 end
 
+defmodule SnodoTest.Telemetry.Traced do
+  @moduledoc false
+  use Snodo.Tool, name: "traced"
+
+  require OpenTelemetry.Tracer, as: Tracer
+
+  # Starts a span of its own, which should be a child of the dispatch span.
+  @impl true
+  def call(_arguments, _context) do
+    Tracer.with_span "handler work" do
+      {:ok, Snodo.Result.text("traced")}
+    end
+  end
+end
+
+defmodule SnodoTest.Telemetry.TracedServer do
+  @moduledoc false
+
+  use Snodo.Server,
+    name: "telemetry-otel-test",
+    version: "0.1.0",
+    protocols: [Snodo.Protocol.V2026_07_28],
+    capabilities: %{"tools" => %{}}
+
+  tool(SnodoTest.Telemetry.Echo)
+  tool(SnodoTest.Telemetry.Traced)
+end
+
 defmodule SnodoTest.Telemetry.Tasks do
   @moduledoc false
 
