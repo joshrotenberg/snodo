@@ -59,96 +59,61 @@ router; the application publishes when its catalog or resources change.
 
 ## Across connected nodes
 
-The hub is local to one node. A deployment can forward events from its message
-bus into a hub on each node while keeping the hub as its subscription source.
-This example uses OTP [`:pg`](https://www.erlang.org/docs/27/apps/kernel/pg.html)
-and needs no extra package. Start the same `:pg` scope and one bridge on every
-directly connected Erlang node that serves subscriptions:
-
-```elixir
-defmodule MyApp.SubscriptionBridge do
-  use GenServer
-
-  alias Snodo.Subscription.Hub
-
-  @scope MyApp.SubscriptionGroup
-  @group {__MODULE__, :events}
-
-  def start_link(hub), do: GenServer.start_link(__MODULE__, hub, name: __MODULE__)
-  def publish(event), do: GenServer.call(__MODULE__, {:publish, event})
-
-  @impl GenServer
-  def init(hub) do
-    :ok = :pg.join(@scope, @group, self())
-    {:ok, hub}
-  end
-
-  @impl GenServer
-  def handle_call({:publish, event}, _from, hub) do
-    case Hub.publish(hub, event) do
-      {:ok, local_report} ->
-        @scope
-        |> :pg.get_members(@group)
-        |> Enum.reject(&(&1 == self()))
-        |> Enum.each(&send(&1, {:subscription_event, event}))
-
-        {:reply, {:ok, local_report}, hub}
-
-      {:error, _reason} = error ->
-        {:reply, error, hub}
-    end
-  end
-
-  @impl GenServer
-  def handle_info({:subscription_event, event}, hub) do
-    _result = Hub.publish(hub, event)
-    {:noreply, hub}
-  end
-end
-```
-
-Supervise the scope, local hub, and bridge in that order under a dedicated
-`:rest_for_one` supervisor. Restarting the scope or hub then restarts the
-bridge so it rejoins the group with a live hub. Use the same scope and group
-names on every node in this deployment:
+The hub is local to one node. `Snodo.Subscription.Bridge` forwards events to a
+hub on each directly connected Erlang node using OTP
+[`:pg`](https://www.erlang.org/docs/27/apps/kernel/pg.html), with no extra package.
+Start its child spec on every node that serves subscriptions:
 
 ```elixir
 children = [
-  %{id: MyApp.SubscriptionGroup, start: {:pg, :start_link, [MyApp.SubscriptionGroup]}},
-  {Snodo.Subscription.Hub, name: MyApp.SubscriptionHub},
-  {MyApp.SubscriptionBridge, MyApp.SubscriptionHub}
+  {Snodo.Subscription.Bridge,
+   name: MyApp.SubscriptionBridge,
+   scope: MyApp.SubscriptionGroup,
+   group: :changes,
+   hub_options: [max_buffer: 100, overflow: :drop_oldest]}
 ]
 
-{:ok, _supervisor} = Supervisor.start_link(children, strategy: :rest_for_one)
+# Include children in your application's supervision tree.
+{:ok, _supervisor} = Supervisor.start_link(children, strategy: :one_for_one)
 
 runtime =
   MyServer.runtime(
-    subscription_source: Snodo.Subscription.Hub.source(MyApp.SubscriptionHub)
+    subscription_source: Snodo.Subscription.Bridge.source(MyApp.SubscriptionBridge)
   )
 
-MyApp.SubscriptionBridge.publish(Snodo.Subscription.Event.tools_list_changed())
+Snodo.Subscription.Bridge.publish(
+  MyApp.SubscriptionBridge,
+  Snodo.Subscription.Event.tools_list_changed()
+)
 ```
 
+The child spec starts the scope, local hub, and forwarding worker in that order
+under a dedicated `:rest_for_one` supervisor. Restarting the scope or hub restarts
+the worker so it rejoins with a live hub. An existing scope is monitored and stays
+under its original owner. Supervise a shared scope separately if bridges have
+independent lifetimes. The source configuration resolves the current hub each
+time a stream opens.
+
+Use the same scope and group on every participating node. They default to
+`Snodo.Subscription.Bridge.PG` and `{Snodo.Subscription.Bridge, :events}`.
 The bridge validates an event through its local hub before forwarding it. The
 returned delivery report describes only that local hub. Remote sends have no
-acknowledgement. Each receiving hub applies its own listener filters and queue
-limit. For an existing message bus, replace the `:pg` send and group membership
-with a bus subscription and publish into the local hub, or implement
-`Snodo.Subscription.Source` directly.
+acknowledgement. Each node's hub keeps its own bounded per-listener queues,
+filters, and overflow policy, configured through `:hub_options`.
+`Snodo.Subscription.Source` remains the extension point for applications on
+another message bus; they can implement it directly or publish into a local hub.
 
 `:pg` membership converges after nodes connect directly; its view does not
 relay membership through an intermediary node. A new bridge can miss events
-until peers learn about it. During a network split, nodes cannot deliver events
-to peers they cannot see. Neither `:pg` nor the hub replays missed events after
-reconnection. A node or local scope restart also loses its in-memory listeners
-and queued events. Clients should reopen streams and refresh the affected
-catalogs or resources. For durable delivery or high event volume, use an
-application-owned bus with its own replay and backpressure policy. The hub's
-per-listener bound does not bound the bridge process's incoming mailbox.
+until peers learn about it. Events published during a network split are not
+replayed after reconnection. A node, local scope, or hub restart loses its
+in-memory listeners and queued events. Clients should reopen streams and refresh
+the affected catalogs or resources. For durable delivery or high event volume,
+use an application-owned bus with its own replay and backpressure policy. The
+hub's per-listener bound does not bound the forwarding worker's incoming mailbox.
 
-`examples/27_distributed_subscriptions.exs` checks the bridge with two local
-hubs and verifies that each hub still filters events. Run the same bridge and
-scope on separate directly connected nodes for cross-node delivery.
+`examples/27_distributed_subscriptions.exs` checks forwarding with two local
+hubs and verifies that each hub still filters events.
 
 ## Transports
 
