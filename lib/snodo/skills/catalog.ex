@@ -9,6 +9,7 @@ defmodule Snodo.Skills.Catalog do
   alias Snodo.Resource.Definition
   alias Snodo.Skills.Frontmatter
   alias Snodo.Skills.Skill
+  alias Snodo.Transport.Stdio.Framing
 
   @default_max_skill_files 512
   @default_max_skill_bytes 16_777_216
@@ -220,7 +221,8 @@ defmodule Snodo.Skills.Catalog do
   end
 
   # Every response the module sends must fit a client limit of
-  # :max_response_bytes: each file's resources/read content and each
+  # :max_response_bytes on HTTP and on stdio (see encoded_size/1): each
+  # file's resources/read content and each
   # skills/get entry are checked here, with @envelope_bytes to spare, and
   # skills/list and resources/directory/read pages are cut to the same budget
   # when they are served. Returns the encoded size of each entry, in order,
@@ -228,7 +230,7 @@ defmodule Snodo.Skills.Catalog do
   defp check_responses!(skills, max_response_bytes, budget) do
     Enum.map(skills, fn skill ->
       Enum.each(skill.files, &check_file_response!(skill, &1, max_response_bytes, budget))
-      size = skill |> Skill.entry() |> JSON.encode!() |> byte_size()
+      size = skill |> Skill.entry() |> encoded_size()
 
       if size > budget do
         raise ArgumentError,
@@ -242,7 +244,7 @@ defmodule Snodo.Skills.Catalog do
   end
 
   defp check_file_response!(skill, file, max_response_bytes, budget) do
-    size = file |> content_map() |> JSON.encode!() |> byte_size()
+    size = file |> content_map() |> encoded_size()
 
     if size > budget do
       raise ArgumentError,
@@ -250,6 +252,21 @@ defmodule Snodo.Skills.Catalog do
               "more than :max_response_bytes (#{max_response_bytes}) less " <>
               "#{@envelope_bytes} bytes for the envelope"
     end
+  end
+
+  @doc false
+  # The bytes a JSON object takes on the larger of the two wire encodings:
+  # HTTP sends JSON.encode!/1 output, raw UTF-8; the stdio framing escapes
+  # every character outside ASCII as \uXXXX (a surrogate pair above U+FFFF),
+  # so "é" takes 6 bytes instead of 2 there. The stdio size is measured with
+  # the framing itself, less its newline. Both escape character by character,
+  # so the size of a JSON array is the sum of its elements' sizes plus the
+  # commas and brackets.
+  @spec encoded_size(map()) :: non_neg_integer()
+  def encoded_size(value) when is_map(value) do
+    http = value |> JSON.encode_to_iodata!() |> IO.iodata_length()
+    stdio = (value |> Framing.encode_message() |> IO.iodata_length()) - 1
+    max(http, stdio)
   end
 
   # The resources/read content of one file: text when the bytes are UTF-8,

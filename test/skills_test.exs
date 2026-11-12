@@ -448,7 +448,77 @@ defmodule Snodo.SkillsTest do
       |> Enum.to_list()
     end
 
-    defp encoded(value), do: value |> JSON.encode!() |> byte_size()
+    # The larger of the HTTP and stdio sizes of any JSON value, measured with
+    # the stdio framing itself: {"v":<value>} and a newline, less 7 bytes.
+    defp encoded(value) do
+      http = value |> JSON.encode!() |> byte_size()
+      stdio = IO.iodata_length(Snodo.Transport.Stdio.Framing.encode_message(%{"v" => value})) - 7
+      max(http, stdio)
+    end
+
+    test "measures text as the stdio framing sends it, every non-ASCII character escaped" do
+      # 1,500 "é" are 3,000 bytes over HTTP and 9,000 on stdio.
+      accents = String.duplicate("é", 1_500)
+      assert byte_size(JSON.encode!(accents)) < 4_096
+      assert encoded(accents) > 4_096
+
+      error =
+        assert_raise ArgumentError, fn ->
+          build(
+            entries: [
+              [path: "accents", files: %{"SKILL.md" => skill_md("accents"), "é.txt" => accents}]
+            ],
+            max_response_bytes: 8_192
+          )
+        end
+
+      assert error.message =~ "accents/é.txt: resources/read would send"
+
+      # A character above U+FFFF is a surrogate pair, 12 bytes.
+      assert Catalog.encoded_size(%{"t" => "𝄞"}) == byte_size(~s({"t":"\\ud834\\udd1e"}))
+      assert Catalog.encoded_size(%{"t" => "a"}) == byte_size(~s({"t":"a"}))
+
+      # The same check at the defaults: three million "é" are 6,000,000 bytes
+      # over HTTP, inside the budget, and 18,000,000 on stdio, past it.
+      error =
+        assert_raise ArgumentError, fn ->
+          build(
+            entries: [
+              [
+                path: "many",
+                files: %{
+                  "SKILL.md" => skill_md("many"),
+                  "notes.txt" => String.duplicate("é", 3_000_000)
+                }
+              ]
+            ]
+          )
+        end
+
+      assert error.message =~ ~r/resources\/read would send 180000\d\d bytes/
+    end
+
+    test "cuts skills/list pages by their stdio size" do
+      description = String.duplicate("é", 300)
+
+      entries =
+        for n <- 1..4 do
+          name = "skill-#{n}"
+
+          [
+            path: name,
+            files: %{"SKILL.md" => skill_md(name) |> String.replace("A test skill", description)}
+          ]
+        end
+
+      {catalog, _resources} = build(entries: entries, max_response_bytes: 8_192)
+      pages = pages(catalog, :skills_list, %{}, "skills")
+      assert Enum.concat(pages) == catalog.entries
+      # Over HTTP the four entries would fit on one page.
+      assert byte_size(JSON.encode!(catalog.entries)) < 4_096
+      assert length(pages) > 1
+      assert Enum.all?(pages, &(encoded(&1) <= 4_096))
+    end
 
     test "refuses a file whose resources/read content would pass :max_response_bytes" do
       # 8,192 less the 4,096-byte envelope leaves 4,096 bytes of content.

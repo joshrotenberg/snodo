@@ -68,7 +68,10 @@ defmodule Snodo.Skills do
       JSON-RPC envelope, so every file's `resources/read` content and every
       `skills/get` entry must encode to at most `:max_response_bytes` less
       4,096 bytes, and `skills/list` and `resources/directory/read` pages are
-      cut to that size. Must be greater than 4,096.
+      cut to that size. Sizes are the larger of the HTTP encoding (raw
+      UTF-8) and the stdio framing, which writes every character outside
+      ASCII as a `\\uXXXX` escape, so an "é" counts as 6 bytes and a
+      character above U+FFFF as 12. Must be greater than 4,096.
     * `:max_skill_files` - files per skill, SKILL.md included. Defaults to
       512.
     * `:max_skill_bytes` - the total size of a skill's files. Defaults to
@@ -84,8 +87,9 @@ defmodule Snodo.Skills do
   `:max_skill_bytes`, or a file or skill entry over `:max_response_bytes`,
   raises `ArgumentError` and the module does not compile. A file within
   `:max_skill_bytes` can still be over `:max_response_bytes` once encoded:
-  base64 makes a binary file a third larger, and JSON escapes a control
-  character in a text file as six bytes.
+  base64 makes a binary file a third larger, JSON escapes a control
+  character in a text file as six bytes, and the stdio framing makes
+  non-ASCII text up to three times larger.
 
   ## Serving skills
 
@@ -377,7 +381,7 @@ defmodule Snodo.Skills do
   defp directory_page_length(catalog, children, offset) do
     children
     |> Stream.drop(offset)
-    |> Stream.map(&byte_size(JSON.encode!(&1)))
+    |> Stream.map(&Catalog.encoded_size/1)
     |> fit(catalog.directory_page_size, catalog.response_budget)
   end
 
