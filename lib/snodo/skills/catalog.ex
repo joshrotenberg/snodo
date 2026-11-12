@@ -14,6 +14,12 @@ defmodule Snodo.Skills.Catalog do
   @default_max_skill_bytes 16_777_216
   @default_page_size 50
   @default_directory_page_size 100
+  # The default Snodo.Client accepts responses up to 16 MiB over HTTP
+  # (:max_response_bytes) and stdio (:max_line_bytes).
+  @default_max_response_bytes 16_777_216
+  # Left for the JSON-RPC envelope, the result's other fields, a cursor, and
+  # SSE framing around the encoded entries or content.
+  @envelope_bytes 4_096
   @directory_mime_type "inode/directory"
 
   # The Agent Skills naming rules for the last segment, and an RFC 3986
@@ -29,6 +35,7 @@ defmodule Snodo.Skills.Catalog do
     :directory_page_size,
     :max_skill_files,
     :max_skill_bytes,
+    :max_response_bytes,
     :frontmatter_parser,
     :cache
   ]
@@ -58,6 +65,8 @@ defmodule Snodo.Skills.Catalog do
   @type t :: %__MODULE__{
           skills: [Skill.t()],
           entries: [map()],
+          entry_bytes: [pos_integer()],
+          response_budget: pos_integer(),
           by_uri: %{optional(String.t()) => map()},
           directories: %{optional(String.t()) => [map()]},
           directory_read: boolean(),
@@ -72,6 +81,8 @@ defmodule Snodo.Skills.Catalog do
 
   defstruct skills: [],
             entries: [],
+            entry_bytes: [],
+            response_budget: @default_max_response_bytes - @envelope_bytes,
             by_uri: %{},
             directories: %{},
             directory_read: true,
@@ -103,6 +114,9 @@ defmodule Snodo.Skills.Catalog do
       bytes: positive!(opts, :max_skill_bytes, @default_max_skill_bytes)
     }
 
+    max_response_bytes = max_response_bytes!(opts)
+    budget = max_response_bytes - @envelope_bytes
+
     sources =
       directory_sources(Keyword.get(opts, :directory), limits) ++
         entry_sources(Keyword.get(opts, :entries, []))
@@ -113,12 +127,16 @@ defmodule Snodo.Skills.Catalog do
       |> Enum.sort_by(& &1.path)
       |> reject_overlapping_paths!()
 
+    # Checked before any resource module is generated.
+    entry_bytes = check_responses!(skills, max_response_bytes, budget)
     {skills, resources} = define_resources!(skills, module, env)
     entries = Enum.map(skills, &Skill.entry/1)
 
     catalog = %__MODULE__{
       skills: skills,
       entries: entries,
+      entry_bytes: entry_bytes,
+      response_budget: budget,
       by_uri: Map.new(entries, &{&1["uri"], &1}),
       directories: skills |> Enum.map(&directories/1) |> Enum.reduce(%{}, &Map.merge/2),
       directory_read: boolean!(opts, :directory_read, true),
@@ -188,6 +206,57 @@ defmodule Snodo.Skills.Catalog do
       value when is_integer(value) and value > 0 -> value
       _invalid -> raise ArgumentError, "#{inspect(key)} must be a positive integer"
     end
+  end
+
+  defp max_response_bytes!(opts) do
+    case Keyword.get(opts, :max_response_bytes, @default_max_response_bytes) do
+      value when is_integer(value) and value > @envelope_bytes ->
+        value
+
+      _invalid ->
+        raise ArgumentError,
+              ":max_response_bytes must be an integer greater than #{@envelope_bytes}"
+    end
+  end
+
+  # Every response the module sends must fit a client limit of
+  # :max_response_bytes: each file's resources/read content and each
+  # skills/get entry are checked here, with @envelope_bytes to spare, and
+  # skills/list and resources/directory/read pages are cut to the same budget
+  # when they are served. Returns the encoded size of each entry, in order,
+  # for that paging.
+  defp check_responses!(skills, max_response_bytes, budget) do
+    Enum.map(skills, fn skill ->
+      for file <- skill.files do
+        size = file |> content_map() |> JSON.encode!() |> byte_size()
+
+        if size > budget do
+          raise ArgumentError,
+                "#{skill.path}/#{file.path}: resources/read would send #{size} bytes of content, " <>
+                  "more than :max_response_bytes (#{max_response_bytes}) less " <>
+                  "#{@envelope_bytes} bytes for the envelope"
+        end
+      end
+
+      size = skill |> Skill.entry() |> JSON.encode!() |> byte_size()
+
+      if size > budget do
+        raise ArgumentError,
+              "#{skill.path}: the skill's skills/get entry is #{size} bytes, " <>
+                "more than :max_response_bytes (#{max_response_bytes}) less " <>
+                "#{@envelope_bytes} bytes for the envelope"
+      end
+
+      size
+    end)
+  end
+
+  # The resources/read content of one file: text when the bytes are UTF-8,
+  # a base64 blob otherwise.
+  defp content_map(file) do
+    if String.valid?(file.content),
+      do: Resource.text(file.uri, file.content, mime_type: file.mime_type),
+      else: Resource.blob(file.uri, Base.encode64(file.content), mime_type: file.mime_type)
   end
 
   defp boolean!(opts, key, default) do
@@ -540,10 +609,7 @@ defmodule Snodo.Skills.Catalog do
       size: file.size
     }
 
-    content =
-      if String.valid?(file.content),
-        do: Resource.text(file.uri, file.content, mime_type: file.mime_type),
-        else: Resource.blob(file.uri, Base.encode64(file.content), mime_type: file.mime_type)
+    content = content_map(file)
 
     body =
       quote do

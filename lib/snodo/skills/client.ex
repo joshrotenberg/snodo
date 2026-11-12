@@ -50,7 +50,11 @@ defmodule Snodo.Skills.Client do
   Each function also takes the options of `Snodo.Client.request/4`, and:
 
     * `:max_file_bytes` - the largest listed file size `read/4` and `load/3`
-      fetch. Defaults to 16,777,216 (16 MiB).
+      fetch. Defaults to 16,777,216 (16 MiB). The encoded response must also
+      fit the transport's limit (`:max_response_bytes` over HTTP,
+      `:max_line_bytes` over stdio, both 16 MiB by default), or the read
+      fails with that transport error. A `Snodo.Skills` server with the
+      default `:max_response_bytes` sends no response over 16 MiB.
     * `:frontmatter_parser` - a `t:Snodo.Skills.Frontmatter.parser/0` for
       reading SKILL.md frontmatter.
     * `:max_pages` - for `list/2`, the most `skills/list` pages to request.

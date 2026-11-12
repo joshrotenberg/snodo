@@ -425,6 +425,161 @@ defmodule Snodo.SkillsTest do
     end
   end
 
+  describe "response size" do
+    defp pages(catalog, operation, params, key) do
+      context = %Snodo.Context{
+        protocol_version: "2026-07-28",
+        protocol: Snodo.Protocol.V2026_07_28,
+        transport: %Snodo.Transport.Context{transport: :direct}
+      }
+
+      params
+      |> Stream.unfold(fn
+        nil ->
+          nil
+
+        params ->
+          assert {:ok, %Snodo.Result{value: result}} =
+                   Snodo.Skills.dispatch(catalog, operation, params, context)
+
+          next = if cursor = result["nextCursor"], do: Map.put(params, "cursor", cursor)
+          {result[key], next}
+      end)
+      |> Enum.to_list()
+    end
+
+    defp encoded(value), do: value |> JSON.encode!() |> byte_size()
+
+    test "refuses a file whose resources/read content would pass :max_response_bytes" do
+      # 8,192 less the 4,096-byte envelope leaves 4,096 bytes of content.
+      cases = [
+        {"text.md", String.duplicate("a", 4_100)},
+        # Base64 makes 3,100 bytes 4,136.
+        {"data.bin", :binary.copy(<<255>>, 3_100)},
+        # Valid UTF-8, so sent as text, but JSON escapes each byte as \u0001.
+        {"controls.txt", :binary.copy(<<1>>, 700)}
+      ]
+
+      for {name, bytes} <- cases do
+        error =
+          assert_raise ArgumentError, fn ->
+            build(
+              entries: [[path: "big", files: %{"SKILL.md" => skill_md("big"), name => bytes}]],
+              max_response_bytes: 8_192
+            )
+          end
+
+        assert error.message =~ "big/#{name}: resources/read would send"
+        assert error.message =~ ":max_response_bytes (8192) less 4096 bytes"
+      end
+
+      # The same sizes in plain text fit.
+      {catalog, _resources} =
+        build(
+          entries: [
+            [
+              path: "fits",
+              files: %{
+                "SKILL.md" => skill_md("fits"),
+                "a.txt" => String.duplicate("a", 3_100),
+                "b.txt" => String.duplicate("b", 700)
+              }
+            ]
+          ],
+          max_response_bytes: 8_192
+        )
+
+      assert [%{files: [_, _, _]}] = catalog.skills
+    end
+
+    test "at the defaults, refuses files a default client could not read" do
+      skill = skill_md("large")
+      # Within :max_skill_bytes, but over 16 MiB once in a response.
+      text = String.duplicate("a", 16_777_216 - byte_size(skill))
+      binary = :binary.copy(<<255>>, 12_600_000)
+
+      for {name, bytes} <- [{"text.txt", text}, {"data.bin", binary}] do
+        error =
+          assert_raise ArgumentError, fn ->
+            build(entries: [[path: "large", files: %{"SKILL.md" => skill, name => bytes}]])
+          end
+
+        assert error.message =~ ":max_response_bytes (16777216)"
+      end
+    end
+
+    test "refuses a skills/get entry over :max_response_bytes" do
+      files = for n <- 1..60, into: %{"SKILL.md" => skill_md("wide")}, do: {"f#{n}.txt", "x"}
+
+      error =
+        assert_raise ArgumentError, fn ->
+          build(entries: [[path: "wide", files: files]], max_response_bytes: 8_192)
+        end
+
+      assert error.message =~ "wide: the skill's skills/get entry is"
+    end
+
+    test "cuts skills/list pages to :max_response_bytes" do
+      entries =
+        for n <- 1..7 do
+          name = "skill-#{n}"
+          files = for f <- 1..10, into: %{"SKILL.md" => skill_md(name)}, do: {"f#{f}.txt", "x"}
+          [path: name, files: files]
+        end
+
+      {catalog, _resources} = build(entries: entries, max_response_bytes: 8_192)
+      assert Enum.all?(catalog.entries, &(encoded(&1) < 4_096))
+
+      pages = pages(catalog, :skills_list, %{}, "skills")
+      assert Enum.concat(pages) == catalog.entries
+      assert length(pages) > 1
+      assert Enum.all?(pages, &(encoded(&1) <= 4_096))
+      assert Enum.any?(pages, &(length(&1) > 1))
+
+      # The default budget is the default client limit less the envelope.
+      {default, _resources} = build(entries: entries)
+      assert default.response_budget == 16_777_216 - 4_096
+      assert pages(default, :skills_list, %{}, "skills") == [default.entries]
+    end
+
+    test "cuts resources/directory/read pages to :max_response_bytes" do
+      # A child repeats its long name next to its URI, so with long names a
+      # directory listing outgrows the skill entry, which has to fit.
+      name = String.duplicate("n", 200)
+
+      files =
+        for n <- 1..120, into: %{"SKILL.md" => skill_md("dir")}, do: {"docs/#{name}#{n}", "x"}
+
+      {wide, _resources} = build(entries: [[path: "dir", files: files]])
+      [entry_bytes] = wide.entry_bytes
+      max_response_bytes = entry_bytes + 4_096 + 16
+      budget = max_response_bytes - 4_096
+      assert encoded(wide.directories["skill://dir/docs"]) > budget
+
+      {catalog, _resources} =
+        build(entries: [[path: "dir", files: files]], max_response_bytes: max_response_bytes)
+
+      pages = pages(catalog, :directory_read, %{"uri" => "skill://dir/docs"}, "resources")
+      assert length(pages) > 1
+      assert Enum.concat(pages) == catalog.directories["skill://dir/docs"]
+      assert Enum.all?(pages, &(encoded(&1) <= budget and length(&1) < 100))
+    end
+
+    test "requires :max_response_bytes above the envelope" do
+      for value <- [4_096, 0, "big"] do
+        error =
+          assert_raise ArgumentError, fn ->
+            build(
+              entries: [[path: "a", files: %{"SKILL.md" => skill_md("a")}]],
+              max_response_bytes: value
+            )
+          end
+
+        assert error.message =~ ":max_response_bytes must be an integer greater than 4096"
+      end
+    end
+  end
+
   describe "directory cursors" do
     test "stay small for a long directory URI and are bound to their directory" do
       prefix = Enum.map_join(1..4, "/", fn index -> String.duplicate("p#{index}", 100) end)

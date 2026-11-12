@@ -328,7 +328,8 @@ reading it:
 | `:max_skill_bytes` | `use Snodo.Skills` | 16,777,216 bytes (16 MiB) per skill, all files | `ArgumentError` naming the skill; the module does not compile |
 | `:page_size` | `use Snodo.Skills` | 50 skills per `skills/list` page | A longer listing is paged; an invalid or expired cursor gets -32602 |
 | `:directory_page_size` | `use Snodo.Skills` | 100 children per `resources/directory/read` page | As for `:page_size` |
-| `:max_file_bytes` | `Snodo.Skills.Client` | 16,777,216 bytes (16 MiB) per file, by the listed size | -32000 with `"reason" => "too_large"`; nothing is read |
+| `:max_response_bytes` | `use Snodo.Skills` | 16,777,216 bytes (16 MiB) per response, 4,096 of them left for the envelope | A file's `resources/read` content or a `skills/get` entry over it: `ArgumentError` naming it; the module does not compile. `skills/list` and `resources/directory/read` pages end early instead |
+| `:max_file_bytes` | `Snodo.Skills.Client` | 16,777,216 bytes (16 MiB) per file, by the listed size | -32000 with `"reason" => "too_large"`; nothing is read. A response over the transport's own limit fails with that transport error |
 | `:max_pages` | `Snodo.Skills.Client.list/2` | the client's `:max_pages`, 1,000 | -32000 transport error |
 | Frontmatter size | `Snodo.Skills.Frontmatter` built-in parser | 1,048,576 bytes (1 MiB), fixed | `Snodo.Skills.Frontmatter.Error` with reason `:too_large`: `ArgumentError` in `use Snodo.Skills`, -32000 with `"reason" => "frontmatter_unreadable"` in `Snodo.Skills.Client` |
 | Number digits | `Snodo.Skills.Frontmatter` built-in parser | 1,000 digits per number, fixed | As for the frontmatter size |
@@ -347,10 +348,24 @@ in the frontmatter size, so a hostile SKILL.md cannot make
 `skills/list` and `resources/directory/read` cursors are opaque and stay under
 100 bytes whatever the length of the directory URI, because the directory is
 hashed into them. A cursor over 1,024 bytes, or one issued for another
-listing, another directory, or another build of the catalog, gets -32602. A
-skill entry is never split across
-`skills/list` pages, so one page can carry up to `:page_size` entries of up to
-`:max_skill_files` files each.
+listing, another directory, or another build of the catalog, gets -32602.
+
+`:max_response_bytes` keeps every response a `Snodo.Skills` module sends
+within the default `Snodo.Client` limits, `:max_response_bytes` over HTTP and
+`:max_line_bytes` over stdio, both 16 MiB. Without it a default server could
+send more than a default client reads: a full `skills/list` page of 50 skills
+with 512 files each is about 4.2 MB with short file names and about 9.9 MB
+with 200-byte ones, and grows with the frontmatter, while a single 16 MiB file
+encodes to more than 16 MiB, a binary one to about 21.3 MiB. So each file's
+encoded `resources/read` content and each `skills/get` entry is checked when
+the module compiles, with 4,096 bytes left for the JSON-RPC envelope, and a
+`skills/list` or `resources/directory/read` page holds up to `:page_size` or
+`:directory_page_size` entries, fewer when the next one would take the page
+past the same size. A skill entry is never split across pages. In practice a
+binary file of more than about 12 MiB, or a text file whose JSON escaping
+takes it past 16 MiB, fails the check at the defaults: raise
+`:max_response_bytes` together with the client's limits, or keep such files
+out of skills.
 
 ## Plug and Bandit
 

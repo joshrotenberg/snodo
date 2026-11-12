@@ -58,9 +58,17 @@ defmodule Snodo.Skills do
     * `:directory_read` - serve `resources/directory/read` and advertise
       `"directoryRead": true`. Defaults to `true`.
     * `:page_size` - skills per `skills/list` page. Defaults to 50. A skill
-      entry is never split across pages.
+      entry is never split across pages, and a page ends early when the next
+      entry would take it past `:max_response_bytes`.
     * `:directory_page_size` - children per `resources/directory/read` page.
-      Defaults to 100.
+      Defaults to 100, and bounded by `:max_response_bytes` in the same way.
+    * `:max_response_bytes` - the largest response the module may send.
+      Defaults to 16,777,216 (16 MiB), the default response limit of
+      `Snodo.Client` over HTTP and stdio. 4,096 bytes of it are left for the
+      JSON-RPC envelope, so every file's `resources/read` content and every
+      `skills/get` entry must encode to at most `:max_response_bytes` less
+      4,096 bytes, and `skills/list` and `resources/directory/read` pages are
+      cut to that size. Must be greater than 4,096.
     * `:max_skill_files` - files per skill, SKILL.md included. Defaults to
       512.
     * `:max_skill_bytes` - the total size of a skill's files. Defaults to
@@ -72,8 +80,12 @@ defmodule Snodo.Skills do
       `ttl_ms: 0, scope: "private"`.
 
   An invalid skill, such as a missing SKILL.md, a name that breaks the naming
-  rules, unreadable frontmatter, or a skill over `:max_skill_files` or
-  `:max_skill_bytes`, raises `ArgumentError` and the module does not compile.
+  rules, unreadable frontmatter, a skill over `:max_skill_files` or
+  `:max_skill_bytes`, or a file or skill entry over `:max_response_bytes`,
+  raises `ArgumentError` and the module does not compile. A file within
+  `:max_skill_bytes` can still be over `:max_response_bytes` once encoded:
+  base64 makes a binary file a third larger, and JSON escapes a control
+  character in a text file as six bytes.
 
   ## Serving skills
 
@@ -263,8 +275,12 @@ defmodule Snodo.Skills do
   @spec dispatch(Catalog.t(), atom(), map(), Context.t()) ::
           {:ok, Result.t()} | {:error, Error.t()}
   def dispatch(%Catalog{} = catalog, :skills_list, params, %Context{}) do
+    page_length = fn offset ->
+      catalog.entry_bytes |> Enum.drop(offset) |> fit(catalog.page_size, catalog.response_budget)
+    end
+
     with {:ok, page, next} <-
-           page(catalog.entries, params, catalog.page_size, "skills/list", catalog.scope) do
+           page(catalog.entries, params, page_length, "skills/list", catalog.scope) do
       {:ok, Result.raw(complete(catalog, %{"skills" => page}, next))}
     end
   end
@@ -284,7 +300,7 @@ defmodule Snodo.Skills do
            page(
              children,
              params,
-             catalog.directory_page_size,
+             &directory_page_length(catalog, children, &1),
              "resources/directory/read",
              directory_scope(catalog.scope, directory)
            ) do
@@ -347,12 +363,38 @@ defmodule Snodo.Skills do
 
   # Cursors carry the method, the offset, and a fingerprint of the catalog,
   # so a cursor from another listing or another build is refused.
-  defp page(values, params, page_size, method, scope) do
+  # `page_length` returns how many values from an offset make the page.
+  defp page(values, params, page_length, method, scope) do
     with {:ok, offset} <- offset(params, method, scope, length(values)) do
-      next = offset + page_size
+      count = page_length.(offset)
+      next = offset + count
       cursor = if next < length(values), do: encode_cursor(method, next, scope)
-      {:ok, Enum.slice(values, offset, page_size), cursor}
+      {:ok, Enum.slice(values, offset, count), cursor}
     end
+  end
+
+  # Children are small, so their sizes are computed as the page fills.
+  defp directory_page_length(catalog, children, offset) do
+    children
+    |> Stream.drop(offset)
+    |> Stream.map(&byte_size(JSON.encode!(&1)))
+    |> fit(catalog.directory_page_size, catalog.response_budget)
+  end
+
+  # How many of `sizes` (encoded byte sizes, each followed by a comma) fit in
+  # `budget`, up to `max_count`. The first always does: the catalog checked
+  # that every entry and every file URI fits on its own, so a page is never
+  # empty and paging always advances.
+  defp fit(sizes, max_count, budget) do
+    sizes
+    |> Enum.reduce_while({0, 0}, fn size, {count, total} ->
+      total = total + size + 1
+
+      if count == max_count or (count > 0 and total > budget),
+        do: {:halt, {count, total}},
+        else: {:cont, {count + 1, total}}
+    end)
+    |> elem(0)
   end
 
   defp offset(%{"cursor" => cursor}, method, scope, count)
