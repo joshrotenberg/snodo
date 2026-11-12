@@ -89,10 +89,29 @@ Snodo.Subscription.Bridge.publish(
 
 The child spec starts the scope, local hub, and forwarding worker in that order
 under a dedicated `:rest_for_one` supervisor. Restarting the scope or hub restarts
-the worker so it rejoins with a live hub. An existing scope is monitored and stays
-under its original owner. Supervise a shared scope separately if bridges have
-independent lifetimes. The source configuration resolves the current hub each
-time a stream opens.
+the worker so it rejoins with a live hub. By default the bridge can start the
+scope, including a replacement after a failure. For a shared scope owned by
+another supervisor, start it first and set `start_scope: false`:
+
+```elixir
+children = [
+  %{id: MyApp.SubscriptionGroup, start: {:pg, :start_link, [MyApp.SubscriptionGroup]}},
+  {Snodo.Subscription.Bridge,
+   name: MyApp.SubscriptionBridge,
+   scope: MyApp.SubscriptionGroup,
+   start_scope: false}
+]
+```
+
+In this mode the bridge never starts the scope. If it is absent at startup,
+`start_link/1` returns `{:error, {:scope_not_started, scope}}`. After a scope
+failure, the bridge waits up to 5 seconds for the owner to register a replacement
+before the scope child fails with `{:scope_not_started, scope}` under the
+supervisor's restart policy. The source configuration resolves the current hub
+each time a stream opens. Opening a stream or publishing returns
+`{:error, :unavailable}` if the relevant supervisor or child is unavailable or
+exits during the call. An event may already have reached listeners when a
+publication fails during the call.
 
 Use the same scope and group on every participating node. They default to
 `Snodo.Subscription.Bridge.PG` and `{Snodo.Subscription.Bridge, :events}`.

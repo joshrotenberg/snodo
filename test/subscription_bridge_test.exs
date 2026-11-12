@@ -13,13 +13,15 @@ defmodule Snodo.SubscriptionBridgeTest do
   end
 
   test "forwards once, validates events, filters, and retains each hub's queue policy", config do
-    first = start_bridge(config, :first, max_buffer: 1)
+    first = start_bridge(config, :first, hub_options: [max_buffer: 1])
 
     second =
       start_bridge(config, :second,
-        max_buffer: 1,
-        overflow: :drop_newest,
-        instrumentation: {SnodoTest.TestInstrumentationSink, self()}
+        hub_options: [
+          max_buffer: 1,
+          overflow: :drop_newest,
+          instrumentation: {SnodoTest.TestInstrumentationSink, self()}
+        ]
       )
 
     first_stream = Helpers.listen(first)
@@ -50,7 +52,7 @@ defmodule Snodo.SubscriptionBridgeTest do
 
   test "leaves an existing scope alive when stopped", config do
     scope = start_supervised!(%{id: :scope, start: {:pg, :start_link, [config.scope]}})
-    bridge = start_bridge(config, :bridge)
+    bridge = start_bridge(config, :bridge, start_scope: false)
     assert [member] = :pg.get_members(config.scope, config.group)
     monitor = Process.monitor(member)
     assert :ok = stop_supervised(:bridge)
@@ -61,20 +63,74 @@ defmodule Snodo.SubscriptionBridgeTest do
   end
 
   @tag :capture_log
-  test "restarts the hub and worker after losing an existing scope", config do
-    {:ok, scope} = :pg.start_link(config.scope)
-    Process.unlink(scope)
-    bridge = start_bridge(config, :bridge)
+  test "waits for an external owner to restart its scope without taking ownership", config do
+    owner =
+      start_supervised!(%{
+        id: :scope_owner,
+        type: :supervisor,
+        start:
+          {Supervisor, :start_link,
+           [
+             [%{id: :scope, start: {:pg, :start_link, [config.scope]}}],
+             [strategy: :one_for_one]
+           ]}
+      })
+
+    scope = Process.whereis(config.scope)
+    bridge = start_bridge(config, :bridge, start_scope: false)
     old_hub = hub(bridge)
     old_worker = worker(bridge)
     monitor = Process.monitor(old_worker)
-    :ok = GenServer.stop(scope)
+    :ok = Supervisor.terminate_child(owner, :scope)
 
     assert_receive {:DOWN, ^monitor, :process, ^old_worker, :shutdown}, 1_000
+    assert Process.whereis(config.scope) == nil
+    assert {:ok, replacement} = Supervisor.restart_child(owner, :scope)
+    refute replacement == scope
+    assert {:links, links} = Process.info(replacement, :links)
+    assert owner in links
+    refute bridge in links
     refute hub(bridge) == old_hub
     assert [new_worker] = Helpers.await_members(config.scope, config.group, 1, [old_worker])
     refute new_worker == old_worker
     assert {:ok, %{matched: 0}} = Bridge.publish(bridge, Event.tools_list_changed())
+    assert :ok = stop_supervised(:bridge)
+    assert Process.alive?(replacement)
+    assert Process.alive?(owner)
+  end
+
+  test "fails when an external scope has not been started", config do
+    assert {:error, {:scope_not_started, scope}} =
+             Bridge.start_link(name: nil, scope: config.scope, start_scope: false)
+
+    assert scope == config.scope
+    assert Process.whereis(scope) == nil
+  end
+
+  test "returns unavailable for stopped children and a stopped supervisor", config do
+    context = %Snodo.Context{
+      protocol_version: "2026-07-28",
+      protocol: Snodo.Protocol.V2026_07_28,
+      transport: %Snodo.Transport.Context{transport: :direct}
+    }
+
+    bridge = start_bridge(config, :bridge)
+    event = Event.tools_list_changed()
+
+    assert :ok = Supervisor.terminate_child(bridge, Bridge.Worker)
+    assert {:error, :unavailable} = Bridge.publish(bridge, event)
+    assert :ok = Supervisor.terminate_child(bridge, Hub)
+    assert {:error, :unavailable} = Bridge.open(%{}, context, bridge)
+
+    assert {:ok, _hub} = Supervisor.restart_child(bridge, Hub)
+    assert {:ok, _worker} = Supervisor.restart_child(bridge, Bridge.Worker)
+    assert {:ok, %{matched: 0}} = Bridge.publish(bridge, event)
+    assert {:ok, %{}, handle} = Bridge.open(%{}, context, bridge)
+    assert :ok = Bridge.close(handle, :cancelled, bridge)
+
+    assert :ok = stop_supervised(:bridge)
+    assert {:error, :unavailable} = Bridge.publish(bridge, event)
+    assert {:error, :unavailable} = Bridge.open(%{}, context, bridge)
   end
 
   test "rejoins after its hub or owned scope restarts and opens streams on the new hub", config do
@@ -104,11 +160,15 @@ defmodule Snodo.SubscriptionBridgeTest do
     assert_raise ArgumentError, ~r/scope must be an atom/, fn ->
       Bridge.start_link(scope: "scope")
     end
+
+    assert_raise ArgumentError, ~r/start_scope must be a boolean/, fn ->
+      Bridge.start_link(start_scope: :external)
+    end
   end
 
-  defp start_bridge(config, id, hub_options \\ []) do
+  defp start_bridge(config, id, opts \\ []) do
     start_supervised!(
-      {Bridge, name: nil, scope: config.scope, group: config.group, hub_options: hub_options},
+      {Bridge, Keyword.merge([name: nil, scope: config.scope, group: config.group], opts)},
       id: id
     )
   end
