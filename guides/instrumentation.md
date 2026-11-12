@@ -173,7 +173,9 @@ the handler once, for example in `Application.start/2`:
 :ok = Snodo.Instrumentation.Telemetry.OpenTelemetry.attach()
 ```
 
-`attach` takes an optional `:handler_id`, and `detach` removes the handler.
+Only one span handler can be attached at a time; a second `attach` returns
+`{:error, :already_exists}`. `attach` takes one option, `:max_open_spans`,
+described below.
 
 | Events | Span name | Kind |
 |---|---|---|
@@ -201,7 +203,11 @@ is set to error when the job outcome is `:failed`, `:invalid`,
 `:worker_terminated`, or `:max_runtime`.
 
 When request `_meta` carries a valid `traceparent`, the dispatch span's parent
-is that remote span, and a valid `tracestate` is kept with it. Otherwise the
+is that remote span, and a valid `tracestate` is kept with it. The remote span
+context is built from the fields `Snodo.TraceContext` validated, not parsed
+again: the trace flags are kept whole and read as a bit mask, so `03` is
+sampled, and a tracestate with W3C Trace Context Level 2 keys such as
+`a@b@c` is kept as accepted. Otherwise the
 parent is the current OpenTelemetry context of the dispatching process, such as
 a span from an HTTP server instrumentation. While the dispatch runs, its span
 is the current span in that process, so spans a handler starts are its
@@ -215,10 +221,44 @@ It starts a new trace unless the runner process has a current context, and it
 is not made current, because jobs for different tasks interleave in the
 runner.
 
-Open spans are kept in the process dictionary of the emitting process, keyed
-by the `telemetry_span_context` reference, and removed by the matching stop or
-exception. The handler adds no limit: the entries in a process are the spans
-open in it. A stop or exception with no recorded start is ignored. A span
+A span's start and its stop or exception must be emitted by the same process,
+because the open span is kept there: in one process dictionary entry, a map
+keyed by the `telemetry_span_context` reference, which is deleted when no span
+is open. `Snodo.Instrumentation` and the Tasks runner both emit each pair from
+one process. A stop or exception with no recorded start is ignored. A span
 whose process exits before its stop, such as a job span in a runner that
 stops with jobs still running, is never ended, and its entry goes with the
-process. The OAuth verification events are not turned into spans.
+process.
+
+A process holds at most `:max_open_spans` open spans, 1,024 by default. At
+the limit a start opens no span, the observed operation is not affected, its
+stop is ignored, and the handler emits
+`[:snodo, :open_telemetry, :span, :skipped]` with reason `:max_open_spans`.
+Every running job of a Tasks runner takes a slot in the runner process, so
+keep the limit at or above the runner's `:max_jobs` (32 by default).
+
+```elixir
+:ok = Snodo.Instrumentation.Telemetry.OpenTelemetry.attach(max_open_spans: 4_096)
+```
+
+The handler never raises, so `:telemetry` never detaches it. A raise, throw,
+or exit from the OpenTelemetry SDK, such as a failing span processor or an SDK
+that is shutting down, is caught. At start, no span is opened and the skipped
+event is emitted with reason `:sdk_failure`. At the end, setting attributes
+and status, ending the span, and restoring the previous context are separate
+steps; a failing step emits `[:snodo, :open_telemetry, :span, :failed]` and
+the remaining steps still run, so the previous context is restored.
+
+| Event | Measurements | Metadata |
+|---|---|---|
+| `[:snodo, :open_telemetry, :span, :skipped]` | `open_spans` in the process | `span` (`:dispatch` or `:job`), `reason` (`:max_open_spans` or `:sdk_failure`) |
+| `[:snodo, :open_telemetry, :span, :failed]` | none | `span`, `step` (`:annotate`, `:end`, or `:restore`), `error_kind` (`:error`, `:throw`, or `:exit`) |
+
+`detach()` stops new spans at once and keeps the handler for stop and
+exception events attached, so spans already open are ended and their contexts
+restored as usual; a later `attach` reuses it. `detach(open_spans: :abandon)`
+removes both handlers: spans open at that moment are never ended, and their
+entries, and for a dispatch its current context, stay in their processes
+until those processes exit.
+
+The OAuth verification events are not turned into spans.
