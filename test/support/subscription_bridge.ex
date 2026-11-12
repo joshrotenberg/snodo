@@ -15,16 +15,18 @@ defmodule SnodoTest.SubscriptionBridge do
         subscription_source: Bridge.source(bridge)
       )
 
-    assert {:stream, subscription} =
-             MCPTest.dispatch(runtime,
-               id: "bridge-listen",
-               protocol: "2026-07-28",
-               method: "subscriptions/listen",
-               params: %{"notifications" => %{"toolsListChanged" => true}}
-             )
+    _ =
+      assert {:stream, subscription} =
+               MCPTest.dispatch(runtime,
+                 id: "bridge-listen",
+                 protocol: "2026-07-28",
+                 method: "subscriptions/listen",
+                 params: %{"notifications" => %{"toolsListChanged" => true}}
+               )
 
-    assert {:ok, %{"method" => "notifications/subscriptions/acknowledged"}} =
-             Subscription.acknowledgement(subscription)
+    _ =
+      assert {:ok, %{"method" => "notifications/subscriptions/acknowledged"}} =
+               Subscription.acknowledgement(subscription)
 
     subscription
   end
