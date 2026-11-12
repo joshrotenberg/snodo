@@ -8,7 +8,7 @@ distributed? =
 
 if distributed? and not Node.alive?() do
   if epmd = System.find_executable("epmd"), do: System.cmd(epmd, ["-daemon"])
-  name = :peer.random_name(~c"snodo_test")
+  name = List.to_atom(:peer.random_name(~c"snodo_test"))
 
   case :net_kernel.start([name, :shortnames]) do
     {:ok, _pid} ->
