@@ -3,8 +3,10 @@
 `Snodo.Instrumentation` is a dependency-free, opt-in event sink. It keeps
 observability outside protocol semantics and lets an application bridge the
 same events to `:telemetry`, OpenTelemetry, Logger, a metrics process, or a
-test collector. The `snodo_telemetry` package ships the `:telemetry` bridge;
-see [Forwarding to :telemetry](#forwarding-to-telemetry).
+test collector. The `snodo_telemetry` package ships the `:telemetry` bridge
+and a handler that turns its events into OpenTelemetry spans; see
+[Forwarding to :telemetry](#forwarding-to-telemetry) and
+[OpenTelemetry spans](#opentelemetry-spans).
 
 A sink implements one callback:
 
@@ -150,3 +152,184 @@ The opt-in Tasks [contention and soak harness](https://github.com/joshrotenberg/
 job and transition events directly. Its exact lifecycle invariants illustrate
 one way to build correctness evidence without coupling the framework to a
 metrics dependency or a machine-specific latency threshold.
+
+## OpenTelemetry spans
+
+`snodo_telemetry` also provides `Snodo.Instrumentation.Telemetry.OpenTelemetry`,
+a `:telemetry` handler that starts and ends OpenTelemetry spans from the
+dispatch and runner job events of `Snodo.Instrumentation.Telemetry`. The
+module is compiled only when the application depends on `opentelemetry_api`.
+The application configures the OpenTelemetry SDK and exporter as usual.
+
+```elixir
+{:opentelemetry_api, "~> 1.5"},
+{:opentelemetry, "~> 1.7"}
+```
+
+Configure `Snodo.Instrumentation.Telemetry` as the sink, as above, and attach
+the handler once, for example in `Application.start/2`:
+
+```elixir
+:ok = Snodo.Instrumentation.Telemetry.OpenTelemetry.attach()
+```
+
+Only one span handler can be attached at a time; a second `attach` returns
+`{:error, :already_exists}`. `attach` takes one option, `:max_open_spans`,
+described below.
+
+| Events | Span name | Kind |
+|---|---|---|
+| `[:snodo, :server, :dispatch, *]` | the method and the component, such as `tools/call echo`, when a component is named; otherwise `mcp.request`, renamed to the method when the dispatch returns a result | `:server` |
+| `[:snodo, :tasks, :runner, :job, *]` | `snodo.tasks.runner.job` | `:internal` |
+
+The method is chosen by the client, so a dispatch span name holds it only
+when the server's configuration bounds it, which keeps the number of span
+names bounded:
+
+- A component is named for `tools/call`, `prompts/get`, and `resources/read`
+  when the router registers the tool, prompt, or direct resource. A component
+  the router does not register is reported as `:unknown` and left out of the
+  span name, so the requested name never reaches it. A span with a named
+  component has its name from the start.
+- Otherwise the span starts as `mcp.request` and is renamed to the method
+  when the dispatch ends with outcome `:ok` or `:stream`, which only a route
+  the server registers can produce.
+- A span without a named component keeps `mcp.request` on a JSON-RPC error,
+  a notification (outcome `:no_reply`), an exception, a method reported as
+  `:invalid`, or a dispatch that never ends, because any of them can come
+  from a method nothing routes, such as one answered with method not found.
+  A span with a named component keeps its name whatever the outcome.
+
+The method is always recorded as the `snodo.method` attribute, and
+`Snodo.Server` reports a method longer than 128 bytes as `:invalid`. A
+sampler sees the name a span starts with.
+
+Span attributes are the event metadata, each under its key with a `snodo.`
+prefix, with atoms recorded as strings:
+
+- dispatch: `snodo.method`, `snodo.request_id`, `snodo.transport`,
+  `snodo.component`, `snodo.outcome`, `snodo.error_code`, and, for an
+  exception, `snodo.kind` and `snodo.reason_class`;
+- runner job: `snodo.task_id`, `snodo.revision`, `snodo.source`,
+  `snodo.outcome`, `snodo.store_outcome`, and `snodo.release_outcome`.
+
+The events carry no payloads, so neither do the spans. A dispatch span's
+status is set to error for a JSON-RPC error response or an exception, with the
+error code or the exception class as the message. A runner job span's status
+is set to error when the job outcome is `:failed`, `:invalid`,
+`:worker_terminated`, or `:max_runtime`.
+
+When request `_meta` carries a valid `traceparent`, the dispatch span's parent
+is that remote span, and a valid `tracestate` is kept with it. The remote span
+context is built from the fields `Snodo.TraceContext` validated, not parsed
+again: the trace flags are kept whole and read as a bit mask, so `03` is
+sampled, and a tracestate with W3C Trace Context Level 2 keys such as
+`a@b@c` is kept as accepted. Otherwise the parent is the current
+OpenTelemetry context of the process that emits the start event, the process
+that calls `Snodo.Server.dispatch/3`. Sampling is the SDK's: with its default
+parent-based sampler, a `traceparent` whose sampled flag is not set gives an
+unrecorded dispatch span.
+
+The stdio, native HTTP, and Plug transports call `Snodo.Server.dispatch/3` in
+a task of their executor, a new process whose OpenTelemetry context is empty.
+A context held by the connection or request process, such as a span from an
+HTTP server instrumentation in front of `snodo_plug`, is not seen there. Under
+those transports a dispatch span has a parent only when the client sends a
+`traceparent`, and is a root otherwise. When the application calls
+`Snodo.Server.dispatch/3` itself, or uses `Snodo.Test.dispatch/2`, in a
+process with a current span, that span is the parent.
+
+While the dispatch runs, its span is the current span in that process, and
+the previous context is restored when the dispatch ends. A span a handler
+starts is a child of the dispatch span only when it is started in that same
+process. A component wrapped in `Snodo.Component.Wrap.Timeout` runs in
+another task, as does work the handler spawns, so spans started there have no
+parent unless the context is passed to them.
+
+Runner job events carry no trace context and are emitted in the runner
+process, so a job span is not linked to the dispatch that created the task.
+It starts a new trace unless the runner process has a current context, and it
+is not made current, because jobs for different tasks interleave in the
+runner.
+
+A span's start and its stop or exception must be emitted by the same process,
+because the open span is kept there: in one process dictionary entry, a map
+keyed by the `telemetry_span_context` reference, which is deleted when no span
+is open. `Snodo.Instrumentation` and the Tasks runner both emit each pair from
+one process. A stop or exception with no recorded start is ignored.
+
+A dispatch that returns or raises emits a stop or an exception. A dispatch
+whose process is killed emits neither: under the stdio, native HTTP, and Plug
+transports the executor kills the task on a request timeout, on a
+cancellation, and when the connection that owns the request goes away. A job
+still running when its runner stops gets no stop either. A span whose process
+exits before its stop or exception is never ended by the handler and is not
+exported, and its entry goes with the process. The SDK keeps the span until
+its span sweeper removes it; with the SDK's defaults the sweeper runs every
+10 minutes and drops spans older than 30 minutes without exporting them.
+
+A process holds at most `:max_open_spans` open spans, 1,024 by default. At
+the limit a start opens no span, the observed operation is not affected, its
+stop is ignored, and the handler emits
+`[:snodo, :open_telemetry, :span, :skipped]` with reason `:max_open_spans`.
+Every running job of a Tasks runner takes a slot in the runner process, so
+keep the limit at or above the runner's `:max_jobs` (32 by default).
+
+```elixir
+:ok = Snodo.Instrumentation.Telemetry.OpenTelemetry.attach(max_open_spans: 4_096)
+```
+
+The handler never raises, so `:telemetry` never detaches it. The handler's own
+preparation (span name, attributes, status message, and the parsed remote
+parent) and its calls into the OpenTelemetry API and SDK are isolated
+separately, so a raise, throw, or exit is caught and reported with reason
+`:handler_failure` or `:sdk_failure`. An SDK failure comes from, for example, a
+failing span processor or an SDK that is shutting down; a handler failure
+means the event metadata broke its contract or the handler has a bug. At
+start, no span is opened and the skipped event is emitted. Ending a span is
+three operations, annotate (attributes, name, and status), end, and restore the
+previous context; a failing operation emits
+`[:snodo, :open_telemetry, :span, :failed]` and the remaining operations still
+run, so the previous context is restored.
+
+| Event | Measurements | Metadata |
+|---|---|---|
+| `[:snodo, :open_telemetry, :span, :skipped]` | `open_spans` in the process | `span`, `operation` (`:start`), `reason` (`:max_open_spans`, `:handler_failure`, or `:sdk_failure`); a failure adds `error_kind` and `error_class` |
+| `[:snodo, :open_telemetry, :span, :failed]` | none | `span`, `operation` (`:annotate`, `:end`, or `:restore`), `reason` (`:handler_failure` or `:sdk_failure`), `error_kind`, `error_class` |
+
+`span` is `:dispatch` or `:job`. `error_kind` is `:error`, `:throw`, or
+`:exit`. `error_class` is the exception module for `:error`, such as
+`RuntimeError` or `ArgumentError` (a raw Erlang error is normalized, so
+`:badarg` becomes `ArgumentError`), and `:throw` or `:exit` for those kinds.
+The metadata never includes an exception message or a raw reason.
+
+`detach()` stops new spans at once and keeps the handler for stop and
+exception events attached, so spans already open are ended and their contexts
+restored as usual; a later `attach` reuses it. `detach(open_spans: :abandon)`
+removes both handlers: spans open at that moment are never ended, and their
+entries, and for a dispatch its current context, stay in their processes
+until those processes exit.
+
+The OAuth verification events are not turned into spans.
+
+### Limits
+
+- A dispatch killed on timeout or cancel, and a job still running when its
+  runner stops, leave their spans unended and unexported, as described above.
+- Under the stdio, native HTTP, and Plug transports a dispatch span's parent
+  comes only from a client `traceparent`, and spans started outside the
+  dispatching process, including inside `Snodo.Component.Wrap.Timeout`, are
+  not its children.
+- The SDK sweeper also removes spans that are still open. With its default
+  30-minute TTL, a Tasks job that runs longer loses its span, and the job's
+  later stop ends nothing. Set the SDK's `:sweeper` `:span_ttl` above the
+  longest job's runtime (the runner's `:max_runtime_ms`, one hour by
+  default), or set its `:strategy` to `:end_span` so swept spans are ended
+  and exported.
+- The handler needs `opentelemetry_api ~> 1.5`. It is tested against 1.5
+  with the 1.7 SDK. 1.4 is left out: no test runs against it, and its
+  `span_ctx` record, from which the handler builds the remote parent, has a
+  different layout.
+- The `snodo_telemetry` tests always compile the handler. Building the
+  package without `opentelemetry_api`, where the handler module is left out,
+  is not covered by the tests.

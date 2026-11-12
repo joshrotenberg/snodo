@@ -79,6 +79,113 @@ or the runner. Keep handlers fast and hand expensive work to another process.
 `:telemetry` detaches a handler that raises; the operation being observed is
 not affected.
 
+## OpenTelemetry spans
+
+`Snodo.Instrumentation.Telemetry.OpenTelemetry` is a `:telemetry` handler
+that starts and ends OpenTelemetry spans from the dispatch and runner job
+events this sink emits. It is compiled only when the application depends on
+`opentelemetry_api`, which is an optional dependency of this package. The
+application configures the OpenTelemetry SDK and exporter.
+
+```elixir
+{:opentelemetry_api, "~> 1.5"},
+{:opentelemetry, "~> 1.7"}
+```
+
+With the sink configured, attach the handler once, for example in
+`Application.start/2`:
+
+```elixir
+:ok = Snodo.Instrumentation.Telemetry.OpenTelemetry.attach()
+```
+
+- A dispatch becomes a `:server` span. It is named for the method and the
+  tool, prompt, or direct resource when the router registers that component,
+  such as `tools/call echo`, whatever the outcome. Otherwise it starts as
+  `mcp.request` and is renamed to the method only when the dispatch returns a
+  result, which only a route the server registers can produce. Spans without
+  a named component keep `mcp.request` on errors, notifications, exceptions,
+  or unfinished dispatches, so a client cannot add span names; the method is
+  still the `snodo.method` attribute. A runner job becomes an `:internal`
+  span named `snodo.tasks.runner.job`.
+- Attributes are the event metadata under `snodo.`-prefixed keys, such as
+  `snodo.method`, `snodo.component`, `snodo.outcome`, `snodo.error_code`, and
+  `snodo.task_id`. No payloads are recorded, because the events carry none.
+- A valid `traceparent` in request `_meta`, with its `tracestate`, is the
+  dispatch span's parent, built from the fields `Snodo.TraceContext`
+  validated: any trace flags, read as a bit mask, and W3C Level 2 tracestate
+  keys are kept. Without one, the parent is the current context of the
+  process that calls `Snodo.Server.dispatch/3`. The stdio, native HTTP, and
+  Plug transports call it in an executor task whose context is empty, so
+  there a dispatch span has a parent only from a client `traceparent`. The
+  dispatch span is current while the dispatch runs, and the previous context
+  is restored when it ends. A span a handler starts is its child only when
+  started in the same process, not inside `Snodo.Component.Wrap.Timeout` or
+  another spawned task.
+- Runner job events carry no trace context, so a job span is not linked to
+  the dispatch that created the task.
+- A span's start and its stop or exception must come from the same process,
+  which keeps the open span in its dictionary until the matching stop or
+  exception. A stop with no recorded start is ignored.
+- A dispatch whose process is killed emits no stop or exception. Under the
+  stdio, native HTTP, and Plug transports the executor kills the task on a
+  request timeout, on a cancellation, and when the connection that owns the
+  request goes away. Its span is not ended or exported, and the SDK's span
+  sweeper removes it, by default once it is older than 30 minutes.
+- Only one span handler can be attached; a second `attach` returns
+  `{:error, :already_exists}`.
+
+### Limit
+
+| Option | Default | At the limit |
+|---|---|---|
+| `:max_open_spans` | 1,024 open spans per process | the start opens no span, the operation is unaffected, and `[:snodo, :open_telemetry, :span, :skipped]` is emitted with reason `:max_open_spans` |
+
+```elixir
+:ok = Snodo.Instrumentation.Telemetry.OpenTelemetry.attach(max_open_spans: 4_096)
+```
+
+Every running job of a Tasks runner takes a slot in the runner process, so
+keep the limit at or above the runner's `:max_jobs` (32 by default).
+
+### Known limits
+
+- A dispatch killed on timeout or cancel, and a job still running when its
+  runner stops, leave their spans unended and unexported.
+- Under the stdio, native HTTP, and Plug transports a dispatch span's parent
+  comes only from a client `traceparent`, and spans started outside the
+  dispatching process are not its children.
+- The SDK's span sweeper also removes spans that are still open, by default
+  after 30 minutes. A Tasks job that runs longer (the runner allows one hour
+  by default) loses its span. Set the SDK's `:sweeper` `:span_ttl` above the
+  longest job's runtime, or its `:strategy` to `:end_span`.
+- The optional dependency is `opentelemetry_api ~> 1.5`, tested with the 1.7
+  SDK. 1.4 is left out: it is not tested, and its `span_ctx` record, from
+  which the handler builds the remote parent, has a different layout.
+- The tests always compile the handler; a build without `opentelemetry_api`
+  is not covered by them.
+
+### Failures and detaching
+
+The handler never raises, so `:telemetry` never detaches it. A raise, throw,
+or exit is caught and reported as `:handler_failure` (the handler's own
+preparation) or `:sdk_failure` (a call into the OpenTelemetry SDK, such as a
+failing span processor): at start no span is opened and
+`[:snodo, :open_telemetry, :span, :skipped]` is emitted; at the end, a failing
+operation emits `[:snodo, :open_telemetry, :span, :failed]` and the remaining
+operations, including restoring the previous context, still run. The
+diagnostic metadata names the operation and a bounded `error_class`, such as
+the exception module, never a message or raw reason.
+
+`detach()` stops new spans and keeps ending the spans already open.
+`detach(open_spans: :abandon)` removes the handler entirely; spans open at
+that moment are never ended and stay in their processes until those exit.
+
+The module documentation and the
+[instrumentation guide](https://hexdocs.pm/snodo/instrumentation.html#opentelemetry-spans)
+give the full rules for names, attributes, status, parents, the limits, and
+the diagnostic events.
+
 ## Verification
 
 From this package directory:
@@ -93,5 +200,15 @@ mix quality.types
 tests. The tests attach `:telemetry` handlers to every event in the catalog
 and check each event's name, measurements, and metadata through a server
 dispatch, a subscription hub lifecycle, and a Tasks runner job, including the
-shared span context and its absence from point events. The Tasks extension is
-a test-only dependency.
+shared span context and its absence from point events. Further tests export
+the OpenTelemetry spans to the test process with the SDK's `otel_exporter_pid`
+and check their names, kinds, attributes, status, parents from a
+`traceparent` (including flags `03` and `02`, a future version, and Level 2
+and malformed trace fields), restoration of an existing context, the open
+span limit, detaching during a dispatch, and the absence of payloads. They
+check that span names hold only methods the server routes, and they serve
+requests over the stdio transport, whose executor tasks start with an empty
+context, including one the executor kills on a cancellation, the kill a
+timeout also uses, which exports no span. A test span
+processor that raises or exits checks that SDK failures are isolated.
+The Tasks extension and the OpenTelemetry SDK are test-only dependencies.
