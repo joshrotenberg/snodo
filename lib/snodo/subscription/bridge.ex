@@ -5,13 +5,16 @@ defmodule Snodo.Subscription.Bridge do
   Start the same scope and group on each directly connected Erlang node that
   serves subscriptions. The child spec starts the scope, a local
   `Snodo.Subscription.Hub`, and a forwarding worker in that order under a
-  `:rest_for_one` supervisor. By default the bridge starts the scope or monitors
-  an existing one, and may start a replacement if it dies. For a scope owned by
-  another supervisor, set `start_scope: false` so only that supervisor can
-  restart it. Put the scope first and its bridges after it under a
+  `:rest_for_one` supervisor. The default `start_scope: :auto` monitors a scope
+  that is already registered when the bridge starts, without ever starting a
+  replacement. Otherwise the bridge starts and owns the scope. Use
+  `start_scope: true` to allow starting a replacement even for an existing
+  scope, or `false` to require an externally supervised scope. Put the scope
+  first and its bridges after it under a
   `:rest_for_one` parent so a scope failure restarts the bridges after a live
-  replacement is available. Losing the local hub restarts the forwarding
-  worker so it rejoins with a live hub.
+  replacement is available. A hub failure restarts the forwarding worker.
+  If the hub is manually stopped and restarted, the worker monitors it and
+  resolves its replacement on the next publication.
 
       children = [{Snodo.Subscription.Bridge, name: MyApp.SubscriptionBridge}]
 
@@ -59,8 +62,10 @@ defmodule Snodo.Subscription.Bridge do
     * `:name` - the supervisor's registered name, defaulting to `#{inspect(__MODULE__)}`;
       use `nil` for an unnamed supervisor;
     * `:scope` - the `:pg` scope atom, defaulting to `#{inspect(@default_scope)}`;
-    * `:start_scope` - whether the bridge may start the scope, defaulting to
-      `true`. Set to `false` for an externally supervised scope;
+    * `:start_scope` - `:auto` (the default) monitors an already registered scope
+      without ever starting it later, or starts and owns an absent scope.
+      `true` allows starting the scope on every restart, while `false` requires
+      an externally supervised scope;
     * `:group` - the `:pg` group term, defaulting to `#{inspect(@default_group)}`;
     * `:hub_options` - options passed to `Snodo.Subscription.Hub.start_link/1`,
       defaulting to `[]` (a buffer of 100 events per listener and `:drop_oldest`).
@@ -99,15 +104,16 @@ defmodule Snodo.Subscription.Bridge do
       raise ArgumentError, "subscription bridge scope must be an atom other than nil"
     end
 
-    start_scope = Keyword.get(opts, :start_scope, true)
+    start_scope = Keyword.get(opts, :start_scope, :auto)
 
-    unless is_boolean(start_scope) do
-      raise ArgumentError, "subscription bridge start_scope must be a boolean"
+    unless start_scope in [:auto, true, false] do
+      raise ArgumentError, "subscription bridge start_scope must be :auto or a boolean"
     end
 
     config = %{
       scope: scope,
-      start_scope: start_scope,
+      start_scope:
+        if(start_scope == :auto, do: is_nil(Process.whereis(scope)), else: start_scope),
       group: Keyword.get(opts, :group, @default_group),
       hub_options: Keyword.get(opts, :hub_options, [])
     }
@@ -226,19 +232,20 @@ defmodule Snodo.Subscription.Bridge.Worker do
     # Resolving the hub in handle_continue avoids calling a supervisor that is
     # still waiting for this child's start_link to return.
     :ok = :pg.join(scope, group, self())
-    {:ok, %{scope: scope, group: group, hub: nil}, {:continue, supervisor}}
+    state = %{supervisor: supervisor, scope: scope, group: group, hub: nil, hub_monitor: nil}
+    {:ok, state, {:continue, :resolve_hub}}
   end
 
   @impl GenServer
-  def handle_continue(supervisor, state) do
-    children = Supervisor.which_children(supervisor)
-    {Hub, hub, :worker, _modules} = List.keyfind(children, Hub, 0)
-    {:noreply, %{state | hub: hub}}
+  def handle_continue(:resolve_hub, state) do
+    {:noreply, resolve_hub(state)}
   end
 
   @impl GenServer
   def handle_call({:publish, event}, _from, state) do
-    case Hub.publish(state.hub, event) do
+    state = resolve_hub(state)
+
+    case publish_locally(state.hub, event) do
       {:ok, report} ->
         state.scope
         |> :pg.get_members(state.group)
@@ -254,8 +261,33 @@ defmodule Snodo.Subscription.Bridge.Worker do
   end
 
   @impl GenServer
+  def handle_info({:DOWN, ref, :process, _hub, _reason}, %{hub_monitor: ref} = state) do
+    {:noreply, %{state | hub: nil, hub_monitor: nil}}
+  end
+
   def handle_info({:subscription_event, event}, state) do
-    _result = Hub.publish(state.hub, event)
+    state = resolve_hub(state)
+    _result = publish_locally(state.hub, event)
     {:noreply, state}
+  end
+
+  defp resolve_hub(%{hub: nil} = state) do
+    case List.keyfind(Supervisor.which_children(state.supervisor), Hub, 0) do
+      {Hub, hub, :worker, _modules} when is_pid(hub) ->
+        %{state | hub: hub, hub_monitor: Process.monitor(hub)}
+
+      _unavailable ->
+        state
+    end
+  end
+
+  defp resolve_hub(state), do: state
+
+  defp publish_locally(nil, _event), do: {:error, :unavailable}
+
+  defp publish_locally(hub, event) do
+    Hub.publish(hub, event)
+  catch
+    :exit, _reason -> {:error, :unavailable}
   end
 end

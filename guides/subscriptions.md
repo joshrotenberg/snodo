@@ -88,10 +88,18 @@ Snodo.Subscription.Bridge.publish(
 ```
 
 The child spec starts the scope, local hub, and forwarding worker in that order
-under a dedicated `:rest_for_one` supervisor. Restarting the scope or hub restarts
-the worker so it rejoins with a live hub. By default the bridge can start the
-scope, including a replacement after a failure. For a shared scope owned by
-another supervisor, start it first and set `start_scope: false`:
+under a dedicated `:rest_for_one` supervisor. A scope or hub failure restarts
+the worker so it rejoins with a live hub. If the hub is manually stopped and
+restarted, the worker monitors it and resolves its replacement on the next
+publication. Publications while the hub is absent return `{:error, :unavailable}`.
+
+The default `start_scope: :auto` checks whether the scope is already registered
+when the bridge starts. If so, the bridge only monitors it and never starts a
+replacement. Otherwise it starts and owns the scope, including replacements
+after failures. `start_scope: true` always allows starting the scope, which can
+race another supervisor restarting it. For a shared scope owned by another
+supervisor, start it first. You can set `start_scope: false` explicitly to require
+that scope:
 
 ```elixir
 children = [
