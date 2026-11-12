@@ -202,8 +202,11 @@ of YAML: a top-level mapping of plain or quoted keys, plain scalars typed by
 the YAML 1.2 core schema, quoted strings, flow and block sequences of scalars,
 and one level of nested mapping such as `metadata:`. Block scalars (`|`, `>`),
 anchors, aliases, tags, flow mappings, and deeper nesting are refused with an
-`:unsupported` `Snodo.Skills.Frontmatter.Error`. To read full YAML, pass a
-parser, for example one backed by a YAML library in your application:
+`:unsupported` `Snodo.Skills.Frontmatter.Error`. As in YAML, only spaces and
+tabs are trimmed, so a no-break space stays part of a value. Frontmatter over
+1 MiB, and a number with more than 1,000 digits, are refused with
+`:too_large`. To read full YAML, pass a parser, for example one backed by a
+YAML library in your application:
 
 ```elixir
 use Snodo.Skills,

@@ -27,8 +27,20 @@ defmodule Snodo.Skills.Frontmatter do
   those is valid YAML that the subset would otherwise read differently from a
   full YAML parser. Malformed escapes, such as a signed `\\u+041`, are
   `:invalid`.
+
+  Whitespace is YAML's: only spaces and tabs separate tokens, and a carriage
+  return, a line feed, or both end a line. Other Unicode spaces, such as a
+  no-break space, are part of the value they appear in, as they are for a
+  YAML parser.
+
+  The subset has two limits, each refused with reason `:too_large`:
+
+    * frontmatter text over 1,048,576 bytes (1 MiB);
+    * a number written with more than 1,000 digits.
+
   Pass `parser:` to `parse/2`, or `:frontmatter_parser` to `use Snodo.Skills`
   and `Snodo.Skills.Client`, to read full YAML with a library instead.
+  Neither limit applies to a configured parser.
 
   A parser is a one-argument function, or a `{module, function}` pair, that
   takes the YAML text between the `---` lines and returns `{:ok, value}` or
@@ -46,6 +58,9 @@ defmodule Snodo.Skills.Frontmatter do
   # of exactly three dashes and the first closing line of three dashes.
   @block ~r/\A---\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\z)/s
   @bom "﻿"
+
+  @max_yaml_bytes 1_048_576
+  @max_number_digits 1_000
 
   @simple_escapes %{
     "0" => <<0>>,
@@ -110,6 +125,15 @@ defmodule Snodo.Skills.Frontmatter do
   """
   @spec decode(String.t()) :: {:ok, map()} | {:error, Error.t()}
   def decode(yaml) when is_binary(yaml) do
+    if byte_size(yaml) > @max_yaml_bytes do
+      fail(
+        :too_large,
+        nil,
+        "frontmatter is #{byte_size(yaml)} bytes, more than the built-in parser reads " <>
+          "(#{@max_yaml_bytes})"
+      )
+    end
+
     unless String.valid?(yaml), do: fail(:invalid, nil, "frontmatter is not valid UTF-8")
     {:ok, yaml |> lines() |> top_mapping()}
   catch
@@ -158,12 +182,13 @@ defmodule Snodo.Skills.Frontmatter do
   defp object(_value), do: {:error, error(:not_object, nil, "frontmatter is not a mapping")}
 
   # Lines are {file line, indentation, content}; blank and comment lines go.
+  # YAML breaks lines at CR LF, CR, or LF.
   defp lines(yaml) do
     yaml
-    |> String.split(~r/\r?\n/)
+    |> String.split(~r/\r\n|\r|\n/)
     |> Enum.with_index(2)
     |> Enum.flat_map(fn {line, number} ->
-      line = String.trim_trailing(line)
+      line = trim_trailing(line)
       content = String.trim_leading(line, " ")
 
       cond do
@@ -270,7 +295,7 @@ defmodule Snodo.Skills.Frontmatter do
   defp item("-", _number), do: nil
 
   defp item("- " <> rest, number) do
-    rest = String.trim_leading(rest)
+    rest = trim_leading(rest)
 
     cond do
       sequence_item?(rest) ->
@@ -325,7 +350,7 @@ defmodule Snodo.Skills.Frontmatter do
   end
 
   defp plain_key(key, number) do
-    key = String.trim(key)
+    key = trim(key)
     if key == "", do: fail(:invalid, number, "empty key")
     check_plain_start(key, number)
     if String.contains?(key, " #"), do: fail(:invalid, number, "a comment inside a key")
@@ -333,7 +358,7 @@ defmodule Snodo.Skills.Frontmatter do
   end
 
   defp inline(rest) do
-    rest = String.trim(rest)
+    rest = trim(rest)
     if String.starts_with?(rest, "#"), do: "", else: rest
   end
 
@@ -355,15 +380,15 @@ defmodule Snodo.Skills.Frontmatter do
   end
 
   defp after_quoted({value, rest}, number) do
-    if String.trim(rest) == "" or Regex.match?(~r/\A[ \t]+#/, rest),
+    if trim(rest) == "" or Regex.match?(~r/\A[ \t]+#/, rest),
       do: value,
       else: fail(:invalid, number, "unexpected text after a quoted string")
   end
 
   defp strip_comment(text) do
     case Regex.split(~r/[ \t]#/, text, parts: 2) do
-      [plain, _comment] -> {String.trim(plain), true}
-      [plain] -> {String.trim(plain), false}
+      [plain, _comment] -> {trim(plain), true}
+      [plain] -> {trim(plain), false}
     end
   end
 
@@ -401,18 +426,25 @@ defmodule Snodo.Skills.Frontmatter do
   defp resolve(text, _number) when text in ["true", "True", "TRUE"], do: true
   defp resolve(text, _number) when text in ["false", "False", "FALSE"], do: false
 
+  # The digit count is checked before any conversion: String.to_integer/2
+  # raises SystemLimitError for an integer of a few million bits, which a
+  # SKILL.md within the transport limits can hold.
   defp resolve(text, number) do
     cond do
       Regex.match?(~r/\A[-+]?[0-9]+\z/, text) ->
+        check_digits!(decimal_digits(text), number)
         text |> String.trim_leading("+") |> String.to_integer()
 
       Regex.match?(~r/\A0o[0-7]+\z/, text) ->
+        check_digits!(byte_size(text) - 2, number)
         text |> binary_part(2, byte_size(text) - 2) |> String.to_integer(8)
 
       Regex.match?(~r/\A0x[0-9a-fA-F]+\z/, text) ->
+        check_digits!(byte_size(text) - 2, number)
         text |> binary_part(2, byte_size(text) - 2) |> String.to_integer(16)
 
       Regex.match?(~r/\A[-+]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)([eE][-+]?[0-9]+)?\z/, text) ->
+        check_digits!(decimal_digits(text), number)
         float(text, number)
 
       Regex.match?(~r/\A[-+]?\.(inf|Inf|INF)\z|\A\.(nan|NaN|NAN)\z/, text) ->
@@ -421,6 +453,15 @@ defmodule Snodo.Skills.Frontmatter do
       true ->
         text
     end
+  end
+
+  defp decimal_digits(text),
+    do: for(<<char <- text>>, char in ?0..?9, reduce: 0, do: (n -> n + 1))
+
+  defp check_digits!(digits, number) do
+    if digits > @max_number_digits,
+      do: fail(:too_large, number, "a number with more than #{@max_number_digits} digits"),
+      else: :ok
   end
 
   defp float(original, number) do
@@ -447,8 +488,10 @@ defmodule Snodo.Skills.Frontmatter do
     end
   end
 
+  # One pass over the line: each step consumes one item and its separator,
+  # and looks no further ahead than the next "," or "]".
   defp flow_sequence(text, number, acc) do
-    text = String.trim_leading(text)
+    text = trim_leading(text)
 
     case text do
       "" ->
@@ -459,7 +502,7 @@ defmodule Snodo.Skills.Frontmatter do
 
       _ ->
         {item, rest} = flow_item(text, number)
-        flow_separator(String.trim_leading(rest), number, [item | acc])
+        flow_separator(trim_leading(rest), number, [item | acc])
     end
   end
 
@@ -481,17 +524,19 @@ defmodule Snodo.Skills.Frontmatter do
   defp flow_item("[" <> _rest, number), do: fail(:unsupported, number, "a nested flow sequence")
   defp flow_item("," <> _rest, number), do: fail(:invalid, number, "an empty flow sequence entry")
 
+  # :binary.match/2 stops at the first separator, so the scan is linear in the
+  # item, not in the rest of the line.
   defp flow_item(text, number) do
-    [plain, rest] =
-      case Regex.split(~r/(?=[,\]])/, text, parts: 2) do
-        [plain, rest] -> [plain, rest]
-        [plain] -> [plain, ""]
+    {plain, rest} =
+      case :binary.match(text, [",", "]"]) do
+        {at, _length} -> {binary_part(text, 0, at), binary_part(text, at, byte_size(text) - at)}
+        :nomatch -> {text, ""}
       end
 
     if String.starts_with?(plain, "#") or Regex.match?(~r/[ \t]#/, plain),
       do: fail(:unsupported, number, "a comment inside a flow sequence")
 
-    plain = String.trim(plain)
+    plain = trim(plain)
     if mapping_like?(plain), do: fail(:unsupported, number, "a mapping inside a flow sequence")
     {plain |> plain(number) |> resolve(number), rest}
   end
@@ -552,6 +597,24 @@ defmodule Snodo.Skills.Frontmatter do
 
   defp single_quoted(<<char::utf8, rest::binary>>, number, acc),
     do: single_quoted(rest, number, [<<char::utf8>> | acc])
+
+  # YAML separates tokens with spaces and tabs only (s-white). String.trim/1
+  # would also strip a no-break space and other Unicode spaces, which YAML
+  # reads as part of the value. Both are ASCII, so a byte scan is UTF-8 safe.
+  defp trim(text), do: text |> trim_leading() |> trim_trailing()
+
+  defp trim_leading(<<char, rest::binary>>) when char in [?\s, ?\t], do: trim_leading(rest)
+  defp trim_leading(text), do: text
+
+  defp trim_trailing(text), do: binary_part(text, 0, content_end(text, byte_size(text)))
+
+  defp content_end(_text, 0), do: 0
+
+  defp content_end(text, size) do
+    if :binary.at(text, size - 1) in [?\s, ?\t],
+      do: content_end(text, size - 1),
+      else: size
+  end
 
   defp error(reason, line, message), do: %Error{reason: reason, line: line, message: message}
 

@@ -1,3 +1,37 @@
+defmodule Snodo.Skills.ClientTest.LongNumberSkill do
+  @moduledoc false
+  # A SKILL.md a hostile server could send: a number of 1,900,000 digits,
+  # inside the default transport limits. String.to_integer/1 raises
+  # SystemLimitError for it.
+  @behaviour Snodo.Resource
+
+  @uri "skill://long-number/SKILL.md"
+
+  def uri, do: @uri
+
+  def text,
+    do:
+      "---\nname: long-number\ndescription: d\ncount: #{String.duplicate("7", 1_900_000)}\n---\n"
+
+  @impl Snodo.Resource
+  def definition,
+    do: %Snodo.Resource.Definition{kind: :resource, uri: @uri, name: "long-number"}
+
+  @impl Snodo.Resource
+  def matches?(uri), do: uri == @uri
+
+  @impl Snodo.Resource
+  def read(_params, _context),
+    do: {:ok, Snodo.Result.resource_read(Snodo.Resource.text(@uri, text()))}
+end
+
+defmodule Snodo.Skills.ClientTest.LongNumberServer do
+  @moduledoc false
+  use Snodo.Server, name: "long-number", version: "1.0.0"
+
+  resource(Snodo.Skills.ClientTest.LongNumberSkill)
+end
+
 defmodule Snodo.Skills.ClientTest do
   use ExUnit.Case, async: true
 
@@ -154,6 +188,43 @@ defmodule Snodo.Skills.ClientTest do
              failure(Skills.verify(dynamic, @skill_md, overflow))
 
     assert detail =~ "out of range"
+  end
+
+  test "reports a very long number in SKILL.md instead of raising" do
+    alias Snodo.Skills.ClientTest.LongNumberServer
+    alias Snodo.Skills.ClientTest.LongNumberSkill, as: LongNumber
+
+    text = LongNumber.text()
+    uri = LongNumber.uri()
+
+    entry = %{
+      "uri" => uri,
+      "frontmatter" => %{"name" => "long-number", "description" => "d"},
+      "resources" => [%{"uri" => uri, "digest" => Skill.digest(text), "size" => byte_size(text)}]
+    }
+
+    {:ok, client} = Client.direct(LongNumberServer.runtime())
+
+    assert %{"reason" => "frontmatter_unreadable", "detail" => detail} =
+             failure(Skills.load(client, entry))
+
+    assert detail =~ "more than the built-in parser reads"
+
+    result = %{"contents" => [%{"uri" => uri, "text" => text}]}
+    assert %{"reason" => "frontmatter_unreadable"} = failure(Skills.verify(entry, uri, result))
+
+    # Inside the size limit, the digit count is what refuses it.
+    digits =
+      "---\nname: long-number\ndescription: d\ncount: #{String.duplicate("7", 1_001)}\n---\n"
+
+    dynamic = Map.put(entry, "resources", "dynamic")
+
+    assert %{"reason" => "frontmatter_unreadable", "detail" => detail} =
+             failure(
+               Skills.verify(dynamic, uri, %{"contents" => [%{"uri" => uri, "text" => digits}]})
+             )
+
+    assert detail =~ "more than 1000 digits"
   end
 
   test "reads frontmatter with a configured parser", %{client: client, entry: entry} do

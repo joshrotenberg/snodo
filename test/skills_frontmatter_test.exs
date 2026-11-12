@@ -175,6 +175,91 @@ defmodule Snodo.Skills.FrontmatterTest do
       assert {:ok, %{"value" => 1.0e300}} = parse("value: 1e300")
     end
 
+    test "refuses a number with more than 1,000 digits instead of raising" do
+      # 1,300,000 digits raise SystemLimitError in String.to_integer/1; the
+      # size limit refuses the block before any conversion.
+      huge = String.duplicate("7", 1_300_000)
+
+      for yaml <- ["n: #{huge}", "n: 0x#{huge}", "n: [#{huge}]", "n: #{huge}.5"] do
+        assert {:error, %Error{reason: :too_large, line: nil, message: message}} = parse(yaml)
+        assert message =~ "more than the built-in parser reads (1048576)"
+      end
+
+      long = String.duplicate("7", 1_001)
+
+      for yaml <- [
+            "n: #{long}",
+            "n: -#{long}",
+            "n: 0x#{long}",
+            "n: 0o#{long}",
+            "n: #{long}.5",
+            "n: 1.#{long}e3",
+            "n: [1, #{long}]",
+            "n:\n  - #{long}",
+            "metadata:\n  n: #{long}"
+          ] do
+        assert {:error, %Error{reason: :too_large, message: message}} = parse(yaml), yaml
+        assert message =~ "more than 1000 digits"
+      end
+
+      exact = String.duplicate("7", 1_000)
+      assert {:ok, %{"n" => n}} = parse("n: #{exact}")
+      assert n == String.to_integer(exact)
+      assert {:ok, %{"n" => "#{long}x"}} == parse("n: #{long}x")
+    end
+
+    test "parses a long flow sequence in one pass" do
+      # 300,000 items: about 40,000 seconds of CPU with a scan of the rest of
+      # the line per item, well under a second with one pass.
+      items = List.duplicate("a", 300_000)
+      yaml = "allowed-tools: [" <> Enum.join(items, ",") <> "]"
+      assert byte_size(yaml) < 1_048_576
+      assert {:ok, %{"allowed-tools" => ^items}} = parse(yaml)
+
+      quoted = List.duplicate("\"a\"", 200_000)
+      assert {:ok, %{"q" => list}} = parse("q: [" <> Enum.join(quoted, ", ") <> "]")
+      assert length(list) == 200_000
+    end
+
+    test "refuses frontmatter over 1 MiB" do
+      yaml = "tools: [" <> String.duplicate("a,", 524_288) <> "a]"
+      assert byte_size(yaml) > 1_048_576
+
+      assert {:error, %Error{reason: :too_large, line: nil}} = parse(yaml)
+      assert {:error, %Error{reason: :too_large}} = Frontmatter.decode(yaml)
+
+      # A configured parser is not limited.
+      assert {:ok, %{"size" => size}} =
+               Frontmatter.parse("---\n" <> yaml <> "\n---\n",
+                 parser: fn text -> {:ok, %{"size" => byte_size(text)}} end
+               )
+
+      assert size == byte_size(yaml)
+    end
+
+    test "trims only spaces and tabs, as YAML does" do
+      nbsp = <<0xA0::utf8>>
+      ideographic = <<0x3000::utf8>>
+
+      assert {:ok, %{"x" => "value" <> ^nbsp}} = parse("x: value" <> nbsp)
+      assert {:ok, %{"x" => ^nbsp <> "value"}} = parse("x: " <> nbsp <> "value")
+      assert {:ok, %{"x" => "12" <> ^nbsp}} = parse("x: 12" <> nbsp)
+      assert {:ok, %{"x" => "true" <> ^ideographic}} = parse("x: true" <> ideographic)
+      assert {:ok, %{("name" <> ^nbsp) => "a"}} = parse("name" <> nbsp <> ": a")
+      assert {:ok, %{"x" => [^nbsp <> "a" <> ^nbsp, "b"]}} = parse("x: [#{nbsp}a#{nbsp}, b]")
+      assert {:ok, %{"x" => [^nbsp <> "a"]}} = parse("x:\n  - #{nbsp}a")
+
+      assert {:error, %Error{reason: :invalid}} = parse("x: \"q\"" <> nbsp)
+
+      # Spaces and tabs are still trimmed.
+      assert {:ok, %{"x" => "value", "y" => [1, 2]}} = parse("x: \t value \t\ny: [ 1\t, 2 ]\t")
+    end
+
+    test "breaks lines at a lone carriage return, as YAML does" do
+      assert {:ok, %{"a" => 1, "b" => 2}} = parse("a: 1\rb: 2")
+      assert {:ok, %{"a" => 1, "b" => 2}} = parse("a: 1\r\nb: 2")
+    end
+
     test "refuses a blank or comment line inside a multi-line plain scalar" do
       assert {:error, %Error{reason: :unsupported, line: 4}} =
                parse("description: first\n\n  second")

@@ -330,12 +330,19 @@ reading it:
 | `:directory_page_size` | `use Snodo.Skills` | 100 children per `resources/directory/read` page | As for `:page_size` |
 | `:max_file_bytes` | `Snodo.Skills.Client` | 16,777,216 bytes (16 MiB) per file, by the listed size | -32000 with `"reason" => "too_large"`; nothing is read |
 | `:max_pages` | `Snodo.Skills.Client.list/2` | the client's `:max_pages`, 1,000 | -32000 transport error |
+| Frontmatter size | `Snodo.Skills.Frontmatter` built-in parser | 1,048,576 bytes (1 MiB), fixed | `Snodo.Skills.Frontmatter.Error` with reason `:too_large`: `ArgumentError` in `use Snodo.Skills`, -32000 with `"reason" => "frontmatter_unreadable"` in `Snodo.Skills.Client` |
+| Number digits | `Snodo.Skills.Frontmatter` built-in parser | 1,000 digits per number, fixed | As for the frontmatter size |
 
 The skill limits follow the sizes SEP-2640 recommends a server not exceed. For
 `:directory`, the file count and the file sizes are checked before any file of
 the skill is read, and the byte total is checked again as files are read, in
 case one grew in between. A symbolic link under `:directory` raises
 `ArgumentError` instead of being followed.
+
+The two frontmatter limits apply to the built-in YAML subset only, not to a
+configured `:frontmatter_parser`. Within them the parser runs in time linear
+in the frontmatter size, so a hostile SKILL.md cannot make
+`Snodo.Skills.Client.load/3` or `verify/4` raise or run for minutes.
 
 `skills/list` and `resources/directory/read` cursors are opaque and stay under
 100 bytes whatever the length of the directory URI, because the directory is
