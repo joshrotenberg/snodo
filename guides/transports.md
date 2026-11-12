@@ -316,6 +316,25 @@ side effects. The built-ins return tool `isError` results, or
 JSON-RPC error -32603 for resources and prompts. If the core application is
 not running, they return a defined unavailable error.
 
+## Skills limits
+
+`use Snodo.Skills` (see [Extensions](extensions.md#skills)) checks every skill
+when its module compiles, and `Snodo.Skills.Client` checks every file before
+reading it:
+
+| Option | Where | Default | Defined failure |
+|---|---|---|---|
+| `:max_skill_files` | `use Snodo.Skills` | 512 files per skill, SKILL.md included | `ArgumentError` naming the skill; the module does not compile |
+| `:max_skill_bytes` | `use Snodo.Skills` | 16,777,216 bytes (16 MiB) per skill, all files | `ArgumentError` naming the skill; the module does not compile |
+| `:page_size` | `use Snodo.Skills` | 50 skills per `skills/list` page | A longer listing is paged; an invalid or expired cursor gets -32602 |
+| `:directory_page_size` | `use Snodo.Skills` | 100 children per `resources/directory/read` page | As for `:page_size` |
+| `:max_file_bytes` | `Snodo.Skills.Client` | 16,777,216 bytes (16 MiB) per file, by the listed size | -32000 with `"reason" => "too_large"`; nothing is read |
+| `:max_pages` | `Snodo.Skills.Client.list/2` | the client's `:max_pages`, 1,000 | -32000 transport error |
+
+The skill limits follow the sizes SEP-2640 recommends a server not exceed. A
+skill entry is never split across `skills/list` pages, so one page can carry
+up to `:page_size` entries of up to `:max_skill_files` files each.
+
 ## Plug and Bandit
 
 The `snodo_plug` package provides `Snodo.Transport.Plug` for applications that

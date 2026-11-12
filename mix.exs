@@ -113,6 +113,7 @@ defmodule Snodo.MixProject do
         Interactive: [~r/^Snodo\.(Elicitation|Sampling|Roots|MRTR)$/],
         Transports: [~r/^Snodo\.Transport/],
         Sessions: [~r/^Snodo\.Session/],
+        Skills: [~r/^Snodo\.Skills/],
         Protocol: [~r/^Snodo\.(Protocol|Envelope|Compliance)/]
       ]
     ]
