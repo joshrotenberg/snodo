@@ -6,8 +6,10 @@ defmodule Snodo.Subscription.Bridge do
   serves subscriptions. The child spec starts the scope, a local
   `Snodo.Subscription.Hub`, and a forwarding worker in that order under a
   `:rest_for_one` supervisor. The default `start_scope: :auto` monitors a scope
-  that is already registered when the bridge starts, without ever starting a
-  replacement. Otherwise the bridge starts and owns the scope. Use
+  that is already registered when the bridge starts, without starting a
+  replacement during this bridge supervisor's lifetime. Otherwise the bridge
+  starts and owns the scope. If a parent restarts the whole bridge, `:auto` is
+  evaluated again and may start and own the scope if it is then absent. Use
   `start_scope: true` to allow starting a replacement even for an existing
   scope, or `false` to require an externally supervised scope. Put the scope
   first and its bridges after it under a
@@ -63,7 +65,8 @@ defmodule Snodo.Subscription.Bridge do
       use `nil` for an unnamed supervisor;
     * `:scope` - the `:pg` scope atom, defaulting to `#{inspect(@default_scope)}`;
     * `:start_scope` - `:auto` (the default) monitors an already registered scope
-      without ever starting it later, or starts and owns an absent scope.
+      without starting replacements during this supervisor's lifetime, or
+      starts and owns an absent scope.
       `true` allows starting the scope on every restart, while `false` requires
       an externally supervised scope;
     * `:group` - the `:pg` group term, defaulting to `#{inspect(@default_group)}`;
@@ -78,6 +81,9 @@ defmodule Snodo.Subscription.Bridge do
   absent when the scope child starts, this returns:
 
       {:error, {:scope_not_started, scope}}
+
+  With `start_scope: :auto`, the same error can occur if an existing scope exits
+  between the registration check and the scope child's startup.
 
   If the scope exits later during startup, this may fail on a later child or
   succeed and then restart as usual. The usual supervisor startup and linking
@@ -135,8 +141,10 @@ defmodule Snodo.Subscription.Bridge do
 
   The delivery report covers only the local hub. Remote delivery is best effort
   and is not acknowledged or replayed. Returns `{:error, :unavailable}` if the
-  supervisor or forwarding worker is absent, restarting, or exits during the
-  call. An event may already have reached listeners if an in-flight call fails.
+  supervisor, forwarding worker, or hub is absent, restarting, or exits during
+  the call. If the hub is absent, this returns `{:error, :unavailable}` before
+  validating the event. An event may already have reached listeners if an
+  in-flight call fails.
   """
   @spec publish(Supervisor.supervisor(), Event.t()) ::
           {:ok, Hub.delivery_report()}

@@ -76,6 +76,8 @@ mix test --repeat-until-failure 100 --max-failures 1   # look for flaky tests; a
 
 Distributed tests are excluded by default. Including `distributed` starts epmd
 and Erlang distribution; `mix quality` includes them in its core test step.
+Selecting a distributed test by file:line still requires `--include distributed`;
+`--include distributed:true` is not recognised.
 
 ## Hard constraints
 

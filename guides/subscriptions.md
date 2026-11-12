@@ -91,12 +91,15 @@ The child spec starts the scope, local hub, and forwarding worker in that order
 under a dedicated `:rest_for_one` supervisor. A scope or hub failure restarts
 the worker so it rejoins with a live hub. If the hub is manually stopped and
 restarted, the worker monitors it and resolves its replacement on the next
-publication. Publications while the hub is absent return `{:error, :unavailable}`.
+publication. Publications while the hub is absent return `{:error, :unavailable}`
+before the event is validated.
 
 The default `start_scope: :auto` checks whether the scope is already registered
-when the bridge starts. If so, the bridge only monitors it and never starts a
-replacement. Otherwise it starts and owns the scope, including replacements
-after failures. `start_scope: true` always allows starting the scope, which can
+when the bridge starts. If so, the bridge only monitors it and does not start a
+replacement during that bridge supervisor's lifetime. Otherwise it starts and
+owns the scope, including replacements after failures. If a parent restarts the
+whole bridge, `:auto` is evaluated again and may start and own the scope if it
+is then absent. `start_scope: true` always allows starting the scope, which can
 race another supervisor restarting it. For a shared scope owned by another
 supervisor, start it first. You can set `start_scope: false` explicitly to require
 that scope:
@@ -123,6 +126,9 @@ when the scope child starts, `start_link/1` returns:
 ```elixir
 {:error, {:scope_not_started, scope}}
 ```
+
+With `start_scope: :auto`, the same error can occur if an existing scope exits
+between the registration check and the scope child's startup.
 
 If the scope exits later during startup, `start_link/1` may fail on a later child
 or succeed and then restart as usual. The usual supervisor startup and linking
