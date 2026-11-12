@@ -323,15 +323,34 @@ defmodule Snodo.SkillsTest do
     end
 
     @tag :tmp_dir
-    test "enforces the byte budget on what is read when a file outgrows its size", %{tmp_dir: tmp} do
+    test "bounds each read by the remaining byte budget when a file outgrows its size",
+         %{tmp_dir: tmp} do
+      # Recorded at size 0, as if the file grew to 1 MiB after the walk.
       path = Path.join(tmp, "grown.txt")
-      File.write!(path, String.duplicate("x", 20))
+      File.write!(path, String.duplicate("x", 1_048_576))
+
+      # The read itself stops at the remaining budget plus one byte.
+      assert byte_size(Catalog.read_at_most!(path, 11)) == 11
 
       error =
         assert_raise ArgumentError, fn -> Catalog.read_within_budget!([{path, 0}], tmp, 10) end
 
       assert error.message =~ ":max_skill_bytes (10)"
-      assert [{"grown.txt", _bytes}] = Catalog.read_within_budget!([{path, 0}], tmp, 20)
+      assert error.message =~ "grew after its size was checked"
+
+      # The budget is shared: the second file only gets what the first left.
+      small = Path.join(tmp, "small.txt")
+      File.write!(small, String.duplicate("y", 8))
+
+      assert_raise ArgumentError, fn ->
+        Catalog.read_within_budget!([{small, 8}, {path, 0}], tmp, 12)
+      end
+
+      exact = Path.join(tmp, "exact.txt")
+      File.write!(exact, String.duplicate("z", 20))
+      assert [{"exact.txt", bytes}] = Catalog.read_within_budget!([{exact, 0}], tmp, 20)
+      assert byte_size(bytes) == 20
+      assert Catalog.read_at_most!(Path.join(tmp, "small.txt"), 100) == String.duplicate("y", 8)
     end
 
     @tag :tmp_dir

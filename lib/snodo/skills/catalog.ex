@@ -239,19 +239,37 @@ defmodule Snodo.Skills.Catalog do
     check_total!(stats |> Enum.map(&elem(&1, 1)) |> Enum.sum(), origin, max_bytes)
   end
 
-  # A file can grow between the walk and the read, so the byte budget is also
-  # enforced on what is actually read.
+  # A file can grow between the walk and the read, so each read takes at most
+  # the remaining byte budget plus one byte. Getting the extra byte means the
+  # skill is over budget, and nothing more of the file is read.
   @doc false
   def read_within_budget!(stats, skill_directory, max_bytes) do
     {files, _total} =
       Enum.map_reduce(stats, 0, fn {path, _size}, total ->
-        bytes = File.read!(path)
-        total = total + byte_size(bytes)
-        check_total!(total, skill_directory, max_bytes)
-        {{Path.relative_to(path, skill_directory), bytes}, total}
+        remaining = max_bytes - total
+        bytes = read_at_most!(path, remaining + 1)
+
+        if byte_size(bytes) > remaining do
+          raise ArgumentError,
+                "#{skill_directory}: the skill's files total more than :max_skill_bytes " <>
+                  "(#{max_bytes}); #{path} grew after its size was checked"
+        end
+
+        {{Path.relative_to(path, skill_directory), bytes}, total + byte_size(bytes)}
       end)
 
     files
+  end
+
+  @doc false
+  def read_at_most!(path, count) when is_integer(count) and count > 0 do
+    File.open!(path, [:read, :binary], fn io ->
+      case IO.binread(io, count) do
+        :eof -> ""
+        bytes when is_binary(bytes) -> bytes
+        {:error, reason} -> raise File.Error, reason: reason, action: "read file", path: path
+      end
+    end)
   end
 
   defp entry_sources(entries) when is_list(entries), do: Enum.map(entries, &entry_source/1)

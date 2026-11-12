@@ -32,7 +32,9 @@ defmodule Snodo.Skills do
   recompiles when one of them changes. A symbolic link anywhere under
   `:directory` raises `ArgumentError` rather than being followed, so a link
   cannot publish a file from outside it. A skill's file count and sizes are
-  checked against the limits below before any of its files is read.
+  checked against the limits below before any of its files is read. The
+  directory is read when the module compiles and is trusted not to change
+  during compilation.
 
   `:entries` adds skills the application supplies, each a keyword list or map
   with a `:path` and a `:files` map of relative paths to file contents:
