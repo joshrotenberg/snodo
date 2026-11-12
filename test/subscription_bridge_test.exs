@@ -12,16 +12,6 @@ defmodule Snodo.SubscriptionBridgeTest do
     {:ok, scope: scope, group: :events}
   end
 
-  test "supplies a supervisor child spec and default scope, group, and hub options" do
-    assert %{type: :supervisor, start: {Bridge, :start_link, [[]]}} = Bridge.child_spec([])
-    bridge = start_supervised!(Bridge)
-    assert Process.whereis(Bridge) == bridge
-    assert Bridge.source() == {Bridge, Bridge}
-    assert [_worker] = :pg.get_members(Bridge.PG, {Bridge, :events})
-    assert %{max_buffer: 100, overflow: :drop_oldest} = Hub.stats(hub(bridge))
-    assert {:ok, %{matched: 0}} = Bridge.publish(Event.tools_list_changed())
-  end
-
   test "forwards once, validates events, filters, and retains each hub's queue policy", config do
     first = start_bridge(config, :first, max_buffer: 1)
 
@@ -70,6 +60,7 @@ defmodule Snodo.SubscriptionBridgeTest do
     refute Process.alive?(bridge)
   end
 
+  @tag :capture_log
   test "restarts the hub and worker after losing an existing scope", config do
     {:ok, scope} = :pg.start_link(config.scope)
     Process.unlink(scope)
@@ -133,6 +124,25 @@ defmodule Snodo.SubscriptionBridgeTest do
   end
 end
 
+defmodule Snodo.SubscriptionBridgeDefaultsTest do
+  use ExUnit.Case, async: false
+
+  alias Snodo.Subscription.Bridge
+  alias Snodo.Subscription.Event
+  alias Snodo.Subscription.Hub
+
+  test "supplies a supervisor child spec and default scope, group, and hub options" do
+    assert %{type: :supervisor, start: {Bridge, :start_link, [[]]}} = Bridge.child_spec([])
+    bridge = start_supervised!(Bridge)
+    assert Process.whereis(Bridge) == bridge
+    assert Bridge.source() == {Bridge, Bridge}
+    assert [_worker] = :pg.get_members(Bridge.PG, {Bridge, :events})
+    {Hub, hub, :worker, _modules} = List.keyfind(Supervisor.which_children(bridge), Hub, 0)
+    assert %{max_buffer: 100, overflow: :drop_oldest} = Hub.stats(hub)
+    assert {:ok, %{matched: 0}} = Bridge.publish(Event.tools_list_changed())
+  end
+end
+
 defmodule Snodo.SubscriptionBridgeDistributedTest do
   use ExUnit.Case, async: false
 
@@ -144,17 +154,10 @@ defmodule Snodo.SubscriptionBridgeDistributedTest do
   @moduletag :distributed
   @moduletag timeout: 60_000
   @moduletag skip:
-               (if Node.alive?() do
-                  false
-                else
-                  if epmd = System.find_executable("epmd"), do: System.cmd(epmd, ["-daemon"])
-                  name = :"snodo_bridge_#{System.unique_integer([:positive])}"
-
-                  case :net_kernel.start([name, :shortnames]) do
-                    {:ok, _pid} -> false
-                    {:error, reason} -> "Erlang distribution unavailable: #{inspect(reason)}"
-                  end
-                end)
+               if(Node.alive?(),
+                 do: false,
+                 else: "Erlang distribution unavailable; test/test_helper.exs could not start it"
+               )
 
   setup context do
     scope = :"#{__MODULE__}.#{context.test}"
