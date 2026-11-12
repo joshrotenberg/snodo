@@ -48,6 +48,17 @@ const results = {
   "completion/complete": ["CompleteResultResponse", "CompleteResult"],
   "subscriptions/listen": ["SubscriptionsListenResultResponse", "SubscriptionsListenResult"],
 };
+// SEP-2640 skills results. The pinned core schema defines no skills messages,
+// and this lane does not invent one, so each result is checked against the
+// pinned generic definitions it extends: the result envelope, the cacheable
+// and paginated result bases, and Resource for each directory child. The
+// skill entry itself (uri, frontmatter, resources) has no pinned definition;
+// only its JSON container shape is asserted here.
+const extensionResults = {
+  "skills/list": ["CacheableResult", "PaginatedResult"],
+  "skills/get": ["CacheableResult"],
+  "resources/directory/read": ["CacheableResult", "PaginatedResult"],
+};
 const notifications = {
   "notifications/progress": "ProgressNotification",
   "notifications/subscriptions/acknowledged": "SubscriptionsAcknowledgedNotification",
@@ -77,6 +88,33 @@ const errors = {
   [-32700]: { definition: "ParseError", envelope: false },
 };
 
+function validateExtensionResult(method, message) {
+  validate("JSONRPCResultResponse", message);
+  assert.equal(message.result.resultType, "complete", "unexpected resultType");
+  const names = ["JSONRPCResultResponse"];
+  for (const definition of extensionResults[method]) {
+    validate(definition, message.result);
+    names.push(definition);
+  }
+  const object = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+  const entry = (skill) => {
+    assert.ok(object(skill) && typeof skill.uri === "string" && object(skill.frontmatter), "malformed skill entry");
+    assert.ok(skill.resources === "dynamic" || Array.isArray(skill.resources), "malformed skill resources");
+  };
+  if (method === "skills/list") {
+    assert.ok(Array.isArray(message.result.skills), "skills/list result needs a skills array");
+    message.result.skills.forEach(entry);
+  } else if (method === "skills/get") {
+    entry(message.result.skill);
+    assert.equal(message.result.nextCursor, undefined, "skills/get carries no cursor");
+  } else {
+    assert.ok(Array.isArray(message.result.resources), "directory read needs a resources array");
+    for (const child of message.result.resources) validate("Resource", child);
+    names.push("Resource");
+  }
+  return names;
+}
+
 export function validateEmission(method, message) {
   if (Object.hasOwn(message, "method")) {
     assert.ok(notifications[message.method], `unmapped notification ${message.method}`);
@@ -90,6 +128,7 @@ export function validateEmission(method, message) {
     validate(concrete.definition, concrete.envelope ? message : message.error);
     return ["JSONRPCErrorResponse", concrete.definition];
   }
+  if (extensionResults[method]) return validateExtensionResult(method, message);
   assert.ok(results[method], `unmapped response method ${method}`);
   const [response, complete] = results[method];
   validate(response, message);

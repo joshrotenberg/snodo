@@ -213,6 +213,38 @@ async function exercise(mode) {
     assert.equal(refused.final.error.code, -32021);
     assert.deepEqual(refused.final.error.data.requiredCapabilities, { sampling: {} });
 
+    // SEP-2640 skills for a client that declares the extension, then the
+    // -32602 and -32021 refusals. validator.mjs checks the results against
+    // the pinned generic definitions they extend.
+    const skillsMeta = { "io.modelcontextprotocol/clientCapabilities": {
+      elicitation: { form: {} }, extensions: { "io.modelcontextprotocol/skills": {} },
+    } };
+    const skillUri = "skill://schema-skill/SKILL.md";
+    const skills = await call("skills/list", { _meta: skillsMeta });
+    assert.deepEqual(skills.final.result.skills.map((entry) => entry.uri), [skillUri]);
+    const skill = await call("skills/get", { uri: skillUri, _meta: skillsMeta });
+    assert.equal(skill.final.result.skill.resources.length, 2);
+    const directory = await call("resources/directory/read", { uri: "skill://schema-skill", _meta: skillsMeta });
+    assert.deepEqual(directory.final.result.resources.map((child) => child.mimeType), ["text/markdown", "inode/directory"]);
+    const unknown = await call("skills/get", { uri: "skill://missing/SKILL.md", _meta: skillsMeta }, "error");
+    assert.equal(unknown.final.error.code, -32602);
+    const undeclared = await call("skills/list", {}, "error");
+    assert.equal(undeclared.final.error.code, -32021);
+    assert.deepEqual(undeclared.final.error.data.requiredCapabilities,
+      { extensions: { "io.modelcontextprotocol/skills": {} } });
+    // Payload negative controls: the generic definitions are really applied.
+    for (const [method, message, mutate] of [
+      ["skills/list", skills.final, (result) => { result.cacheScope = "shared"; }],
+      ["skills/list", skills.final, (result) => { delete result.ttlMs; }],
+      ["skills/get", skill.final, (result) => { result.nextCursor = "x"; }],
+      ["resources/directory/read", directory.final, (result) => { delete result.resources[0].name; }],
+      ["resources/directory/read", directory.final, (result) => { result.resources[1].size = "big"; }],
+    ]) {
+      const invalid = structuredClone(message);
+      mutate(invalid.result);
+      assert.throws(() => validateEmission(method, invalid));
+    }
+
     const subscription = await call("subscriptions/listen", {
       notifications: { toolsListChanged: true, resourceSubscriptions: ["schema://text"] },
     });
@@ -221,8 +253,8 @@ async function exercise(mode) {
       "notifications/resources/updated", "terminal",
     ]);
     assert.equal(subscription.final.result._meta[subscriptionKey], subscription.id);
-    assert.equal(emissions, 33);
-    assert.equal(operations, 27);
+    assert.equal(emissions, 38);
+    assert.equal(operations, 32);
     return { transport: mode, operations, emissions, negativeControls, definitions: [...definitions].sort() };
   } finally { await peer.close(); }
 }
