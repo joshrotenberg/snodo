@@ -207,6 +207,7 @@ and malformed trace fields), restoration of an existing context, the open
 span limit, detaching during a dispatch, and the absence of payloads. They
 check that span names hold only methods the server routes, and they serve
 requests over the stdio transport, whose executor tasks start with an empty
-context, including one killed on timeout that exports no span. A test span
+context, including one the executor kills on a cancellation, the kill a
+timeout also uses, which exports no span. A test span
 processor that raises or exits checks that SDK failures are isolated.
 The Tasks extension and the OpenTelemetry SDK are test-only dependencies.

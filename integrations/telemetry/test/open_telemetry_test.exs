@@ -13,6 +13,7 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
   alias Snodo.Instrumentation.Telemetry.OpenTelemetry, as: Spans
   alias SnodoTest.Telemetry.Blocking
   alias SnodoTest.Telemetry.FailingProcessor
+  alias SnodoTest.Telemetry.Input
   alias SnodoTest.Telemetry.Tasks, as: TasksFixtures
   alias SnodoTest.Telemetry.TracedServer
 
@@ -434,23 +435,54 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
       assert_clean_process(outer)
     end
 
-    test "a dispatch killed on timeout ends no span and the handler stays attached" do
+    # The executor kills the worker the same way on a cancellation and on a
+    # timeout: both stop the running job and kill its task. A cancellation
+    # sent once the tool has reported in kills it at a known point, where a
+    # timer started with the task could fire before the tool runs.
+    test "a dispatch killed by a cancellation ends no span and the handler stays attached" do
       token = Integer.to_string(System.unique_integer([:positive]))
       :yes = :global.register_name({Blocking, token}, self())
       on_exit(fn -> :global.unregister_name({Blocking, token}) end)
 
+      {:ok, input} = Input.start_link()
+      {:ok, output} = StringIO.open("")
+      runtime = TracedServer.runtime(instrumentation: Telemetry)
+
+      server =
+        Task.async(fn ->
+          Snodo.Transport.Stdio.serve(runtime,
+            input: input,
+            output: output,
+            request_timeout: :infinity
+          )
+        end)
+
       request =
-        stdio_call("stdio-timeout", "blocking", %{"token" => token}, %{
+        stdio_call("stdio-cancelled", "blocking", %{"token" => token}, %{
           "traceparent" => @traceparent
         })
 
-      assert %{"stdio-timeout" => %{"error" => %{"message" => "Request execution timed out"}}} =
-               serve_stdio([request], request_timeout: 250)
+      :ok = Input.push(input, JSON.encode!(request) <> "\n")
 
-      # The span was started in the worker, which the executor then killed.
-      assert_received {:blocking, worker, dispatch_span}
-      refute Process.alive?(worker)
+      # The worker started the span, reported in, and now waits.
+      assert_receive {:blocking, worker, dispatch_span}
+      monitor = Process.monitor(worker)
       assert :otel_span.trace_id(dispatch_span) == String.to_integer(@trace_id, 16)
+
+      cancel = %{
+        "jsonrpc" => "2.0",
+        "method" => "notifications/cancelled",
+        "params" => %{"requestId" => "stdio-cancelled", "reason" => "test"}
+      }
+
+      :ok = Input.push(input, JSON.encode!(cancel) <> "\n")
+      assert_receive {:DOWN, ^monitor, :process, ^worker, :killed}
+
+      :ok = Input.eof(input)
+      assert :ok = Task.await(server)
+
+      # A cancelled request gets no response.
+      assert {_input, ""} = StringIO.contents(output)
 
       # Neither a stop nor an exception was emitted, so nothing was exported.
       marker(Instrumentation.normalize!(Telemetry))
@@ -860,13 +892,12 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
 
   # Serves the requests over stdio until EOF and every request has finished,
   # and returns the responses by id.
-  defp serve_stdio(requests, options \\ []) do
+  defp serve_stdio(requests) do
     input = Enum.map_join(requests, &(JSON.encode!(&1) <> "\n"))
     {:ok, io} = StringIO.open(input)
     runtime = TracedServer.runtime(instrumentation: Telemetry)
 
-    assert :ok =
-             Snodo.Transport.Stdio.serve(runtime, Keyword.merge(options, input: io, output: io))
+    assert :ok = Snodo.Transport.Stdio.serve(runtime, input: io, output: io)
 
     {_input, output} = StringIO.contents(io)
 
