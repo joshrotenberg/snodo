@@ -7,6 +7,7 @@ import path from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
+import { skillsClientScenarios, skillsServerScenarios, withExtensions } from "./extensions.mjs";
 import { renderMarkdown, summarize } from "./report.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -34,11 +35,8 @@ const requirementSets = {
 // `extensions` lists extension scenarios that the frozen requirement set does
 // not contain. Each runs on its own with --scenario after the requirement set,
 // writes into the same run directory, and is reported as unscored with reason
-// "extension". A lane with `fixture.skills` serves the SEP-2640 skills fixture.
-const skillsServerScenarios = ["sep-2640-skills-directory", "sep-2640-skills-enumeration",
-  "sep-2640-skills-manifest"];
-const skillsClientScenarios = ["sep-2640-client-no-prefetch", "sep-2640-client-verify-digest",
-  "sep-2640-client-verify-size", "sep-2640-client-verify-frontmatter"];
+// "extension" (see extensions.mjs). A lane with `fixture.skills` serves the
+// SEP-2640 skills fixture.
 const lanes = {
   server: { leg: "server", revision: "2026-07-28", baseline: "expected-failures.json",
     fixture: { profile: "latest", transport: "native", skills: true },
@@ -194,8 +192,7 @@ try {
   // Without a frozen set, every scenario the runner ran is unscored. The
   // lane's extension scenarios join the frozen set's unscored entries.
   const scored = manifest
-    ? { ...manifest, not_scored: [...manifest.not_scored, ...extensions.map((scenario) =>
-      ({ scenario, leg, reason: "extension", note: "not in the frozen requirement set; run with --scenario" }))] }
+    ? withExtensions(manifest, leg, extensions)
     : { [leg]: [], not_scored: Object.keys(scenarios).sort().map((scenario) =>
       ({ scenario, leg, reason: `no frozen requirement set for ${revision}` })) };
   report = {

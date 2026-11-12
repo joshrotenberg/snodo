@@ -215,6 +215,16 @@ fixture with `MCP_FIXTURE_SKILLS=1`, which adds `SnodoTest.Conformance.Skills`
   refuses the tampered SKILL.md for a digest, size, or frontmatter mismatch,
   so the supporting file is never read.
 
+The scenario lists live in [extensions.mjs](extensions.mjs), which `run.mjs`
+and the runner-script tests share. The 2026-11-12 per-check outcomes of both
+lanes, skills scenarios included, are retained in
+[results/2026-11-12-alpha.12-checks.json](results/2026-11-12-alpha.12-checks.json)
+and
+[results/2026-11-12-client-alpha.12-checks.json](results/2026-11-12-client-alpha.12-checks.json);
+`npm test` scores them against the reviewed baselines, and checks that the
+seven option-B failures are the only expected server failures and do not mask
+a regression in another skills check.
+
 ## Additional server lanes
 
 - `server-plug` runs the same 2026-07-28 fixture through `Snodo.Transport.Plug`
