@@ -113,15 +113,24 @@ With the sink configured, attach the handler once, for example in
 - A valid `traceparent` in request `_meta`, with its `tracestate`, is the
   dispatch span's parent, built from the fields `Snodo.TraceContext`
   validated: any trace flags, read as a bit mask, and W3C Level 2 tracestate
-  keys are kept. Without one, the parent is the dispatching process's current
-  context. The dispatch span is current while the dispatch runs, so spans a
-  handler starts are its children, and the previous context is restored when
-  it ends.
+  keys are kept. Without one, the parent is the current context of the
+  process that calls `Snodo.Server.dispatch/3`. The stdio, native HTTP, and
+  Plug transports call it in an executor task whose context is empty, so
+  there a dispatch span has a parent only from a client `traceparent`. The
+  dispatch span is current while the dispatch runs, and the previous context
+  is restored when it ends. A span a handler starts is its child only when
+  started in the same process, not inside `Snodo.Component.Wrap.Timeout` or
+  another spawned task.
 - Runner job events carry no trace context, so a job span is not linked to
   the dispatch that created the task.
 - A span's start and its stop or exception must come from the same process,
   which keeps the open span in its dictionary until the matching stop or
   exception. A stop with no recorded start is ignored.
+- A dispatch whose process is killed emits no stop or exception. Under the
+  stdio, native HTTP, and Plug transports the executor kills the task on a
+  request timeout, on a cancellation, and when the connection that owns the
+  request goes away. Its span is not ended or exported, and the SDK's span
+  sweeper removes it, by default once it is older than 30 minutes.
 - Only one span handler can be attached; a second `attach` returns
   `{:error, :already_exists}`.
 
@@ -137,6 +146,23 @@ With the sink configured, attach the handler once, for example in
 
 Every running job of a Tasks runner takes a slot in the runner process, so
 keep the limit at or above the runner's `:max_jobs` (32 by default).
+
+### Known limits
+
+- A dispatch killed on timeout or cancel, and a job still running when its
+  runner stops, leave their spans unended and unexported.
+- Under the stdio, native HTTP, and Plug transports a dispatch span's parent
+  comes only from a client `traceparent`, and spans started outside the
+  dispatching process are not its children.
+- The SDK's span sweeper also removes spans that are still open, by default
+  after 30 minutes. A Tasks job that runs longer (the runner allows one hour
+  by default) loses its span. Set the SDK's `:sweeper` `:span_ttl` above the
+  longest job's runtime, or its `:strategy` to `:end_span`.
+- The optional dependency is `opentelemetry_api ~> 1.5`, tested with the 1.7
+  SDK. 1.4 is left out: it is not tested, and its `span_ctx` record, from
+  which the handler builds the remote parent, has a different layout.
+- The tests always compile the handler; a build without `opentelemetry_api`
+  is not covered by them.
 
 ### Failures and detaching
 
@@ -156,8 +182,8 @@ that moment are never ended and stay in their processes until those exit.
 
 The module documentation and the
 [instrumentation guide](https://hexdocs.pm/snodo/instrumentation.html#opentelemetry-spans)
-give the full rules for names, attributes, status, parents, and the
-diagnostic events.
+give the full rules for names, attributes, status, parents, the limits, and
+the diagnostic events.
 
 ## Verification
 
@@ -178,6 +204,9 @@ the OpenTelemetry spans to the test process with the SDK's `otel_exporter_pid`
 and check their names, kinds, attributes, status, parents from a
 `traceparent` (including flags `03` and `02`, a future version, and Level 2
 and malformed trace fields), restoration of an existing context, the open
-span limit, detaching during a dispatch, and the absence of payloads. A test
-span processor that raises or exits checks that SDK failures are isolated.
+span limit, detaching during a dispatch, and the absence of payloads. They
+check that span names hold only methods the server routes, and they serve
+requests over the stdio transport, whose executor tasks start with an empty
+context, including one killed on timeout that exports no span. A test span
+processor that raises or exits checks that SDK failures are isolated.
 The Tasks extension and the OpenTelemetry SDK are test-only dependencies.

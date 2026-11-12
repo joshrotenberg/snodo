@@ -72,12 +72,25 @@ if Code.ensure_loaded?(:otel_tracer) do
     context is built from the fields `Snodo.TraceContext` validated: the
     trace flags are kept whole and read as a bit mask, and the tracestate is
     kept as accepted, including W3C Trace Context Level 2 keys. Otherwise the
-    parent is the current OpenTelemetry context of the dispatching process,
-    such as a span started by an HTTP server instrumentation.
+    parent is the current OpenTelemetry context of the process that emits the
+    `:start` event, the process that calls `Snodo.Server.dispatch/3`.
 
-    The dispatch span is the current span in the dispatching process until the
-    dispatch ends, so spans a handler starts are its children. The previous
-    context is restored when the span ends.
+    The stdio, native HTTP, and Plug transports call it in a task of their
+    executor (`Snodo.Server.Executor`), a new process whose OpenTelemetry
+    context is empty. A context the connection or request process holds,
+    such as a span from an HTTP server instrumentation, is not seen there.
+    Under those transports the dispatch span therefore has a parent only when
+    the client sends a `traceparent`, and is a root otherwise. A dispatch
+    that the application calls in a process with a current span, such as
+    `Snodo.Test.dispatch/2` or its own call to `Snodo.Server.dispatch/3`, gets
+    that span as the parent.
+
+    The dispatch span is the current span in that process until the dispatch
+    ends, and the previous context is restored when the span ends. A span a
+    handler starts is a child of the dispatch span only when it is started in
+    the same process. A component wrapped in `Snodo.Component.Wrap.Timeout`
+    runs in another task, and so does any work the handler spawns; spans
+    started there have no parent unless the context is passed to them.
 
     Runner job events carry no trace context, and they are emitted in the
     runner process, not the process that submitted the work. A runner job
@@ -101,13 +114,38 @@ if Code.ensure_loaded?(:otel_tracer) do
     Every running job of a Tasks runner uses a slot in the runner process, so
     keep the limit at or above the runner's `:max_jobs` (32 by default).
 
-    `Snodo.Instrumentation` emits a `:stop` or an `:exception` for every
-    dispatch, including one that raises. The Tasks runner emits a `:stop`
-    whenever it ends a job while it keeps running; jobs still running when
-    the runner itself stops get no `:stop`. A span whose process exits before
-    its `:stop`, such as a job span in a runner that stops, is never ended,
-    and its entry goes with the process. A `:stop` or `:exception` with no
-    recorded `:start` is ignored.
+    `Snodo.Instrumentation` emits a `:stop` or an `:exception` for a
+    dispatch that returns or raises. A dispatch whose process is killed
+    emits neither: under the stdio, native HTTP, and Plug transports the
+    executor kills the task on a request timeout, on a cancellation, and when
+    the connection that owns the request goes away. The Tasks runner emits a
+    `:stop` whenever it ends a job while it keeps running; jobs still running
+    when the runner itself stops get no `:stop`.
+
+    A span whose process exits before its `:stop` or `:exception` is never
+    ended by this handler and is not exported, and its entry goes with the
+    process. The SDK keeps the span until its span sweeper removes it; with
+    the SDK's defaults the sweeper runs every 10 minutes and drops spans
+    older than 30 minutes without exporting them. A `:stop` or `:exception`
+    with no recorded `:start` is ignored.
+
+    ## Limits
+
+      * A dispatch killed on timeout or cancel, and a job still running when
+        its runner stops, leave their spans unended, as described above.
+      * The SDK sweeper also removes a span that is still open: with the
+        default 30-minute TTL, a Tasks job that runs longer than that loses
+        its span, and its later `:stop` ends nothing. Raise the SDK's
+        `:sweeper` `:span_ttl` above the longest job's runtime (the runner's
+        `:max_runtime_ms`, one hour by default), or set its strategy to
+        `:end_span` to export swept spans.
+      * The optional dependency is `opentelemetry_api ~> 1.5`. The tests run
+        against 1.5 with the 1.7 SDK. 1.4 is left out: no test runs against
+        it, and its `span_ctx` record, from which the handler builds the
+        remote parent, has a different layout.
+      * The test suite always compiles this module. Building the package
+        without `opentelemetry_api`, where this module is left out, is not
+        covered by the tests.
 
     ## Failures
 

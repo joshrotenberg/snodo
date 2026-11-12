@@ -223,13 +223,27 @@ is that remote span, and a valid `tracestate` is kept with it. The remote span
 context is built from the fields `Snodo.TraceContext` validated, not parsed
 again: the trace flags are kept whole and read as a bit mask, so `03` is
 sampled, and a tracestate with W3C Trace Context Level 2 keys such as
-`a@b@c` is kept as accepted. Otherwise the
-parent is the current OpenTelemetry context of the dispatching process, such as
-a span from an HTTP server instrumentation. While the dispatch runs, its span
-is the current span in that process, so spans a handler starts are its
-children; the previous context is restored when the dispatch ends. Sampling
-is the SDK's: with its default parent-based sampler, a `traceparent` whose
-sampled flag is not set gives an unrecorded dispatch span.
+`a@b@c` is kept as accepted. Otherwise the parent is the current
+OpenTelemetry context of the process that emits the start event, the process
+that calls `Snodo.Server.dispatch/3`. Sampling is the SDK's: with its default
+parent-based sampler, a `traceparent` whose sampled flag is not set gives an
+unrecorded dispatch span.
+
+The stdio, native HTTP, and Plug transports call `Snodo.Server.dispatch/3` in
+a task of their executor, a new process whose OpenTelemetry context is empty.
+A context held by the connection or request process, such as a span from an
+HTTP server instrumentation in front of `snodo_plug`, is not seen there. Under
+those transports a dispatch span has a parent only when the client sends a
+`traceparent`, and is a root otherwise. When the application calls
+`Snodo.Server.dispatch/3` itself, or uses `Snodo.Test.dispatch/2`, in a
+process with a current span, that span is the parent.
+
+While the dispatch runs, its span is the current span in that process, and
+the previous context is restored when the dispatch ends. A span a handler
+starts is a child of the dispatch span only when it is started in that same
+process. A component wrapped in `Snodo.Component.Wrap.Timeout` runs in
+another task, as does work the handler spawns, so spans started there have no
+parent unless the context is passed to them.
 
 Runner job events carry no trace context and are emitted in the runner
 process, so a job span is not linked to the dispatch that created the task.
@@ -241,10 +255,17 @@ A span's start and its stop or exception must be emitted by the same process,
 because the open span is kept there: in one process dictionary entry, a map
 keyed by the `telemetry_span_context` reference, which is deleted when no span
 is open. `Snodo.Instrumentation` and the Tasks runner both emit each pair from
-one process. A stop or exception with no recorded start is ignored. A span
-whose process exits before its stop, such as a job span in a runner that
-stops with jobs still running, is never ended, and its entry goes with the
-process.
+one process. A stop or exception with no recorded start is ignored.
+
+A dispatch that returns or raises emits a stop or an exception. A dispatch
+whose process is killed emits neither: under the stdio, native HTTP, and Plug
+transports the executor kills the task on a request timeout, on a
+cancellation, and when the connection that owns the request goes away. A job
+still running when its runner stops gets no stop either. A span whose process
+exits before its stop or exception is never ended by the handler and is not
+exported, and its entry goes with the process. The SDK keeps the span until
+its span sweeper removes it; with the SDK's defaults the sweeper runs every
+10 minutes and drops spans older than 30 minutes without exporting them.
 
 A process holds at most `:max_open_spans` open spans, 1,024 by default. At
 the limit a start opens no span, the observed operation is not affected, its
@@ -289,3 +310,25 @@ entries, and for a dispatch its current context, stay in their processes
 until those processes exit.
 
 The OAuth verification events are not turned into spans.
+
+### Limits
+
+- A dispatch killed on timeout or cancel, and a job still running when its
+  runner stops, leave their spans unended and unexported, as described above.
+- Under the stdio, native HTTP, and Plug transports a dispatch span's parent
+  comes only from a client `traceparent`, and spans started outside the
+  dispatching process, including inside `Snodo.Component.Wrap.Timeout`, are
+  not its children.
+- The SDK sweeper also removes spans that are still open. With its default
+  30-minute TTL, a Tasks job that runs longer loses its span, and the job's
+  later stop ends nothing. Set the SDK's `:sweeper` `:span_ttl` above the
+  longest job's runtime (the runner's `:max_runtime_ms`, one hour by
+  default), or set its `:strategy` to `:end_span` so swept spans are ended
+  and exported.
+- The handler needs `opentelemetry_api ~> 1.5`. It is tested against 1.5
+  with the 1.7 SDK. 1.4 is left out: no test runs against it, and its
+  `span_ctx` record, from which the handler builds the remote parent, has a
+  different layout.
+- The `snodo_telemetry` tests always compile the handler. Building the
+  package without `opentelemetry_api`, where the handler module is left out,
+  is not covered by the tests.
