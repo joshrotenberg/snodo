@@ -222,7 +222,11 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
       method = String.duplicate("z", 129)
 
       assert {:ok, %{"error" => _error}} =
-               Snodo.Test.dispatch(runtime, id: "too-long", protocol: "2026-07-28", method: method)
+               Snodo.Test.dispatch(runtime,
+                 id: "too-long",
+                 protocol: "2026-07-28",
+                 method: method
+               )
 
       assert_receive {:span, span(name: "mcp.request") = exported}
       assert %{"snodo.method" => "invalid"} = attributes(exported)
@@ -861,7 +865,8 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
     {:ok, io} = StringIO.open(input)
     runtime = TracedServer.runtime(instrumentation: Telemetry)
 
-    assert :ok = Snodo.Transport.Stdio.serve(runtime, Keyword.merge(options, input: io, output: io))
+    assert :ok =
+             Snodo.Transport.Stdio.serve(runtime, Keyword.merge(options, input: io, output: io))
 
     {_input, output} = StringIO.contents(io)
 
