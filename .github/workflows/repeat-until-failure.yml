@@ -59,7 +59,7 @@ jobs:
           # about 270 s, so 35 repeats (36 runs) take about 165 minutes; the
           # other suites take under 30 s per run.
           all='[
-            {"name": "snodo", "dir": ".", "max_repeat": 35},
+            {"name": "snodo", "dir": ".", "args": "--include distributed", "max_repeat": 35},
             {"name": "snodo_plug", "dir": "integrations/plug", "max_repeat": 200},
             {"name": "snodo_jsv", "dir": "integrations/schema_jsv", "max_repeat": 200},
             {"name": "snodo_oauth", "dir": "integrations/oauth", "max_repeat": 200},

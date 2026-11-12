@@ -1,76 +1,38 @@
-defmodule Examples.DistributedSubscriptions.Bridge do
-  @moduledoc false
-
-  use GenServer
-
-  alias Snodo.Subscription.Hub
-
-  @scope Examples.DistributedSubscriptions.Scope
-  @group {__MODULE__, :events}
-
-  def start_link(opts) do
-    hub = Keyword.fetch!(opts, :hub)
-    GenServer.start_link(__MODULE__, hub, Keyword.take(opts, [:name]))
-  end
-
-  def publish(bridge, event), do: GenServer.call(bridge, {:publish, event})
-
-  @impl GenServer
-  def init(hub) do
-    :ok = :pg.join(@scope, @group, self())
-    {:ok, hub}
-  end
-
-  @impl GenServer
-  def handle_call({:publish, event}, _from, hub) do
-    case Hub.publish(hub, event) do
-      {:ok, report} ->
-        @scope
-        |> :pg.get_members(@group)
-        |> Enum.reject(&(&1 == self()))
-        |> Enum.each(&send(&1, {:subscription_event, event}))
-
-        {:reply, {:ok, report}, hub}
-
-      {:error, _reason} = error ->
-        {:reply, error, hub}
-    end
-  end
-
-  @impl GenServer
-  def handle_info({:subscription_event, event}, hub) do
-    _result = Hub.publish(hub, event)
-    {:noreply, hub}
-  end
-end
-
 defmodule Examples.DistributedSubscriptions.Runner do
   @moduledoc false
 
-  alias Examples.DistributedSubscriptions.Bridge
   alias Snodo.Context
+  alias Snodo.Subscription.Bridge
   alias Snodo.Subscription.Event
   alias Snodo.Subscription.Hub
   alias Snodo.Transport.Context, as: TransportContext
 
   def run(mode) do
-    {:ok, scope} = :pg.start_link(Examples.DistributedSubscriptions.Scope)
-    {:ok, first_hub} = Hub.start_link(max_buffer: 2)
-    {:ok, second_hub} = Hub.start_link(max_buffer: 2)
-    {:ok, first_bridge} = Bridge.start_link(hub: first_hub)
-    {:ok, second_bridge} = Bridge.start_link(hub: second_hub)
+    opts = [
+      name: nil,
+      scope: Examples.DistributedSubscriptions.Scope,
+      hub_options: [max_buffer: 2]
+    ]
+
+    children = [
+      Supervisor.child_spec({Bridge, opts}, id: :first),
+      Supervisor.child_spec({Bridge, opts}, id: :second)
+    ]
+
+    {:ok, supervisor} = Supervisor.start_link(children, strategy: :one_for_one)
+    children = Supervisor.which_children(supervisor)
+    {:first, first, _, _} = List.keyfind(children, :first, 0)
+    {:second, second, _, _} = List.keyfind(children, :second, 0)
 
     try do
-      exercise(first_hub, second_hub, first_bridge, second_bridge)
+      exercise(first, second)
       print_summary(mode)
     after
-      Enum.each([first_bridge, second_bridge, first_hub, second_hub, scope], fn pid ->
-        if Process.alive?(pid), do: GenServer.stop(pid)
-      end)
+      Supervisor.stop(supervisor)
     end
   end
 
-  defp exercise(first_hub, second_hub, first_bridge, second_bridge) do
+  defp exercise(first_bridge, second_bridge) do
     context = %Context{
       request_id: "distributed-example",
       protocol_version: "2026-07-28",
@@ -79,13 +41,13 @@ defmodule Examples.DistributedSubscriptions.Runner do
     }
 
     tools_filter = %{"toolsListChanged" => true}
-    {:ok, ^tools_filter, first} = Hub.open(tools_filter, context, first_hub)
-    {:ok, ^tools_filter, second} = Hub.open(tools_filter, context, second_hub)
+    {:ok, ^tools_filter, first} = Bridge.open(tools_filter, context, first_bridge)
+    {:ok, ^tools_filter, second} = Bridge.open(tools_filter, context, second_bridge)
 
     resource_filter = %{"resourceSubscriptions" => ["demo://status"]}
-    {:ok, ^resource_filter, unrelated} = Hub.open(resource_filter, context, second_hub)
+    {:ok, ^resource_filter, unrelated} = Bridge.open(resource_filter, context, second_bridge)
 
-    pulls = for handle <- [first, second], do: Task.async(fn -> Hub.next(handle, nil) end)
+    pulls = for handle <- [first, second], do: Task.async(fn -> Bridge.next(handle, nil) end)
     event = Event.tools_list_changed()
     {:ok, %{matched: 1}} = Bridge.publish(first_bridge, event)
 
@@ -96,16 +58,16 @@ defmodule Examples.DistributedSubscriptions.Runner do
     {:error, {:invalid_event, _reason}} =
       Bridge.publish(first_bridge, Event.resource_updated("relative-uri"))
 
-    resource_pull = Task.async(fn -> Hub.next(unrelated, nil) end)
+    resource_pull = Task.async(fn -> Bridge.next(unrelated, nil) end)
     resource_event = Event.resource_updated("demo://status")
     {:ok, %{matched: 1}} = Bridge.publish(second_bridge, resource_event)
     {:ok, ^resource_event} = Task.await(resource_pull, 1_000)
 
-    %{queued: 0} = Hub.stats(first_hub)
-    %{queued: 0} = Hub.stats(second_hub)
+    %{queued: 0} = Hub.stats(elem(first, 0))
+    %{queued: 0} = Hub.stats(elem(second, 0))
 
-    Enum.each([{first, first_hub}, {second, second_hub}, {unrelated, second_hub}], fn
-      {handle, hub} -> :ok = Hub.close(handle, :complete, hub)
+    Enum.each([first, second, unrelated], fn handle ->
+      :ok = Bridge.close(handle, :complete, nil)
     end)
   end
 

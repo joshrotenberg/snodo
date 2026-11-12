@@ -68,10 +68,16 @@ Narrower runs while working:
 ```sh
 mix test test/router_acceptance_test.exs       # one file
 mix test test/router_acceptance_test.exs:42    # the test at line 42
+mix test --include distributed test/subscription_bridge_test.exs # multi-node tests; requires epmd
 cd integrations/plug && mix test               # one sibling
 mix run examples/01_direct_tools.exs --check   # one example in check mode
 mix test --repeat-until-failure 100 --max-failures 1   # look for flaky tests; also try ERL_FLAGS="+S 2:2"
 ```
+
+Distributed tests are excluded by default. Including `distributed` starts epmd
+and Erlang distribution; `mix quality` includes them in its core test step.
+Selecting a distributed test by file:line still requires `--include distributed`;
+`--include distributed:true` is not recognised.
 
 ## Hard constraints
 
