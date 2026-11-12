@@ -65,7 +65,9 @@ defmodule Snodo.Skills.Catalog do
           directory_page_size: pos_integer(),
           cache: %{ttl_ms: non_neg_integer(), scope: String.t()},
           scope: String.t(),
-          external_resources: [String.t()]
+          external_resources: [String.t()],
+          directory: String.t() | nil,
+          fingerprint: binary() | nil
         }
 
   defstruct skills: [],
@@ -77,13 +79,24 @@ defmodule Snodo.Skills.Catalog do
             directory_page_size: @default_directory_page_size,
             cache: %{ttl_ms: 0, scope: "private"},
             scope: "",
-            external_resources: []
+            external_resources: [],
+            directory: nil,
+            fingerprint: nil
 
   @doc false
   @spec build!(keyword(), module(), Macro.Env.t()) :: {t(), [module()]}
   def build!(opts, module, %Macro.Env{} = env) when is_list(opts) do
     validate_options!(opts)
     parser = Frontmatter.validate_parser!(Keyword.get(opts, :frontmatter_parser))
+
+    # Taken before the walk, so a change made while the catalog is built
+    # leaves a fingerprint that no longer matches, and the next compile
+    # rebuilds it.
+    root =
+      with directory when is_binary(directory) <- Keyword.get(opts, :directory),
+           do: Path.expand(directory)
+
+    fingerprint = if is_binary(root), do: fingerprint(root)
 
     limits = %{
       files: positive!(opts, :max_skill_files, @default_max_skill_files),
@@ -113,10 +126,46 @@ defmodule Snodo.Skills.Catalog do
       directory_page_size: positive!(opts, :directory_page_size, @default_directory_page_size),
       cache: cache!(Keyword.get(opts, :cache, [])),
       scope: scope(entries),
-      external_resources: Enum.flat_map(sources, & &1.external)
+      external_resources: Enum.flat_map(sources, & &1.external),
+      directory: if(is_binary(root), do: root),
+      fingerprint: fingerprint
     }
 
     {catalog, resources}
+  end
+
+  @doc false
+  # A hash of every path under `root` (dotfiles skipped, as the catalog skips
+  # them), with its type, size, and modification time. @external_resource
+  # only covers the files present at compile time; comparing this hash in
+  # __mix_recompile__?/0 also catches a file added or removed. It never
+  # raises: an unreadable entry is hashed as its error.
+  @spec fingerprint(String.t()) :: binary()
+  def fingerprint(root) when is_binary(root) do
+    :crypto.hash(:sha256, :erlang.term_to_binary(listing(root), [:deterministic]))
+  end
+
+  defp listing(directory) do
+    case File.ls(directory) do
+      {:ok, names} ->
+        names
+        |> Enum.reject(&String.starts_with?(&1, "."))
+        |> Enum.sort()
+        |> Enum.map(&listing_entry(directory, &1))
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp listing_entry(directory, name) do
+    path = Path.join(directory, name)
+
+    case File.lstat(path, time: :posix) do
+      {:ok, %File.Stat{type: :directory}} -> {name, :directory, listing(path)}
+      {:ok, %File.Stat{type: type, size: size, mtime: mtime}} -> {name, type, size, mtime}
+      {:error, reason} -> {name, :error, reason}
+    end
   end
 
   defp validate_options!(opts) do

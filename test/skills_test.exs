@@ -354,6 +354,67 @@ defmodule Snodo.SkillsTest do
     end
 
     @tag :tmp_dir
+    test "asks Mix to recompile when a file is added, removed, or changed", %{tmp_dir: tmp} do
+      skills = Path.join(tmp, "skills")
+      skill = write_skill!(skills, "first", %{"docs/a.md" => "a"})
+      module = Module.concat(__MODULE__, "Recompile#{System.unique_integer([:positive])}")
+
+      Code.compile_quoted(
+        quote do
+          defmodule unquote(module) do
+            use Snodo.Skills, directory: unquote(skills)
+          end
+        end
+      )
+
+      refute module.__mix_recompile__?()
+
+      # A new skill, which no @external_resource covers.
+      second = write_skill!(skills, "second")
+      assert module.__mix_recompile__?()
+      File.rm_rf!(second)
+      refute module.__mix_recompile__?()
+
+      # A new file deep inside an existing skill.
+      nested = Path.join(skill, "docs/more/b.md")
+      File.mkdir_p!(Path.dirname(nested))
+      File.write!(nested, "b")
+      assert module.__mix_recompile__?()
+      File.rm_rf!(Path.join(skill, "docs/more"))
+      refute module.__mix_recompile__?()
+
+      # A removed file, and a changed one.
+      File.rm!(Path.join(skill, "docs/a.md"))
+      assert module.__mix_recompile__?()
+      File.write!(Path.join(skill, "docs/a.md"), "a changed")
+      assert module.__mix_recompile__?()
+
+      # Dotfiles are not served, so they do not count.
+      File.write!(Path.join(skill, "docs/a.md"), "a")
+      fingerprint = Catalog.fingerprint(skills)
+      File.write!(Path.join(skill, ".hidden"), "x")
+      assert Catalog.fingerprint(skills) == fingerprint
+
+      # A module built only from :entries has nothing to watch.
+      entries_only = Module.concat(__MODULE__, "Entries#{System.unique_integer([:positive])}")
+
+      Code.compile_quoted(
+        quote do
+          defmodule unquote(entries_only) do
+            use Snodo.Skills,
+              entries: [[path: "solo", files: %{"SKILL.md" => unquote(skill_md("solo"))}]]
+          end
+        end
+      )
+
+      assert entries_only.__catalog__().directory == nil
+      refute function_exported?(entries_only, :__mix_recompile__?, 0)
+
+      # The test support module reads test/fixtures/skills, which is unchanged.
+      refute SnodoTest.Skills.__mix_recompile__?()
+    end
+
+    @tag :tmp_dir
     test "skips dotfiles and reads nested directories", %{tmp_dir: tmp} do
       skills = Path.join(tmp, "skills")
       write_skill!(skills, "plain", %{".hidden" => "x", "a/b/c.txt" => "c"})

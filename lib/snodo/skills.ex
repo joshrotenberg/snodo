@@ -28,8 +28,11 @@ defmodule Snodo.Skills do
   its directory a skill, whose path is the directory's path relative to
   `:directory`. A relative `:directory` is relative to the working directory
   of the compiler, which under Mix is the project root. Every regular file in
-  the skill directory except dotfiles is part of the skill, and the module
-  recompiles when one of them changes. A symbolic link anywhere under
+  the skill directory except dotfiles is part of the skill. The module
+  recompiles when a file under `:directory` is added, removed, or changed:
+  it records the path, size, and modification time of every entry when it
+  compiles, and its `__mix_recompile__?/0` compares them on each
+  `mix compile`. A symbolic link anywhere under
   `:directory` raises `ArgumentError` rather than being followed, so a link
   cannot publish a file from outside it. A skill's file count and sizes are
   checked against the limits below before any of its files is read. The
@@ -140,6 +143,18 @@ defmodule Snodo.Skills do
 
       @snodo_skills_catalog catalog
       @snodo_skills_resources resources
+
+      if catalog.directory do
+        @snodo_skills_directory catalog.directory
+        @snodo_skills_fingerprint catalog.fingerprint
+
+        # Mix asks this before each compile: a file added to, removed from, or
+        # changed under :directory recompiles the module.
+        @doc false
+        def __mix_recompile__? do
+          Snodo.Skills.Catalog.fingerprint(@snodo_skills_directory) != @snodo_skills_fingerprint
+        end
+      end
 
       @doc "Returns the skills this module serves."
       @spec skills() :: [Snodo.Skills.Skill.t()]
