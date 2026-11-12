@@ -586,7 +586,8 @@ defmodule Snodo.SkillsTest do
           build(entries: [[path: "wide", files: files]], max_response_bytes: 8_192)
         end
 
-      assert error.message =~ "wide: the skill's skills/get entry is"
+      assert error.message =~ "wide: the skill's entry is"
+      assert error.message =~ "and 2 for the brackets of the array it is sent in"
     end
 
     test "cuts skills/list pages to :max_response_bytes" do
@@ -682,17 +683,82 @@ defmodule Snodo.SkillsTest do
 
       {wide, _resources} = build(entries: [[path: "dir", files: files]])
       [entry_bytes] = wide.entry_bytes
-      max_response_bytes = entry_bytes + 4_096
+      # The entry, as a page of its own, takes exactly the budget.
+      max_response_bytes = entry_bytes + 2 + 4_096
 
       {catalog, _resources} =
         build(entries: [[path: "dir", files: files]], max_response_bytes: max_response_bytes)
 
       sizes = catalog.directory_bytes["skill://dir/docs"]
-      assert Enum.max(sizes) <= catalog.response_budget
+      assert Enum.max(sizes) + 2 <= catalog.response_budget
       pages = pages(catalog, :directory_read, %{"uri" => "skill://dir/docs"}, "resources")
       assert length(pages) > 1
       assert Enum.all?(pages, &(&1 != [] and encoded(&1) <= catalog.response_budget))
       assert Enum.concat(pages) == catalog.directories["skill://dir/docs"]
+    end
+
+    test "admits a skill entry that fills the budget exactly as a page, and not one byte more" do
+      files = for n <- 1..10, into: %{"SKILL.md" => skill_md("edge")}, do: {"f#{n}.txt", "x"}
+      entries = [[path: "edge", files: files]]
+      {sized, _resources} = build(entries: entries)
+      [entry_bytes] = sized.entry_bytes
+
+      # [entry] is the entry and its two brackets.
+      {catalog, _resources} = build(entries: entries, max_response_bytes: entry_bytes + 2 + 4_096)
+      assert [[entry]] = pages(catalog, :skills_list, %{}, "skills")
+      assert encoded([entry]) == catalog.response_budget
+      assert encoded(entry) == entry_bytes
+
+      error =
+        assert_raise ArgumentError, fn ->
+          build(entries: entries, max_response_bytes: entry_bytes + 1 + 4_096)
+        end
+
+      assert error.message =~ "edge: the skill's entry is #{entry_bytes} bytes"
+    end
+
+    test "fills a skills/list page to exactly the budget, brackets and commas included" do
+      entries =
+        for name <- ["s-a", "s-b", "s-c"] do
+          files = for n <- 1..10, into: %{"SKILL.md" => skill_md(name)}, do: {"f#{n}.txt", "x"}
+          [path: name, files: files]
+        end
+
+      {sized, _resources} = build(entries: entries)
+      [a, b, _c] = sized.entry_bytes
+
+      # "[" a "," b "]" is a + b + 3 bytes.
+      {exact, _resources} = build(entries: entries, max_response_bytes: a + b + 3 + 4_096)
+      [first | _rest] = pages = pages(exact, :skills_list, %{}, "skills")
+      assert length(first) == 2
+      assert encoded(first) == exact.response_budget
+      assert Enum.concat(pages) == exact.entries
+      assert Enum.all?(pages, &(encoded(&1) <= exact.response_budget))
+
+      # One byte less and the second entry goes to the next page.
+      {short, _resources} = build(entries: entries, max_response_bytes: a + b + 2 + 4_096)
+      pages = pages(short, :skills_list, %{}, "skills")
+      assert Enum.map(pages, &length/1) == [1, 1, 1]
+      assert Enum.all?(pages, &(encoded(&1) <= short.response_budget))
+    end
+
+    test "admits a directory child that fills the budget exactly as a page, and not one byte more" do
+      files = %{"SKILL.md" => skill_md("dir"), "docs/#{String.duplicate("n", 1_000)}" => "x"}
+      entries = [[path: "dir", files: files]]
+      {sized, _resources} = build(entries: entries)
+      [child_bytes] = sized.directory_bytes["skill://dir/docs"]
+      assert child_bytes > hd(sized.entry_bytes)
+
+      {catalog, _resources} = build(entries: entries, max_response_bytes: child_bytes + 2 + 4_096)
+      assert [page] = pages(catalog, :directory_read, %{"uri" => "skill://dir/docs"}, "resources")
+      assert encoded(page) == catalog.response_budget
+
+      error =
+        assert_raise ArgumentError, fn ->
+          build(entries: entries, max_response_bytes: child_bytes + 1 + 4_096)
+        end
+
+      assert error.message =~ "its resources/directory/read entry in skill://dir/docs is"
     end
 
     test "requires :max_response_bytes above the envelope" do

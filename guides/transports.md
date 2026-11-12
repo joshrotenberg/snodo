@@ -328,7 +328,7 @@ reading it:
 | `:max_skill_bytes` | `use Snodo.Skills` | 16,777,216 bytes (16 MiB) per skill, all files | `ArgumentError` naming the skill; the module does not compile |
 | `:page_size` | `use Snodo.Skills` | 50 skills per `skills/list` page | A longer listing is paged; an invalid or expired cursor gets -32602 |
 | `:directory_page_size` | `use Snodo.Skills` | 100 children per `resources/directory/read` page | As for `:page_size` |
-| `:max_response_bytes` | `use Snodo.Skills` | 16,777,216 bytes (16 MiB) per response, 4,096 of them left for the envelope | A file's `resources/read` content, a `skills/get` entry, or a `resources/directory/read` child over it, on HTTP or stdio: `ArgumentError` naming it; the module does not compile. `skills/list` and `resources/directory/read` pages end early instead |
+| `:max_response_bytes` | `use Snodo.Skills` | 16,777,216 bytes (16 MiB) per response, 4,096 of them left for the envelope and 2 more for the brackets around a single file, entry, or child | A file's `resources/read` content, a `skills/get` entry, or a `resources/directory/read` child over it, on HTTP or stdio: `ArgumentError` naming it; the module does not compile. `skills/list` and `resources/directory/read` pages end early instead |
 | `:max_file_bytes` | `Snodo.Skills.Client` | 16,777,216 bytes (16 MiB) per file, by the listed size | -32000 with `"reason" => "too_large"`; nothing is read. A response over the transport's own limit fails with that transport error |
 | `:max_pages` | `Snodo.Skills.Client.list/2` | the client's `:max_pages`, 1,000 | -32000 transport error |
 | Frontmatter size | `Snodo.Skills.Frontmatter` built-in parser | 1,048,576 bytes (1 MiB), fixed | `Snodo.Skills.Frontmatter.Error` with reason `:too_large`: `ArgumentError` in `use Snodo.Skills`, -32000 with `"reason" => "frontmatter_unreadable"` in `Snodo.Skills.Client` |
@@ -351,18 +351,23 @@ hashed into them. A cursor over 1,024 bytes, or one issued for another
 listing, another directory, or another build of the catalog, gets -32602.
 
 `:max_response_bytes` bounds the part of each response that comes from the
-skills: the file content of a `resources/read` result, the entry of a
-`skills/get` result, and the entries of a `skills/list` or
-`resources/directory/read` page. That part is kept at or under
-`:max_response_bytes` less 4,096 bytes on both transports. Its size is the
-larger of the HTTP encoding, raw UTF-8, and the stdio framing, which writes
-every character outside ASCII as a `\uXXXX` escape (6 bytes for an "é", 12
-for a character above U+FFFF), measured with the framing itself. File
-content, entries, and directory children are checked when the module
-compiles; pages hold up to `:page_size` or `:directory_page_size` entries,
-fewer when the next one would take the page past the same size. A skill entry
-is never split across pages, and since no single entry or child can be over
-the budget, every page but the last advances.
+skills: the `"contents"` array of a `resources/read` result, which holds the
+one file, the entry of a `skills/get` result, and the `"skills"` or
+`"resources"` array of a `skills/list` or `resources/directory/read` page.
+That part, an array measured with its brackets and commas, is kept at or
+under `:max_response_bytes` less 4,096 bytes on both transports. Its size is
+the larger of the HTTP encoding, raw UTF-8, and the stdio framing, which
+writes every character outside ASCII as a `\uXXXX` escape (6 bytes for an
+"é", 12 for a character above U+FFFF), measured with the framing itself. A
+file's content, a skill entry, and a directory child are each checked when
+the module compiles, and must take at most the budget less 2 bytes, so that
+each fits in brackets as a page or a `"contents"` array of its own; a
+`skills/get` entry, sent without brackets, is checked the same way because
+it is also a `skills/list` element. Pages hold up to `:page_size` or
+`:directory_page_size` entries, fewer when the next one would take the
+array past the budget. A skill entry is never split across pages, and since
+no single entry or child can be over the budget, every page but the last
+advances.
 
 Without this bound a default server could send more than a default client
 reads (`:max_response_bytes` over HTTP and `:max_line_bytes` over stdio, both
@@ -380,20 +385,26 @@ in the 4,096 bytes left over: the JSON-RPC envelope and the request id the
 client sent, `resultType`, `ttlMs`, `cacheScope`, and a `nextCursor` (under
 100 bytes), and, for `resources/read` only, the `_meta` the core adds, which
 carries the server's whole `server_info` under
-`io.modelcontextprotocol/serverInfo`. Measured with an integer request id and
-a `server_info` of a name and a version, that part is about 170 bytes for a
-`skills/list` page with a cursor and about 190 bytes for a `resources/read`.
-The core does not bound `server_info`, a request id is bounded only by the
-transports' request size limits (2,000,000 bytes by default), and
-`Snodo.Skills` cannot check either: an extension sees neither when the runtime
-is built, and a generated resource module sees the server info only while it
-answers a request. So a `server_info` with large fields, such as icons with
-`data:` URIs, or a client that sends a long string id, can take a response
-whose skills part is near the budget past the client limit. The server still
-sends it. A default HTTP client then fails the request with -32000 and
-`cause: {:max_response_bytes, limit}`; a default stdio client discards the
-line, so the request times out with -32001. Keep `server_info` well under
-4 KiB, or lower `:max_response_bytes` by the difference.
+`io.modelcontextprotocol/serverInfo`. The request id is bounded by the core:
+`Snodo.Envelope` accepts a string of at most 256 bytes or an integer in the
+int64 range, and answers any other id with -32600. Measured with a
+`server_info` of a name and a version, that part is 174 bytes for a
+`skills/list` page with a cursor and 194 bytes for a `resources/read` with
+the integer id `Snodo.Client` sends, and at most 1,711 and 1,731 bytes with
+the largest id the core accepts: a 256-byte string of control characters,
+which JSON writes as 1,536 bytes. Leaving out the `server_info` object
+itself, that is at most 1,689 bytes, so with any accepted id the whole
+response fits when the encoded `server_info` (stdio-sized, as above) is at
+most 2,407 bytes. The core does not bound `server_info`, and `Snodo.Skills`
+cannot check it: an extension does not see it when the runtime is built, and
+a generated resource module sees it only while it answers a request. So a
+`server_info` with large fields, such as icons with `data:` URIs, can take a
+`resources/read` response whose content is near the budget past the client
+limit. The server still sends it. A default HTTP client then fails the
+request with -32000 and `cause: {:max_response_bytes, limit}`; a default
+stdio client discards the line, so the request times out with -32001. Keep
+the encoded `server_info` under 2,407 bytes, or lower `:max_response_bytes`
+by the difference.
 
 ## Plug and Bandit
 

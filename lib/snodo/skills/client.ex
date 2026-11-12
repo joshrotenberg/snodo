@@ -54,10 +54,12 @@ defmodule Snodo.Skills.Client do
       fit the transport's limit (`:max_response_bytes` over HTTP,
       `:max_line_bytes` over stdio, both 16 MiB by default), or the read
       fails with that transport error. A `Snodo.Skills` server with the
-      default `:max_response_bytes` keeps each file's content within 16 MiB
-      less 4,096 bytes on HTTP and stdio, so the response fits unless the
-      rest of it, mainly the server's `server_info` under `_meta`, is over
-      those 4,096 bytes. See the Skills limits in the transports guide.
+      default `:max_response_bytes` keeps each file's `"contents"` array
+      within 16 MiB less 4,096 bytes on HTTP and stdio, so the response fits
+      unless the rest of it is over those 4,096 bytes, which with any
+      request id the core accepts happens only when the server's encoded
+      `server_info` is over 2,407 bytes. See the Skills limits in the
+      transports guide.
     * `:frontmatter_parser` - a `t:Snodo.Skills.Frontmatter.parser/0` for
       reading SKILL.md frontmatter.
     * `:max_pages` - for `list/2`, the most `skills/list` pages to request.

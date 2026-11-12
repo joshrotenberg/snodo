@@ -68,17 +68,21 @@ defmodule Snodo.Skills do
     * `:max_response_bytes` - the largest response the module may send.
       Defaults to 16,777,216 (16 MiB), the default response limit of
       `Snodo.Client` over HTTP and stdio. 4,096 bytes of it are left for the
-      JSON-RPC envelope, so every file's `resources/read` content and every
-      `skills/get` entry must encode to at most `:max_response_bytes` less
-      4,096 bytes, and `skills/list` and `resources/directory/read` pages are
-      cut to that size. Sizes are the larger of the HTTP encoding (raw
-      UTF-8) and the stdio framing, which writes every character outside
-      ASCII as a `\\uXXXX` escape, so an "é" counts as 6 bytes and a
-      character above U+FFFF as 12. Must be greater than 4,096. The whole
-      response fits only if the rest of it, including the request id and,
-      on `resources/read`, the server's `server_info` under `_meta`, fits in
-      the 4,096 bytes; neither is checked here. The Skills limits section of
-      the transports guide says what happens otherwise.
+      JSON-RPC envelope. The rest, the budget, bounds the skills part of
+      each response measured as the JSON array it is sent in, brackets and
+      commas included: the `"contents"` of a `resources/read` result and
+      the pages of `skills/list` and `resources/directory/read`. So every
+      file's content, every skill entry, and every directory child must
+      encode to at most the budget less 2 bytes, and pages are cut to the
+      budget. Sizes are the larger of the HTTP encoding (raw UTF-8) and the
+      stdio framing, which writes every character outside ASCII as a
+      `\\uXXXX` escape, so an "é" counts as 6 bytes and a character above
+      U+FFFF as 12. Must be greater than 4,096. The whole response fits only
+      if the rest of it fits in the 4,096 bytes. The request id is bounded
+      by the core (a string of at most 256 bytes or an int64), but on
+      `resources/read` the rest also holds the server's `server_info` under
+      `_meta`, which nothing bounds; the Skills limits section of the
+      transports guide gives the sizes and says what happens otherwise.
     * `:max_skill_files` - files per skill, SKILL.md included. Defaults to
       512.
     * `:max_skill_bytes` - the total size of a skill's files. Defaults to
@@ -395,15 +399,18 @@ defmodule Snodo.Skills do
     |> fit(catalog.directory_page_size, catalog.response_budget)
   end
 
-  # How many of `sizes` (encoded byte sizes, each followed by a comma) fit in
-  # `budget`, up to `max_count`. The first is taken whatever its size, and
-  # it fits: the catalog refused, at compile time, any skill entry or
-  # directory child larger than the budget. So a page is never empty, every
-  # page but the last advances the offset, and no page passes the budget.
+  # How many of `sizes` (encoded byte sizes) fit in `budget` as one JSON
+  # array, up to `max_count`. The array is its two brackets, the elements,
+  # and a comma between each two, so a page of n elements encodes to
+  # 2 + sum(sizes) + (n - 1) bytes, which is what is compared. The first is
+  # taken whatever its size, and it fits: the catalog refused, at compile
+  # time, any skill entry or directory child for which [element] would pass
+  # the budget. So a page is never empty, every page but the last advances
+  # the offset, and no page passes the budget.
   defp fit(sizes, max_count, budget) do
     sizes
-    |> Enum.reduce_while({0, 0}, fn size, {count, total} ->
-      total = total + size + 1
+    |> Enum.reduce_while({0, 2}, fn size, {count, total} ->
+      total = if count == 0, do: total + size, else: total + 1 + size
 
       if count == max_count or (count > 0 and total > budget),
         do: {:halt, {count, total}},

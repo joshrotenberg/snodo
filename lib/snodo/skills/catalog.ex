@@ -20,9 +20,14 @@ defmodule Snodo.Skills.Catalog do
   @default_max_response_bytes 16_777_216
   # Left for the JSON-RPC envelope and request id, the result's other fields,
   # a cursor, SSE framing, and on resources/read the _meta carrying the whole
-  # server_info. Nothing here can check that those fit: the guarantee is
-  # conditional on it, as guides/transports.md says.
+  # server_info. Snodo.Envelope bounds the id (256-byte strings, int64), so
+  # all but server_info take at most 1,689 bytes; nothing here can check
+  # server_info, so the guarantee is conditional on it, as
+  # guides/transports.md says.
   @envelope_bytes 4_096
+  # The "[" and "]" around the elements of the array the skills part of a
+  # response is measured as.
+  @array_bytes 2
   @directory_mime_type "inode/directory"
 
   # The Agent Skills naming rules for the last segment, and an RFC 3986
@@ -234,29 +239,36 @@ defmodule Snodo.Skills.Catalog do
     end
   end
 
-  # The skills part of every response the module sends (file content,
-  # entries, directory children) must fit a client limit of
-  # :max_response_bytes on HTTP and on stdio (see encoded_size/1), with
-  # @envelope_bytes assumed to cover the rest, server_info included: each
-  # file's resources/read content and each
-  # skills/get entry are checked here, with @envelope_bytes to spare, and
-  # skills/list and resources/directory/read pages are cut to the same budget
-  # when they are served. Returns the encoded size of each entry, in order,
-  # for that paging.
+  # The skills part of every response the module sends must fit a client
+  # limit of :max_response_bytes on HTTP and on stdio (see encoded_size/1),
+  # with @envelope_bytes assumed to cover the rest, server_info included.
+  # The skills part is measured as a JSON array, brackets included: the
+  # "contents" array of a resources/read result, which holds one file, and
+  # the page arrays of skills/list and resources/directory/read. So a file's
+  # content, a skill entry, or a directory child must take at most the
+  # budget less @array_bytes, which also lets it be a page on its own. A
+  # skills/get entry is sent without brackets and is checked the same way,
+  # since the same entry is a skills/list page element. Pages are cut to the
+  # budget when they are served. Returns the encoded size of each entry, in
+  # order, for that paging.
   defp check_responses!(skills, max_response_bytes, budget) do
     Enum.map(skills, fn skill ->
       Enum.each(skill.files, &check_file_response!(skill, &1, max_response_bytes, budget))
       size = skill |> Skill.entry() |> encoded_size()
 
-      if size > budget do
+      if size + @array_bytes > budget do
         raise ArgumentError,
-              "#{skill.path}: the skill's skills/get entry is #{size} bytes, " <>
-                "more than :max_response_bytes (#{max_response_bytes}) less " <>
-                "#{@envelope_bytes} bytes for the envelope"
+              "#{skill.path}: the skill's entry is #{size} bytes, " <>
+                over_budget_message(max_response_bytes)
       end
 
       size
     end)
+  end
+
+  defp over_budget_message(max_response_bytes) do
+    "more than :max_response_bytes (#{max_response_bytes}) less #{@envelope_bytes} bytes " <>
+      "for the envelope and #{@array_bytes} for the brackets of the array it is sent in"
   end
 
   # A directory child carries the URI and the basename, so a long name can
@@ -280,22 +292,20 @@ defmodule Snodo.Skills.Catalog do
   end
 
   defp check_directory_child!({child, size}, uri, max_response_bytes, budget) do
-    if size > budget do
+    if size + @array_bytes > budget do
       raise ArgumentError,
             "#{child["uri"]}: its resources/directory/read entry in #{uri} is #{size} bytes, " <>
-              "more than :max_response_bytes (#{max_response_bytes}) less " <>
-              "#{@envelope_bytes} bytes for the envelope"
+              over_budget_message(max_response_bytes)
     end
   end
 
   defp check_file_response!(skill, file, max_response_bytes, budget) do
     size = file |> content_map() |> encoded_size()
 
-    if size > budget do
+    if size + @array_bytes > budget do
       raise ArgumentError,
             "#{skill.path}/#{file.path}: resources/read would send #{size} bytes of content, " <>
-              "more than :max_response_bytes (#{max_response_bytes}) less " <>
-              "#{@envelope_bytes} bytes for the envelope"
+              over_budget_message(max_response_bytes)
     end
   end
 
