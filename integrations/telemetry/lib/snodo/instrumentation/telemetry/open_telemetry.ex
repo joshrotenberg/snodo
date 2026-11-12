@@ -33,14 +33,16 @@ if Code.ensure_loaded?(:otel_tracer) do
         registered direct resource, for `tools/call`, `prompts/get`, and
         `resources/read`. An unregistered name is reported as `:unknown` and
         left out of the span name. A span with a named component has its name
-        from the start.
+        from the start and keeps it whatever the outcome, including a
+        JSON-RPC error, an exception, or a dispatch that never ends.
       * Otherwise the span starts as `mcp.request`. When the dispatch ends
         with outcome `:ok` or `:stream`, which only a route the server
         registers can produce, the span is renamed to the method.
-      * A JSON-RPC error, a notification (outcome `:no_reply`), an exception,
-        a method reported as `:invalid`, and a dispatch that never ends keep
-        `mcp.request`, because those can come from a method nothing routes,
-        such as one answered with method not found.
+      * A span without a named component keeps `mcp.request` on a JSON-RPC
+        error, a notification (outcome `:no_reply`), an exception, a method
+        reported as `:invalid`, or a dispatch that never ends, because those
+        can come from a method nothing routes, such as one answered with
+        method not found.
 
     The method is still recorded as the `snodo.method` attribute;
     `Snodo.Server` reports a method longer than 128 bytes as `:invalid`. A
@@ -559,11 +561,12 @@ if Code.ensure_loaded?(:otel_tracer) do
     # The method is client-chosen, so it goes into the span name only when the
     # server's configuration bounds it. A component is named only when the
     # router registers it, and only for tools/call, prompts/get, and
-    # resources/read. A result or a stream comes only from a route the server
-    # registers, so the method is known once the outcome is :ok or :stream; the
-    # start metadata has no outcome, so the span starts as mcp.request and is
-    # renamed when it ends. Errors, notifications, and exceptions can come
-    # from methods nothing routes, so they keep the fixed name.
+    # resources/read, so that name holds whatever the outcome. Without one, a
+    # result or a stream comes only from a route the server registers, so the
+    # method is known once the outcome is :ok or :stream; the start metadata
+    # has no outcome, so the span starts as mcp.request and is renamed when it
+    # ends. Errors, notifications, and exceptions can come from methods
+    # nothing routes, so without a component they keep the fixed name.
     defp dispatch_name(%{method: method, component: component})
          when is_binary(method) and is_binary(component),
          do: method <> " " <> component

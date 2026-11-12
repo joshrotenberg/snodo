@@ -218,6 +218,29 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
       assert_clean_process()
     end
 
+    test "a registered component keeps its name whatever the outcome" do
+      runtime = TracedServer.runtime(instrumentation: Telemetry)
+
+      # Without :protocol the request has no _meta, which 2026-07-28 requires.
+      assert {:ok, %{"error" => %{"code" => code}}} =
+               Snodo.Test.dispatch(runtime,
+                 id: "otel-no-meta",
+                 method: "tools/call",
+                 params: %{"name" => "echo", "arguments" => %{"text" => "x"}}
+               )
+
+      assert_receive {:span, span(name: "tools/call echo") = exported}
+
+      assert %{
+               "snodo.component" => "echo",
+               "snodo.outcome" => "error",
+               "snodo.error_code" => ^code
+             } =
+               attributes(exported)
+
+      assert_clean_process()
+    end
+
     test "a method over the length limit is reported as invalid and keeps the fixed name" do
       runtime = TracedServer.runtime(instrumentation: Telemetry)
       method = String.duplicate("z", 129)

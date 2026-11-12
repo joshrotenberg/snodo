@@ -101,11 +101,12 @@ With the sink configured, attach the handler once, for example in
 
 - A dispatch becomes a `:server` span. It is named for the method and the
   tool, prompt, or direct resource when the router registers that component,
-  such as `tools/call echo`. Otherwise it starts as `mcp.request` and is
-  renamed to the method only when the dispatch returns a result, which only a
-  route the server registers can produce. Errors, notifications, and
-  exceptions keep `mcp.request`, so a client cannot add span names; the method
-  is still the `snodo.method` attribute. A runner job becomes an `:internal`
+  such as `tools/call echo`, whatever the outcome. Otherwise it starts as
+  `mcp.request` and is renamed to the method only when the dispatch returns a
+  result, which only a route the server registers can produce. Spans without
+  a named component keep `mcp.request` on errors, notifications, exceptions,
+  or unfinished dispatches, so a client cannot add span names; the method is
+  still the `snodo.method` attribute. A runner job becomes an `:internal`
   span named `snodo.tasks.runner.job`.
 - Attributes are the event metadata under `snodo.`-prefixed keys, such as
   `snodo.method`, `snodo.component`, `snodo.outcome`, `snodo.error_code`, and

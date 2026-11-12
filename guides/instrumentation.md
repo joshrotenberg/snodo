@@ -194,10 +194,11 @@ names bounded:
 - Otherwise the span starts as `mcp.request` and is renamed to the method
   when the dispatch ends with outcome `:ok` or `:stream`, which only a route
   the server registers can produce.
-- A JSON-RPC error, a notification (outcome `:no_reply`), an exception, a
-  method reported as `:invalid`, and a dispatch that never ends keep
-  `mcp.request`, because any of them can come from a method nothing routes,
-  such as one answered with method not found.
+- A span without a named component keeps `mcp.request` on a JSON-RPC error,
+  a notification (outcome `:no_reply`), an exception, a method reported as
+  `:invalid`, or a dispatch that never ends, because any of them can come
+  from a method nothing routes, such as one answered with method not found.
+  A span with a named component keeps its name whatever the outcome.
 
 The method is always recorded as the `snodo.method` attribute, and
 `Snodo.Server` reports a method longer than 128 bytes as `:invalid`. A
