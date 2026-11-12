@@ -83,7 +83,7 @@ defmodule Snodo.Skills.Client do
       raise ArgumentError, ":max_pages must be a positive integer"
     end
 
-    list_pages(client, nil, max_pages, MapSet.new(), request_options(opts), [])
+    list_pages(client, nil, max_pages, [], request_options(opts), [])
   end
 
   @doc "Gets one skill's entry by the URI of its SKILL.md."
@@ -156,10 +156,11 @@ defmodule Snodo.Skills.Client do
   end
 
   defp next_page(client, next, remaining, seen, opts, acc) when is_binary(next) and next != "" do
-    if MapSet.member?(seen, next) do
+    # At most :max_pages cursors are kept, so a list is enough.
+    if next in seen do
       {:error, %Error{code: -32_000, kind: :transport, message: "skills/list repeated a cursor"}}
     else
-      list_pages(client, next, remaining - 1, MapSet.put(seen, next), opts, acc)
+      list_pages(client, next, remaining - 1, [next | seen], opts, acc)
     end
   end
 

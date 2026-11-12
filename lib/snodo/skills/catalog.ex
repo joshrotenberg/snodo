@@ -423,7 +423,10 @@ defmodule Snodo.Skills.Catalog do
           do: {:ok, Snodo.Result.resource_read(unquote(Macro.escape(content)))}
       end
 
-    Module.create(resource, body, Macro.Env.location(env))
+    {:module, ^resource, _binary, _term} =
+      Module.create(resource, body, Macro.Env.location(env))
+
+    :ok
   end
 
   defp resource_name(skill, _file, true), do: skill.name
