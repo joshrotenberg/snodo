@@ -2,7 +2,7 @@ defmodule Snodo.Proxy.MixProject do
   use Mix.Project
 
   # x-release-please-start-version
-  @version "0.4.4"
+  @version "0.4.5"
   # x-release-please-end
   @source_url "https://github.com/joshrotenberg/snodo"
 
