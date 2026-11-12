@@ -118,13 +118,10 @@ When the scope fails, the parent stops the bridges and restarts the scope before
 restarting them, so they rejoin with a live scope.
 
 In this mode the bridge never starts or waits for the scope. If it is absent
-when the scope child starts, `start_link/1` returns the standard supervisor
-startup error:
+when the scope child starts, `start_link/1` returns:
 
 ```elixir
-{:error,
- {:shutdown,
-  {:failed_to_start_child, Snodo.Subscription.Bridge.Scope, {:scope_not_started, scope}}}}
+{:error, {:scope_not_started, scope}}
 ```
 
 If the scope exits later during startup, `start_link/1` may fail on a later child

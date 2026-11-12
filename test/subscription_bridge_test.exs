@@ -161,14 +161,11 @@ defmodule Snodo.SubscriptionBridgeTest do
   @tag :capture_log
   test "fails when an external scope has not been started", config do
     Process.flag(:trap_exit, true)
-    assert {:error, {:scope_not_started, scope}} = Bridge.Scope.start_link({config.scope, false})
-    assert scope == config.scope
 
-    assert {:error, {:shutdown, {:failed_to_start_child, Bridge.Scope, reason}}} =
+    assert {:error, {:scope_not_started, scope}} =
              Bridge.start_link(name: nil, scope: config.scope, start_scope: false)
 
-    assert reason == {:scope_not_started, scope}
-
+    assert scope == config.scope
     assert Process.whereis(scope) == nil
   end
 

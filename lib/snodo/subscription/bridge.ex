@@ -75,12 +75,9 @@ defmodule Snodo.Subscription.Bridge do
   supervise a shared scope separately when bridges have independent lifetimes.
 
   With `start_scope: false`, the caller must start the scope first. If it is
-  absent when the scope child starts, this returns the standard supervisor
-  startup error:
+  absent when the scope child starts, this returns:
 
-      {:error,
-       {:shutdown,
-        {:failed_to_start_child, Snodo.Subscription.Bridge.Scope, {:scope_not_started, scope}}}}
+      {:error, {:scope_not_started, scope}}
 
   If the scope exits later during startup, this may fail on a later child or
   succeed and then restart as usual. The usual supervisor startup and linking
@@ -118,10 +115,15 @@ defmodule Snodo.Subscription.Bridge do
       hub_options: Keyword.get(opts, :hub_options, [])
     }
 
-    case Keyword.get(opts, :name, __MODULE__) do
-      nil -> Supervisor.start_link(__MODULE__, config)
-      name -> Supervisor.start_link(__MODULE__, config, name: name)
-    end
+    supervisor_opts =
+      case Keyword.get(opts, :name, __MODULE__) do
+        nil -> []
+        name -> [name: name]
+      end
+
+    __MODULE__
+    |> Supervisor.start_link(config, supervisor_opts)
+    |> start_result()
   end
 
   @doc "Returns a source configuration that resolves the current local hub when opening a stream."
@@ -172,6 +174,15 @@ defmodule Snodo.Subscription.Bridge do
 
     Supervisor.init(children, strategy: :rest_for_one)
   end
+
+  defp start_result(
+         {:error,
+          {:shutdown,
+           {:failed_to_start_child, __MODULE__.Scope, {:scope_not_started, _scope} = reason}}}
+       ),
+       do: {:error, reason}
+
+  defp start_result(result), do: result
 
   defp with_child(bridge, id, fun) do
     child =
