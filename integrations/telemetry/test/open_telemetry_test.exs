@@ -325,8 +325,7 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
 
   describe "parent context" do
     test "a dispatch restores an existing current context" do
-      outer = Tracer.start_span("outer")
-      Tracer.set_current_span(outer)
+      outer = start_outer_span()
 
       dispatch_echo(TracedServer.runtime(instrumentation: Telemetry), %{})
 
@@ -337,8 +336,7 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
     end
 
     test "a traceparent replaces the current context as parent, which is then restored" do
-      outer = Tracer.start_span("outer")
-      Tracer.set_current_span(outer)
+      outer = start_outer_span()
 
       dispatch_echo(TracedServer.runtime(instrumentation: Telemetry), %{
         "traceparent" => @traceparent
@@ -404,8 +402,7 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
     end
 
     test "malformed trace fields fall back to the current context" do
-      outer = Tracer.start_span("outer")
-      Tracer.set_current_span(outer)
+      outer = start_outer_span()
 
       dispatch_echo(TracedServer.runtime(instrumentation: Telemetry), %{
         "traceparent" => "00-#{@trace_id}-0000000000000000-01",
@@ -434,8 +431,7 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
   describe "SDK failures" do
     test "a processor raising on end does not detach the handler and the context is restored" do
       runtime = TracedServer.runtime(instrumentation: Telemetry)
-      outer = Tracer.start_span("outer")
-      Tracer.set_current_span(outer)
+      outer = start_outer_span()
       FailingProcessor.set_mode(:raise_on_end)
 
       dispatch_echo(runtime, %{})
@@ -485,8 +481,7 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
 
     test "a processor raising on start skips the span and leaves the context alone" do
       runtime = TracedServer.runtime(instrumentation: Telemetry)
-      outer = Tracer.start_span("outer")
-      Tracer.set_current_span(outer)
+      outer = start_outer_span()
       FailingProcessor.set_mode(:raise_on_start)
 
       dispatch_echo(runtime, %{})
@@ -510,8 +505,7 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
 
   describe "handler failures" do
     test "metadata that breaks the contract is reported apart from SDK failures" do
-      outer = Tracer.start_span("outer")
-      Tracer.set_current_span(outer)
+      outer = start_outer_span()
       ref = make_ref()
 
       # Shaped like a traceparent but not hex, which Snodo.TraceContext would
@@ -677,9 +671,28 @@ defmodule Snodo.Instrumentation.Telemetry.OpenTelemetryTest do
       assert :otel_tracer.current_span_ctx() == abandoned
       assert {:error, :not_found} = Spans.detach(open_spans: :abandon)
 
+      # The test owns the abandoned span now: end it, then clear what the
+      # handler left in this process.
+      _ended = :otel_span.end_span(abandoned)
+      assert_receive {:span, span(name: "abandoned")}
       _entry = Process.delete({Spans, :open_spans})
       _previous = :otel_ctx.attach(:otel_ctx.new())
     end
+  end
+
+  # A span the test owns, made current in the test process. on_exit resets
+  # the failing processor before ending it: test on_exit callbacks run before
+  # the one registered in setup.
+  defp start_outer_span do
+    outer = Tracer.start_span("outer")
+    Tracer.set_current_span(outer)
+
+    on_exit(fn ->
+      FailingProcessor.set_mode(:off)
+      _ended = :otel_span.end_span(outer)
+    end)
+
+    outer
   end
 
   defp dispatch_echo(runtime, meta) do
