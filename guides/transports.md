@@ -382,25 +382,36 @@ out of skills.
 
 The whole response fits the client limit only if everything else in it fits
 in the 4,096 bytes left over: the JSON-RPC envelope and the request id the
-client sent, `resultType`, `ttlMs`, `cacheScope`, and a `nextCursor` (under
-100 bytes), and, for `resources/read` only, the `_meta` the core adds, which
+client sent, `resultType`, `ttlMs`, `cacheScope`, and on a page that has
+more a `nextCursor`, and, for `resources/read` only, the `_meta` the core adds, which
 carries the server's whole `server_info` under
 `io.modelcontextprotocol/serverInfo`. The request id is bounded by the core:
 `Snodo.Envelope` accepts a string of at most 256 bytes or an integer in the
 int64 range, and answers any other id with -32600. The `ttlMs` is not
 bounded: it is the `:cache` `ttl_ms` of `use Snodo.Skills` for the three
 extension results and the server's `:resources_cache` `ttl_ms` for
-`resources/read`, and each digit after the first adds a byte. With `ttlMs`
-0, `cacheScope` `"private"`, and a `server_info` of a name and a version,
-that part is 174 bytes for a `skills/list` page with a cursor and 194 bytes
-for a `resources/read` with the integer id `Snodo.Client` sends, and at most
-1,711 and 1,731 bytes with the largest id the core accepts: a 256-byte
-string of control characters, which JSON writes as 1,536 bytes. So, with a
+`resources/read`, and each digit after the first adds a byte. A cursor is
+`skills1.` and the unpadded base64url of `[method, offset, scope]`, with a
+16-character scope, so it takes 8 + ⌈4 × (J + k) / 3⌉ bytes for an offset of
+k digits, where J is 35 for `skills/list` and 48 for
+`resources/directory/read`: 56 and 74 bytes for a one-digit offset. The
+offset indexes a list the server holds in memory, so it is below 2^64, at
+most 20 digits, and the longest cursor the server can emit is 99 bytes, a
+`resources/directory/read` cursor at 20 digits. With `ttlMs` 0, `cacheScope`
+`"private"`, and a `server_info` of a name and a version, that part is 174
+bytes for a `skills/list` page with a cursor and 194 bytes for a
+`resources/read` with the integer id `Snodo.Client` sends. With the largest
+id the core accepts, a 256-byte string of control characters that JSON
+writes as 1,536 bytes, it is 1,638 bytes for `skills/get`, 1,639 for a
+`skills/list` page and 1,642 for a `resources/directory/read` page before
+the 16 bytes of `,"nextCursor":""` and the cursor itself (so 1,711 and 1,732
+with one-digit offsets), and 1,731 for a `resources/read`. So, with a
 `ttlMs` of d digits and any accepted id, everything outside the skills array
-takes at most 1,710 + d bytes on a `skills/list`, `skills/get`, or
-`resources/directory/read` response, which fits for any `ttlMs` of fewer
-than 2,387 digits, and at most 1,688 + d bytes plus the encoded
-`server_info` object on a `resources/read` response. That response fits when
+takes at most 1,657 + d bytes plus the cursor, which is at most 1,756 + d
+bytes, on a `skills/list`, `skills/get`, or `resources/directory/read`
+response, which fits for any `ttlMs` of fewer than 2,341 digits, and at most
+1,688 + d bytes plus the encoded `server_info` object on a `resources/read`
+response. That response fits when
 the encoded `server_info` (stdio-sized, as above) is at most 2,408 − d
 bytes: 2,407 for a `ttlMs` of 0 to 9, 2,403 for 60,000. The core does not
 bound `server_info`, and `Snodo.Skills` cannot check it: an extension does

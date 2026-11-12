@@ -80,10 +80,10 @@ defmodule Snodo.Skills do
       U+FFFF as 12. Must be at least 4,098, so the budget holds the 2-byte
       `[]` an empty `skills/list` sends. The whole response fits only if the
       rest of it fits in the 4,096 bytes. The request id is bounded by the
-      core (a string of at most 256 bytes or an int64), and the rest grows
-      by one byte for each digit of `ttlMs` after the first; on
-      `resources/read` it also holds the server's `server_info` under
-      `_meta`, which nothing bounds. The Skills limits section of the
+      core (a string of at most 256 bytes or an int64), a `nextCursor` is
+      at most 99 bytes, and the rest grows by one byte for each digit of
+      `ttlMs` after the first; on `resources/read` it also holds the
+      server's `server_info` under `_meta`, which nothing bounds. The Skills limits section of the
       transports guide gives the exact sizes and says what happens
       otherwise.
     * `:max_skill_files` - files per skill, SKILL.md included. Defaults to

@@ -22,9 +22,13 @@ defmodule Snodo.Skills.Catalog do
   # a cursor, SSE framing, and on resources/read the _meta carrying the whole
   # server_info. Snodo.Envelope bounds the id (256-byte strings, int64), so
   # all but server_info take at most 1,688 + d bytes on resources/read and
-  # 1,710 + d on the extension results, d being the digits of ttlMs, which
-  # is not bounded; nothing here can check server_info, so the guarantee is
-  # conditional on it, as guides/transports.md says.
+  # 1,756 + d on the extension results, d being the digits of ttlMs, which
+  # is not bounded. The extension figure includes the longest cursor the
+  # server can emit, 99 bytes (Snodo.Skills puts the method and the offset
+  # in it; a resources/directory/read cursor with a 20-digit offset, the
+  # most an in-memory list index can have). Nothing here can check
+  # server_info, so the guarantee is conditional on it, as
+  # guides/transports.md says.
   @envelope_bytes 4_096
   # The "[" and "]" around the elements of the array the skills part of a
   # response is measured as.
