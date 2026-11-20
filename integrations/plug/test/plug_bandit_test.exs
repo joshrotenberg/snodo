@@ -447,7 +447,12 @@ defmodule Snodo.Transport.PlugBanditTest do
 
   test "queue wait is included in the finite request deadline" do
     %{port: port, executor: executor} =
-      server(max_concurrency: 1, max_queue: 1, request_timeout: 60)
+      server(
+        max_concurrency: 1,
+        max_queue: 1,
+        request_timeout: 60,
+        disconnect_probe_ms: :infinity
+      )
 
     assert {:ok, _reference} =
              Executor.submit(
@@ -458,7 +463,16 @@ defmodule Snodo.Transport.PlugBanditTest do
              )
 
     body = request("tools/call", %{"name" => "inspect_context", "arguments" => %{}}, 81)
-    assert {504, _error} = rpc(port, body, auth: :alpha)
+
+    assert {504,
+            %{
+              "id" => 81,
+              "error" => %{
+                "code" => -32_603,
+                "message" => "Request expired in the execution queue"
+              }
+            }} = rpc(port, body, auth: :alpha)
+
     refute_receive {:tool_entered, 81, _worker, _token}, 20
     assert eventually(fn -> Executor.stats(executor).queued == 0 end)
     assert :ok = Executor.cancel(executor, :external_blocker)

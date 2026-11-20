@@ -25,7 +25,8 @@ defmodule Snodo.Transport.Plug do
   5,000) turns its response into an event stream and sends a keepalive comment
   every interval; a failed write cancels the work, and the result arrives as
   the stream's final event. `:infinity` keeps plain JSON responses. A finite
-  total `:request_timeout` bounds pending work and queue wait.
+  executor enforces `:request_timeout` (default 30,000 ms) from admission
+  through queue wait and execution, including with an injected executor.
 
   At most `:max_subscriptions` (default 256) `subscriptions/listen` streams are
   open at once. `init/1` can run at compile time, so the count is held in the
@@ -408,8 +409,7 @@ defmodule Snodo.Transport.Plug do
       key: key,
       executor: executor,
       monitor: monitor,
-      progress: Progress.state(sink),
-      deadline: System.monotonic_time(:millisecond) + opts.request_timeout
+      progress: Progress.state(sink)
     }
 
     try do
@@ -451,6 +451,9 @@ defmodule Snodo.Transport.Plug do
 
   defp execution_response({:completed, response}, _opts, _prepared), do: response
   defp execution_response({:cancelled, _reason}, _opts, _prepared), do: %Response{status: 204}
+
+  defp execution_response(:queue_timed_out, opts, prepared),
+    do: reject(opts, prepared, 504, "Request expired in the execution queue")
 
   defp execution_response({:timed_out, _timeout}, opts, prepared),
     do: reject(opts, prepared, 504, "Request execution timed out")
@@ -507,15 +510,8 @@ defmodule Snodo.Transport.Plug do
     |> Conn.send_chunked(200)
   end
 
-  defp wait_time(state, opts) do
-    remaining = max(state.deadline - System.monotonic_time(:millisecond), 0)
-
-    cond do
-      state.conn.state == :chunked -> min(remaining, keepalive_interval(opts))
-      opts.disconnect_probe_ms == :infinity -> remaining
-      true -> min(remaining, opts.disconnect_probe_ms)
-    end
-  end
+  defp wait_time(%{conn: %{state: :chunked}}, opts), do: keepalive_interval(opts)
+  defp wait_time(_state, opts), do: opts.disconnect_probe_ms
 
   defp keepalive_interval(%{disconnect_probe_ms: :infinity} = opts),
     do: opts.subscription_keepalive_ms
@@ -523,19 +519,13 @@ defmodule Snodo.Transport.Plug do
   defp keepalive_interval(opts), do: min(opts.subscription_keepalive_ms, opts.disconnect_probe_ms)
 
   defp tick(state, opts, prepared) do
-    if System.monotonic_time(:millisecond) >= state.deadline do
-      Progress.close(state.progress.sink)
-      cancel(state.executor, state.key, :request_timeout)
-      send_response(state.conn, reject(opts, prepared, 504, "Request execution timed out"), opts)
-    else
-      # A silent request becomes an event stream so a write can reveal a
-      # client that has gone away.
-      conn = progress_connection(state.conn)
+    # A silent request becomes an event stream so a write can reveal a
+    # client that has gone away.
+    conn = progress_connection(state.conn)
 
-      case Conn.chunk(conn, ": keepalive\r\n\r\n") do
-        {:ok, conn} -> await_message(%{state | conn: conn}, opts, prepared)
-        {:error, _reason} -> disconnect(%{state | conn: conn})
-      end
+    case Conn.chunk(conn, ": keepalive\r\n\r\n") do
+      {:ok, conn} -> await_message(%{state | conn: conn}, opts, prepared)
+      {:error, _reason} -> disconnect(%{state | conn: conn})
     end
   end
 

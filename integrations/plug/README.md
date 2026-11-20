@@ -183,7 +183,7 @@ See the [core transport guide](https://hexdocs.pm/snodo/transports.html#mcp-serv
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `request_timeout` | 30,000 ms | Finite queue-plus-execution wait; timeout cancels work and returns 504. |
+| `request_timeout` | 30,000 ms | Queue-plus-execution deadline enforced by the executor. The default also applies with an injected executor. Timeout returns 504. |
 | `max_body_bytes` | 2,000,000 | Raw-body byte bound before JSON decoding. |
 | `read_timeout` | 5,000 ms | Plug body-read timeout per underlying read, never past `body_timeout`. |
 | `body_timeout` | 10,000 ms | Deadline for the whole request body from when the Plug starts reading it; 408 when it passes. Over HTTP/2 this needs Bandit 1.14 or later (below). |
@@ -219,9 +219,10 @@ behind a proxy that buffers request bodies. After a body error (400, 408, 411,
 413) over HTTP/1.x the response
 closes the connection; otherwise Bandit reads the rest of the body after the Plug
 returns, with its own limits.
-The Plug cannot enforce its request deadline while an adapter is blocked inside
-a socket write; keep the server's send timeout finite (the startup example uses
-five seconds) and configure equivalent write bounds for another HTTP adapter.
+The executor enforces the request deadline during an adapter socket write.
+Delivery of the deadline response can wait for the write to finish. Keep the
+server's send timeout finite (the startup example uses five seconds) and
+configure equivalent write bounds for another HTTP adapter.
 
 Each admitted request gets a short-lived reply owner. Request return, timeout,
 or Plug-process death tears it down and cancels abandoned work. This is necessary

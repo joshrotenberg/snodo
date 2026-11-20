@@ -18,20 +18,35 @@ raw JSON-RPC map
 
 `Snodo.Server.Executor` is the transport-neutral execution layer: bounded
 admission, a bounded queue, deadlines, cancellation tokens, and supervised
-worker tasks, with cleanup when the submitting process dies. The stdio adapter
-and the HTTP listener use it; an application can inject its own executor.
+worker tasks, with cleanup when the submitting process dies. Stdio, native
+HTTP, and Plug use it. An application can inject its own executor.
 
 `:max_concurrency` (default 32) bounds running work and `:max_queue` (default
 256) bounds work waiting for a slot, in one first-in, first-out queue for
 every submitter. With both full, a request is refused with -32603 `Server
-execution capacity exhausted` (HTTP 503). The executor's deadline starts when
-work starts, so on stdio `:request_timeout` does not count queue wait. The
-native HTTP listener's `:request_timeout` covers queue wait plus execution.
-The [executor load record](https://github.com/joshrotenberg/snodo/blob/main/docs/history/2026-11-20-executor-load.md)
+execution capacity exhausted` (HTTP 503).
+
+The executor's `:default_timeout` (30,000 ms) covers both queue wait and
+execution, starting at executor admission. A per-submit `:timeout` overrides
+it. Stdio, native HTTP, and Plug each pass an explicit `:request_timeout` to
+the executor. Each transport defaults to 30,000 ms, including with an
+injected executor. Progress leaves the deadline fixed. The executor admits
+work through one coordinator and provides no per-peer fairness or adaptive
+load shedding. The [executor load record](https://github.com/joshrotenberg/snodo/blob/main/docs/history/2026-11-20-executor-load.md)
 measures both transports at 1,000 concurrent requests with the repository's
-`snodo.load` Mix task.
-The executor has no per-peer fairness, adaptive load shedding, or queue-wait
-deadline of its own.
+`snodo.load` Mix task; it predates the queue-wait deadline.
+
+`:max_queue_wait` sets an additional queue cap in milliseconds. It accepts a
+non-negative integer or `:infinity` (the default). The effective queue limit
+is the smaller of the cap and the request timeout. A cap of zero expires any
+admitted work that needs to queue. Set this option on stdio or native HTTP
+when they own the executor, or on the injected executor directly.
+
+A request that expires while queued is removed and reported as
+`:queue_timed_out` without invoking its handler. Stdio, native HTTP, and Plug
+return JSON-RPC -32603 with the message `Request expired in the execution
+queue`. HTTP uses 504 for an admitted request whose deadline elapsed and 503
+for a request refused at admission because the queue was full.
 
 ## Limits on message content
 
@@ -276,7 +291,7 @@ result shaping belong to method execution. For example:
 - Non-object `tools/call` `arguments` get 400. Tool schema validation failures,
   including missing required arguments, continue to return `isError` results on 200.
 
-Executor failures keep their existing statuses. A request timeout gets 504,
+A request timeout, including queue expiry, gets 504,
 a crashed worker or unavailable executor gets 500, capacity refusal gets
 503, and a duplicate in-flight request ID gets 409. See the
 [native listener limits](#native-http-listener) and

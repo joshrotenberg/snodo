@@ -122,6 +122,77 @@ defmodule Snodo.Transport.StdioAcceptanceTest do
     assert message == "Request execution timed out"
   end
 
+  test "a request past its queue deadline errors without invoking the handler" do
+    executor = start_supervised!({Executor, max_concurrency: 1})
+
+    assert {:ok, _ref} =
+             Executor.submit(executor, :blocker, fn _ -> Process.sleep(:infinity) end)
+
+    runtime = TestFixtures.runtime(tools: [Trapping])
+    token = Integer.to_string(System.unique_integer([:positive]))
+    :yes = :global.register_name({Trapping, token}, self())
+    on_exit(fn -> :global.unregister_name({Trapping, token}) end)
+
+    request =
+      TestFixtures.request("queued", "tools/call", %{
+        "name" => "trapping",
+        "arguments" => %{"token" => token}
+      })
+
+    assert [
+             %{
+               "id" => "queued",
+               "error" => %{
+                 "code" => -32_603,
+                 "message" => "Request expired in the execution queue"
+               }
+             }
+           ] =
+             serve(runtime, JSON.encode!(request) <> "\n",
+               executor: executor,
+               request_timeout: 20
+             )
+
+    assert %{running: 1, queued: 0} = Executor.stats(executor)
+    assert :ok = Executor.cancel(executor, :blocker)
+    refute_received {:trapping_entered, _, _}
+  end
+
+  test "stdio forwards max_queue_wait to its owned executor" do
+    {:ok, input} = TestInput.start_link()
+    {:ok, output} = StringIO.open("")
+    opts = [runtime: TestFixtures.runtime(), input: input, output: output, max_queue_wait: 73]
+    stdio = start_supervised!({Stdio, opts})
+
+    executor = :sys.get_state(stdio).executor
+    assert :sys.get_state(executor).max_queue_wait == 73
+  end
+
+  test "stdio submits with a 30 second default even if the injected executor is infinite" do
+    executor = start_supervised!({Executor, default_timeout: :infinity})
+    {:ok, input} = TestInput.start_link()
+    {:ok, output} = StringIO.open("")
+    runtime = TestFixtures.runtime(tools: [Trapping])
+    opts = [runtime: runtime, input: input, output: output, executor: executor]
+    start_supervised!({Stdio, opts})
+
+    token = Integer.to_string(System.unique_integer([:positive]))
+    :yes = :global.register_name({Trapping, token}, self())
+    on_exit(fn -> :global.unregister_name({Trapping, token}) end)
+
+    request =
+      TestFixtures.request("default-timeout", "tools/call", %{
+        "name" => "trapping",
+        "arguments" => %{"token" => token}
+      })
+
+    TestInput.push(input, JSON.encode!(request) <> "\n")
+    assert_receive {:trapping_entered, worker, _cancellation}
+    assert [%{timeout: 30_000, deadline: deadline}] = Map.values(:sys.get_state(executor).jobs)
+    assert is_integer(deadline)
+    send(worker, :finish)
+  end
+
   test "an injected executor remains application-owned after stdio exits" do
     runtime = TestFixtures.runtime()
     {:ok, executor} = start_supervised({Executor, default_timeout: :infinity})

@@ -116,7 +116,10 @@ defmodule Snodo.Server.ExecutorAcceptanceTest do
 
     refute_receive :queued_job_started, 20
     assert Executor.stats(executor).queued == 0
-    assert executor |> :sys.get_state() |> Map.fetch!(:queue) |> :queue.len() == 0
+    state = :sys.get_state(executor)
+    assert :queue.is_empty(state.queue)
+    assert state.queue_timer == nil
+    assert :gb_sets.is_empty(state.queue_deadlines)
 
     assert :ok = Executor.cancel(executor, :cancel_me, "caller stopped")
 
@@ -126,6 +129,163 @@ defmodule Snodo.Server.ExecutorAcceptanceTest do
     assert Snodo.Cancellation.cancelled?(cancellation)
     refute_receive {:mcp_execution, ^executor, ^execution_ref, :cancel_me, _outcome}, 30
     assert {:error, :not_found} = Executor.cancel(executor, :cancel_me)
+  end
+
+  test "one timer expires queued work by deadline while the worker stays occupied" do
+    executor = start_supervised!({Executor, max_concurrency: 1, max_queue_wait: 60_000})
+    owner = self()
+
+    assert {:ok, _ref} =
+             Executor.submit(executor, :blocker, fn _ -> Process.sleep(:infinity) end)
+
+    work = fn _ -> send(owner, :queued_job_started) end
+    assert {:ok, head_ref} = Executor.submit(executor, :head, work, timeout: :infinity)
+    assert {:ok, tail_ref} = Executor.submit(executor, :tail, work, timeout: 30_000)
+    expire_next_queued_job(executor, tail_ref)
+    assert_receive {:mcp_execution, ^executor, ^tail_ref, :tail, :queue_timed_out}
+    assert %{queued: 1, running: 1} = Executor.stats(executor)
+
+    expire_next_queued_job(executor, head_ref)
+    assert_receive {:mcp_execution, ^executor, ^head_ref, :head, :queue_timed_out}
+    assert %{queued: 0, running: 1} = Executor.stats(executor)
+
+    state = :sys.get_state(executor)
+    assert state.queue_timer == nil
+    assert :gb_sets.is_empty(state.queue_deadlines)
+    assert map_size(state.jobs_by_owner_monitor) == 1
+    assert {:error, :not_found} = Executor.cancel(executor, :head)
+
+    assert :ok = Executor.cancel(executor, :blocker)
+    assert {:ok, reused} = Executor.submit(executor, :head, fn _ -> :available end)
+    assert_receive {:mcp_execution, ^executor, ^reused, :head, {:completed, :available}}
+    refute_received :queued_job_started
+    refute_received {:mcp_execution, ^executor, ^head_ref, :head, _}
+    refute_received {:mcp_execution, ^executor, ^tail_ref, :tail, _}
+  end
+
+  test "dequeue checks the deadline even when the timer message has not arrived" do
+    executor = start_supervised!({Executor, max_concurrency: 1})
+    owner = self()
+
+    assert {:ok, blocker_ref} =
+             Executor.submit(executor, :blocker, fn _ ->
+               send(owner, {:blocker, self()})
+
+               receive do
+                 :release -> :released
+               end
+             end)
+
+    assert_receive {:blocker, worker}
+
+    assert {:ok, queued_ref} =
+             Executor.submit(executor, :queued, fn _ -> send(owner, :queued_job_started) end)
+
+    state = :sys.get_state(executor)
+    {_deadline, timer} = state.queue_timer
+    Process.cancel_timer(timer)
+
+    # Advance the deadline in both indexes while withholding the timer event.
+    :sys.replace_state(executor, fn state ->
+      expired = System.monotonic_time(:millisecond) - 1
+
+      state
+      |> put_in([:jobs, queued_ref, :queue_deadline], expired)
+      |> Map.put(:queue_deadlines, :gb_sets.from_list([{expired, queued_ref}]))
+    end)
+
+    send(worker, :release)
+    assert_receive {:mcp_execution, ^executor, ^blocker_ref, :blocker, {:completed, :released}}
+    assert_receive {:mcp_execution, ^executor, ^queued_ref, :queued, :queue_timed_out}
+
+    # A stale timer event must not generate a second outcome.
+    send(executor, {:timeout, timer, :queue_deadline})
+    state = :sys.get_state(executor)
+    assert state.queue_timer == nil
+    assert state.jobs == %{}
+    assert state.jobs_by_key == %{}
+    assert state.jobs_by_owner_monitor == %{}
+    assert %{queued: 0, running: 0} = Executor.stats(executor)
+    refute_received :queued_job_started
+    refute_received {:mcp_execution, ^executor, ^queued_ref, :queued, _}
+  end
+
+  test "dequeue skips a stale queue entry and starts the next job" do
+    executor = start_supervised!({Executor, max_concurrency: 1})
+
+    assert {:ok, _blocker} =
+             Executor.submit(executor, :blocker, fn _ -> Process.sleep(:infinity) end)
+
+    assert {:ok, ref} = Executor.submit(executor, :next, fn _ -> :started end)
+    stale = make_ref()
+
+    :sys.replace_state(executor, fn state ->
+      %{
+        state
+        | queue: :queue.in_r(stale, state.queue),
+          queued: state.queued + 1,
+          queue_deadlines:
+            :gb_sets.add({state.jobs[ref].queue_deadline, stale}, state.queue_deadlines)
+      }
+    end)
+
+    assert :ok = Executor.cancel(executor, :blocker)
+    assert_receive {:mcp_execution, ^executor, ^ref, :next, {:completed, :started}}
+    assert %{running: 0, queued: 0} = Executor.stats(executor)
+    state = :sys.get_state(executor)
+    assert state.queue_timer == nil
+    assert :gb_sets.is_empty(state.queue_deadlines)
+  end
+
+  test "a queued job starts with only the remaining request budget" do
+    executor = start_supervised!({Executor, max_concurrency: 1})
+    owner = self()
+
+    assert {:ok, _blocker} =
+             Executor.submit(executor, :blocker, fn _ -> Process.sleep(:infinity) end)
+
+    assert {:ok, queued_ref} =
+             Executor.submit(executor, :queued, fn _ ->
+               send(owner, :queued_job_started)
+               Process.sleep(:infinity)
+             end)
+
+    :sys.replace_state(executor, fn state ->
+      deadline = System.monotonic_time(:millisecond) + 1_000
+
+      state
+      |> move_queue_deadline(queued_ref, deadline)
+      |> put_in([:jobs, queued_ref, :deadline], deadline)
+    end)
+
+    assert :ok = Executor.cancel(executor, :blocker)
+    assert_receive :queued_job_started
+
+    assert_receive {:mcp_execution, ^executor, ^queued_ref, :queued, {:timed_out, 30_000}},
+                   3_000
+  end
+
+  test "a zero timeout with a free slot expires before dispatch" do
+    executor = start_supervised!(Executor)
+    owner = self()
+
+    assert {:ok, ref} =
+             Executor.submit(executor, :zero, fn _ -> send(owner, :started) end, timeout: 0)
+
+    assert_receive {:mcp_execution, ^executor, ^ref, :zero, {:timed_out, 0}}
+    assert %{running: 0, queued: 0} = Executor.stats(executor)
+    assert :sys.get_state(executor).jobs == %{}
+    refute_received :started
+  end
+
+  test "max_queue_wait rejects invalid values" do
+    for invalid <- [-1, :default, 1.5] do
+      assert_raise ArgumentError,
+                   ":max_queue_wait must be a non-negative integer or :infinity",
+                   fn ->
+                     Executor.init(max_queue_wait: invalid)
+                   end
+    end
   end
 
   test "execution deadlines cancel work, suppress late results, and release capacity" do
@@ -140,7 +300,9 @@ defmodule Snodo.Server.ExecutorAcceptanceTest do
                Process.sleep(:infinity)
              end)
 
-    assert {:ok, next_ref} = Executor.submit(executor, :next, fn _ -> :next end)
+    assert {:ok, next_ref} =
+             Executor.submit(executor, :next, fn _ -> :next end, timeout: :infinity)
+
     assert_receive {:timed_started, cancellation}
 
     assert_receive {:mcp_execution, ^executor, ^timed_ref, :timed, {:timed_out, 30}}, 500
@@ -163,7 +325,10 @@ defmodule Snodo.Server.ExecutorAcceptanceTest do
 
   test "reply-owner death cancels running and queued work before reusing capacity" do
     {:ok, executor} =
-      start_supervised({Executor, max_concurrency: 1, max_queue: 1, default_timeout: :infinity})
+      start_supervised(
+        {Executor,
+         max_concurrency: 1, max_queue: 1, default_timeout: :infinity, max_queue_wait: 30_000}
+      )
 
     test_process = self()
 
@@ -191,6 +356,7 @@ defmodule Snodo.Server.ExecutorAcceptanceTest do
 
     assert_receive {:owner_job_started, worker, cancellation}, 500
     assert_receive :owner_jobs_submitted, 500
+    assert {_deadline, _timer} = :sys.get_state(executor).queue_timer
     worker_monitor = Process.monitor(worker)
     # A monitor request can be overtaken by the executor's kill, which comes from
     # another process, and then reports :noproc. The worker handles this ping only
@@ -204,6 +370,9 @@ defmodule Snodo.Server.ExecutorAcceptanceTest do
     refute_receive :orphan_queue_started, 30
     assert Executor.stats(executor).running == 0
     assert Executor.stats(executor).queued == 0
+    state = :sys.get_state(executor)
+    assert state.queue_timer == nil
+    assert :gb_sets.is_empty(state.queue_deadlines)
 
     assert {:ok, recovered_ref} = Executor.submit(executor, :after_owner, fn _ -> :available end)
 
@@ -241,6 +410,30 @@ defmodule Snodo.Server.ExecutorAcceptanceTest do
   test "a slot limit must be a positive integer" do
     {:ok, executor} = start_supervised(Executor)
     assert_raise ArgumentError, fn -> Executor.acquire_slot(executor, :streams, 0) end
+  end
+
+  defp expire_next_queued_job(executor, ref) do
+    %{queue_timer: {deadline, timer}, queue_deadlines: deadlines} = :sys.get_state(executor)
+    assert :gb_sets.smallest(deadlines) == {deadline, ref}
+    Process.cancel_timer(timer)
+
+    :sys.replace_state(executor, fn state ->
+      move_queue_deadline(state, ref, System.monotonic_time(:millisecond) - 1)
+    end)
+
+    send(executor, {:timeout, timer, :queue_deadline})
+  end
+
+  defp move_queue_deadline(state, ref, deadline) do
+    previous = state.jobs[ref].queue_deadline
+
+    state
+    |> put_in([:jobs, ref, :queue_deadline], deadline)
+    |> Map.update!(:queue_deadlines, fn deadlines ->
+      deadlines
+      |> then(&:gb_sets.delete({previous, ref}, &1))
+      |> then(&:gb_sets.add({deadline, ref}, &1))
+    end)
   end
 
   defp spawn_holder do
