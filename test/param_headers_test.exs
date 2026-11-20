@@ -78,6 +78,11 @@ defmodule Snodo.Transport.ParamHeadersTest do
     assert ParamHeaders.plain_value("us-west1") == "us-west1"
     assert ParamHeaders.plain_value("") == ""
     assert ParamHeaders.plain_value(42) == "42"
+    assert ParamHeaders.plain_value(9_007_199_254_740_991) == "9007199254740991"
+    assert ParamHeaders.plain_value(9_007_199_254_740_992) == nil
+    assert ParamHeaders.plain_value(-9_007_199_254_740_992) == nil
+    assert ParamHeaders.plain_value(1.0e21) == nil
+    assert ParamHeaders.plain_value(42.0) == "42.0"
     assert ParamHeaders.plain_value(false) == "false"
     assert ParamHeaders.plain_value(nil) == nil
     assert ParamHeaders.plain_value(%{"a" => 1}) == nil
@@ -90,7 +95,40 @@ defmodule Snodo.Transport.ParamHeadersTest do
     refute ParamHeaders.matches?("True", true)
     assert ParamHeaders.matches?("42", 42)
     assert ParamHeaders.matches?("42.0", 42)
+    assert ParamHeaders.matches?("4.2e1", 42)
+    assert ParamHeaders.matches?("-9007199254740993.0", -9_007_199_254_740_993)
+    assert ParamHeaders.matches?("9007199254740993", 9_007_199_254_740_993)
+    refute ParamHeaders.matches?("9007199254740993", 9_007_199_254_740_992)
+    refute ParamHeaders.matches?("9007199254740993.0", 9_007_199_254_740_992)
+    refute ParamHeaders.matches?("42.000000000000001", 42)
+    refute ParamHeaders.matches?("42e999999999999999999999", 42)
     refute ParamHeaders.matches?("42abc", 42)
+  end
+
+  test "matches equivalent decimal and exponent forms exactly" do
+    for {header, value} <- [
+          {"0.0", 0},
+          {"-0.0e5", 0},
+          {"4200e-2", 42},
+          {"1e1", 10},
+          {"0.042e3", 42},
+          {"+42", 42},
+          {"007", 7}
+        ] do
+      assert ParamHeaders.matches?(header, value)
+    end
+
+    for {header, value} <- [
+          {"0.1", 0},
+          {"-42.0", 42},
+          {"42e-1", 4},
+          {" 42", 42},
+          {"42.", 42},
+          {".42e2", 42},
+          {"0x2A", 42}
+        ] do
+      refute ParamHeaders.matches?(header, value)
+    end
   end
 
   test "a tool with an invalid annotation does not compile" do

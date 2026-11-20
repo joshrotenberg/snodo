@@ -737,6 +737,15 @@ defmodule Snodo.Transport.StreamableHTTP do
   # error before a mirror can be meaningfully compared.
   defp compare_mirror(nil, _values, _encoding, _name, _id), do: :ok
 
+  # Clients such as the TypeScript SDK omit parameter headers for integers
+  # outside the JavaScript safe integer range. JSON exponent notation can
+  # decode as a float, even when the value is an integer.
+  defp compare_mirror(expected, [], :base64_sentinel, "mcp-param-" <> _suffix = name, id) do
+    if ParamHeaders.outside_safe_integer_range?(expected),
+      do: :ok,
+      else: missing_or_repeated_header(name, id)
+  end
+
   defp compare_mirror(expected, [header], encoding, name, id) do
     case decode_header_value(header, encoding) do
       {:ok, decoded} ->
@@ -749,7 +758,10 @@ defmodule Snodo.Transport.StreamableHTTP do
     end
   end
 
-  defp compare_mirror(_expected, _values, _encoding, name, id) do
+  defp compare_mirror(_expected, _values, _encoding, name, id),
+    do: missing_or_repeated_header(name, id)
+
+  defp missing_or_repeated_header(name, id) do
     header_error("Missing or repeated required header: #{name}", id)
   end
 

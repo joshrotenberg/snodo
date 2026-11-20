@@ -136,6 +136,56 @@ defmodule Snodo.Transport.StreamableHTTP.AdapterAcceptanceTest do
                ])
     end
 
+    test "checks supplied integer headers exactly beyond the safe range", %{runtime: runtime} do
+      arguments = %{"region" => "a", "priority" => 9_007_199_254_740_993}
+      headers = [{"Mcp-Param-Region", "a"}, {"Mcp-Param-Priority", "9007199254740993"}]
+
+      assert {200, %{"result" => %{"structuredContent" => ^arguments}}} =
+               routed(runtime, arguments, headers)
+
+      assert {400, %{"error" => %{"code" => -32_020}}} =
+               routed(runtime, %{arguments | "priority" => 9_007_199_254_740_992}, headers)
+
+      assert {400, %{"error" => %{"code" => -32_020}}} =
+               routed(runtime, arguments, headers ++ [{"Mcp-Param-Priority", "9007199254740993"}])
+    end
+
+    test "allows omitted integer headers only beyond the safe range", %{runtime: runtime} do
+      headers = [{"Mcp-Param-Region", "a"}]
+
+      for sign <- [-1, 1] do
+        arguments = %{"region" => "a", "priority" => sign * 9_007_199_254_740_992}
+
+        assert {200, %{"result" => %{"structuredContent" => ^arguments}}} =
+                 routed(runtime, arguments, headers)
+
+        assert {400, %{"error" => %{"code" => -32_020}}} =
+                 routed(
+                   runtime,
+                   %{arguments | "priority" => sign * 9_007_199_254_740_991},
+                   headers
+                 )
+      end
+    end
+
+    test "accepts an omitted header for an integer sent in exponent notation", %{runtime: runtime} do
+      arguments = %{"region" => "a", "priority" => 1.0e21}
+      headers = [{"Mcp-Param-Region", "a"}]
+
+      assert {200, %{"result" => %{"structuredContent" => ^arguments}}} =
+               routed(runtime, arguments, headers)
+
+      assert {200, %{"result" => %{"structuredContent" => ^arguments}}} =
+               routed(runtime, arguments, headers ++ [{"Mcp-Param-Priority", "1e+21"}])
+
+      assert {400, %{"error" => %{"code" => -32_020}}} =
+               routed(
+                 runtime,
+                 arguments,
+                 headers ++ [{"Mcp-Param-Priority", "1000000000000000000001"}]
+               )
+    end
+
     test "a concealed tool's header failure answers like an unknown tool" do
       policy = {AdminOnlyRouted, refusal: :conceal, observer: self()}
       runtime = TestFixtures.runtime(tools: [Routed], authorization: policy)

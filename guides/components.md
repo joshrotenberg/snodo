@@ -247,12 +247,20 @@ the root through `properties` only, not inside `items`, `oneOf`, or `$defs`. A
 tool that breaks these rules does not compile, or is refused by
 `Snodo.Router.register_tool/2` if it implements the behaviour by hand.
 
-Both HTTP listeners check the headers against the body before the tool runs. A
-missing, mismatched, repeated, or malformed header gets HTTP 400 with
-JSON-RPC error -32020. A null or absent argument needs no header. Values that
-are not printable ASCII, or that have leading or trailing whitespace, arrive
-base64-encoded as `=?base64?...?=`. Integers compare numerically. Stdio and
-direct dispatch have no headers and ignore the annotation.
+Both HTTP listeners check the headers against the body before the tool runs.
+A missing required header or a mismatched, repeated, or malformed header
+gets HTTP 400 with JSON-RPC error -32020. Null and absent arguments need no
+header. Values that are not printable ASCII, or that have leading or trailing
+whitespace, arrive base64-encoded as `=?base64?...?=`.
+
+The [MCP tool specification](https://modelcontextprotocol.io/specification/2026-07-28/server/tools#x-mcp-header)
+limits mirrored integers to the JavaScript safe integer range
+(`-9007199254740991` through `9007199254740991`). For compatibility with the
+TypeScript SDK, the Snodo client omits the header for integers outside that
+range and sends the value in the body. Both listeners accept that omission
+and require any supplied header to match. Integer values compare exactly,
+so both `42.0` and `4.2e1` match `42`. Stdio and direct dispatch have no
+headers and ignore the annotation.
 
 ## GenServer tools
 

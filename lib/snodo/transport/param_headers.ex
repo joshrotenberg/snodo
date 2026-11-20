@@ -14,6 +14,8 @@ defmodule Snodo.Transport.ParamHeaders do
   @annotation "x-mcp-header"
   @prefix "Mcp-Param-"
   @token ~r/\A[!#$%&'*+\-.^_`|~0-9A-Za-z]+\z/
+  @decimal ~r/\A(?<sign>[+-]?)(?<whole>[0-9]+)(?:\.(?<fraction>[0-9]+))?(?:[eE](?<exponent>[+-]?[0-9]+))?\z/
+  @max_safe_integer 9_007_199_254_740_991
   @types ["string", "integer", "boolean"]
   # Keywords whose values are JSON data, not subschemas.
   @data_keywords ["const", "default", "enum", "examples"]
@@ -49,16 +51,29 @@ defmodule Snodo.Transport.ParamHeaders do
     end)
   end
 
+  @doc false
+  @spec outside_safe_integer_range?(term()) :: boolean()
+  def outside_safe_integer_range?(value) do
+    (is_integer(value) or is_float(value)) and abs(value) > @max_safe_integer
+  end
+
   @doc """
   The plain header value a client sends for an argument, before any base64
-  sentinel encoding, or `nil` when no header is sent (the argument is null or
-  absent).
+  sentinel encoding, or `nil` when no header is sent (the argument is null,
+  absent, or a number outside the JavaScript safe integer range).
   """
   @spec plain_value(term()) :: String.t() | nil
   def plain_value(value) when is_binary(value), do: value
   def plain_value(value) when is_boolean(value), do: Atom.to_string(value)
-  def plain_value(value) when is_integer(value), do: Integer.to_string(value)
-  def plain_value(value) when is_float(value), do: :erlang.float_to_binary(value, [:short])
+  # The spec limits mirrored integers to the JavaScript safe integer range.
+  def plain_value(value) when is_number(value) do
+    cond do
+      outside_safe_integer_range?(value) -> nil
+      is_integer(value) -> Integer.to_string(value)
+      true -> :erlang.float_to_binary(value, [:short])
+    end
+  end
+
   def plain_value(_absent_or_structured), do: nil
 
   @doc "Whether a decoded header value matches the argument in the body."
@@ -66,15 +81,54 @@ defmodule Snodo.Transport.ParamHeaders do
   def matches?(header, value) when is_binary(value), do: header == value
   def matches?(header, value) when is_boolean(value), do: header == Atom.to_string(value)
 
-  # Integers compare numerically, so "42.0" matches 42.
-  def matches?(header, value) when is_number(value) do
-    case Float.parse(header) do
+  # Parse exactly because Float.parse/1 loses integer precision above 2^53.
+  def matches?(header, value) when is_integer(value) do
+    case Integer.parse(header) do
       {number, ""} -> number == value
-      _not_a_number -> false
+      _decimal_or_invalid -> decimal_matches?(header, value)
+    end
+  end
+
+  def matches?(header, value) when is_float(value) do
+    # A float above the JavaScript safe integer range has no fractional bits.
+    if outside_safe_integer_range?(value) do
+      matches?(header, trunc(value))
+    else
+      case Float.parse(header) do
+        {number, ""} -> number == value
+        _not_a_number -> false
+      end
     end
   end
 
   def matches?(_header, _value), do: false
+
+  # Compare significant digits and decimal scale without rounding or expanding
+  # an exponent supplied in a header.
+  defp decimal_matches?(header, value) do
+    case Regex.named_captures(@decimal, header) do
+      %{"sign" => sign, "whole" => whole, "fraction" => fraction, "exponent" => exponent} ->
+        digits = String.trim_leading(whole <> fraction, "0")
+        significant = String.trim_trailing(digits, "0")
+        expected = Integer.to_string(abs(value))
+        expected_significant = String.trim_trailing(expected, "0")
+        exponent = if exponent == "", do: 0, else: String.to_integer(exponent)
+
+        if value == 0 do
+          significant == ""
+        else
+          negative? = sign == "-"
+          expected_negative? = value < 0
+          integer_digits = exponent + byte_size(digits) - byte_size(fraction)
+
+          negative? == expected_negative? and significant == expected_significant and
+            integer_digits == byte_size(expected)
+        end
+
+      nil ->
+        false
+    end
+  end
 
   defp collect(schema, path, reachable?, found) when is_map(schema) do
     with {:ok, found} <- own_annotation(schema, path, reachable?, found) do
