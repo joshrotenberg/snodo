@@ -88,6 +88,67 @@ defmodule Snodo.OAuth.ClientTest do
       assert Fake.events(fake.world, :as_other) == []
     end
 
+    test "preserves the endpoint query and replaces conflicting flow parameters" do
+      endpoint =
+        "https://auth.example.test/authorize?audience=b&state=old&flag&audience=a&tenant=a%2Bb+%26+c&client%5Fid=other"
+
+      fake = Fake.start(extra_metadata: %{"authorization_endpoint" => endpoint})
+      test_pid = self()
+
+      assert {_oauth, {:error, %Error{cause: {:authorize_failed, :captured}}}} =
+               list_tools(fake,
+                 client_id: "configured-client",
+                 authorize: fn url ->
+                   send(test_pid, {:authorization_url, url})
+                   {:error, :captured}
+                 end
+               )
+
+      assert_receive {:authorization_url, url}
+      assert %URI{host: "auth.example.test", path: "/authorize", query: query} = URI.parse(url)
+      fields = Enum.to_list(URI.query_decoder(query))
+
+      assert "audience=b&flag&audience=a&tenant=a%2Bb+%26+c&" <> flow_query = query
+      flow_fields = Enum.to_list(URI.query_decoder(flow_query))
+      assert flow_fields == Enum.sort(flow_fields)
+      assert for({"tenant", value} <- fields, do: value) == ["a+b & c"]
+      assert for({"client_id", value} <- fields, do: value) == ["configured-client"]
+      assert [state] = for({"state", value} <- fields, do: value)
+      assert byte_size(state) == 43
+    end
+
+    test "fills an empty endpoint query without an empty entry" do
+      endpoint = "https://auth.example.test/authorize?"
+      fake = Fake.start(extra_metadata: %{"authorization_endpoint" => endpoint})
+      test_pid = self()
+
+      assert {_oauth, {:error, %Error{cause: {:authorize_failed, :captured}}}} =
+               list_tools(fake,
+                 client_id: "configured-client",
+                 authorize: fn url ->
+                   send(test_pid, {:authorization_url, url})
+                   {:error, :captured}
+                 end
+               )
+
+      assert_receive {:authorization_url, url}
+      assert %URI{query: "client_id=configured-client&" <> _rest} = URI.parse(url)
+    end
+
+    test "rejects a fragmented authorization endpoint before registration or authorization" do
+      endpoint = "https://auth.example.test/authorize?tenant=example#fragment"
+      fake = Fake.start(extra_metadata: %{"authorization_endpoint" => endpoint})
+      test_pid = self()
+
+      assert {_oauth, {:error, %Error{cause: {:url_fragment, ^endpoint}}}} =
+               list_tools(fake,
+                 authorize: fn url -> send(test_pid, {:authorization_url, url}) end
+               )
+
+      assert Fake.events(fake.world, :register) == []
+      refute_received {:authorization_url, _url}
+    end
+
     test "reuses the token and the registration across requests" do
       fake = Fake.start()
       oauth = start_oauth(fake)
@@ -870,6 +931,29 @@ defmodule Snodo.OAuth.ClientTest do
       assert Fake.events(fake.world, :prm) == []
     end
 
+    test "rejects a fragmented resource metadata URL from a challenge" do
+      fake =
+        Fake.start(
+          auth: fn _conn, _message, world ->
+            url = Fake.rs_url(world) <> "/.well-known/oauth-protected-resource/mcp#fragment"
+            {:refuse, 401, ~s(Bearer resource_metadata="#{url}"), %{}}
+          end
+        )
+
+      url = Fake.rs_url(fake.world) <> "/.well-known/oauth-protected-resource/mcp#fragment"
+      assert {_oauth, {:error, %Error{cause: {:url_fragment, ^url}}}} = list_tools(fake)
+      assert Fake.events(fake.world, :prm) == []
+    end
+
+    test "rejects a fragmented token endpoint before authorization" do
+      endpoint = "https://auth.example.test/token#fragment"
+      fake = Fake.start(extra_metadata: %{"token_endpoint" => endpoint})
+
+      assert {_oauth, {:error, %Error{cause: {:url_fragment, ^endpoint}}}} = list_tools(fake)
+      assert Fake.events(fake.world, :register) == []
+      assert Fake.events(fake.world, :token) == []
+    end
+
     test "an endpoint that is neither https nor loopback is refused" do
       fake = Fake.start(extra_metadata: %{"token_endpoint" => "http://as.example.com/token"})
 
@@ -1041,6 +1125,16 @@ defmodule Snodo.OAuth.ClientTest do
                Discovery.authorization_server([], fake.issuer)
 
       assert issuer == fake.issuer
+    end
+
+    for name <- ["token_endpoint", "registration_endpoint"] do
+      test "rejects a fragmented #{name} during discovery" do
+        endpoint = "https://auth.example.test/endpoint#"
+        fake = Fake.start(extra_metadata: %{unquote(name) => endpoint})
+
+        assert {:error, {:url_fragment, ^endpoint}} =
+                 Discovery.authorization_server([], fake.issuer)
+      end
     end
 
     test "reports what it could not find" do

@@ -42,7 +42,9 @@ defmodule Snodo.OAuth.Client do
     2. Authorization server metadata (RFC 8414, OpenID configuration) for
        the first `authorization_servers` entry, with the issuer checked. The
        code flow also requires `S256` in `code_challenge_methods_supported`
-       and stops without it, before registering or authorizing.
+       and stops without it, before registering or authorizing. A fragment
+       in any advertised authorization, token, or registration endpoint
+       causes discovery to reject the whole document.
     3. A client ID: the `:client_metadata_url` when the server supports
        client ID metadata documents, else the configured `:client_id`, else
        the registration stored for this issuer, else dynamic client
@@ -52,6 +54,8 @@ defmodule Snodo.OAuth.Client do
        `offline_access` when the server lists it (SEP-2207).
     5. The authorization request, with PKCE `S256`, a random `state`, and
        the `resource` (RFC 8707), given to the `:authorize` function. The
+       request preserves endpoint query entries in order, including repeats
+       and bare keys, and replaces entries whose names the flow sets. The
        redirect lands on the loopback listener, or the function returns it,
        or the application delivers it with `callback/2`. `state` is compared
        in constant time; `iss` is compared exactly when present and required
@@ -99,8 +103,9 @@ defmodule Snodo.OAuth.Client do
   the loopback listener takes an OS-assigned port by default, so a client
   that keeps its registration across restarts sets a fixed `:port`.
 
-  Every URL the flow uses must be `https`, or `http` to a loopback host. A
-  document or token response larger than `max_body_bytes` is refused, with
+  URLs the flow requests must be fragment-free and use `https`, or `http`
+  to a loopback host. A document or token response larger than
+  `max_body_bytes` is refused, with
   `:body_too_large` in the error's `cause`; `:httpc` reads the body before
   its size is checked, so `timeout_ms` bounds the transfer. Tokens are kept
   in the token store and never logged or placed in an error. The process's
@@ -111,6 +116,8 @@ defmodule Snodo.OAuth.Client do
   Errors have `kind: :authorization`, code -32000, and a `cause` naming the
   step that failed, such as `{:resource_mismatch, requested, configured}`,
   `{:issuer_mismatch, expected, found}`, `{:pkce_unsupported, issuer}`,
+  `{:url_fragment, url}` for a URL with a fragment, `{:url_query, url}`
+  for a query with malformed percent escapes,
   `{:token_endpoint, status, body}` with only the error fields of the body,
   or `{:step_up_refused, scopes}`.
   """

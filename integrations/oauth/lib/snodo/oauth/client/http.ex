@@ -67,18 +67,34 @@ defmodule Snodo.OAuth.Client.HTTP do
   end
 
   @doc """
-  Checks that `url` is absolute, `https`, or `http` to a loopback host.
+  Checks that `url` is absolute, has no fragment, and uses `https` or
+  `http` to a loopback host. Query percent escapes must be valid.
   """
-  @spec check_url(term()) :: :ok | {:error, {:insecure_url, term()}}
+  @spec check_url(term()) :: :ok | {:error, {:insecure_url | :url_fragment | :url_query, term()}}
   def check_url(url) when is_binary(url) do
     case URI.new(url) do
-      {:ok, %URI{scheme: "https", host: host}} when is_binary(host) and host != "" -> :ok
-      {:ok, %URI{scheme: "http", host: host}} when host in @loopback -> :ok
-      _other -> {:error, {:insecure_url, url}}
+      {:ok, %URI{fragment: fragment}} when not is_nil(fragment) ->
+        {:error, {:url_fragment, url}}
+
+      {:ok, %URI{scheme: "https", host: host, query: query}}
+      when is_binary(host) and host != "" ->
+        check_query(query, url)
+
+      {:ok, %URI{scheme: "http", host: host, query: query}} when host in @loopback ->
+        check_query(query, url)
+
+      _other ->
+        {:error, {:insecure_url, url}}
     end
   end
 
   def check_url(url), do: {:error, {:insecure_url, url}}
+
+  defp check_query(nil, _url), do: :ok
+
+  defp check_query(query, url) do
+    if Regex.match?(~r/%(?![0-9a-fA-F]{2})/, query), do: {:error, {:url_query, url}}, else: :ok
+  end
 
   defp request(config, url, method, request) do
     {:ok, _started} = Application.ensure_all_started([:inets, :ssl])

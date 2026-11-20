@@ -93,6 +93,23 @@ defmodule Snodo.OAuth.ClientUnitsTest do
   end
 
   describe "HTTP.check_url/1" do
+    test "rejects malformed query percent escapes" do
+      for query <- ["bad=%zz", "bad=%2", "%=value"] do
+        url = "https://auth.example.com/authorize?" <> query
+        assert {:error, {:url_query, ^url}} = HTTP.check_url(url)
+      end
+
+      assert :ok = HTTP.check_url("https://auth.example.com/authorize?good=%25%2f")
+    end
+
+    test "rejects fragments, including an empty fragment" do
+      for url <- ["https://auth.example.com/authorize#section", "http://localhost/token#"] do
+        assert {:error, {:url_fragment, ^url}} = HTTP.check_url(url)
+      end
+
+      assert :ok = HTTP.check_url("https://auth.example.com/authorize?value=%23")
+    end
+
     test "allows https and loopback http only" do
       assert HTTP.check_url("https://auth.example.com/token") == :ok
       assert HTTP.check_url("http://localhost:4000/token") == :ok
