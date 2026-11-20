@@ -1,11 +1,52 @@
 defmodule Snodo.OAuth.ClientUnitsTest do
   use ExUnit.Case, async: true
 
+  alias Snodo.OAuth.Client, as: OAuth
   alias Snodo.OAuth.Client.ClientAuth
   alias Snodo.OAuth.Client.Discovery
   alias Snodo.OAuth.Client.HTTP
   alias Snodo.OAuth.Client.Loopback
   alias Snodo.OAuth.Client.PKCE
+
+  describe "redirect options" do
+    test "external fragments are refused before metadata discovery" do
+      resource = "https://mcp.example.com/mcp"
+      metadata_url = "https://mcp.example.com/metadata#fragment"
+      challenge = %{scheme: "bearer", resource_metadata: metadata_url}
+      context = %{url: resource, status: 401, token: nil}
+      test = self()
+
+      for {uri, cause} <- [
+            {"app:/callback#section", {:redirect_uri_fragment, "app:/callback#section"}},
+            {"app:/callback#", {:redirect_uri_fragment, "app:/callback#"}},
+            {"app:/callback%23section", {:url_fragment, metadata_url}}
+          ] do
+        oauth =
+          start_supervised!(
+            {OAuth,
+             resource: resource,
+             redirect: {:external, uri},
+             authorize: fn url -> send(test, {:authorize, url}) end},
+            id: uri
+          )
+
+        assert {:error, %Snodo.Error{kind: :authorization, cause: ^cause}} =
+                 OAuth.refresh(oauth, challenge, context)
+
+        refute_received {:authorize, _url}
+      end
+    end
+
+    test "malformed external URIs are refused at startup" do
+      assert_raise ArgumentError, ~r/needs an absolute URI/, fn ->
+        OAuth.init(
+          resource: "https://mcp.example.com/mcp",
+          redirect: {:external, "https://app.example.com/call back"},
+          authorize: fn _url -> :ok end
+        )
+      end
+    end
+  end
 
   describe "PKCE" do
     test "matches the RFC 7636 appendix B vector" do
@@ -301,6 +342,7 @@ defmodule Snodo.OAuth.ClientUnitsTest do
     test "checks its options" do
       assert_raise ArgumentError, ~r/:port/, fn -> Loopback.listen(port: 70_000) end
       assert_raise ArgumentError, ~r/:path/, fn -> Loopback.listen(path: "cb?x") end
+      assert_raise ArgumentError, ~r/:path/, fn -> Loopback.listen(path: "/cb#") end
     end
   end
 end
