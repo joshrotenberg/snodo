@@ -27,10 +27,18 @@ defmodule Snodo.Proxy.Backend do
   @doc false
   def refresh(pid, ref), do: GenServer.cast(pid, {:refresh, ref})
 
+  # Report the loss to the worker that owned this snapshot. A late response
+  # from an old client must not stop its replacement.
+  @doc false
+  def request(%{client: client, backend_pid: pid}, fun) do
+    client
+    |> request(fun)
+    |> report_session_loss(pid)
+  end
+
   # Stdio log messages have no request ID. Keep finite requests on that
   # connection mutually exclusive, including background calls with callbacks.
   # The function runs in its caller so logging retains the handler's context.
-  @doc false
   def request(%Client{transport: {Stdio, pid}}, fun) do
     RequestLock.run(pid, fun)
   end
@@ -80,6 +88,11 @@ defmodule Snodo.Proxy.Backend do
   end
 
   @impl true
+  def handle_cast({:session_lost, error}, state) do
+    send(state.manager, {:backend_error, state.id, self(), error})
+    {:stop, :normal, state}
+  end
+
   def handle_cast({:refresh, ref}, state) do
     {reply, state} =
       case fetch_catalog(state.client, state.queue_timeout_ms) do
@@ -217,7 +230,20 @@ defmodule Snodo.Proxy.Backend do
   defp background_request(%Client{}, fun, _timeout), do: fun.()
 
   defp fetch_catalog(client, timeout \\ 30_000),
-    do: background_request(client, fn -> do_fetch_catalog(client) end, timeout)
+    do:
+      client
+      |> background_request(fn -> do_fetch_catalog(client) end, timeout)
+      |> report_session_loss(self())
+
+  defp report_session_loss(
+         {:error, %Error{kind: :transport, cause: :session_not_found} = error} = result,
+         pid
+       ) do
+    GenServer.cast(pid, {:session_lost, error})
+    result
+  end
+
+  defp report_session_loss(result, _pid), do: result
 
   defp do_fetch_catalog(client) do
     with {:ok, tools} <- optional_list(Client.list_tools(client)),
@@ -275,6 +301,9 @@ defmodule Snodo.Proxy.Backend do
         state
 
       {:error, %Error{code: -32_603, data: %{"reason" => "stdio_queue_timeout"}}} ->
+        state
+
+      {:error, %Error{kind: :transport, cause: :session_not_found}} ->
         state
 
       {:error, reason} ->

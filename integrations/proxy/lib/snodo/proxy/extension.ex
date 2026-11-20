@@ -125,7 +125,7 @@ defmodule Snodo.Proxy.Extension do
     with {:ok, entry} <- fetch(Manager.catalog(proxy), :tool, name),
          :ok <- authorize(entry, context),
          {:ok, arguments} <- tool_arguments(params) do
-      Backend.request(entry.client, fn ->
+      Backend.request(entry, fn ->
         Client.call_tool(entry.client, entry.original, arguments, request_options(entry, context))
       end)
       |> rewrite_content_uris(:tool, entry.id, Manager.catalog(proxy))
@@ -140,7 +140,7 @@ defmodule Snodo.Proxy.Extension do
     with {:ok, entry} <- fetch(Manager.catalog(proxy), :prompt, name),
          :ok <- authorize(entry, context),
          {:ok, arguments} <- prompt_arguments(params) do
-      Backend.request(entry.client, fn ->
+      Backend.request(entry, fn ->
         Client.get_prompt(
           entry.client,
           entry.original["name"],
@@ -171,7 +171,7 @@ defmodule Snodo.Proxy.Extension do
   end
 
   defp read_backend_resource(entry, uri, context) do
-    Backend.request(entry.client, fn ->
+    Backend.request(entry, fn ->
       Client.read_resource(entry.client, uri, request_options(entry, context))
     end)
   end

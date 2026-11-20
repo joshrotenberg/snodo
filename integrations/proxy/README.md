@@ -71,7 +71,16 @@ each backend an `:up`, `:degraded`, or `:down` status and its latest error.
 Clients can request an aggregate `proxy/health` status if they negotiate the
 `dev.snodo/proxy` extension; backend IDs and error details stay in the local
 `health/1` API. A failed catalog refresh keeps the last accepted snapshot and
-marks the backend degraded.
+marks the backend degraded. Initialize-era HTTP session loss takes the backend
+down and removes its entries from the merged catalog. The request that detects
+the loss receives the original session error (JSON-RPC code `-32000`). The proxy
+does not replay that request. Recovery uses the same one-second
+retry as other disconnects and opens a new session with an `initialize`
+handshake. The backend serves requests again after its new tools, resources,
+resource templates, and prompts are installed. If the connection or catalog
+load fails, `health/1` reports `:down` with the latest error and the proxy
+keeps retrying. Requests for its unpublished entries receive the usual
+invalid-params error (JSON-RPC code `-32602`).
 
 The proxy forwards tool progress and multi round-trip input responses in the
 original request. Each request to a `2026-07-28` backend carries the frontend
