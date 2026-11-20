@@ -122,11 +122,7 @@ runtime =
          "durable_export" => :required
        }}
     ],
-    server_info: %{"name" => "example", "version" => "0.1.0"},
-    capabilities: %{
-      "tools" => %{},
-      "extensions" => %{Tasks.id() => %{}}
-    }
+    server_info: %{"name" => "example", "version" => "0.1.0"}
   )
 ```
 

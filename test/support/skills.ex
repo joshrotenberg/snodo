@@ -25,8 +25,7 @@ defmodule SnodoTest.SkillsServer do
   use Snodo.Server,
     name: "skills-test",
     version: "1.0.0",
-    extensions: [SnodoTest.Skills],
-    capabilities: SnodoTest.Skills.capabilities()
+    extensions: [SnodoTest.Skills]
 
   for file <- SnodoTest.Skills.resources(), do: resource(file)
 end

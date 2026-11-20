@@ -77,7 +77,13 @@ defmodule Snodo.Server.Runtime do
     * `:capabilities` - the server capabilities map. Defaults to `"tools"`,
       `"prompts"`, and `"resources"` for each kind the router has
       registered, plus `"completions"` when a registered prompt or resource
-      template supports completion.
+      template supports completion. Defaults also advertise installed module
+      extensions and activate their compatible hooks. Settings come from
+      `c:Snodo.Extension.server_settings/1` or default to an empty object.
+      An explicit map replaces the derived capabilities and skips that
+      callback. Omit a module's ID from the explicit map's `"extensions"`
+      entries to keep it installed but inert. Declared extensions are still
+      added to an explicit map, with explicit entries taking precedence.
     * `:extensions` - `Snodo.Extension` modules or `{module, options}`
       tuples, and `{:declared, id, settings}` for an extension that adds no
       methods: it is advertised under `capabilities["extensions"][id]` with
@@ -132,9 +138,16 @@ defmodule Snodo.Server.Runtime do
     server_info = Keyword.fetch!(opts, :server_info)
 
     capabilities =
-      opts
-      |> Keyword.get(:capabilities, default_capabilities(router))
-      |> advertise_declared(ExtensionRegistry.declared(extension_registry))
+      case Keyword.fetch(opts, :capabilities) do
+        {:ok, explicit} ->
+          advertise_extensions(explicit, ExtensionRegistry.declared(extension_registry))
+
+        :error ->
+          advertise_extensions(
+            default_capabilities(router),
+            ExtensionRegistry.default_advertisement(extension_registry)
+          )
+      end
 
     instructions = Keyword.get(opts, :instructions)
     schema_validator = Keyword.get(opts, :schema_validator, Passthrough)
@@ -188,16 +201,16 @@ defmodule Snodo.Server.Runtime do
       else: raise(ArgumentError, ":log_level must be one of #{inspect(Snodo.Logging.levels())}")
   end
 
-  defp advertise_declared(capabilities, declared) when declared == %{}, do: capabilities
+  defp advertise_extensions(capabilities, extensions) when extensions == %{}, do: capabilities
 
-  defp advertise_declared(capabilities, declared) when is_map(capabilities) do
-    Map.update(capabilities, "extensions", declared, fn
-      advertised when is_map(advertised) -> Map.merge(declared, advertised)
+  defp advertise_extensions(capabilities, extensions) when is_map(capabilities) do
+    Map.update(capabilities, "extensions", extensions, fn
+      advertised when is_map(advertised) -> Map.merge(extensions, advertised)
       invalid -> invalid
     end)
   end
 
-  defp advertise_declared(capabilities, _declared), do: capabilities
+  defp advertise_extensions(capabilities, _extensions), do: capabilities
 
   defp prepare_schemas(router, validator) do
     if function_exported?(validator, :compile, 1) and

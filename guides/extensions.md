@@ -16,7 +16,19 @@ any core method (including unsupported and MRTR-only ones), and collisions
 between extensions. An installed route runs only when both peers advertise the
 extension and its callback accepts the negotiation. An advertised, compatible
 extension may also wrap core dispatch and contribute HTTP policy through generic
-hooks. An installed but unadvertised extension does nothing.
+hooks.
+
+When the server starts without `capabilities:`, it advertises installed
+modules under `capabilities["extensions"]` and activates compatible hooks,
+including `around_dispatch/4`, `transport_policy/2`, `tool_input_schema/2`,
+and `subscription_filter/2`. Implement `server_settings/1` to return the
+JSON object to advertise. It receives the options from `{module, options}`,
+or `[]` for a bare module. The default settings are `%{}`.
+
+An explicit `capabilities:` map replaces the derived map and uses the module
+settings listed in its `"extensions"` entries. To keep an installed module
+inert, leave its ID out of those entries. With explicit capabilities, an
+installed but unadvertised extension does nothing.
 
 Middleware that stores or defers a call instead of passing it on calls
 `Snodo.Extension.check_dispatch/3` first, so the deferred work passes the same
@@ -153,8 +165,7 @@ defmodule MyApp.Server do
   use Snodo.Server,
     name: "my-app",
     version: "1.0.0",
-    extensions: [MyApp.Skills],
-    capabilities: MyApp.Skills.capabilities(%{"tools" => %{}})
+    extensions: [MyApp.Skills]
 
   for file <- MyApp.Skills.resources(), do: resource(file)
 end
@@ -189,8 +200,10 @@ The module is the extension. It answers:
 the server registers, so `resources/read` serves the bytes (text when they are
 UTF-8, a blob otherwise) and `resources/list` lists the files. A SKILL.md
 resource takes its name and description from the frontmatter.
-`capabilities/1` adds `"resources"` and the extension's declaration to a
-capabilities map.
+Derived capabilities include `"resources"` when the router registers
+resources, so register the skill files as shown above.
+A server that passes explicit `capabilities:` can call `capabilities/1`,
+which adds `"resources"` and the extension's declaration to the map.
 
 As with every extension module, the three methods are answered only when the
 client declares `io.modelcontextprotocol/skills` in its capabilities; a client

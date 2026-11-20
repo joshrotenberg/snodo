@@ -83,6 +83,34 @@ defmodule Snodo.Extension.Registry do
   end
 
   @doc false
+  @spec default_advertisement(t()) :: %{optional(String.t()) => map()}
+  def default_advertisement(%__MODULE__{} = registry) do
+    Map.new(registry.ordered_ids, fn id ->
+      module = Map.fetch!(registry.by_id, id)
+      options = Map.fetch!(registry.options_by_id, id)
+      {id, server_settings(module, options)}
+    end)
+  end
+
+  defp server_settings(Snodo.Extension.Declared, settings), do: settings
+
+  defp server_settings(module, options) do
+    if function_exported?(module, :server_settings, 1) do
+      settings = module.server_settings(options)
+
+      unless is_map(settings) and not is_struct(settings) and JSONValue.valid?(settings) do
+        raise ArgumentError,
+              "extension #{inspect(module)} server_settings/1 must return a JSON object, " <>
+                "got: #{inspect(settings)}"
+      end
+
+      settings
+    else
+      %{}
+    end
+  end
+
+  @doc false
   # The server settings of declared extensions, keyed by id, for the runtime
   # to advertise.
   @spec declared(t()) :: %{optional(String.t()) => map()}

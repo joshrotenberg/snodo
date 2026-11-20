@@ -521,7 +521,7 @@ defmodule Snodo.Transport.StreamableHTTP.AdapterAcceptanceTest do
   end
 
   test "an installed but unadvertised extension route cannot affect HTTP admission" do
-    runtime = TestFixtures.runtime(extensions: [HTTPPolicy])
+    runtime = TestFixtures.runtime(extensions: [HTTPPolicy], capabilities: %{})
     raw = extension_request("installed-only-policy", HTTPPolicy.id(), %{"taskId" => "task-123"})
 
     assert {:ok, _prepared} =

@@ -13,8 +13,7 @@ defmodule Examples.Skills.Server do
   use Snodo.Server,
     name: "skills-example",
     version: "1.0.0",
-    extensions: [Examples.Skills.Catalog],
-    capabilities: Examples.Skills.Catalog.capabilities()
+    extensions: [Examples.Skills.Catalog]
 
   # Each skill file is an ordinary resource.
   for file <- Examples.Skills.Catalog.resources(), do: resource(file)

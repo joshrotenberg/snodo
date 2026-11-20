@@ -12,6 +12,9 @@ defmodule Examples.CustomExtension.Greeting do
   def id, do: @id
 
   @impl true
+  def server_settings(options), do: %{"prefix" => Keyword.fetch!(options, :prefix)}
+
+  @impl true
   def methods do
     [
       Method.new!(
@@ -119,12 +122,7 @@ defmodule Examples.CustomExtension.Server do
     name: "custom-extension-example",
     version: "0.1.0",
     protocols: [Snodo.Protocol.V2026_07_28],
-    extensions: [Examples.CustomExtension.Greeting],
-    capabilities: %{
-      "extensions" => %{
-        "dev.example/greeting" => %{"prefix" => "Welcome"}
-      }
-    }
+    extensions: [{Examples.CustomExtension.Greeting, prefix: "Welcome"}]
 end
 
 defmodule Examples.CustomExtension.CollisionServer do
