@@ -170,8 +170,8 @@ conformance. On the client side, 31 of 32 pass, including the 25 that cover
 OAuth with `snodo_oauth` as the token provider; the other one is excluded from
 the score because a 2026-07-28 client sends no `initialize`. Pinned to
 `2025-11-25`, the client passes 16 of 18, including all 14 that cover OAuth. The [compliance guide](https://hexdocs.pm/snodo/protocol-compliance.html) lists
-what is measured and what is not. Design records from the project's history are
-in [docs/history](https://github.com/joshrotenberg/snodo/blob/main/docs/history/README.md).
+what is measured and what is not. Project decisions and their rationale are recorded in
+the [decision record index](https://github.com/joshrotenberg/snodo/blob/main/docs/history/README.md).
 
 ## Development
 

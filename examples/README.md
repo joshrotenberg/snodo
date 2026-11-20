@@ -76,6 +76,14 @@ stdio example uses a named pipe to close the child process's input while still
 verifying its final stdout and exit status. The remaining default examples do
 not have that requirement.
 
+## Adding an example
+
+- Use public APIs only. Keep helpers in the example or under `examples/support` and never import from `test/support`.
+- In `--check` mode, print exactly one success line on success and exit nonzero on failure. Register the expected line with the Mix runner for the example's package.
+- Use explicit synchronization, such as messages or monitors, to wait for work to complete. Avoid fixed sleeps as a readiness check.
+- Bind listeners to port `0` and read the OS-assigned port before connecting.
+- Stop the processes the example starts and remove its temporary files, including on failure.
+
 | Example | Public surfaces exercised |
 |---|---|
 | [`01_direct_tools.exs`](01_direct_tools.exs) | Tool/server DSL, discovery, list, direct call, process-free runtime |
