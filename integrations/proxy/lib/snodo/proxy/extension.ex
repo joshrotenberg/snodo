@@ -11,6 +11,7 @@ defmodule Snodo.Proxy.Extension do
   alias Snodo.Extension.Method
   alias Snodo.Logging
   alias Snodo.Progress
+  alias Snodo.Protocol.ToolResult
   alias Snodo.Proxy.Backend
   alias Snodo.Proxy.Catalog
   alias Snodo.Proxy.Manager
@@ -244,7 +245,7 @@ defmodule Snodo.Proxy.Extension do
     result =
       result
       |> Map.put_new("resultType", "complete")
-      |> cache_fields(kind, authorization(context))
+      |> shape_complete_result(kind, authorization(context))
 
     {:ok, Result.wire(result)}
   end
@@ -254,12 +255,15 @@ defmodule Snodo.Proxy.Extension do
 
   defp forward_result({:error, %Error{} = error}, _kind, _context), do: {:error, error}
 
-  defp cache_fields(result, :resource, authorization) do
+  defp shape_complete_result(result, :resource, authorization) do
     result = result |> Map.put_new("ttlMs", 0) |> Map.put_new("cacheScope", "private")
     if is_nil(authorization), do: result, else: Map.put(result, "cacheScope", "private")
   end
 
-  defp cache_fields(result, _kind, _authorization), do: result
+  defp shape_complete_result(result, :tool, _authorization),
+    do: ToolResult.put_structured_fallback(result)
+
+  defp shape_complete_result(result, _kind, _authorization), do: result
 
   defp rewrite_content_uris({status, result}, kind, id, catalog)
        when status in [:ok, :input_required] and is_map(result) do

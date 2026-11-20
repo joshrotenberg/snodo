@@ -32,6 +32,55 @@ defmodule Snodo.Compliance.V2026_07_28VectorsTest do
 
   @spec_root "https://modelcontextprotocol.io/specification/2026-07-28"
 
+  defmodule RawStructured do
+    use Snodo.Tool, name: "raw_structured"
+
+    @impl true
+    def call(_arguments, _context),
+      do: {:ok, Result.raw(%{"structuredContent" => %{"ok" => true}})}
+  end
+
+  test "literal raw structured tool result includes JSON text content" do
+    runtime = TestFixtures.runtime(tools: [RawStructured])
+
+    raw =
+      JSON.decode!(~S"""
+      {
+        "jsonrpc": "2.0",
+        "id": "raw-structured-vector",
+        "method": "tools/call",
+        "params": {
+          "name": "raw_structured",
+          "_meta": {
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientCapabilities": {}
+          }
+        }
+      }
+      """)
+
+    expected =
+      JSON.decode!(~S"""
+      {
+        "jsonrpc": "2.0",
+        "id": "raw-structured-vector",
+        "result": {
+          "resultType": "complete",
+          "content": [{"type": "text", "text": "{\"ok\":true}"}],
+          "structuredContent": {"ok": true},
+          "isError": false,
+          "_meta": {
+            "io.modelcontextprotocol/serverInfo": {"name": "snodo-spike", "version": "0.1.0"}
+          }
+        }
+      }
+      """)
+
+    for transport <- [:direct, :stdio] do
+      assert dispatch(runtime, raw, transport) == expected
+    end
+  end
+
   @tag mcp_contract: ["direct-stdio-success-vectors"]
   test "literal success vectors agree through direct and stdio admission" do
     runtime = TestFixtures.runtime(tools: [Echo, Failing, Structured])
