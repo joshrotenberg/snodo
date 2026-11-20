@@ -87,6 +87,45 @@ defmodule Snodo.SkillsTest do
     end
   end
 
+  test "validates entry metadata as a string-keyed JSON object" do
+    entry = %{path: "solo", files: %{"SKILL.md" => skill_md("solo")}}
+    {catalog, _resources} = build(entries: [Map.put(entry, :metadata, %{})])
+    assert [%{"_meta" => meta}] = catalog.entries
+    assert meta == %{}
+
+    for invalid <- [nil, []] do
+      assert_raise ArgumentError, ~r/entry "solo": skill _meta must be a map/, fn ->
+        build(entries: [Map.put(entry, :metadata, invalid)])
+      end
+    end
+
+    for invalid <- [
+          %{"bad key!" => true},
+          %{"" => true},
+          %{atom: true},
+          %{"nested" => [%{atom: true}]},
+          %{"value" => :atom},
+          %{"value" => <<255>>},
+          %{"value" => [1 | 2]}
+        ] do
+      assert_raise ArgumentError,
+                   ~r/entry "solo": skill _meta contains an invalid entry/,
+                   fn ->
+                     build(entries: [Map.put(entry, :metadata, invalid)])
+                   end
+    end
+  end
+
+  test "rejects unknown entry options" do
+    entry = %{path: "solo", files: %{"SKILL.md" => skill_md("solo")}}
+
+    for key <- [:meta, "_meta"] do
+      assert_raise ArgumentError, "unknown Snodo.Skills entry options: #{inspect([key])}", fn ->
+        build(entries: [Map.put(entry, key, %{})])
+      end
+    end
+  end
+
   describe "skills/list and skills/get" do
     test "pages the listing without splitting an entry" do
       client = client()

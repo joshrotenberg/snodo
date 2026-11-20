@@ -8,6 +8,7 @@ defmodule SnodoTest.Skills do
     entries: [
       [
         path: "inline-tool",
+        metadata: %{"example.com/labels" => [%{"name" => "inline", "enabled" => true}]},
         files: %{
           "SKILL.md" =>
             "---\nname: inline-tool\ndescription: Supplied by the application\n---\nBody\n",

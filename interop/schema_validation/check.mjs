@@ -224,6 +224,7 @@ async function exercise(mode) {
     assert.deepEqual(skills.final.result.skills.map((entry) => entry.uri), [skillUri]);
     const skill = await call("skills/get", { uri: skillUri, _meta: skillsMeta });
     assert.equal(skill.final.result.skill.resources.length, 2);
+    assert.deepEqual(skill.final.result.skill._meta, { "example.com/featured": true });
     const directory = await call("resources/directory/read", { uri: "skill://schema-skill", _meta: skillsMeta });
     assert.deepEqual(directory.final.result.resources.map((child) => child.mimeType), ["text/markdown", "inode/directory"]);
     const unknown = await call("skills/get", { uri: "skill://missing/SKILL.md", _meta: skillsMeta }, "error");
@@ -237,6 +238,7 @@ async function exercise(mode) {
       ["skills/list", skills.final, (result) => { result.cacheScope = "shared"; }],
       ["skills/list", skills.final, (result) => { delete result.ttlMs; }],
       ["skills/get", skill.final, (result) => { result.nextCursor = "x"; }],
+      ["skills/get", skill.final, (result) => { result.skill._meta = []; }],
       ["resources/directory/read", directory.final, (result) => { delete result.resources[0].name; }],
       ["resources/directory/read", directory.final, (result) => { result.resources[1].size = "big"; }],
     ]) {

@@ -167,7 +167,11 @@ under the directory is added, removed, or changed. It compares paths, sizes,
 and whole-second modification times, not contents, so a change that keeps a
 file's size within the same second as its last modification can be missed;
 run `mix compile --force` then. `:entries` adds skills the application supplies as a path and a map
-of file contents, alone or next to `:directory`. The frontmatter `name` must
+of file contents, alone or next to `:directory`. Only skills supplied
+through `:entries` can set `:metadata`, which supplies the protocol `"_meta"`
+object in `skills/list` and `skills/get`. The Agent Skills frontmatter
+`metadata` field is separate, and directory skills cannot set protocol
+metadata. The frontmatter `name` must
 equal the directory name and follow the naming rules (1 to 64 lowercase
 letters, digits, and single hyphens), and `description` must be present. A
 skill that breaks a rule or a limit fails compilation with `ArgumentError`.

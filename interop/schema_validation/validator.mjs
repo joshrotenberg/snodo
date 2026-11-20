@@ -99,6 +99,7 @@ function validateExtensionResult(method, message) {
   const object = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
   const entry = (skill) => {
     assert.ok(object(skill) && typeof skill.uri === "string" && object(skill.frontmatter), "malformed skill entry");
+    assert.ok(!Object.hasOwn(skill, "_meta") || object(skill._meta), "malformed skill metadata");
     assert.ok(skill.resources === "dynamic" || Array.isArray(skill.resources), "malformed skill resources");
   };
   if (method === "skills/list") {

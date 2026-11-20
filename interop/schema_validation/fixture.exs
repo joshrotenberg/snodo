@@ -230,6 +230,7 @@ defmodule SchemaFixture.Skills do
     entries: [
       [
         path: "schema-skill",
+        metadata: %{"example.com/featured" => true},
         files: %{
           "SKILL.md" => "---\nname: schema-skill\ndescription: A wire-schema skill\n---\nBody\n",
           "references/NOTES.md" => "Notes\n"
