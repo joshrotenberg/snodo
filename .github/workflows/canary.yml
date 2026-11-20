@@ -51,6 +51,7 @@ jobs:
         # cache would be restored by the gating workflows.
         with:
           node-version: "24.21.0"
+          package-manager-cache: false
       - name: Compile the client and the fixture
         run: |
           mix local.hex --force
@@ -65,7 +66,7 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Install the alpha dist-tag
         if: matrix.runner == 'alpha'
-        run: |
+        run: | # zizmor: ignore[adhoc-packages] The canary intentionally tests the current upstream alpha outside the locked dependencies.
           alpha=$(npm view @modelcontextprotocol/conformance dist-tags.alpha)
           echo "@modelcontextprotocol/conformance@$alpha" > "$MCP_CONFORMANCE_OUTPUT/../runner.txt"
           npm install --prefix "$RUNNER_TEMP/runner" --ignore-scripts "@modelcontextprotocol/conformance@$alpha"
