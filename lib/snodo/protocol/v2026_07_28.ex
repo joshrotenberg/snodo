@@ -15,6 +15,7 @@ defmodule Snodo.Protocol.V2026_07_28 do
   alias Snodo.Protocol.Profile
   alias Snodo.Protocol.Profile.Method
   alias Snodo.Protocol.Registry
+  alias Snodo.Protocol.ToolResult
   alias Snodo.Resource
   alias Snodo.Result
   alias Snodo.Server.Runtime
@@ -1422,7 +1423,7 @@ defmodule Snodo.Protocol.V2026_07_28 do
 
   defp shape_tool_result(%Result{kind: :structured, value: value}) do
     %{
-      "content" => [%{"type" => "text", "text" => JSON.encode!(value)}],
+      "content" => ToolResult.structured_content(value),
       "structuredContent" => value,
       "isError" => false
     }
@@ -1438,6 +1439,7 @@ defmodule Snodo.Protocol.V2026_07_28 do
 
   defp shape_tool_result(%Result{kind: :raw, value: value}) when is_map(value) do
     value
+    |> ToolResult.put_structured_fallback()
     |> Map.put_new("content", [])
     |> Map.put_new("isError", false)
   end

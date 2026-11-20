@@ -1,6 +1,7 @@
 defmodule Snodo.ResultTest do
   use ExUnit.Case, async: true
 
+  alias Snodo.Protocol.{V2025_06_18, V2025_11_25, V2026_07_28}
   alias Snodo.Result
   alias SnodoTest.TestFixtures
 
@@ -14,6 +15,41 @@ defmodule Snodo.ResultTest do
          %{"type" => "image", "data" => "iVBORw0KGgo=", "mimeType" => "image/png"},
          %{"type" => "text", "text" => "a caption"}
        ])}
+    end
+  end
+
+  defmodule Raw do
+    use Snodo.Tool, name: "raw"
+
+    @impl true
+    def call(arguments, _context), do: {:ok, Result.raw(arguments)}
+  end
+
+  test "raw tool results fill missing content in all supported dialects" do
+    protocols = [V2026_07_28, V2025_11_25, V2025_06_18]
+    runtime = TestFixtures.runtime(tools: [Raw], protocols: protocols)
+    value = %{"items" => [1, "two"]}
+    fallback = [%{"type" => "text", "text" => JSON.encode!(value)}]
+    explicit = [%{"type" => "text", "text" => "custom text"}]
+
+    for protocol <- protocols do
+      for {arguments, expected} <- [
+            {%{"structuredContent" => value}, fallback},
+            {%{"isError" => true, "structuredContent" => value}, fallback},
+            {%{"structuredContent" => value, "content" => []}, []},
+            {%{"structuredContent" => value, "content" => explicit}, explicit},
+            {%{}, []}
+          ] do
+        assert {:ok, %{"result" => %{"content" => ^expected, "isError" => is_error} = result}} =
+                 Snodo.Test.dispatch(runtime,
+                   protocol: protocol.version(),
+                   method: "tools/call",
+                   params: %{"name" => "raw", "arguments" => arguments}
+                 )
+
+        assert is_error == Map.get(arguments, "isError", false)
+        assert Map.fetch(result, "structuredContent") == Map.fetch(arguments, "structuredContent")
+      end
     end
   end
 

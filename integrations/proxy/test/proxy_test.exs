@@ -67,6 +67,33 @@ defmodule Snodo.ProxyTest do
     end
   end
 
+  defmodule StructuredBackendTransport do
+    @behaviour Snodo.Client.Transport
+
+    alias Snodo.Client.Direct
+
+    @impl true
+    defdelegate connect(runtime, opts), to: Direct
+
+    @impl true
+    def request(_state, %{"method" => "tools/call", "id" => id, "params" => params}, _opts) do
+      arguments = params["arguments"]
+
+      result = %{
+        "resultType" => "complete",
+        "structuredContent" => %{"value" => arguments["value"]}
+      }
+
+      result = if arguments["value"] == "empty", do: Map.put(result, "content", []), else: result
+      {:ok, %{"jsonrpc" => "2.0", "id" => id, "result" => result}}
+    end
+
+    def request(state, message, opts), do: Direct.request(state, message, opts)
+
+    @impl true
+    defdelegate close(state), to: Direct
+  end
+
   defmodule BackendLinks do
     use Snodo.Server, name: "backend-links", version: "1.0.0"
 
@@ -265,6 +292,23 @@ defmodule Snodo.ProxyTest do
 
     assert {:ok, %{"messages" => [%{"content" => %{"text" => "review a"}}]}} =
              Client.get_prompt(client, "a.review")
+  end
+
+  test "adds a JSON text fallback when a backend tool omits content" do
+    target = {StructuredBackendTransport, BackendB.runtime()}
+    proxy = start_supervised!({Proxy, backends: [[id: "b", target: target]]})
+    {:ok, client} = Client.direct(Proxy.runtime(proxy))
+    value = %{"value" => "fallback"}
+    text = JSON.encode!(value)
+
+    assert {:ok,
+            %{
+              "structuredContent" => ^value,
+              "content" => [%{"type" => "text", "text" => ^text}]
+            }} = Client.call_tool(client, "b.echo", %{"value" => "fallback"})
+
+    assert {:ok, %{"structuredContent" => %{"value" => "empty"}, "content" => []}} =
+             Client.call_tool(client, "b.echo", %{"value" => "empty"})
   end
 
   test "adds and removes backends without name ambiguity" do

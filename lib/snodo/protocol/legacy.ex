@@ -6,6 +6,7 @@ defmodule Snodo.Protocol.Legacy do
   alias Snodo.{Context, Envelope, Error, MRTR, Progress, Prompt, Resource, Result, Router, Tool}
   alias Snodo.Protocol.Profile
   alias Snodo.Protocol.Profile.Method
+  alias Snodo.Protocol.ToolResult
   alias Snodo.Session
   alias Snodo.Subscription.Event, as: SubscriptionEvent
   alias Snodo.TraceContext
@@ -654,7 +655,7 @@ defmodule Snodo.Protocol.Legacy do
 
   defp tool_result(%Result{kind: :structured, value: value}),
     do: %{
-      "content" => [%{"type" => "text", "text" => JSON.encode!(value)}],
+      "content" => ToolResult.structured_content(value),
       "structuredContent" => value,
       "isError" => false
     }
@@ -666,7 +667,11 @@ defmodule Snodo.Protocol.Legacy do
     do: %{"content" => [%{"type" => "text", "text" => message}], "isError" => true}
 
   defp tool_result(%Result{kind: :raw, value: value}),
-    do: value |> Map.put_new("content", []) |> Map.put_new("isError", false)
+    do:
+      value
+      |> ToolResult.put_structured_fallback()
+      |> Map.put_new("content", [])
+      |> Map.put_new("isError", false)
 
   defp tool_definition(tool, version) do
     %{

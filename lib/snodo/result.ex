@@ -189,9 +189,12 @@ defmodule Snodo.Result do
   @doc """
   Wraps a map that is already in wire shape.
 
-  As a `tools/call` result, the map is sent as the result, with `"content"`
-  defaulting to `[]` and `"isError"` to `false`. When the tool declares an
-  output schema, the map must carry `"structuredContent"`, which is validated.
+  As a `tools/call` result, the map is sent with `"isError"` defaulting to
+  `false`. When `"content"` is absent, it defaults to a single text block
+  containing the JSON encoding of `"structuredContent"` if present, or to
+  `[]` otherwise. Explicit `"content"` is preserved, including `[]`. When
+  the tool declares an output schema, the map must carry
+  `"structuredContent"`, which is validated.
   Extensions also return `raw/1` from `c:Snodo.Extension.dispatch/3` and shape
   the value in `c:Snodo.Extension.shape_result/3`.
   """
