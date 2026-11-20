@@ -16,6 +16,7 @@ rename, and some statements, test counts, and scores are out of date. The
 | [private-release-plan.md](private-release-plan.md) | Preparing the private repository for an eventual release (2026-09-14) |
 | [where-to-next.md](where-to-next.md) | An outside assessment of the codebase and priorities (2026-09-18), with a second model's review appended |
 | [backlog.md](backlog.md) | The eight backlog items distilled from that assessment, with status through 2026-09-25 |
+| [2026-11-19-events-extension.md](2026-11-19-events-extension.md) | Decision to defer SEP-3415 and a design sketch for an Events sibling package |
 
 Every backlog item is done: the Plug adapter, JSON Schema backend, and CI
 (#1), initialize-era HTTP clients (#4), `Snodo.Client` and its transports (#8,

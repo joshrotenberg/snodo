@@ -333,3 +333,7 @@ effects.
 Examples 07, 08, 09, 17, and 26 run from `extensions/tasks`; example 10 from
 `extensions/tasks_postgres` with a live database; example 11 from
 `extensions/tasks_sqlite`.
+
+## Events
+
+snodo does not implement the Events extension (SEP-3415) yet. See the [Events extension decision](https://github.com/joshrotenberg/snodo/blob/main/docs/history/2026-11-19-events-extension.md).
