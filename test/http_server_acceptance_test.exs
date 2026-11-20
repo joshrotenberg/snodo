@@ -92,6 +92,101 @@ defmodule Snodo.Transport.StreamableHTTP.ServerAcceptanceTest do
     assert get_response.headers["allow"] == "POST"
   end
 
+  test "the card is unavailable by default" do
+    server = start_supervised!({HTTPServer, runtime: TestFixtures.runtime()})
+    {_ip, port, _path} = HTTPServer.address(server)
+
+    assert raw_request(port, "GET", "/mcp/server-card", [], "").status == 404
+  end
+
+  test "invalid card configuration prevents listener startup" do
+    assert {:error, {{%ArgumentError{message: message}, _stacktrace}, _child}} =
+             start_supervised({HTTPServer, runtime: TestFixtures.runtime(), server_card: true})
+
+    assert message =~ ":server_card must be false or"
+  end
+
+  test "serves a public card below a custom endpoint before its request gate" do
+    runtime = %{
+      TestFixtures.runtime()
+      | server_info: %{
+          "name" => "com.example/weather",
+          "version" => "1.2.3",
+          "description" => "Weather forecasts"
+        }
+    }
+
+    endpoint = "https://example.com/services/mcp"
+    path = "/services/mcp/server-card"
+    host = [{"Host", "example.com"}]
+
+    server =
+      start_supervised!(
+        {HTTPServer,
+         runtime: runtime,
+         path: "/services/mcp",
+         server_card: %{endpoint_url: endpoint},
+         allowed_hosts: ["example.com"],
+         request_gate: {InvalidGate, []}}
+      )
+
+    {_ip, port, _path} = HTTPServer.address(server)
+    origin = {"Origin", "https://browser.example"}
+    response = raw_request(port, "GET", path, [origin | host], "")
+
+    assert response.status == 200
+    assert response.headers["content-type"] == "application/mcp-server-card+json"
+    assert response.headers["access-control-allow-origin"] == "*"
+    assert response.headers["cache-control"] == "public, max-age=3600"
+    assert %{"remotes" => [%{"url" => ^endpoint}]} = JSON.decode!(response.body)
+
+    etag = response.headers["etag"]
+    head = raw_request(port, "HEAD", path, [origin | host], "")
+    assert head.status == 200
+    assert head.body == ""
+    assert head.headers == response.headers
+    assert head.headers["content-length"] == Integer.to_string(byte_size(response.body))
+
+    cached = raw_request(port, "GET", path, [{"If-None-Match", etag} | host], "")
+    assert cached.status == 304
+    assert cached.headers["etag"] == etag
+    assert cached.body == ""
+
+    assert raw_request(port, "GET", path, [], "").status == 403
+    refused = raw_request(port, "POST", path, host, "")
+    assert refused.status == 405
+    assert refused.headers["allow"] == "GET, HEAD, OPTIONS"
+
+    options = raw_request(port, "OPTIONS", path, host, "")
+    assert options.status == 204
+    assert options.headers["allow"] == "GET, HEAD, OPTIONS"
+
+    preflight = [origin, {"Access-Control-Request-Method", "GET"} | host]
+    assert raw_request(port, "OPTIONS", path, preflight, "").status == 204
+    assert raw_request(port, "GET", "/services/mcp", host, "").status == 500
+  end
+
+  test "appends the card suffix to an endpoint with a trailing slash" do
+    runtime = %{
+      TestFixtures.runtime()
+      | server_info: %{
+          "name" => "com.example/weather",
+          "version" => "1.2.3",
+          "description" => "Weather forecasts"
+        }
+    }
+
+    server =
+      start_supervised!(
+        {HTTPServer,
+         runtime: runtime, path: "/mcp/", server_card: %{endpoint_url: "https://example.com/mcp/"}}
+      )
+
+    {_ip, port, _path} = HTTPServer.address(server)
+    assert raw_request(port, "GET", "/mcp/server-card", [], "").status == 200
+    assert raw_request(port, "GET", "/mcp//server-card", [], "").status == 404
+  end
+
   test "refuses duplicate JSON keys in a raw HTTP request" do
     {:ok, server} = start_supervised({HTTPServer, runtime: TestFixtures.runtime(), port: 0})
     {_ip, port, _path} = HTTPServer.address(server)

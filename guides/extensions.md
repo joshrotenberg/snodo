@@ -101,6 +101,28 @@ For a published extension, attach the `_meta` keys its specification defines.
 A declared extension has no routes, middleware, or negotiation callback; write
 a `Snodo.Extension` module when you need any of those.
 
+## Server Cards
+
+MCP Server Cards (`io.modelcontextprotocol/server-card`, SEP-2127) are at
+the Beta stage under SEP-3392. Clients fetch cards before connecting, so
+enabling the transport route requires no MCP capability negotiation.
+The v1 card describes public server identity, the Streamable HTTP URL,
+and supported protocol versions. Component listings and capabilities are
+available through the live MCP endpoint. See the [MCP extensions overview](https://modelcontextprotocol.io/extensions/overview)
+and [Server Card specification](https://github.com/modelcontextprotocol/ext-server-card/blob/main/docs/discovery.md).
+
+Enable the card with the [transport option](transports.md#mcp-server-cards).
+For optional domain-wide discovery, publish an AI Catalog from your site
+router or reverse proxy at `/.well-known/ai-catalog.json` with media type
+`application/ai-catalog+json`. Use `Snodo.ServerCard.catalog/1` to build the
+document, passing each stable catalog identifier and absolute card URL.
+
+```elixir
+Snodo.ServerCard.catalog([
+  {"urn:air:example.com:mcp:weather", "https://example.com/mcp/server-card"}
+])
+```
+
 ## MCP Apps
 
 MCP Apps (`io.modelcontextprotocol/ui`, specification 2026-01-26) links a tool

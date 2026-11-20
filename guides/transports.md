@@ -164,6 +164,39 @@ The listener also bounds what clients can hold open:
 `Snodo.Transport.StreamableHTTP.Server.url/1` returns the endpoint URL, which is
 useful with `port: 0` in tests.
 
+### MCP Server Cards
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `:server_card` | `false` | Set to `%{endpoint_url: "https://example.com/mcp"}` to publish a card. Use the external Streamable HTTP endpoint URL, including the path clients use through any reverse proxy. |
+
+The native listener and Plug append `/server-card` to the configured MCP
+`:path` after removing trailing slashes. For example, `/services/mcp` serves
+the card at `GET /services/mcp/server-card`. Serve it over HTTPS with TLS 1.2
+or later in production. For the native listener, terminate TLS at a reverse
+proxy. Use the proxy or HTTP server to apply request rate limits.
+
+The route uses `application/mcp-server-card+json`, wildcard CORS, and
+`Cache-Control: public, max-age=3600`. GET and HEAD return 304 when
+`If-None-Match` matches the ETag. HEAD includes the card's content length
+and an empty body. OPTIONS returns 204, including for browser preflight.
+Other methods receive 405. The card route applies `:allowed_hosts` and accepts cross-origin
+requests independently of `:allowed_origin_hosts`. The native request gate
+is bypassed for the card route. In Plug, allow the card route through the
+application's authentication pipeline so anonymous clients can retrieve it.
+The Plug README shows a wrapper that routes the card before bearer
+authentication. [Plug Server Card setup](https://hexdocs.pm/snodo_plug/readme.html#mcp-server-cards)
+
+The configured endpoint must be an absolute HTTP(S) URL without user
+information, query, or fragment. The same URL rules apply to the optional
+`websiteUrl` field. The runtime must supply a
+`namespace/name` of 3 to 200 characters, a single version string of at most
+255 characters, and a description of 1 to 100 characters. An optional title
+must also contain 1 to 100 characters. Invalid card configuration or
+metadata raises `ArgumentError` when the transport initializes. Review the
+published identity fields, including links and icons, for public suitability.
+See [Server Cards](extensions.md#server-cards) for the optional AI Catalog.
+
 ### Shutdown
 
 When the listener stops, including when its supervisor shuts it down, it
