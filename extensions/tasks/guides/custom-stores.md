@@ -91,9 +91,29 @@ data.
 
 For contention and runner workload design, see
 [`stress-testing.md`](https://github.com/joshrotenberg/snodo/blob/main/extensions/tasks/stress-testing.md).
-The included `Snodo.Extensions.Tasks.Stress` harness, run with
-`mix tasks.stress`, exercises Memory. Adapt its
-compare-and-set and runner workloads to your backend, with multiple real
-connections or processes where the backend supports them. Check exact state
-invariants; treat timing measurements as observations rather than pass/fail
-thresholds.
+The included `Snodo.Extensions.Tasks.Stress` harness takes any store: pass
+`store: {MyStore, state}` to `Stress.run/1`. Your module must also export
+`history/3`, which the harness uses to compare each Task's ledger with the
+writer the store reported as applied:
+
+```elixir
+@spec history(state :: term(), task_id :: String.t(), access :: term()) ::
+        {:ok, [%{required(:event) => Snodo.Extensions.Tasks.Event.t()}]}
+        | :not_found
+        | {:error, term()}
+```
+
+`access` is the value your `authorize/3` returned for `{:get, task_id}`.
+Return committed events oldest first, one map per event with the event under
+`:event`; other keys, such as the included stores' `:revision` and
+`:committed_at`, are ignored. If the backend has a documented backpressure
+result that leaves state unchanged, pass a `:busy?` predicate for it; the
+harness then checks stored state after retries, so a result that hid a commit
+still fails the run.
+
+`mix tasks.stress` runs the harness against Memory. In this repository the
+PostgreSQL and SQLite packages also have Mix tasks that prepare a database and
+call it; those tasks are not included in the published packages. Use
+multiple real connections or processes where the backend supports them. Check
+exact state invariants; treat timing measurements as observations rather than
+pass/fail thresholds.

@@ -373,3 +373,31 @@ must prove. The contract task runs that suite and verifies all seven local
 evidence groups. The example performs an explicit migration, persists Work
 through a Repo/Runner restart, completes it after recovery, migrates down, and
 removes its temporary database plus WAL sidecars.
+
+### Soak
+
+`mix tasks.sqlite.stress` runs the shared Tasks contention and soak harness
+(see
+[`stress-testing.md`](https://github.com/joshrotenberg/snodo/blob/main/extensions/tasks/stress-testing.md))
+against a file-backed WAL database in a new, randomly named temporary
+directory, which it deletes afterwards. The task is in the repository only;
+`lib/mix` is not part of the published package.
+
+```sh
+mix tasks.sqlite.stress --tasks 200 --writers 16 --rounds 10
+mix tasks.sqlite.stress --tasks 500 --writers 32 --rounds 20 --pool-size 10 --json
+```
+
+`--pool-size` (default 5), `--busy-timeout-ms` (default 5,000), and
+`--store-timeout-ms` (default 15,000) set the Repo and store values described
+under [Timeouts](#timeouts) and [Pool size and queue length](#pool-size-and-queue-length).
+`{:error, :database_busy}` is reported as `busy`, not as an error: a busy CAS
+attempt is a lost race, and setup calls retry. The harness then checks each
+Task's ledger and state, so a busy result that hid a commit still fails the
+run. Many concurrent writers measure
+the writer slot and busy handling; they do not mean SQLite writes in parallel.
+
+The normal test suite runs a four-Task soak through the same entry point, and
+the [Tasks store soak workflow](https://github.com/joshrotenberg/snodo/blob/main/.github/workflows/tasks-soak.yml)
+runs the full soak weekly. Recorded results are in the
+[protocol compliance guide](https://github.com/joshrotenberg/snodo/blob/main/guides/protocol-compliance.md#tasks-store-soak-evidence).
