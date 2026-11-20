@@ -107,7 +107,7 @@ jobs:
       # snodo_telemetry tests, on the released snodo_tasks), so publish in
       # dependency order. A package whose version is already on Hex is
       # skipped, so the job can be rerun.
-      - name: Publish all nine packages
+      - name: Publish all ten packages
         env:
           HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
         run: |

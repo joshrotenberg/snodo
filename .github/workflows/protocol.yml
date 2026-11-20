@@ -123,7 +123,9 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Run the lane with its strict per-check regression baseline
         working-directory: conformance
-        run: node run.mjs ${{ matrix.lane }}
+        env:
+          LANE: ${{ matrix.lane }}
+        run: node run.mjs "$LANE"
       - name: Preserve raw results and separate score
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
