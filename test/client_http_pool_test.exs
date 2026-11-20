@@ -187,7 +187,13 @@ defmodule Snodo.ClientHTTPPoolTest do
 
   test "reuses the TLS session and socket for a second request" do
     url = serve(fn _headers, message, _count -> reply(message) end, :https)
-    {:ok, state} = HTTP.connect(url, ssl: [verify: :verify_none])
+
+    # Without :connect_timeout the request timeout also bounds the connect, and
+    # for :ssl.connect/4 that covers the whole TLS handshake. Both peers run in
+    # this VM, and the first handshake also loads the ssl modules, so under CPU
+    # load it can exceed the 1,000 ms request timeout. The test is about reuse,
+    # so the connect gets a generous bound and each exchange keeps the tight one.
+    {:ok, state} = HTTP.connect(url, ssl: [verify: :verify_none], connect_timeout: 10_000)
 
     assert {:ok, %{"id" => 1}} = request(state, 1)
     assert_receive {:accepted, connection}, 1_000
