@@ -564,12 +564,16 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
 
     key = {:streamable_http, opts.server_ref, request.connection_ref}
     tracked = tracked_request(prepared)
+    opts = Map.put(opts, :cancel_ref, make_ref())
     timer = start_request_timer(key, opts.deadline_timeout)
 
     try do
+      # Tracked before submission: the worker can start, and the client can
+      # see its effects and cancel it, before submit_execution returns.
+      track_request(tracked, opts.executor, key, opts.cancel_ref)
+
       case submit_execution(opts.executor, key, work, opts.request_timeout) do
         {:ok, execution_ref} ->
-          track_request(tracked, opts.executor, key)
           await_execution(socket, opts.executor, execution_ref, key, prepared, opts)
 
         {:error, :overloaded} ->
@@ -599,7 +603,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     after
       Progress.close(sink)
       cancel_request_timer(timer, key)
-      untrack_request(tracked)
+      untrack_request(tracked, opts.cancel_ref)
     end
   end
 
@@ -610,13 +614,35 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
 
   defp tracked_request(_prepared), do: nil
 
-  defp track_request({pid, id}, executor, key),
-    do: Session.track(pid, id, fn reason -> Executor.cancel(executor, key, reason) end)
+  # The session runs the callback in its own process. A cancel that reaches
+  # the executor before the submission does finds no work; it is handed to
+  # this process, which applies it once the work is submitted.
+  defp track_request({pid, id}, executor, key, cancel_ref) do
+    connection = self()
 
-  defp track_request(nil, _executor, _key), do: :ok
+    Session.track(pid, id, fn reason ->
+      case Executor.cancel(executor, key, reason) do
+        :ok -> :ok
+        {:error, :not_found} -> send(connection, {:mcp_request_cancelled, cancel_ref, reason})
+      end
+    end)
+  end
 
-  defp untrack_request({pid, id}), do: Session.untrack(pid, id)
-  defp untrack_request(nil), do: :ok
+  defp track_request(nil, _executor, _key, _cancel_ref), do: :ok
+
+  # Untracking is a call to the session, so a cancel it handed over has
+  # already arrived and can be discarded.
+  defp untrack_request({pid, id}, cancel_ref) do
+    Session.untrack(pid, id)
+
+    receive do
+      {:mcp_request_cancelled, ^cancel_ref, _reason} -> :ok
+    after
+      0 -> :ok
+    end
+  end
+
+  defp untrack_request(nil, _cancel_ref), do: :ok
 
   defp with_auth(prepared, _auth, nil), do: prepared
   defp with_auth(prepared, auth, _gate), do: put_in(prepared.transport.metadata[:auth], auth)
@@ -632,10 +658,16 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   end
 
   defp await_execution_message(socket, executor, execution_ref, key, prepared, opts) do
+    cancel_ref = opts.cancel_ref
+
     receive do
       {:mcp_execution, ^executor, ^execution_ref, ^key, outcome} ->
         :ok = Progress.close(opts.progress.sink)
         finish_execution(socket, execution_response(outcome, prepared, opts), opts)
+
+      {:mcp_request_cancelled, ^cancel_ref, reason} ->
+        _cancelled = cancel_execution(executor, key, reason, opts.progress.sink)
+        await_execution_message(socket, executor, execution_ref, key, prepared, opts)
 
       {:mcp_http_deadline, ^key} ->
         _cancelled = cancel_execution(executor, key, :request_timeout, opts.progress.sink)

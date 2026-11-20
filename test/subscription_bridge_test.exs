@@ -297,7 +297,9 @@ defmodule Snodo.SubscriptionBridgeDistributedTest do
   alias SnodoTest.SubscriptionBridge, as: Helpers
 
   @moduletag :distributed
-  @moduletag timeout: 60_000
+  # One test starts two peers, each allowed @peer_timeout per setup step.
+  @moduletag timeout: 180_000
+  @peer_timeout 30_000
   @moduletag skip:
                if(Node.alive?(),
                  do: false,
@@ -373,29 +375,38 @@ defmodule Snodo.SubscriptionBridgeDistributedTest do
     Node.monitor(peer_node, false)
   end
 
+  # A fresh peer loads and starts snodo from cold. On a loaded runner that
+  # can take longer than :peer.call's default of 5 seconds, so every setup step
+  # gets this limit, and the peer counts as ready only once both nodes see
+  # both bridges in the group.
   defp start_peer(config) do
     {:ok, peer, peer_node} =
       :peer.start(%{
         name: config.peer_name,
         connection: :standard_io,
         args: [~c"+S", ~c"2:2", ~c"-setcookie", Atom.to_charlist(Node.get_cookie())],
-        wait_boot: 15_000
+        wait_boot: @peer_timeout
       })
 
     on_exit(fn -> if Process.alive?(peer), do: :peer.stop(peer) end)
-    assert :ok = :peer.call(peer, :code, :add_paths, [:code.get_path()])
-    assert {:ok, _apps} = :peer.call(peer, Application, :ensure_all_started, [:snodo])
+    assert :ok = peer_call(peer, :code, :add_paths, [:code.get_path()])
+    assert {:ok, _apps} = peer_call(peer, Application, :ensure_all_started, [:snodo])
     assert Node.connect(peer_node)
 
     assert {:ok, bridge} =
-             :peer.call(peer, Supervisor, :start_child, [
+             peer_call(peer, Supervisor, :start_child, [
                Snodo.Supervisor,
                {Bridge, name: nil, scope: config.scope, group: config.group}
              ])
 
-    assert length(Helpers.await_members(config.scope, config.group, 2)) == 2
-
-    assert length(:peer.call(peer, Helpers, :await_members, [config.scope, config.group, 2])) == 2
+    assert length(Helpers.await_members(config.scope, config.group, 2, [], @peer_timeout)) == 2
+    members = [config.scope, config.group, 2, [], @peer_timeout]
+    assert length(peer_call(peer, Helpers, :await_members, members)) == 2
     {peer, bridge, peer_node}
   end
+
+  # The call outlasts any wait the peer runs inside it, so a slow peer fails
+  # with that wait's message rather than a bare call timeout.
+  defp peer_call(peer, module, function, args),
+    do: :peer.call(peer, module, function, args, @peer_timeout + 5_000)
 end
