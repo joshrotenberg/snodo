@@ -396,6 +396,71 @@ inferred. The corpus intentionally excludes Tasks, among other paths documented
 in its README. It does not establish universal wire validity or encode every
 prose requirement in JSON Schema.
 
+## Tasks store soak evidence
+
+`Snodo.Extensions.Tasks.Stress` runs the same deterministic workload against
+any Tasks store: a CAS race in which every writer of a Task holds a valid
+lease, a lease-fencing pass in which a released lease must be refused for a
+transition and a renewal after a second owner claims the Task, and Runner
+rounds that hold a full batch of workers open at once. Each contended and
+fenced Task is checked on its own: the writer the store reported as applied
+must be the only ledger entry and the completed result, and a refused stale
+lease must leave the Task unchanged. Pass or fail comes only from exact
+invariants; throughput and latency are observations.
+[`stress-testing.md`](https://github.com/joshrotenberg/snodo/blob/main/extensions/tasks/stress-testing.md)
+describes the report. The SQLite and PostgreSQL entry points are repository
+Mix tasks, not part of the published packages.
+
+| Store | Command | Where it runs |
+|---|---|---|
+| Memory | `mix tasks.stress` in `extensions/tasks` | By hand; a small run is in the `snodo_tasks` suite |
+| SQLite | `mix tasks.sqlite.stress` in `extensions/tasks_sqlite` | By hand and in the scheduled soak workflow; a small run is in the `snodo_tasks_sqlite` suite |
+| PostgreSQL | `mix tasks.postgres.stress` in `extensions/tasks_postgres`, with `SNODO_TASKS_DATABASE_URL` | By hand and in the scheduled soak workflow on PostgreSQL 14, 16, and 18; a four-Task run is in `mix quality.postgres`, which the Compatibility workflow runs on 14, 16, and 18 for every pull request |
+
+SQLite results, recorded on 2026-11-20 on a 12-core Linux workstation with
+Elixir 1.20 and exqlite 0.43, file-backed WAL database in a temporary
+directory:
+
+| Run | CAS attempts | CAS p50 / p95 / p99 | Fencing claim p50 / p95 / p99 | Runner jobs | Busy | Unexpected | Invariants |
+|---|---|---|---|---|---|---|---|
+| 200 tasks, 16 writers, 10 rounds, pool 5 | 3,200 (876/s) | 7.2 / 18.7 / 30.7 ms | 14.2 / 37.9 / 53.0 ms | 2,000 (150/s) | 0 | 0 | all 11 passed |
+| 500 tasks, 32 writers, 20 rounds, pool 10 | 16,000 (1,294/s) | 9.0 / 22.7 / 60.5 ms | 16.7 / 65.0 / 99.3 ms | 10,000 (227/s) | 0 | 0 | all 11 passed |
+| 200 tasks, 32 writers, 3 rounds, pool 10, 10 ms busy timeout, 100 ms store timeout | 6,400 (2,171/s) | 5.8 / 13.6 / 25.3 ms | 11.8 / 59.2 / 109.8 ms | 600 (150/s) | 31 CAS losses, 175 retries | 0 | all 11 passed |
+
+In every run each contended Task had exactly one applied writer, whose event
+was the Task's only ledger entry and its completed result. Every stale lease
+was refused for both the transition and the renewal and left its Task
+unchanged, and every live lease's event was the only ledger entry. Every
+Runner job started, stopped, completed with an applied transition, and
+released its lease; peak live jobs reached the batch size, and the Runner
+held no jobs at the end. The third run forces `{:error, :database_busy}`:
+busy CAS attempts lost without a hidden commit, and setup and fencing calls
+retried until they succeeded. Runner throughput includes the harness polling
+every Task in the batch, so it is a lower bound, not the store's commit rate.
+
+No PostgreSQL soak results are recorded yet. They will come from the first
+run of the
+[Tasks store soak workflow](https://github.com/joshrotenberg/snodo/blob/main/.github/workflows/tasks-soak.yml)
+after this harness is merged, whether scheduled (weekly) or started by hand
+with `gh workflow run tasks-soak.yml`. Each run uploads each version's JSON
+report and log and writes the report to the job summary. Until then, the only
+PostgreSQL run of the harness is the four-Task soak in the pull request live
+lane on 14, 16, and 18, which checks the invariants but is not sustained load.
+To run the full soak locally:
+
+```sh
+docker run --rm -d --name snodo-pg -p 55432:5432 \
+  -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=snodo_tasks \
+  postgres:18-alpine
+cd extensions/tasks_postgres
+SNODO_TASKS_DATABASE_URL=ecto://postgres:postgres@127.0.0.1:55432/snodo_tasks \
+  mix tasks.postgres.stress --tasks 200 --writers 16 --rounds 10 --json
+```
+
+These runs are single-node correctness evidence under load. They are not a
+capacity claim and do not cover multi-node Runner scheduling, crash recovery
+during load, or migration under load.
+
 ## Next compliance increments
 
 1. Preserve the checked-in honest core summary as the runner and its
@@ -409,10 +474,10 @@ prose requirement in JSON Schema.
    surfaces land, retaining concrete-branch checks and negative controls.
 4. Keep the implemented retry policy and optional PostgreSQL and SQLite Tasks
    adapters in their own evidence lanes. Run and retain the checked-in
-   PostgreSQL-version and migration-upgrade matrix, and add database-specific
-   operational soak before making a production-readiness claim. The
-   deterministic Memory contention/Runner harness is a common correctness
-   baseline, not database capacity evidence.
+   PostgreSQL-version and migration-upgrade matrix and the scheduled store
+   soak described above. Soak under crash recovery, migration, and more than
+   one Runner node is still open, and is needed before a production-readiness
+   claim.
 5. Add property/adversarial wire generation, a transport matrix, more official
    SDKs, and differential structural checks as separate lanes.
 

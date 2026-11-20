@@ -1,0 +1,177 @@
+name: Tasks store soak
+
+# Runs the Tasks contention and soak harness against the PostgreSQL and SQLite
+# stores at a larger scale than the test suites. Informational: it is not a
+# required check and does not run on pull requests. Each run uploads the JSON
+# reports and writes them to the job summary; guides/protocol-compliance.md
+# cites the PostgreSQL results from this workflow.
+on:
+  schedule:
+    - cron: "29 4 * * 0"
+  workflow_dispatch:
+    inputs:
+      tasks:
+        description: Tasks per scenario and per runner round
+        default: "200"
+      writers:
+        description: Writers per contended Task
+        default: "16"
+      rounds:
+        description: Runner rounds
+        default: "10"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tasks-soak-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  SOAK_TASKS: ${{ inputs.tasks || '200' }}
+  SOAK_WRITERS: ${{ inputs.writers || '16' }}
+  SOAK_ROUNDS: ${{ inputs.rounds || '10' }}
+
+jobs:
+  postgres:
+    name: PostgreSQL ${{ matrix.postgres }} soak
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ["14", "16", "18"]
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres }}-alpine
+        env:
+          POSTGRES_DB: snodo_tasks
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d snodo_tasks"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      SNODO_TASKS_DATABASE_URL: ecto://postgres:postgres@127.0.0.1:5432/snodo_tasks
+      MIX_ENV: test
+      REPORT: postgres-${{ matrix.postgres }}.json
+      LOG: postgres-${{ matrix.postgres }}.log
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        with:
+          elixir-version: "1.20"
+          otp-version: "29"
+      - name: Install package managers
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+      - name: Fetch PostgreSQL package dependencies
+        working-directory: extensions/tasks_postgres
+        run: mix deps.get
+      - name: Compile the PostgreSQL package
+        working-directory: extensions/tasks_postgres
+        run: mix compile --warnings-as-errors
+      # The full output goes to a log. The report is the last line of the log
+      # that starts with "{" and parses as JSON; it is still printed when an
+      # invariant fails. A run that raises before printing leaves only the log,
+      # never an empty report.
+      - name: Run the PostgreSQL soak
+        working-directory: extensions/tasks_postgres
+        run: |
+          status=0
+          mix tasks.postgres.stress --tasks "$SOAK_TASKS" --writers "$SOAK_WRITERS" \
+            --rounds "$SOAK_ROUNDS" --timeout-ms 300000 --json > "$LOG" 2>&1 || status=$?
+          if ! grep '^{' "$LOG" | tail -n 1 | jq -e . > "$REPORT" 2> /dev/null; then
+            rm -f "$REPORT"
+            echo "::error::The soak did not print a JSON report; see the $LOG artifact"
+            tail -n 50 "$LOG"
+          fi
+          exit "$status"
+      - name: Summarize the report
+        if: always()
+        working-directory: extensions/tasks_postgres
+        run: |
+          if [ -s "$REPORT" ]; then
+            {
+              echo "### PostgreSQL ${{ matrix.postgres }} soak"
+              echo '```json'
+              cat "$REPORT"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: tasks-soak-postgres-${{ matrix.postgres }}
+          path: |
+            extensions/tasks_postgres/${{ env.REPORT }}
+            extensions/tasks_postgres/${{ env.LOG }}
+          if-no-files-found: ignore
+          retention-days: 90
+
+  sqlite:
+    name: SQLite soak
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      MIX_ENV: test
+      REPORT: sqlite.json
+      LOG: sqlite.log
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        with:
+          elixir-version: "1.20"
+          otp-version: "29"
+      - name: Install package managers
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+      - name: Fetch SQLite package dependencies
+        working-directory: extensions/tasks_sqlite
+        run: mix deps.get
+      - name: Compile the SQLite package
+        working-directory: extensions/tasks_sqlite
+        run: mix compile --warnings-as-errors
+      - name: Run the SQLite soak
+        working-directory: extensions/tasks_sqlite
+        run: |
+          status=0
+          mix tasks.sqlite.stress --tasks "$SOAK_TASKS" --writers "$SOAK_WRITERS" \
+            --rounds "$SOAK_ROUNDS" --timeout-ms 300000 --json > "$LOG" 2>&1 || status=$?
+          if ! grep '^{' "$LOG" | tail -n 1 | jq -e . > "$REPORT" 2> /dev/null; then
+            rm -f "$REPORT"
+            echo "::error::The soak did not print a JSON report; see the $LOG artifact"
+            tail -n 50 "$LOG"
+          fi
+          exit "$status"
+      - name: Summarize the report
+        if: always()
+        working-directory: extensions/tasks_sqlite
+        run: |
+          if [ -s "$REPORT" ]; then
+            {
+              echo "### SQLite soak"
+              echo '```json'
+              cat "$REPORT"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: tasks-soak-sqlite
+          path: |
+            extensions/tasks_sqlite/${{ env.REPORT }}
+            extensions/tasks_sqlite/${{ env.LOG }}
+          if-no-files-found: ignore
+          retention-days: 90

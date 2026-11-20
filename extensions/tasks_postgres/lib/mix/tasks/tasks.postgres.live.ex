@@ -14,6 +14,9 @@ defmodule Mix.Tasks.Tasks.Postgres.Live do
   ]
   @contract_test_module Snodo.Extensions.Tasks.Postgres.LiveTest
   @contract_test_path "test/postgres_live_test.exs"
+  # A small run of `mix tasks.postgres.stress`, so the soak entry point is
+  # exercised wherever the live contract runs.
+  @stress_test_path "test/postgres_stress_test.exs"
 
   @moduledoc """
   Runs transaction and locking evidence against a real PostgreSQL database.
@@ -22,19 +25,23 @@ defmodule Mix.Tasks.Tasks.Postgres.Live do
         mix tasks.postgres.live
 
   The suite starts an ordinary application-owned Ecto Repo pool and creates a
-  unique PostgreSQL schema. It deliberately does not use SQL Sandbox.
+  unique PostgreSQL schema. It deliberately does not use SQL Sandbox. It also
+  runs a small soak through `mix tasks.postgres.stress`.
   """
 
   @impl Mix.Task
   def run([]) do
     require_database_url!()
 
-    unless File.regular?(@contract_test_path) do
-      Mix.raise("PostgreSQL live contract test is missing: #{@contract_test_path}")
-    end
+    Enum.each([@contract_test_path, @stress_test_path], fn path ->
+      unless File.regular?(path) do
+        Mix.raise("PostgreSQL live test is missing: #{path}")
+      end
+    end)
 
     Mix.Task.run("test", [
       @contract_test_path,
+      @stress_test_path,
       "--include",
       "postgres_live",
       "--raise",

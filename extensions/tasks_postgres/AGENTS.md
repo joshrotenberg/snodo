@@ -17,6 +17,8 @@ SNODO_TASKS_DATABASE_URL=ecto://postgres:postgres@127.0.0.1:55432/snodo_tasks \
 
 CI runs the live lane on PostgreSQL 14, 16, and 18. Run it for any change to this package or to the store contract in `snodo_tasks`.
 
+`mix tasks.postgres.stress` runs the shared Tasks soak harness against the same database URL (`--pool-size` must be at least 2). The live lane includes a four-Task run of it, so pull requests exercise it on PostgreSQL 14, 16, and 18. The full soak runs only in [tasks-soak.yml](../../.github/workflows/tasks-soak.yml): weekly on a schedule, and by hand with `gh workflow run tasks-soak.yml --ref <branch> -f tasks=500 -f writers=32 -f rounds=20`. It is never a pull request gate.
+
 ## Rules
 
 - The live suite does not use the SQL Sandbox: row locking between independent sessions is what it tests. Each run creates and drops its own schema.

@@ -248,8 +248,8 @@ mix quality.types
 mix tasks.postgres.contract
 ```
 
-That default lane has 9 database-independent tests and one adapter evidence
-group; it excludes the 16 live tests.
+That default lane has 12 database-independent tests and one adapter evidence
+group; it excludes the 16 live contract tests and the live soak test.
 
 The live transaction lane is deliberately separate from default unit quality.
 Point it at a dedicated PostgreSQL database:
@@ -285,3 +285,34 @@ focusing on the setup path: it checks the migrated schema, creates a Task throug
 the public extension API, and completes persisted Work through an
 application-owned executor. `mix quality.postgres` runs it after the live
 contract.
+
+### Soak
+
+`mix tasks.postgres.stress` runs the shared Tasks contention and soak harness
+(see
+[`stress-testing.md`](https://github.com/joshrotenberg/snodo/blob/main/extensions/tasks/stress-testing.md))
+against this store:
+
+```sh
+SNODO_TASKS_DATABASE_URL=ecto://postgres:postgres@127.0.0.1:55432/snodo_tasks \
+  mix tasks.postgres.stress --tasks 200 --writers 16 --rounds 10 --json
+```
+
+The task is in the repository only; `lib/mix` is not part of the published
+package. It starts its own Repo pool (`--pool-size`, default 10, minimum 2
+because the migration needs two connections), creates and migrates a randomly
+named schema, and drops the schema afterwards. `--store-timeout-ms` and
+`--lock-timeout-ms` set the store's `:timeout` and `:lock_timeout_ms`. For
+each contended Task the report checks one winning writer whose event is the
+only ledger entry; it checks that a released lease is refused after a second
+claim and leaves the Task untouched, and that Runner rounds are complete,
+balanced, and drained. Any store error, including a failed lease release
+reported by the Runner, fails the run.
+
+`mix tasks.postgres.live`, and so `mix quality.postgres`, includes a four-Task
+run of the same entry point; the Compatibility workflow runs it on PostgreSQL
+14, 16, and 18 for every pull request. The full soak runs in the
+[Tasks store soak workflow](https://github.com/joshrotenberg/snodo/blob/main/.github/workflows/tasks-soak.yml),
+weekly and by hand (`gh workflow run tasks-soak.yml`), on the same three
+versions, and keeps each JSON report and log as artifacts. It is not a pull
+request check.

@@ -29,9 +29,11 @@ The package maintains 10 local contract groups. The root
 child package where appropriate.
 
 `mix tasks.stress` is a separately invoked, deterministic correctness workload
-for many-writer compare-and-set contention and repeated Runner batches. It
-produces exact invariant results plus descriptive timings, and accepts `--json`
-for artifact collection. See
+for many-writer compare-and-set contention, lease fencing, and repeated Runner
+batches. It produces exact invariant results plus descriptive timings, and
+accepts `--json` for artifact collection. The harness takes any store; in
+this repository the PostgreSQL and SQLite packages run it with
+`mix tasks.postgres.stress` and `mix tasks.sqlite.stress`. See
 [`stress-testing.md`](https://github.com/joshrotenberg/snodo/blob/main/extensions/tasks/stress-testing.md).
 
 To implement another backend, see the [custom store guide](guides/custom-stores.md).
