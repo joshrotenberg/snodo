@@ -345,6 +345,9 @@ defmodule SnodoTest.FutureDialect do
   def validate_operation(_operation, _params, %Context{}), do: :ok
 
   @impl true
+  def shape_result(_operation, %Result{}, %Context{metadata: %{"com.acme/raise" => true}}),
+    do: raise("private dialect result detail")
+
   def shape_result(_operation, %Result{} = result, _context) do
     %{"resultType" => "complete", "futureValue" => result.value}
   end

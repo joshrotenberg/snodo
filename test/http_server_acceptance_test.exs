@@ -7,6 +7,7 @@ defmodule Snodo.Transport.StreamableHTTP.ServerAcceptanceTest do
   alias Snodo.Transport.StreamableHTTP.Response
   alias Snodo.Transport.StreamableHTTP.Server, as: HTTPServer
   alias SnodoTest.TestFixtures
+  alias SnodoTest.TestResources.Raising
   alias SnodoTest.TestResources.StaticText
   alias SnodoTest.TestSubscriptionHub
   alias SnodoTest.TestSubscriptionSource
@@ -197,6 +198,41 @@ defmodule Snodo.Transport.StreamableHTTP.ServerAcceptanceTest do
 
     assert response.status == 400
     assert %{"id" => nil, "error" => %{"code" => -32_700}} = JSON.decode!(response.body)
+  end
+
+  test "HTTP status distinguishes malformed requests from resource execution errors" do
+    runtime = TestFixtures.runtime(resources: [Raising])
+    server = start_supervised!({HTTPServer, runtime: runtime, port: 0})
+    {_ip, port, _path} = HTTPServer.address(server)
+
+    for {method, params, status, code} <- [
+          {"resources/read", %{"uri" => "relative"}, 400, -32_602},
+          {"resources/read", %{"uri" => "test://missing"}, 200, -32_602},
+          {"resources/read", %{"uri" => "test://errors/raise"}, 200, -32_603},
+          {"vendor/missing", %{}, 404, -32_601}
+        ] do
+      raw = TestFixtures.request("status", method, params)
+
+      assert %{status: ^status, body: body} =
+               raw_request(port, "POST", "/mcp", headers(raw), JSON.encode!(raw))
+
+      assert %{"id" => "status", "error" => %{"code" => ^code}} = JSON.decode!(body)
+    end
+
+    malformed = TestFixtures.request("malformed", "tools/list") |> Map.put("params", [])
+
+    assert %{status: 400, body: body} =
+             raw_request(port, "POST", "/mcp", headers(malformed), JSON.encode!(malformed))
+
+    assert %{"id" => "malformed", "error" => %{"code" => -32_602}} = JSON.decode!(body)
+
+    raw = TestFixtures.request("mismatch", "tools/list")
+    mismatched = [{"Mcp-Method", "ping"} | delete_header(headers(raw), "mcp-method")]
+
+    assert %{status: 400, body: body} =
+             raw_request(port, "POST", "/mcp", mismatched, JSON.encode!(raw))
+
+    assert %{"id" => "mismatch", "error" => %{"code" => -32_020}} = JSON.decode!(body)
   end
 
   test "warns after binding a wildcard address" do

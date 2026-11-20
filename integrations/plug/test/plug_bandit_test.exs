@@ -24,6 +24,34 @@ defmodule Snodo.Transport.PlugBanditTest do
   @version_key "io.modelcontextprotocol/protocolVersion"
   @capabilities_key "io.modelcontextprotocol/clientCapabilities"
 
+  defmodule RaisingResource do
+    @moduledoc false
+    use Snodo.Resource, uri: "test://errors/raise", name: "raising_resource"
+
+    @impl true
+    def read(_params, _context), do: raise("resource fixture exploded")
+  end
+
+  test "HTTP status distinguishes malformed requests from resource execution errors" do
+    %{port: port} = server(resources: [RaisingResource], capabilities: %{"resources" => %{}})
+
+    for {method, params, status, code} <- [
+          {"resources/read", %{"uri" => "relative"}, 400, -32_602},
+          {"resources/read", %{"uri" => "test://missing"}, 200, -32_602},
+          {"resources/read", %{"uri" => "test://errors/raise"}, 200, -32_603},
+          {"vendor/missing", %{}, 404, -32_601}
+        ] do
+      assert {^status, %{"id" => 1, "error" => %{"code" => ^code}}} =
+               rpc(port, request(method, params))
+    end
+
+    malformed = request("tools/list", %{}) |> Map.put("params", [])
+    assert {400, %{"id" => 1, "error" => %{"code" => -32_602}}} = rpc(port, malformed)
+
+    assert {400, %{"id" => 1, "error" => %{"code" => -32_020}}} =
+             rpc(port, request("tools/list", %{}), replace_headers: [{"mcp-method", "ping"}])
+  end
+
   test "real Bandit dispatches discovery and forwards only trusted authentication" do
     %{port: port} = server()
     assert {200, discovery} = rpc(port, request("server/discover", %{}))
@@ -875,7 +903,7 @@ defmodule Snodo.Transport.PlugBanditTest do
       if executor_name, do: Keyword.put(executor_opts, :name, executor_name), else: executor_opts
 
     executor = start_supervised!({Executor, executor_opts})
-    runtime_opts = [:protocols, :capabilities, :tools, :authorization]
+    runtime_opts = [:protocols, :capabilities, :tools, :resources, :authorization]
 
     transport_opts =
       Keyword.drop(
@@ -1027,7 +1055,12 @@ defmodule Snodo.Transport.PlugBanditTest do
           Enum.reject(headers, fn {key, _} -> key in ["mcp-protocol-version", "mcp-method"] end),
         else: headers
 
-    name = if opts[:legacy], do: nil, else: get_in(body, ["params", "name"])
+    name =
+      case {opts[:legacy], body["params"]} do
+        {legacy, %{} = params} when legacy in [nil, false] -> params["name"] || params["uri"]
+        _other -> nil
+      end
+
     headers = if name, do: headers ++ [{"mcp-name", name}], else: headers
 
     headers =

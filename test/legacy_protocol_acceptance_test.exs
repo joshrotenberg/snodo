@@ -58,7 +58,7 @@ defmodule Snodo.LegacyProtocolAcceptanceTest do
       request_headers: %{"mcp-protocol-version" => version}
     }
 
-  test "legacy JSON-RPC errors travel over HTTP with 200 while modern ones keep their status" do
+  test "legacy dispatch errors and modern unknown tools travel over HTTP with 200" do
     runtime = runtime()
 
     http = fn version, body ->
@@ -100,7 +100,7 @@ defmodule Snodo.LegacyProtocolAcceptanceTest do
         "io.modelcontextprotocol/clientCapabilities" => %{}
       })
 
-    assert {400, %{"error" => %{"code" => -32_602}}} = http.("2026-07-28", modern)
+    assert {200, %{"error" => %{"code" => -32_602}}} = http.("2026-07-28", modern)
   end
 
   test "legacy is opt in and unsupported initialize proposals negotiate a configured legacy version" do

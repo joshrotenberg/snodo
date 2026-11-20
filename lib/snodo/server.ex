@@ -65,6 +65,8 @@ defmodule Snodo.Server do
   @max_instrumented_method_bytes 128
 
   @type dispatch_result :: {:ok, map() | nil} | {:stream, Subscription.t()}
+  @typedoc false
+  @type dispatch_outcome :: dispatch_result() | {:executed, dispatch_result()}
 
   defmacro __using__(opts) do
     name = Keyword.fetch!(opts, :name)
@@ -390,6 +392,15 @@ defmodule Snodo.Server do
   @doc "Dispatches one decoded JSON-RPC map through the configured dialect and router."
   @spec dispatch(Runtime.t(), term(), TransportContext.t()) :: dispatch_result()
   def dispatch(%Runtime{} = runtime, raw, %TransportContext{} = transport) do
+    case dispatch_with_outcome(runtime, raw, transport) do
+      {:executed, result} -> result
+      result -> result
+    end
+  end
+
+  @doc false
+  @spec dispatch_with_outcome(Runtime.t(), term(), TransportContext.t()) :: dispatch_outcome()
+  def dispatch_with_outcome(%Runtime{} = runtime, raw, %TransportContext{} = transport) do
     Instrumentation.span(
       runtime.instrumentation,
       [:snodo, :server, :dispatch],
@@ -462,6 +473,8 @@ defmodule Snodo.Server do
 
   defp instrumented_method(_raw), do: :invalid
 
+  defp dispatch_finish_metadata({:executed, result}), do: dispatch_finish_metadata(result)
+
   defp dispatch_finish_metadata({:stream, _subscription}), do: %{outcome: :stream}
   defp dispatch_finish_metadata({:ok, nil}), do: %{outcome: :no_reply}
 
@@ -509,8 +522,17 @@ defmodule Snodo.Server do
   end
 
   defp dispatch_route(runtime, protocol, envelope, route, context) do
-    with :ok <- validate_route(runtime, protocol, route, envelope.params, context),
-         {:ok, result} <- execute_route(runtime, protocol, route, envelope.params, context),
+    case validate_route(runtime, protocol, route, envelope.params, context) do
+      :ok ->
+        {:executed, execute_validated_route(runtime, protocol, envelope, route, context)}
+
+      {:error, %Error{} = error} ->
+        shape_route_error(runtime, protocol, envelope, route, context, error)
+    end
+  end
+
+  defp execute_validated_route(runtime, protocol, envelope, route, context) do
+    with {:ok, result} <- execute_route(runtime, protocol, route, envelope.params, context),
          {:ok, shaped} <- shape_route_result(runtime, protocol, route, result, context) do
       case shaped do
         {:subscription, %Subscription{} = subscription} -> {:stream, subscription}
@@ -520,6 +542,8 @@ defmodule Snodo.Server do
       {:error, %Error{} = error} ->
         shape_route_error(runtime, protocol, envelope, route, context, error)
     end
+  rescue
+    _exception -> {:ok, generic_error_response(Error.internal(), envelope.id)}
   end
 
   defp resolve_route(

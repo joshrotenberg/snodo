@@ -107,7 +107,14 @@ defmodule SnodoTest.PlugFixtures do
       router:
         opts
         |> Keyword.get(:tools, [Tool])
-        |> Enum.reduce(Snodo.Router.new(), &Snodo.Router.register_tool(&2, &1)),
+        |> Enum.reduce(Snodo.Router.new(), &Snodo.Router.register_tool(&2, &1))
+        |> then(fn router ->
+          Enum.reduce(
+            Keyword.get(opts, :resources, []),
+            router,
+            &Snodo.Router.register_resource(&2, &1)
+          )
+        end),
       protocols: Keyword.get(opts, :protocols, [Snodo.Protocol.V2026_07_28]),
       server_info: %{"name" => "plug-acceptance", "version" => "0.1.0"},
       capabilities: Keyword.get(opts, :capabilities, %{"tools" => %{"listChanged" => true}}),

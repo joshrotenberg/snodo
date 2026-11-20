@@ -230,6 +230,41 @@ must keep it above `:drain_timeout`; a supervisor that kills the listener
 earlier skips the rest of the drain. The release or platform that stops the VM
 must allow for the drain as well.
 
+## JSON-RPC errors over HTTP
+
+The native listener and `Snodo.Transport.Plug` use the same status rules for
+2026-07-28. The response body carries the JSON-RPC error and its request ID.
+
+| Error source | JSON-RPC code | HTTP status |
+| --- | --- | --- |
+| Malformed JSON or invalid JSON-RPC request | -32700 or -32600 | 400 |
+| Invalid params during request admission or protocol validation | -32602 | 400 |
+| Internal failure during request admission or protocol validation | -32603 | 500 |
+| Missing or mismatched routing headers, missing client capability, or unsupported protocol version | -32020, -32021, or -32022 | 400 |
+| Unknown RPC method | -32601 | 404 |
+| Invalid params or internal failure during method execution, including a missing resource or a handler exception | -32602 or -32603 | 200 |
+
+For these two codes, the status depends on whether request validation passed.
+`validate_route/5` calls the dialect's or extension's `validate_operation/3`.
+Once that validation passes, errors from lookups, middleware, handlers, and
+result shaping belong to method execution. For example:
+
+- A non-string `cursor` gets 400. A well-formed cursor from a stale catalog gets 200.
+- A non-map `inputResponses` gets 400. An invalid answer consumed from a valid map gets 200.
+- Tasks middleware reports `Task input is larger than N bytes` on 200.
+  This error previously used 400.
+- Non-object `tools/call` `arguments` get 400. Tool schema validation failures,
+  including missing required arguments, continue to return `isError` results on 200.
+
+Executor failures keep their existing statuses. A request timeout gets 504,
+a crashed worker or unavailable executor gets 500, capacity refusal gets
+503, and a duplicate in-flight request ID gets 409. See the
+[native listener limits](#native-http-listener) and
+[Plug limits](https://hexdocs.pm/snodo_plug/readme.html#bounds-and-lifecycle-guarantees).
+
+If the HTTP response has already started as an SSE stream, the terminal
+JSON-RPC error is delivered in that stream with its committed status.
+
 ## Initialize-era sessions
 
 Clients of the opt-in 2025-11-25 and 2025-06-18 dialects (see

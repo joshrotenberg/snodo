@@ -72,7 +72,7 @@ function start(mode) {
         assert.equal(new URL(this.url).hostname, "127.0.0.1");
       }
     },
-    async call(raw) {
+    async call(raw, expectedStatus) {
       if (mode === "http") {
         const headers = { "content-type": "application/json", accept: "application/json, text/event-stream", "MCP-Protocol-Version": version, "Mcp-Method": raw.method };
         const name = raw.params.name ?? raw.params.uri;
@@ -85,7 +85,7 @@ function start(mode) {
         const messages = response.headers.get("content-type")?.includes("text/event-stream")
           ? body.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => JSON.parse(line.slice(5).trim()))
           : [JSON.parse(body)];
-        assert.equal(response.status, messages.some((message) => message.error) ? 400 : 200);
+        assert.equal(response.status, expectedStatus);
         return messages;
       }
       child.stdin.write(JSON.stringify(raw) + "\n");
@@ -116,9 +116,9 @@ async function exercise(mode) {
   let emissions = 0;
   let negativeControls = 0;
 
-  async function call(method, params, expected = "complete") {
+  async function call(method, params, expected = "complete", expectedStatus = 200) {
     const raw = request(method, params);
-    const messages = await peer.call(raw);
+    const messages = await peer.call(raw, expectedStatus);
     assert.ok(messages.length > 0);
     for (const message of messages) {
       for (const name of validateEmission(method, message)) definitions.add(name);
@@ -209,7 +209,7 @@ async function exercise(mode) {
     } });
     assert.equal(everyRetry.final.result.content[0].text, "label,summary,client_roots");
     // Without the sampling capability the dialect refuses the result before it is sent.
-    const refused = await call("tools/call", { name: "schema_preview", arguments: { mode: "sampling" } }, "error");
+    const refused = await call("tools/call", { name: "schema_preview", arguments: { mode: "sampling" } }, "error", 400);
     assert.equal(refused.final.error.code, -32021);
     assert.deepEqual(refused.final.error.data.requiredCapabilities, { sampling: {} });
 
@@ -229,7 +229,7 @@ async function exercise(mode) {
     assert.deepEqual(directory.final.result.resources.map((child) => child.mimeType), ["text/markdown", "inode/directory"]);
     const unknown = await call("skills/get", { uri: "skill://missing/SKILL.md", _meta: skillsMeta }, "error");
     assert.equal(unknown.final.error.code, -32602);
-    const undeclared = await call("skills/list", {}, "error");
+    const undeclared = await call("skills/list", {}, "error", 400);
     assert.equal(undeclared.final.error.code, -32021);
     assert.deepEqual(undeclared.final.error.data.requiredCapabilities,
       { extensions: { "io.modelcontextprotocol/skills": {} } });
