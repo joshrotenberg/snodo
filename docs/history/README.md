@@ -15,3 +15,6 @@ The [guides](../../guides) describe the current library.
   the 2026-07-28 binding.
 - [Events extension](2026-11-19-events-extension.md) records the decision to
   defer SEP-3415 and sketches an Events sibling package.
+- [Executor load run](2026-11-20-executor-load.md) reports `mix snodo.load`
+  results for 1,000 concurrent requests over stdio and HTTP, and which
+  executor features they call for.

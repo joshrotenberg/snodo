@@ -21,10 +21,17 @@ admission, a bounded queue, deadlines, cancellation tokens, and supervised
 worker tasks, with cleanup when the submitting process dies. The stdio adapter
 and the HTTP listener use it; an application can inject its own executor.
 
-The executor applies global concurrency and queue limits and starts deadlines
-when work begins, with no per-peer fairness, adaptive load shedding, or
-queue-wait deadline of its own. Each executor admits work through one
-coordinator, whose admission throughput has yet to be benchmarked.
+`:max_concurrency` (default 32) bounds running work and `:max_queue` (default
+256) bounds work waiting for a slot, in one first-in, first-out queue for
+every submitter. With both full, a request is refused with -32603 `Server
+execution capacity exhausted` (HTTP 503). The executor's deadline starts when
+work starts, so on stdio `:request_timeout` does not count queue wait. The
+native HTTP listener's `:request_timeout` covers queue wait plus execution.
+The [executor load record](https://github.com/joshrotenberg/snodo/blob/main/docs/history/2026-11-20-executor-load.md)
+measures both transports at 1,000 concurrent requests with the repository's
+`snodo.load` Mix task.
+The executor has no per-peer fairness, adaptive load shedding, or queue-wait
+deadline of its own.
 
 ## Limits on message content
 
@@ -154,6 +161,12 @@ The listener also bounds what clients can hold open:
 
 - `:max_connections` (default 1,024). A connection accepted at the limit is
   closed without being read.
+- `:backlog` (default 128). Connections the kernel holds before the listener
+  accepts them, capped on Linux by `net.core.somaxconn`. The kernel decides
+  what happens to connection attempts that overflow it. In the
+  [executor load record](https://github.com/joshrotenberg/snodo/blob/main/docs/history/2026-11-20-executor-load.md),
+  a burst of 1,000 connections on Linux had clients retrying after about a
+  second, so consider raising it when clients open many connections at once.
 - `:head_timeout` (default 10,000 ms from accept). The request head must be
   complete by then; `:read_timeout` (5,000 ms) still bounds each read.
 - `:keepalive_timeout` (default 5,000 ms). How long an idle connection waits

@@ -24,6 +24,11 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
       files, ports, and outbound sockets. If accepting fails because
       descriptors or buffers run out, the listener logs a warning and retries
       every 100 ms instead of stopping.
+    * `:backlog` - the listen socket's queue of connections not yet accepted,
+      default 128. The kernel caps it, on Linux at `net.core.somaxconn`, and
+      decides what happens to connection attempts that overflow it. On one
+      Linux machine, a burst of 1,000 connections against the default had
+      clients retrying after about a second, before any other limit applied.
     * `:head_timeout` - milliseconds from accept until the request head must be
       complete, default 10,000. `:read_timeout` (default 5,000) still bounds
       each read; this deadline bounds the whole head, so a client that sends it
