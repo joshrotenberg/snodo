@@ -327,7 +327,10 @@ and the flow runs:
    for the first `authorization_servers` entry. The document's `issuer` must
    equal the issuer used to build the URL, and for the authorization code
    flow its `code_challenge_methods_supported` must list `S256`; otherwise
-   the flow stops before registering or authorizing.
+   the flow stops before registering or authorizing. A fragment in an
+   advertised authorization, token, or registration endpoint causes
+   discovery to reject the whole document with `{:url_fragment, url}` as
+   the error's cause, even if the flow would leave that endpoint unused.
 3. A client ID: the `:client_metadata_url` when the server supports client
    ID metadata documents, else the configured `:client_id`, else the
    registration stored for this issuer, else dynamic client registration
@@ -337,9 +340,12 @@ and the flow runs:
    `scopes_supported`, plus scopes granted before, the configured `:scopes`,
    and `offline_access` when the server lists it (SEP-2207).
 5. The authorization request with PKCE `S256`, a random `state`, and the
-   `resource` (RFC 8707), handed to the `:authorize` function. The redirect
-   lands on a loopback listener bound before the URL exists (RFC 8252), or
-   the function returns it, or the application delivers it with
+   `resource` (RFC 8707), handed to the `:authorize` function. The client
+   preserves endpoint query entries in their original order, including
+   repeats and bare keys. It drops entries whose names the flow sets, then
+   appends the flow parameters in sorted order. The redirect lands on a
+   loopback listener bound before the URL exists (RFC 8252), or the function
+   returns it, or the application delivers it with
    `Snodo.OAuth.Client.callback/2` for a `{:external, uri}` redirect. `state`
    is compared in constant time; `iss` is compared exactly when present and
    required when the server advertises it (RFC 9207).
@@ -370,8 +376,12 @@ request.
 | `Snodo.OAuth.Client.PKCE` | `S256` verifiers and challenges (RFC 7636) |
 | `Snodo.OAuth.Client.TokenStore`, `Snodo.OAuth.Client.RegistrationStore`, `Snodo.OAuth.Client.PendingAuthorizationStore` | Store behaviours; each has an in-memory default under `.Memory` |
 
-Every URL the flow fetches or posts to must be `https`, or `http` to a
-loopback host. A document or token response larger than `max_body_bytes`
+Every URL the flow fetches or sends a request to must be `https`, or
+`http` to a loopback host. A fragment is refused with `{:url_fragment, url}`,
+including in a challenge's `resource_metadata` URL. The authorization
+server issuer must also be fragment-free, or discovery returns
+`{:invalid_issuer, issuer}`. A malformed query percent escape is refused
+with `{:url_query, url}`. A document or token response larger than `max_body_bytes`
 (256 KiB) is refused; `:httpc` reads the body before its size is checked, so
 the request timeout (`timeout_ms`, 10 seconds) bounds the transfer. Tokens
 are kept in the token store and never logged or placed in an error.

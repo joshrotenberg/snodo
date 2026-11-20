@@ -35,7 +35,9 @@ defmodule Snodo.OAuth.Client.Discovery do
   server URL.
 
   With `metadata_url`, the `resource_metadata` value of a `WWW-Authenticate`
-  challenge, only that URL is fetched. Without one, the path-based
+  challenge, only that URL is fetched. Any URL the client fetches or sends
+  a request to is refused with `{:error, {:url_fragment, url}}` if it contains
+  a fragment. Without a metadata URL, the path-based
   well-known location is tried first and the root one second, per RFC 9728.
   The document's `resource` must name the server: the same scheme, host,
   and port, with a path that is the server path or a prefix of it at a
@@ -64,6 +66,10 @@ defmodule Snodo.OAuth.Client.Discovery do
   the OpenID configuration is also tried after the path. The `issuer` in the
   document must equal `issuer` exactly (RFC 8414 section 3.3, no
   normalization); otherwise `{:error, {:issuer_mismatch, issuer, found}}`.
+  The token endpoint is required. The token, authorization, and registration
+  endpoints are checked when present, including endpoints the current flow
+  does not use. A fragment in any of them causes discovery to reject the
+  whole document with `{:error, {:url_fragment, url}}`.
   """
   @spec authorization_server(http(), String.t()) :: {:ok, map()} | {:error, term()}
   def authorization_server(http, issuer) do
@@ -71,7 +77,9 @@ defmodule Snodo.OAuth.Client.Discovery do
          {:ok, metadata} <-
            fetch_first(settings(http), urls, {:no_authorization_server_metadata, issuer}),
          :ok <- check_issuer(metadata, issuer),
-         :ok <- check_endpoint(metadata, "token_endpoint") do
+         :ok <- check_token_endpoint(metadata),
+         :ok <- check_optional_endpoint(metadata["authorization_endpoint"]),
+         :ok <- check_optional_endpoint(metadata["registration_endpoint"]) do
       {:ok, metadata}
     end
   end
@@ -175,12 +183,13 @@ defmodule Snodo.OAuth.Client.Discovery do
   defp check_issuer(metadata, issuer),
     do: {:error, {:issuer_mismatch, issuer, metadata["issuer"]}}
 
-  defp check_endpoint(metadata, name) do
-    case metadata do
-      %{^name => url} when is_binary(url) -> :ok
-      _other -> {:error, {:missing_endpoint, name}}
-    end
-  end
+  defp check_token_endpoint(%{"token_endpoint" => url}) when is_binary(url),
+    do: HTTP.check_url(url)
+
+  defp check_token_endpoint(_metadata), do: {:error, {:missing_endpoint, "token_endpoint"}}
+
+  defp check_optional_endpoint(url) when is_binary(url), do: HTTP.check_url(url)
+  defp check_optional_endpoint(_url), do: :ok
 
   defp origin(%URI{scheme: scheme, host: host, port: port}) do
     host = if String.contains?(host, ":"), do: "[#{host}]", else: host

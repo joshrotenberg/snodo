@@ -595,14 +595,27 @@ defmodule Snodo.OAuth.Client.Flow do
          :ok <- HTTP.check_url(url) do
       {:ok, url}
     else
-      nil -> {:error, {:missing_endpoint, name}}
       {:error, _reason} = error -> error
+      _other -> {:error, {:missing_endpoint, name}}
     end
   end
 
   defp with_query(url, query) do
-    encoded = URI.encode_query(query, :www_form)
-    if String.contains?(url, "?"), do: url <> "&" <> encoded, else: url <> "?" <> encoded
+    uri = URI.parse(url)
+
+    flow_names = Map.new(query)
+
+    # Decode only names so retained entries keep their original spelling.
+    existing =
+      (uri.query || "")
+      |> String.split("&", trim: true)
+      |> Enum.reject(fn entry ->
+        [name | _value] = String.split(entry, "=", parts: 2)
+        Map.has_key?(flow_names, URI.decode_www_form(name))
+      end)
+
+    encoded = URI.encode_query(Enum.sort(query), :www_form)
+    URI.to_string(%{uri | query: Enum.join(existing ++ [encoded], "&")})
   end
 
   defp param(params, name, missing) do
@@ -662,6 +675,13 @@ defmodule Snodo.OAuth.Client.Flow do
       "The authorization server #{issuer} does not list S256 in code_challenge_methods_supported"
 
   defp message({:insecure_url, url}), do: "Refusing to use #{inspect(url)}: not https or loopback"
+
+  defp message({:url_fragment, url}),
+    do: "Refusing to use #{inspect(url)} because it has a fragment"
+
+  defp message({:url_query, url}),
+    do: "Refusing to use #{inspect(url)} because its query has an invalid percent escape"
+
   defp message({:unsupported_scheme, scheme}), do: "Unsupported authentication scheme #{scheme}"
 
   defp message(:no_client_identity),
