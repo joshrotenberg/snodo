@@ -1,7 +1,8 @@
 defmodule Snodo.Skills do
   @moduledoc """
   The Skills extension (SEP-2640, `io.modelcontextprotocol/skills`) for MCP
-  `2026-07-28`.
+  `2026-07-28`. Skills is Beta. See
+  [Extension maturity](extensions.html#extension-maturity).
 
   A skill is a directory with a `SKILL.md` file at its root and any number of
   supporting files. Each file is an MCP resource under

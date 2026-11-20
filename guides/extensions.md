@@ -36,6 +36,30 @@ lookup, authorization, and argument checks as a direct call.
 
 See `examples/06_custom_extension.exs`.
 
+## Extension maturity
+
+[SEP-3392](https://modelcontextprotocol.io/seps/3392-extension-lifecycle) defines
+the maturity stages listed in the [MCP extension registry](https://modelcontextprotocol.io/extensions/overview).
+
+| MCP extension | Stage | snodo support |
+| --- | --- | --- |
+| Tasks (`io.modelcontextprotocol/tasks`, SEP-2663) | Beta | `snodo_tasks` |
+| Skills (`io.modelcontextprotocol/skills`, SEP-2640) | Beta | `Snodo.Skills` |
+| MCP Apps (`io.modelcontextprotocol/ui`, SEP-1865) | Stable | `Snodo.Apps` |
+| OAuth Client Credentials (SEP-1046) | Stable | `snodo_oauth` client |
+
+Experimental extensions can change without notice. Beta extensions can make
+breaking changes, which should be infrequent and must be recorded upstream.
+snodo tracks the extension specifications and documents breaking changes it
+adopts in its normal release notes. Stable behavior is fixed within a core
+protocol revision and can change only with a new core protocol revision.
+
+Promotion from Beta or Stable into the core specification requires a Standards
+Track SEP. Once the revision containing the feature is released, requests
+using that revision or later get the core behavior without extension negotiation.
+Clients that still support earlier revisions should keep advertising the
+extension for those revisions.
+
 ## Declared extensions
 
 Some extensions add no methods: the server advertises them, reads what the

@@ -9,6 +9,10 @@ the core does not compile or depend on Tasks. Add it with
 with them.
 <!-- x-release-please-end -->
 
+Tasks is a Beta MCP extension. See
+[Extension maturity](https://hexdocs.pm/snodo/extensions.html#extension-maturity)
+for compatibility expectations.
+
 The package owns its source, tests, contract evidence, formatting, Credo, and
 Dialyzer gates. From this directory, run:
 

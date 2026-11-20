@@ -138,13 +138,13 @@ server-advertised, exact-compatible extension. A module omitted from an
 explicit capabilities map is installed but inert. Callback faults become
 safe internal errors.
 
-Tasks is the substantial proof of that split. Its independently compiled
-`:snodo_tasks` package depends one-way on `snodo`, wraps `tools/call`, owns
-`tasks/get`, `tasks/update`, and `tasks/cancel`, and requires `Mcp-Name` mirrored
-from `params.taskId` without adding any Task-specific branch or dependency to
-the core profile, router, or HTTP adapter. Direct, stdio, and HTTP acceptance
-vectors therefore show that optional behavior can remain outside the dialect
-module and core package.
+The [Beta Tasks extension](extensions.md#extension-maturity) exercises that split.
+Its independently compiled `:snodo_tasks` package depends one-way on `snodo`,
+wraps `tools/call`, owns `tasks/get`, `tasks/update`, and `tasks/cancel`, and
+requires `Mcp-Name` mirrored from `params.taskId` without adding any Task-specific
+branch or dependency to the core profile, router, or HTTP adapter. Direct,
+stdio, and HTTP acceptance vectors therefore show that optional behavior can
+remain outside the dialect module and core package.
 
 The persistence proof stays behind that same extension boundary. A Task and its
 versioned, JSON-safe `Work` descriptor are stored atomically before the creation

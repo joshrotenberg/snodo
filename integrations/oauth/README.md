@@ -14,7 +14,8 @@ For `Snodo.Client`, the [client side](#client): `Snodo.OAuth.Client` obtains,
 refreshes, and steps up the bearer token the HTTP transport sends, through
 metadata discovery, client ID metadata documents or dynamic client
 registration, the authorization code flow with PKCE, and the client
-credentials grant.
+credentials grant. OAuth Client Credentials is a Stable MCP extension. See
+[Extension maturity](https://hexdocs.pm/snodo/extensions.html#extension-maturity).
 
 It depends on `plug` and `jose`; the `snodo` core stays free of Hex
 dependencies. It does not implement the authorization server, token

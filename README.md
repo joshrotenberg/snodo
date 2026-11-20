@@ -27,6 +27,9 @@ The client speaks all three versions and negotiates one when it connects.
 - **The 2026-07-28 surface:** discovery, tools, resources and templates,
   prompts, completion, pagination, `subscriptions/listen`, progress,
   logging, cancellation, and multi round-trip requests with elicitation.
+- **[MCP extensions](https://hexdocs.pm/snodo/extensions.html#extension-maturity)**
+  include Beta Skills and Tasks, Stable MCP Apps helpers, and the Stable OAuth
+  Client Credentials flow.
 - **No runtime dependencies** in the core: it uses Elixir's built-in `JSON`
   and OTP. Optional sibling packages add Tasks, Plug, OAuth 2.1 resource
   server support, full JSON Schema validation, and `:telemetry` events.

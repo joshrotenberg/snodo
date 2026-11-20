@@ -1,7 +1,8 @@
 defmodule Snodo.Apps do
   @moduledoc """
   Shapes for the MCP Apps extension (`io.modelcontextprotocol/ui`,
-  specification 2026-01-26).
+  specification 2026-01-26). MCP Apps is Stable. See
+  [Extension maturity](extensions.html#extension-maturity).
 
   MCP Apps links a tool to a `ui://` resource holding an HTML document that the
   host renders. The extension adds no methods: the server declares it, links
