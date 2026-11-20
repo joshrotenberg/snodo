@@ -37,6 +37,11 @@ defmodule Snodo.Proxy.Supervisor do
          proxy: key,
          backend_supervisor: backend_supervisor,
          hub: hub,
+         reconnect: %{
+           initial_ms: Keyword.get(opts, :reconnect_initial_ms, 1_000),
+           max_ms: Keyword.get(opts, :reconnect_max_ms, 30_000),
+           reset_ms: Keyword.get(opts, :reconnect_reset_ms, 60_000)
+         },
          health_interval_ms: Keyword.get(opts, :health_interval_ms, 30_000),
          max_backends: Keyword.get(opts, :max_backends, 32),
          max_catalog_items: Keyword.get(opts, :max_catalog_items, 1_000)

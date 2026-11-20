@@ -20,8 +20,8 @@ defmodule Snodo.Proxy do
 
   A backend may also use any custom `Snodo.Client` transport target, or
   `{:direct, runtime}` for an in-process server. Backends that disconnect are
-  retried every second. A rejected or conflicting catalog update retains the
-  last accepted catalog and appears in `health/1`.
+  retried with exponential backoff. A rejected or conflicting catalog refresh
+  retains the last accepted catalog and appears in `health/1`.
 
   Backend progress and log messages reach the caller in the original request.
   Log messages follow the caller's `io.modelcontextprotocol/logLevel`; see the
@@ -91,7 +91,12 @@ defmodule Snodo.Proxy do
   @spec refresh_backend(pid(), String.t()) :: :ok | {:error, term()}
   def refresh_backend(proxy, id), do: Manager.refresh(child!(proxy, Manager), id)
 
-  @doc "Returns each configured backend's connection and catalog status."
+  @doc """
+  Returns each configured backend's connection and catalog status.
+
+  `:reconnect_attempt` and `:reconnect_delay_ms` report the most recently
+  scheduled retry. They reset to `0` and `nil` after stable uptime.
+  """
   @spec health(pid()) :: map()
   def health(proxy), do: Manager.health(child!(proxy, Manager))
 
