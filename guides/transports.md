@@ -75,8 +75,12 @@ timeout (default 10,000 ms), and nothing is retried. If the call returns
 `{:error, :timeout}`, the caller stopped waiting and it is unknown whether the
 frame was written; do not assume it was or was not delivered.
 
-Logger output is redirected away from stdout by default, because stdout carries
-only protocol messages.
+With `:output` set to `:stdio`, the transport redirects the default
+`:logger_std_h` handler from stdout to stderr so stdout carries only protocol
+messages. The redirect is VM-wide. The last transport using it restores the
+original handler configuration if the installed configuration is still
+current. If the application changed or removed the handler in the meantime,
+it is left as is. Set `redirect_logger?: false` to skip the redirect.
 
 `sessions: true` makes the connection the session of an initialize-era client;
 see [Initialize-era sessions](#initialize-era-sessions).

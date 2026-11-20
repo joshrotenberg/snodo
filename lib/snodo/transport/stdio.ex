@@ -15,6 +15,13 @@ defmodule Snodo.Transport.Stdio do
   further writes. A timed-out device may already have accepted some bytes, so
   the transport never retries. Supplied I/O devices are never stopped or killed.
 
+  `:redirect_logger?` defaults to `true`. With `:output` set to `:stdio`,
+  the transport redirects the default `:logger_std_h` from stdout to stderr.
+  The last transport using the redirect restores the original handler config
+  if the installed config is still current. If the application changed or
+  removed the handler in the meantime, it is left as is. Set
+  `:redirect_logger?` to `false` to skip this change.
+
   `:max_line_bytes` limits one input message, counting its newline, and defaults
   to 2,000,000 bytes to match the HTTP listener's `:max_body_bytes`. A longer
   line is answered with -32600 and a null id without being decoded, the rest of
@@ -95,6 +102,7 @@ defmodule Snodo.Transport.Stdio do
   alias Snodo.Subscription
   alias Snodo.Transport.Context, as: TransportContext
   alias Snodo.Transport.Stdio.Framing
+  alias Snodo.Transport.Stdio.LoggerRedirect
   alias Snodo.Transport.Stdio.Reader
 
   @type state :: %{
@@ -108,6 +116,7 @@ defmodule Snodo.Transport.Stdio do
           owns_executor?: boolean(),
           request_timeout: Executor.execution_timeout() | :default,
           reader: pid() | nil,
+          logger_redirect: pid() | nil,
           connection_ref: reference(),
           executions_by_id: map(),
           executions_by_ref: map(),
@@ -195,17 +204,25 @@ defmodule Snodo.Transport.Stdio do
     output = Keyword.get(opts, :output, :stdio)
     write_timeout = validate_write_timeout!(Keyword.get(opts, :write_timeout, 5_000))
     connection_ref = Keyword.get_lazy(opts, :connection_ref, &make_ref/0)
-    :ok = maybe_redirect_default_logger(opts, output)
     {:ok, executor, owns_executor?} = start_executor(opts)
     executor_monitor = Process.monitor(executor)
     serve_owner_monitor = monitor_optional_owner(Keyword.get(opts, :serve_owner))
+
+    session = start_session(Keyword.get(opts, :sessions, false), runtime)
+    max_subscriptions = validate_max_subscriptions!(Keyword.get(opts, :max_subscriptions, 32))
+
+    notification_methods =
+      validate_notification_methods!(Keyword.get(opts, :notification_methods, []))
+
+    logger_redirect =
+      if output == :stdio and Keyword.get(opts, :redirect_logger?, true) do
+        LoggerRedirect.acquire()
+      end
 
     reader =
       if Keyword.get(opts, :defer_reader?, false),
         do: nil,
         else: Reader.start_link(input, max_line_bytes)
-
-    session = start_session(Keyword.get(opts, :sessions, false), runtime)
 
     {:ok,
      %{
@@ -219,15 +236,15 @@ defmodule Snodo.Transport.Stdio do
        owns_executor?: owns_executor?,
        request_timeout: Keyword.get(opts, :request_timeout, :default),
        reader: reader,
+       logger_redirect: logger_redirect,
        connection_ref: connection_ref,
        executions_by_id: %{},
        executions_by_ref: %{},
        subscriptions_by_id: %{},
        subscriptions_by_worker: %{},
-       max_subscriptions: validate_max_subscriptions!(Keyword.get(opts, :max_subscriptions, 32)),
+       max_subscriptions: max_subscriptions,
        max_line_bytes: max_line_bytes,
-       notification_methods:
-         validate_notification_methods!(Keyword.get(opts, :notification_methods, [])),
+       notification_methods: notification_methods,
        negotiated_version: nil,
        log_level: nil,
        session: session,
@@ -446,6 +463,8 @@ defmodule Snodo.Transport.Stdio do
     _state = close_all_subscriptions(state, :disconnected)
 
     :ok
+  after
+    LoggerRedirect.release(state.logger_redirect)
   end
 
   defp fail_pending_executions(state, reason) do
@@ -1097,31 +1116,4 @@ defmodule Snodo.Transport.Stdio do
   end
 
   defp route_raw_io_to_stderr(_custom_output), do: :ok
-
-  defp maybe_redirect_default_logger(opts, :stdio) do
-    if Keyword.get(opts, :redirect_logger?, true) do
-      redirect_default_logger_to_stderr()
-    else
-      :ok
-    end
-  end
-
-  defp maybe_redirect_default_logger(_opts, _custom_output), do: :ok
-
-  defp redirect_default_logger_to_stderr do
-    case :logger.get_handler_config(:default) do
-      {:ok, %{module: :logger_std_h, config: %{type: :standard_io}} = handler} ->
-        replacement =
-          handler
-          |> Map.drop([:id, :module])
-          |> put_in([:config, :type], :standard_error)
-
-        with :ok <- :logger.remove_handler(:default) do
-          :logger.add_handler(:default, :logger_std_h, replacement)
-        end
-
-      _already_redirected_or_custom ->
-        :ok
-    end
-  end
 end
