@@ -31,34 +31,29 @@ defmodule SnodoTest.SubscriptionBridge do
     subscription
   end
 
-  def await_members(scope, group, count, excluded \\ []) do
+  def await_members(scope, group, count, excluded \\ [], timeout \\ 5_000) do
     {ref, members} = :pg.monitor(scope, group)
 
     try do
-      await_membership(ref, group, MapSet.new(members), count, excluded)
+      await_membership(ref, group, MapSet.new(members), {count, excluded, timeout})
     after
       :pg.demonitor(scope, ref)
     end
   end
 
-  defp await_membership(ref, group, members, count, excluded) do
+  defp await_membership(ref, group, members, {count, excluded, timeout} = wanted) do
     if MapSet.size(members) == count and Enum.all?(excluded, &(not MapSet.member?(members, &1))) do
       MapSet.to_list(members)
     else
       receive do
         {^ref, :join, ^group, joined} ->
-          await_membership(ref, group, MapSet.union(members, MapSet.new(joined)), count, excluded)
+          await_membership(ref, group, MapSet.union(members, MapSet.new(joined)), wanted)
 
         {^ref, :leave, ^group, left} ->
-          await_membership(
-            ref,
-            group,
-            MapSet.difference(members, MapSet.new(left)),
-            count,
-            excluded
-          )
+          await_membership(ref, group, MapSet.difference(members, MapSet.new(left)), wanted)
       after
-        5_000 -> flunk("expected #{count} members of #{inspect(group)}, got #{inspect(members)}")
+        timeout ->
+          flunk("expected #{count} members of #{inspect(group)}, got #{inspect(members)}")
       end
     end
   end
