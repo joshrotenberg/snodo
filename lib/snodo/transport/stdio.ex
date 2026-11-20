@@ -5,7 +5,10 @@ defmodule Snodo.Transport.Stdio do
   A small coordinator owns framing and serializes complete stdout writes. Work
   is admitted through the optional, transport-neutral `Snodo.Server.Executor`, so
   the coordinator never awaits a handler and execution policy is reusable by
-  other transports.
+  other transports. `:request_timeout` includes queue wait and execution and
+  defaults to 30,000 ms, including with an injected executor.
+  `:max_queue_wait` sets an optional shorter queue cap for an owned executor,
+  defaulting to `:infinity`. Configure an injected executor directly.
 
   `:write_timeout` is a positive millisecond limit, defaulting to 5,000. A single
   linked, monitored helper performs each write while the coordinator waits
@@ -105,6 +108,8 @@ defmodule Snodo.Transport.Stdio do
   alias Snodo.Transport.Stdio.LoggerRedirect
   alias Snodo.Transport.Stdio.Reader
 
+  @default_request_timeout 30_000
+
   @type state :: %{
           runtime: Runtime.t(),
           input: IO.device(),
@@ -114,7 +119,7 @@ defmodule Snodo.Transport.Stdio do
           executor_monitor: reference() | nil,
           serve_owner_monitor: reference() | nil,
           owns_executor?: boolean(),
-          request_timeout: Executor.execution_timeout() | :default,
+          request_timeout: Executor.execution_timeout(),
           reader: pid() | nil,
           logger_redirect: pid() | nil,
           connection_ref: reference(),
@@ -234,7 +239,7 @@ defmodule Snodo.Transport.Stdio do
        executor_monitor: executor_monitor,
        serve_owner_monitor: serve_owner_monitor,
        owns_executor?: owns_executor?,
-       request_timeout: Keyword.get(opts, :request_timeout, :default),
+       request_timeout: request_timeout(opts),
        reader: reader,
        logger_redirect: logger_redirect,
        connection_ref: connection_ref,
@@ -752,6 +757,16 @@ defmodule Snodo.Transport.Stdio do
     maybe_write(output, response)
   end
 
+  defp write_execution_outcome(output, runtime, entry, :queue_timed_out) do
+    write_rejection(
+      output,
+      runtime,
+      entry.message,
+      entry.transport,
+      Error.internal("Request expired in the execution queue")
+    )
+  end
+
   defp write_execution_outcome(output, runtime, entry, {:timed_out, _timeout}) do
     write_rejection(
       output,
@@ -1044,8 +1059,15 @@ defmodule Snodo.Transport.Stdio do
     end
   end
 
+  defp request_timeout(opts) do
+    case Keyword.get(opts, :request_timeout, :default) do
+      :default -> @default_request_timeout
+      timeout -> timeout
+    end
+  end
+
   defp executor_options(opts) do
-    options = Keyword.take(opts, [:max_concurrency, :max_queue])
+    options = Keyword.take(opts, [:max_concurrency, :max_queue, :max_queue_wait])
 
     case Keyword.get(opts, :request_timeout, :default) do
       :default -> options

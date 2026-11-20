@@ -11,10 +11,11 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   `Snodo.Server.Executor`. A peer disconnect while work is pending cancels that
   execution and tears down its reply owner.
 
-  `:request_timeout` bounds queue wait plus execution after HTTP admission; the
-  transport's default ceiling is 30 seconds, including with an application-owned
-  executor. Progress does not extend the deadline. Explicit `:infinity` disables
-  this ceiling. Body reads and socket writes have their own transport bounds.
+  `:request_timeout` bounds queue wait plus execution and defaults to
+  30,000 ms, including with an injected executor. Progress does not extend
+  the deadline. `:max_queue_wait` sets an optional shorter queue cap for an
+  owned executor, defaulting to `:infinity`. Configure an injected executor
+  directly. Body reads and socket writes have their own transport bounds.
 
   Connection and stream bounds, each a positive integer:
 
@@ -130,11 +131,11 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
 
   @default_ip {127, 0, 0, 1}
   @default_path "/mcp"
+  @default_request_timeout 30_000
   @default_read_timeout 5_000
   @default_max_header_bytes 32_768
   @default_max_body_bytes 2_000_000
   @default_subscription_keepalive_ms 15_000
-  @default_request_timeout 30_000
   @default_max_connections 1_024
   @default_head_timeout 10_000
   @default_keepalive_timeout 5_000
@@ -235,8 +236,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
         request_gate: request_gate,
         request_gate_timeout: request_gate_timeout,
         server_ref: server_ref,
-        request_timeout: Keyword.get(opts, :request_timeout, :default),
-        deadline_timeout: deadline_timeout!(Keyword.get(opts, :request_timeout, :default)),
+        request_timeout: request_timeout!(Keyword.get(opts, :request_timeout, :default)),
         read_timeout: Keyword.get(opts, :read_timeout, @default_read_timeout),
         keepalive_timeout: positive_option!(opts, :keepalive_timeout, @default_keepalive_timeout),
         max_keepalive_requests:
@@ -570,7 +570,6 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     key = {:streamable_http, opts.server_ref, request.connection_ref}
     tracked = tracked_request(prepared)
     opts = Map.put(opts, :cancel_ref, make_ref())
-    timer = start_request_timer(key, opts.deadline_timeout)
 
     try do
       # Tracked before submission: the worker can start, and the client can
@@ -607,7 +606,6 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
       end
     after
       Progress.close(sink)
-      cancel_request_timer(timer, key)
       untrack_request(tracked, opts.cancel_ref)
     end
   end
@@ -673,11 +671,6 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
       {:mcp_request_cancelled, ^cancel_ref, reason} ->
         _cancelled = cancel_execution(executor, key, reason, opts.progress.sink)
         await_execution_message(socket, executor, execution_ref, key, prepared, opts)
-
-      {:mcp_http_deadline, ^key} ->
-        _cancelled = cancel_execution(executor, key, :request_timeout, opts.progress.sink)
-        response = execution_response({:timed_out, opts.deadline_timeout}, prepared, opts)
-        finish_execution(socket, response, opts)
 
       {:"$gen_call", from, {:mcp_progress, reference, report}} ->
         case receive_progress(socket, opts, reference, from, report) do
@@ -799,6 +792,15 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
           500
         )
     end
+  end
+
+  defp execution_response(:queue_timed_out, prepared, opts) do
+    StreamableHTTP.reject(
+      opts.runtime,
+      prepared,
+      Error.internal("Request expired in the execution queue"),
+      504
+    )
   end
 
   defp execution_response({:timed_out, _timeout}, prepared, opts) do
@@ -1464,28 +1466,13 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     :exit, reason -> {:error, {:executor_unavailable, reason}}
   end
 
-  defp start_request_timer(_key, :infinity), do: nil
+  defp request_timeout!(:default), do: @default_request_timeout
 
-  defp start_request_timer(key, timeout),
-    do: Process.send_after(self(), {:mcp_http_deadline, key}, timeout)
+  defp request_timeout!(timeout)
+       when timeout == :infinity or (is_integer(timeout) and timeout >= 0),
+       do: timeout
 
-  defp cancel_request_timer(nil, _key), do: :ok
-
-  defp cancel_request_timer(timer, key) do
-    _remaining = Process.cancel_timer(timer)
-
-    receive do
-      {:mcp_http_deadline, ^key} -> :ok
-    after
-      0 -> :ok
-    end
-  end
-
-  defp deadline_timeout!(:default), do: @default_request_timeout
-  defp deadline_timeout!(:infinity), do: :infinity
-  defp deadline_timeout!(timeout) when is_integer(timeout) and timeout >= 0, do: timeout
-
-  defp deadline_timeout!(_invalid),
+  defp request_timeout!(_invalid),
     do: raise(ArgumentError, ":request_timeout must be non-negative, :default, or :infinity")
 
   defp cancel_execution(executor, key, reason, sink) do
@@ -1514,7 +1501,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   end
 
   defp executor_options(opts) do
-    options = Keyword.take(opts, [:max_concurrency, :max_queue])
+    options = Keyword.take(opts, [:max_concurrency, :max_queue, :max_queue_wait])
 
     case Keyword.get(opts, :request_timeout, :default) do
       :default -> options

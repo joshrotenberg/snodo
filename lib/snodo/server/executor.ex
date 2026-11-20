@@ -31,6 +31,7 @@ defmodule Snodo.Server.Executor do
           {:completed, term()}
           | {:cancelled, term()}
           | {:timed_out, non_neg_integer()}
+          | :queue_timed_out
           | {:failed, term()}
   @type event ::
           {:mcp_execution, pid(), execution_ref(), execution_key(), outcome()}
@@ -50,9 +51,13 @@ defmodule Snodo.Server.Executor do
     * `:max_queue` - the most admitted work that waits for a free slot. A
       non-negative integer, default 256. When both limits are reached,
       `submit/4` returns `{:error, :overloaded}`.
-    * `:default_timeout` - the deadline in milliseconds for work submitted
-      without `:timeout`. A non-negative integer or `:infinity`, default
-      30,000.
+    * `:default_timeout` - the total time in milliseconds from admission
+      through execution for work submitted without `:timeout`. A non-negative
+      integer or `:infinity`, default 30,000.
+    * `:max_queue_wait` - an additional queue wait cap in milliseconds. A
+      non-negative integer or `:infinity`, default `:infinity`. The effective
+      queue limit is the smaller of this cap and the resolved submit timeout.
+      A job that reaches its queue deadline reports `:queue_timed_out`.
 
   An invalid option raises `ArgumentError` in the executor process, and the
   start fails.
@@ -70,6 +75,8 @@ defmodule Snodo.Server.Executor do
   completion, the executor sends an `t:event/0` message to `:reply_to`, which
   defaults to the submitting process. Reply-owner termination or executor
   shutdown ends that delivery guarantee and tears down the work instead.
+  The `:timeout` option overrides the executor's `:default_timeout` and includes
+  time spent in the queue. A running job has only the remaining time to finish.
   """
   @spec submit(server(), execution_key(), (Cancellation.t() -> term()), keyword()) ::
           {:ok, execution_ref()} | {:error, :duplicate_key | :overloaded}
@@ -139,8 +146,9 @@ defmodule Snodo.Server.Executor do
     max_concurrency = Keyword.get(opts, :max_concurrency, @default_max_concurrency)
     max_queue = Keyword.get(opts, :max_queue, @default_max_queue)
     default_timeout = Keyword.get(opts, :default_timeout, @default_timeout)
+    max_queue_wait = Keyword.get(opts, :max_queue_wait, :infinity)
 
-    validate_options!(max_concurrency, max_queue, default_timeout)
+    validate_options!(max_concurrency, max_queue, default_timeout, max_queue_wait)
     {:ok, task_supervisor} = Task.Supervisor.start_link()
 
     {:ok,
@@ -149,6 +157,9 @@ defmodule Snodo.Server.Executor do
        max_concurrency: max_concurrency,
        max_queue: max_queue,
        default_timeout: default_timeout,
+       max_queue_wait: max_queue_wait,
+       queue_deadlines: :gb_sets.empty(),
+       queue_timer: nil,
        running: 0,
        queued: 0,
        queue: :queue.new(),
@@ -163,6 +174,8 @@ defmodule Snodo.Server.Executor do
 
   @impl true
   def handle_call({:submit, key, work, reply_to, requested_timeout}, _from, state) do
+    state = state |> expire_queued_jobs() |> schedule_queue_timer()
+
     cond do
       Map.has_key?(state.jobs_by_key, key) ->
         {:reply, {:error, :duplicate_key}, state}
@@ -174,6 +187,9 @@ defmodule Snodo.Server.Executor do
         execution_ref = make_ref()
         owner_monitor = Process.monitor(reply_to)
 
+        now = System.monotonic_time(:millisecond)
+        timeout = resolve_timeout(requested_timeout, state.default_timeout)
+
         job = %{
           ref: execution_ref,
           key: key,
@@ -181,7 +197,9 @@ defmodule Snodo.Server.Executor do
           reply_to: reply_to,
           owner_monitor: owner_monitor,
           token: Cancellation.new(),
-          timeout: resolve_timeout(requested_timeout, state.default_timeout),
+          timeout: timeout,
+          deadline: deadline(now, timeout),
+          queue_deadline: deadline(now, min(timeout, state.max_queue_wait)),
           status: :admitted,
           pending_outcome: nil,
           terminal_delivery?: true,
@@ -194,9 +212,9 @@ defmodule Snodo.Server.Executor do
 
         state =
           if state.running < state.max_concurrency do
-            start_job(state, job)
+            start_admitted_job(state, job)
           else
-            enqueue_job(state, job)
+            state |> enqueue_job(job) |> expire_queued_jobs() |> schedule_queue_timer()
           end
 
         {:reply, {:ok, execution_ref}, state}
@@ -314,6 +332,11 @@ defmodule Snodo.Server.Executor do
     end
   end
 
+  def handle_info({:timeout, timer, :queue_deadline}, %{queue_timer: {_, timer}} = state) do
+    {:noreply,
+     state |> Map.put(:queue_timer, nil) |> expire_queued_jobs() |> schedule_queue_timer()}
+  end
+
   def handle_info(_message, state), do: {:noreply, state}
 
   @impl true
@@ -334,13 +357,21 @@ defmodule Snodo.Server.Executor do
     }
   end
 
+  defp start_admitted_job(state, job) do
+    if expired?(job.deadline) do
+      state |> forget_unstarted_job(job) |> deliver(job, {:timed_out, job.timeout})
+    else
+      start_job(state, job)
+    end
+  end
+
   defp start_job(state, job) do
     task =
       Task.Supervisor.async_nolink(state.task_supervisor, fn ->
         job.work.(job.token)
       end)
 
-    timer = start_timeout(job.ref, job.timeout)
+    timer = start_timeout(job.ref, job.deadline)
 
     running_job = %{
       job
@@ -365,6 +396,7 @@ defmodule Snodo.Server.Executor do
       state
       | jobs: Map.put(state.jobs, job.ref, queued_job),
         queue: :queue.in(job.ref, state.queue),
+        queue_deadlines: put_queue_deadline(state.queue_deadlines, job),
         queued: state.queued + 1
     }
   end
@@ -418,23 +450,18 @@ defmodule Snodo.Server.Executor do
   end
 
   defp remove_queued_job(state, job) do
-    Process.demonitor(job.owner_monitor, [:flush])
+    state = forget_unstarted_job(state, job)
 
     %{
       state
-      | jobs: Map.delete(state.jobs, job.ref),
-        jobs_by_key: delete_key_if_matches(state.jobs_by_key, job.key, job.ref),
-        jobs_by_owner_monitor: Map.delete(state.jobs_by_owner_monitor, job.owner_monitor),
-        queue: delete_queue_reference(state.queue, job.ref),
+      | queue: delete_queue_reference(state.queue, job.ref),
+        queue_deadlines: drop_queue_deadline(state.queue_deadlines, job),
         queued: state.queued - 1
     }
   end
 
   defp delete_queue_reference(queue, execution_ref) do
-    queue
-    |> :queue.to_list()
-    |> Enum.reject(&(&1 == execution_ref))
-    |> :queue.from_list()
+    :queue.filter(&(&1 != execution_ref), queue)
   end
 
   defp delete_key_if_matches(jobs_by_key, key, execution_ref) do
@@ -494,39 +521,149 @@ defmodule Snodo.Server.Executor do
     %{state | slots: slots, slot_counts: slot_counts}
   end
 
-  defp fill_capacity(%{running: running, max_concurrency: max} = state)
+  defp fill_capacity(state) do
+    state |> start_queued_jobs() |> schedule_queue_timer()
+  end
+
+  defp start_queued_jobs(%{running: running, max_concurrency: max} = state)
        when running >= max,
        do: state
 
-  defp fill_capacity(state) do
-    case take_queued_job(state) do
-      {:ok, job, state} ->
-        state
-        |> start_job(job)
-        |> fill_capacity()
+  defp start_queued_jobs(state) do
+    case :queue.peek(state.queue) do
+      {:value, execution_ref} ->
+        state |> start_queue_head(execution_ref) |> start_queued_jobs()
 
       :empty ->
         state
     end
   end
 
-  defp take_queued_job(state) do
-    case :queue.out(state.queue) do
-      {{:value, execution_ref}, queue} ->
-        state = %{state | queue: queue}
+  defp start_queue_head(state, execution_ref) do
+    case Map.fetch(state.jobs, execution_ref) do
+      {:ok, %{status: :queued} = job} ->
+        state = dequeue_job(state, job)
 
-        case Map.fetch(state.jobs, execution_ref) do
-          {:ok, %{status: :queued} = job} ->
-            {:ok, job, %{state | queued: state.queued - 1}}
-
-          _cancelled_tombstone ->
-            take_queued_job(state)
+        if expired?(min(job.queue_deadline, job.deadline)) do
+          expire_queued_job(state, job)
+        else
+          start_job(state, job)
         end
 
-      {:empty, _queue} ->
-        :empty
+      _stale ->
+        state
+        |> drop_queue_head()
+        |> Map.update!(
+          :queue_deadlines,
+          &:gb_sets.filter(fn {_, ref} -> ref != execution_ref end, &1)
+        )
     end
   end
+
+  defp dequeue_job(state, job) do
+    state
+    |> drop_queue_head()
+    |> Map.update!(:queue_deadlines, &drop_queue_deadline(&1, job))
+  end
+
+  defp drop_queue_head(state) do
+    %{state | queue: :queue.drop(state.queue), queued: state.queued - 1}
+  end
+
+  defp expire_queued_job(state, job) do
+    state |> forget_unstarted_job(job) |> deliver(job, :queue_timed_out)
+  end
+
+  defp forget_unstarted_job(state, job) do
+    Process.demonitor(job.owner_monitor, [:flush])
+
+    %{
+      state
+      | jobs: Map.delete(state.jobs, job.ref),
+        jobs_by_key: delete_key_if_matches(state.jobs_by_key, job.key, job.ref),
+        jobs_by_owner_monitor: Map.delete(state.jobs_by_owner_monitor, job.owner_monitor)
+    }
+  end
+
+  defp expire_queued_jobs(state) do
+    case collect_expired_jobs(state, []) do
+      {state, []} ->
+        state
+
+      {state, expired} ->
+        expired = Map.new(expired, &{&1, true})
+        queue = :queue.filter(fn ref -> not Map.has_key?(expired, ref) end, state.queue)
+        %{state | queue: queue, queued: state.queued - map_size(expired)}
+    end
+  end
+
+  defp collect_expired_jobs(state, expired) do
+    case earliest_queue_deadline(state) do
+      {deadline, execution_ref} ->
+        if expired?(deadline) do
+          deadlines = :gb_sets.delete({deadline, execution_ref}, state.queue_deadlines)
+          state = %{state | queue_deadlines: deadlines}
+
+          state = expire_job_by_ref(state, execution_ref)
+          collect_expired_jobs(state, [execution_ref | expired])
+        else
+          {state, expired}
+        end
+
+      nil ->
+        {state, expired}
+    end
+  end
+
+  defp expire_job_by_ref(state, ref) do
+    case Map.fetch(state.jobs, ref) do
+      {:ok, %{status: :queued} = job} -> expire_queued_job(state, job)
+      _stale -> state
+    end
+  end
+
+  # FIFO order controls execution. A later submission can have an earlier
+  # deadline, so the timer follows the deadline index independently.
+  defp earliest_queue_deadline(state) do
+    unless :gb_sets.is_empty(state.queue_deadlines), do: :gb_sets.smallest(state.queue_deadlines)
+  end
+
+  defp put_queue_deadline(deadlines, %{queue_deadline: :infinity}), do: deadlines
+
+  defp put_queue_deadline(deadlines, job),
+    do: :gb_sets.add({job.queue_deadline, job.ref}, deadlines)
+
+  defp drop_queue_deadline(deadlines, %{queue_deadline: :infinity}), do: deadlines
+
+  defp drop_queue_deadline(deadlines, job),
+    do: :gb_sets.delete_any({job.queue_deadline, job.ref}, deadlines)
+
+  defp schedule_queue_timer(state) do
+    next = earliest_queue_deadline(state)
+
+    case {state.queue_timer, next} do
+      {{deadline, _timer}, {deadline, _ref}} ->
+        state
+
+      {nil, nil} ->
+        state
+
+      {old_timer, next} ->
+        if old_timer, do: cancel_timeout(elem(old_timer, 1))
+        %{state | queue_timer: start_queue_timer(next)}
+    end
+  end
+
+  defp start_queue_timer(nil), do: nil
+
+  defp start_queue_timer({deadline, _ref}),
+    do: {deadline, :erlang.start_timer(deadline, self(), :queue_deadline, abs: true)}
+
+  defp deadline(_now, :infinity), do: :infinity
+  defp deadline(now, timeout), do: now + timeout
+
+  defp expired?(:infinity), do: false
+  defp expired?(deadline), do: System.monotonic_time(:millisecond) >= deadline
 
   defp deliver(state, job, outcome) do
     send(job.reply_to, {@event_tag, self(), job.ref, job.key, outcome})
@@ -559,8 +696,8 @@ defmodule Snodo.Server.Executor do
 
   defp start_timeout(_execution_ref, :infinity), do: nil
 
-  defp start_timeout(execution_ref, timeout) do
-    Process.send_after(self(), {:execution_timeout, execution_ref}, timeout)
+  defp start_timeout(execution_ref, deadline) do
+    Process.send_after(self(), {:execution_timeout, execution_ref}, deadline, abs: true)
   end
 
   defp cancel_timeout(nil), do: :ok
@@ -573,13 +710,17 @@ defmodule Snodo.Server.Executor do
   defp resolve_timeout(:default, default), do: default
   defp resolve_timeout(timeout, _default), do: timeout
 
-  defp validate_options!(max_concurrency, max_queue, default_timeout) do
+  defp validate_options!(max_concurrency, max_queue, default_timeout, max_queue_wait) do
     unless is_integer(max_concurrency) and max_concurrency > 0 do
       raise ArgumentError, ":max_concurrency must be a positive integer"
     end
 
     unless is_integer(max_queue) and max_queue >= 0 do
       raise ArgumentError, ":max_queue must be a non-negative integer"
+    end
+
+    unless valid_timeout?(max_queue_wait) do
+      raise ArgumentError, ":max_queue_wait must be a non-negative integer or :infinity"
     end
 
     unless valid_timeout?(default_timeout) do
