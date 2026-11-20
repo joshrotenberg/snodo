@@ -145,8 +145,15 @@ jobs:
         run: |
           if [ "$VARIANT" = cpu-load ]; then
             # Two busy processes per core compete with the schedulers.
-            for _ in $(seq $(( $(nproc) * 2 ))); do yes > /dev/null & done
-            trap 'kill $(jobs -p) 2>/dev/null || true' EXIT
+            load_pids=()
+            stop_cpu_load() {
+              kill "${load_pids[@]}" 2>/dev/null || true
+            }
+            trap stop_cpu_load EXIT
+            for _ in $(seq $(( $(nproc) * 2 ))); do
+              yes > /dev/null &
+              load_pids+=("$!")
+            done
           fi
           mkdir -p "$RUNNER_TEMP/repeat"
           # TEST_ARGS is a list of flags, split on purpose.
@@ -289,7 +296,7 @@ jobs:
             for variant in "${variants[@]}"; do
               if [ -f "$package--$variant.md" ]; then files+=("$package--$variant.md"); fi
             done
-            [ ${#files[@]} -gt 0 ] || continue
+            [ "${#files[@]}" -gt 0 ] || continue
 
             if [ -z "$open" ]; then
               gh label create flaky --color d93f0b \

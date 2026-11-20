@@ -192,7 +192,7 @@ jobs:
               fi
               files+=("$prefix.md")
             done
-            [ ${#files[@]} -gt 0 ] || continue
+            [ "${#files[@]}" -gt 0 ] || continue
             if [ -z "$open" ]; then
               open=$(gh issue list --state open --label area/ci --limit 200 --json number,title)
             fi
