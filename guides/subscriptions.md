@@ -56,6 +56,8 @@ Snodo.Subscription.Hub.publish(hub, Snodo.Subscription.Event.tools_list_changed(
 The hub keeps a bounded, filter-aware queue per listener with an explicit
 overflow policy and delivery statistics. It never detects changes or changes the
 router; the application publishes when its catalog or resources change.
+When multiple listen requests cover the same URI, the hub queues each
+published update once per matching stream.
 
 ## Across connected nodes
 
