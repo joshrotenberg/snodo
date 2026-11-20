@@ -118,6 +118,8 @@ defmodule Snodo.OAuth.Client do
   `{:issuer_mismatch, expected, found}`, `{:pkce_unsupported, issuer}`,
   `{:url_fragment, url}` for a URL with a fragment, `{:url_query, url}`
   for a query with malformed percent escapes,
+  `{:redirect_uri_fragment, uri}` for an external redirect URI with a fragment
+  (including an empty fragment),
   `{:token_endpoint, status, body}` with only the error fields of the body,
   or `{:step_up_refused, scopes}`.
   """

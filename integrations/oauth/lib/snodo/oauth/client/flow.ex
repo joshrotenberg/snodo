@@ -27,7 +27,8 @@ defmodule Snodo.OAuth.Client.Flow do
 
     metadata_url = metadata_url(ctx.trigger) || remembered_metadata_url(ctx.current)
 
-    with :ok <- check_scheme(ctx.trigger),
+    with :ok <- check_redirect(ctx.config.redirect),
+         :ok <- check_scheme(ctx.trigger),
          {:ok, prm, resource} <- discover_resource(ctx, metadata_url),
          {:ok, issuer} <- issuer(prm, ctx),
          {:ok, as_metadata} <- Discovery.authorization_server(ctx.config.http, issuer) do
@@ -44,6 +45,12 @@ defmodule Snodo.OAuth.Client.Flow do
   defp finish(:await_challenge), do: {:ok, nil}
   defp finish({:error, %Error{} = error}), do: {:error, error}
   defp finish({:error, reason}), do: {:error, error(reason)}
+
+  defp check_redirect({:external, uri}) do
+    if is_nil(URI.parse(uri).fragment), do: :ok, else: {:error, {:redirect_uri_fragment, uri}}
+  end
+
+  defp check_redirect({:loopback, _opts}), do: :ok
 
   # The challenge names the metadata document, or a stored token remembers the
   # one a challenge named; otherwise the well-known locations are tried. A
@@ -678,6 +685,9 @@ defmodule Snodo.OAuth.Client.Flow do
 
   defp message({:url_fragment, url}),
     do: "Refusing to use #{inspect(url)} because it has a fragment"
+
+  defp message({:redirect_uri_fragment, uri}),
+    do: "Refusing to use redirect URI #{inspect(uri)} because it has a fragment"
 
   defp message({:url_query, url}),
     do: "Refusing to use #{inspect(url)} because its query has an invalid percent escape"
