@@ -6,6 +6,7 @@ defmodule Snodo.Client.Handshake do
   # `Snodo.Protocol.builtin_dialects/0` is the one list.
 
   alias Snodo.Client
+  alias Snodo.Client.HTTP
   alias Snodo.Client.Session
   alias Snodo.Client.Transport
   alias Snodo.Error
@@ -207,9 +208,14 @@ defmodule Snodo.Client.Handshake do
         )
 
       dialect ->
+        id = session_id(headers)
+        # All copies of an HTTP client must stop using the ID once it expires.
+        validity = if is_binary(id) and elem(client.transport, 0) == HTTP, do: :atomics.new(1, [])
+
         session = %Session{
           version: version,
-          id: session_id(headers),
+          id: id,
+          validity: validity,
           server_info: Map.get(result, "serverInfo", %{}),
           server_capabilities: Map.get(result, "capabilities", %{}),
           instructions: Map.get(result, "instructions")

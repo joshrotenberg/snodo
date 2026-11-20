@@ -151,8 +151,23 @@ On an initialize-era connection:
 - Versions before 2025-06-18 are not spoken. The client does not open the
   standalone `GET` event stream, so a request a server sends only there (the
   TypeScript SDK does this for requests made without a related request ID)
-  is not received; and a session the server expires is reported as the
-  server's error rather than re-initialized.
+  is not received.
+
+### Reconnecting after session loss
+
+If an initialize-era HTTP request carrying `Mcp-Session-Id` receives HTTP 404,
+the client returns `{:error, %Snodo.Error{kind: :transport, cause: :session_not_found}}`.
+The old client stops sending that session ID. Close it and connect again with
+the same options. Pin `:protocol` to keep the same version. For example:
+
+```elixir
+:ok = Snodo.Client.close(client)
+{:ok, client} = Snodo.Client.connect({:http, url}, protocol: "2025-11-25")
+```
+
+The new connection sends `initialize` without a session ID. Reestablish any
+session-scoped state you need and decide whether to repeat the failed operation.
+The client does not automatically replay requests after session loss.
 
 ## Lists and paging
 
