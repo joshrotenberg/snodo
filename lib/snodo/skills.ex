@@ -120,14 +120,15 @@ defmodule Snodo.Skills do
         use Snodo.Server,
           name: "my-app",
           version: "1.0.0",
-          extensions: [MyApp.Skills],
-          capabilities: MyApp.Skills.capabilities(%{"tools" => %{}})
+          extensions: [MyApp.Skills]
 
         for file <- MyApp.Skills.resources(), do: resource(file)
       end
 
-  `capabilities/1` adds `"resources"` and the extension's declaration to a
-  capabilities map.
+  Derived capabilities include `"resources"` when the router registers
+  resources, so register the skill files as shown above.
+  A server that passes explicit `capabilities:` can call `capabilities/1`,
+  which adds `"resources"` and the extension's declaration to the map.
 
   ## Negotiation
 
@@ -212,6 +213,10 @@ defmodule Snodo.Skills do
       def id, do: Snodo.Skills.id()
 
       @impl Snodo.Extension
+      def server_settings(_options),
+        do: Snodo.Skills.server_settings(@snodo_skills_catalog.directory_read)
+
+      @impl Snodo.Extension
       def methods, do: Snodo.Skills.methods(@snodo_skills_catalog.directory_read)
 
       @impl Snodo.Extension
@@ -245,12 +250,17 @@ defmodule Snodo.Skills do
   @spec capabilities(map(), boolean()) :: map()
   def capabilities(capabilities, directory_read?)
       when is_map(capabilities) and is_boolean(directory_read?) do
-    settings = if directory_read?, do: %{"directoryRead" => true}, else: %{}
+    settings = server_settings(directory_read?)
 
     capabilities
     |> Map.put_new("resources", %{})
     |> Map.update("extensions", %{@id => settings}, &Map.put(&1, @id, settings))
   end
+
+  @doc false
+  @spec server_settings(boolean()) :: map()
+  def server_settings(true), do: %{"directoryRead" => true}
+  def server_settings(false), do: %{}
 
   @doc false
   @spec methods(boolean()) :: [Method.t()]

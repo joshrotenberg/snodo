@@ -141,8 +141,7 @@ defmodule Examples.TasksSubscriptions.Runner do
         {Tasks, store: store_ref, runner: runner, task_support: %{"controlled_job" => :required}}
       ],
       subscription_source: {Source, store_ref},
-      server_info: %{"name" => "tasks-subscriptions-example", "version" => "1.0.0"},
-      capabilities: %{"tools" => %{}, "extensions" => %{Tasks.id() => %{}}}
+      server_info: %{"name" => "tasks-subscriptions-example", "version" => "1.0.0"}
     )
   end
 

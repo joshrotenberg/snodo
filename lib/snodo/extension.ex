@@ -2,6 +2,16 @@ defmodule Snodo.Extension do
   @moduledoc """
   Behaviour for explicitly installed, exact-versioned out-of-tree extensions.
 
+  When the server is started without `:capabilities`, installed modules are
+  advertised and their hooks become active where the protocol supports them.
+  The optional `server_settings/1` callback receives the installed keyword
+  list or map of options (`[]` for a bare module) and returns a JSON object
+  sent to clients in discovery. The default settings are `%{}`.
+
+  An explicit `:capabilities` map supplies module extension settings directly
+  and skips `server_settings/1`. To keep a module installed but inert, omit
+  its ID from that map's `"extensions"` entries.
+
   Extension-owned routes deliberately cover top-level client-to-server
   requests only. An optional `around_dispatch/4` callback can wrap core
   protocol execution for an advertised, exact-version-compatible extension.
@@ -17,8 +27,7 @@ defmodule Snodo.Extension do
 
   An optional `transport_policy/2` callback can adapt the selected protocol's
   transport policy for an extension-owned route. The callback is considered
-  only for an exact-version-compatible route advertised by the server;
-  installed-only extensions cannot affect transport admission.
+  only for an exact-version-compatible route advertised by the server.
 
   Extensions may optionally contribute fields to `subscriptions/listen` with
   `subscription_filter/2` and shape matching source events with
@@ -55,6 +64,7 @@ defmodule Snodo.Extension do
   @type continuation :: (Context.t() -> dispatch_result())
 
   @callback id() :: String.t()
+  @callback server_settings(options :: keyword() | map()) :: map()
   @callback methods() :: [Method.t()]
   @callback negotiate(client_settings :: map(), server_settings :: map()) ::
               {:ok, map()} | :not_negotiated | {:error, Error.t()}
@@ -84,7 +94,8 @@ defmodule Snodo.Extension do
   @callback tool_input_schema(name :: String.t(), options :: keyword() | map()) ::
               {:ok, input_schema :: map(), Snodo.Authorization.config()} | :error
 
-  @optional_callbacks around_dispatch: 4,
+  @optional_callbacks server_settings: 1,
+                      around_dispatch: 4,
                       missing_capability_error: 2,
                       transport_policy: 2,
                       subscription_filter: 2,

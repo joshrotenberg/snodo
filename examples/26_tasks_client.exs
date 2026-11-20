@@ -122,8 +122,7 @@ defmodule Examples.TasksClient.Runner do
          poll_interval_ms: 50,
          task_support: %{"export" => :required, "reindex" => :required}}
       ],
-      server_info: %{"name" => "tasks-client-example", "version" => "0.1.0"},
-      capabilities: %{"tools" => %{}, "extensions" => %{Tasks.id() => %{}}}
+      server_info: %{"name" => "tasks-client-example", "version" => "0.1.0"}
     )
   end
 

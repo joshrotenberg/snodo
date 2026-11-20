@@ -264,8 +264,7 @@ defmodule Examples.TasksSQLite.Runner do
          task_support: %{"sqlite_export" => :required},
          poll_interval_ms: 10}
       ],
-      server_info: %{"name" => "tasks-sqlite-example", "version" => "0.1.0"},
-      capabilities: %{"tools" => %{}, "extensions" => %{Tasks.id() => %{}}}
+      server_info: %{"name" => "tasks-sqlite-example", "version" => "0.1.0"}
     )
   end
 

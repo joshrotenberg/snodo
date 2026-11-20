@@ -1,12 +1,16 @@
 defmodule Snodo.ExtensionAcceptanceTest do
   use ExUnit.Case, async: true
 
+  alias Snodo.Client
+  alias Snodo.Protocol.V2025_11_25
   alias Snodo.Protocol.V2026_07_28
   alias Snodo.Server
   alias Snodo.Transport.Context, as: TransportContext
   alias Snodo.Transport.Stdio
   alias SnodoTest.ExtensionTestServer
   alias SnodoTest.FutureDialect
+  alias SnodoTest.TestCompletions.PackagePrompt
+  alias SnodoTest.TestCompletions.RepositoryTemplate
   alias SnodoTest.TestExtensions.AroundInner
   alias SnodoTest.TestExtensions.AroundOuter
   alias SnodoTest.TestExtensions.CoreEmbeddedCollision
@@ -24,6 +28,111 @@ defmodule Snodo.ExtensionAcceptanceTest do
   alias SnodoTest.TestExtensions.RequiredCapability
   alias SnodoTest.TestExtensions.UnavailableVersion
   alias SnodoTest.TestFixtures
+
+  defmodule Configured do
+    use SnodoTest.TestExtensions.Definition,
+      id: "com.example/configured",
+      name: "com.example/configured"
+
+    @impl true
+    def server_settings(options), do: Access.fetch!(options, :settings)
+  end
+
+  test "discovery advertises installed modules alongside the derived core capabilities" do
+    for options <- [[settings: %{"mode" => "custom"}], %{settings: %{"mode" => "custom"}}] do
+      runtime =
+        TestFixtures.runtime(
+          extensions: [Echo, {Configured, options}],
+          prompts: [PackagePrompt],
+          resources: [RepositoryTemplate]
+        )
+
+      assert {:ok, client} = Client.direct(runtime)
+      assert {:ok, %{"capabilities" => capabilities}} = Client.discover(client)
+
+      assert capabilities == %{
+               "tools" => %{},
+               "prompts" => %{},
+               "resources" => %{},
+               "completions" => %{},
+               "extensions" => %{Echo.id() => %{}, Configured.id() => %{"mode" => "custom"}}
+             }
+    end
+  end
+
+  test "explicit capabilities control module advertisements and settings" do
+    capabilities = %{"extensions" => %{Configured.id() => %{"mode" => "explicit"}}}
+
+    runtime = TestFixtures.runtime(extensions: [Echo, Configured], capabilities: capabilities)
+
+    assert runtime.capabilities == capabilities
+  end
+
+  test "derived capabilities advertise declared and module extension settings" do
+    runtime =
+      TestFixtures.runtime(
+        extensions: [
+          {:declared, "com.example/declared", %{"version" => 1}},
+          {Configured, settings: %{"mode" => "custom"}}
+        ]
+      )
+
+    assert runtime.capabilities["extensions"] == %{
+             "com.example/declared" => %{"version" => 1},
+             Configured.id() => %{"mode" => "custom"}
+           }
+  end
+
+  test "mixed-dialect discovery advertises modules while legacy initialize omits extensions" do
+    runtime =
+      TestFixtures.runtime(protocols: [V2026_07_28, V2025_11_25], extensions: [Echo])
+
+    assert %{"result" => %{"capabilities" => legacy_capabilities}} =
+             dispatch_direct(runtime, %{
+               "jsonrpc" => "2.0",
+               "id" => "legacy",
+               "method" => "initialize",
+               "params" => %{
+                 "protocolVersion" => "2025-11-25",
+                 "capabilities" => %{},
+                 "clientInfo" => %{"name" => "test", "version" => "1"}
+               }
+             })
+
+    refute Map.has_key?(legacy_capabilities, "extensions")
+
+    assert {:ok, client} = Client.direct(runtime)
+    assert {:ok, %{"capabilities" => %{"extensions" => extensions}}} = Client.discover(client)
+    assert extensions == %{Echo.id() => %{}}
+  end
+
+  test "a negotiating client can call an automatically advertised route" do
+    runtime = TestFixtures.runtime(extensions: [Echo])
+    echo_id = Echo.id()
+
+    assert {:ok, client} =
+             Client.direct(runtime,
+               client_capabilities: %{"extensions" => %{echo_id => %{"mode" => "client"}}}
+             )
+
+    assert {:ok,
+            %{
+              "extensionResult" => %{"value" => "hello"},
+              "contextExtensions" => %{^echo_id => %{"clientMode" => "client"}}
+            }} = Client.request(client, "com.example/echo", %{"value" => "hello"})
+  end
+
+  test "module settings must be a JSON object" do
+    for invalid <- [[], %{mode: "atom key"}, %{"mode" => self()}, ~D[2026-11-19]] do
+      message =
+        "extension #{inspect(Configured)} server_settings/1 must return a JSON object, " <>
+          "got: #{inspect(invalid)}"
+
+      assert_raise ArgumentError, message, fn ->
+        TestFixtures.runtime(extensions: [{Configured, settings: invalid}])
+      end
+    end
+  end
 
   @tag mcp_contract: ["extension-registration"]
   test "registration rejects collisions with every part of the exact core catalog" do
@@ -162,7 +271,10 @@ defmodule Snodo.ExtensionAcceptanceTest do
 
   test "installed but unadvertised middleware remains inert" do
     runtime =
-      TestFixtures.runtime(extensions: [{AroundOuter, owner: self(), label: "not-advertised"}])
+      TestFixtures.runtime(
+        extensions: [{AroundOuter, owner: self(), label: "not-advertised"}],
+        capabilities: %{"tools" => %{}}
+      )
 
     response =
       dispatch_direct(
@@ -302,7 +414,7 @@ defmodule Snodo.ExtensionAcceptanceTest do
     assert %{"result" => %{"value" => _value}} = negotiated
 
     installed_only =
-      TestFixtures.runtime(extensions: [{RequiredCapability, mode: :raise}])
+      TestFixtures.runtime(extensions: [{RequiredCapability, mode: :raise}], capabilities: %{})
 
     assert method_not_found?(
              dispatch_direct(
@@ -337,7 +449,7 @@ defmodule Snodo.ExtensionAcceptanceTest do
       TestFixtures.runtime(capabilities: extension_capabilities(Echo))
     end
 
-    installed_only = TestFixtures.runtime(extensions: [Echo])
+    installed_only = TestFixtures.runtime(extensions: [Echo], capabilities: %{})
 
     assert %{"result" => %{"capabilities" => capabilities}} =
              dispatch_direct(installed_only, request("discover-installed", "server/discover"))

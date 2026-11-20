@@ -127,8 +127,7 @@ defmodule Snodo.Extensions.TasksAuthorizationTest do
         extensions: [
           {Tasks, store: store_ref, runner: runner, task_support: %{"guarded" => :optional}}
         ],
-        server_info: %{"name" => "tasks-authorization", "version" => "1"},
-        capabilities: %{"tools" => %{}, "extensions" => %{Tasks.id() => %{}}}
+        server_info: %{"name" => "tasks-authorization", "version" => "1"}
       )
 
     %{runtime: runtime, store: store}

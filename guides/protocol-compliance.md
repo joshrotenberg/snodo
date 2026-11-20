@@ -134,8 +134,9 @@ MRTR-only names. An extension module owns semantic validation, dispatch,
 success shaping, and error shaping; the server still enforces JSON-RPC
 correlation and JSON-safe output. Separate optional callbacks can wrap core
 dispatch or adapt the selected dialect's transport policy, but only for a
-server-advertised, exact-compatible extension. Installed-only modules remain
-inert, and callback faults become safe internal errors.
+server-advertised, exact-compatible extension. A module omitted from an
+explicit capabilities map is installed but inert. Callback faults become
+safe internal errors.
 
 Tasks is the substantial proof of that split. Its independently compiled
 `:snodo_tasks` package depends one-way on `snodo`, wraps `tools/call`, owns
