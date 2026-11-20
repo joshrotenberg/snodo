@@ -31,7 +31,9 @@ defmodule Snodo.Client do
       code is `:protocol`. Transport failures have `kind: :transport`: -32000
       when the connection is closed, unreachable, returns something that is
       not a JSON-RPC response, or returns a response over the transport's size
-      limit, and -32001 when a request times out.
+      limit, or loses an initialize-era HTTP session (HTTP 404 on a request
+      carrying `Mcp-Session-Id` with `cause: :session_not_found`, see
+      `connect/2`). A request timeout uses -32001.
 
   Each request takes a fresh integer ID, so one client can be used from many
   processes at once.
@@ -314,6 +316,12 @@ defmodule Snodo.Client do
   and, when the server issued one, `Mcp-Session-Id`, and `close/1` sends a
   `DELETE` for the session. A server that supports none of the allowed
   versions is a -32602 error with `requested` and `supported` in `data`.
+
+  If an initialize-era HTTP request carrying a session ID receives HTTP 404,
+  the client returns `{:error, %Snodo.Error{kind: :transport, cause: :session_not_found}}`
+  and invalidates the session. Close the old client and call `connect/2` again
+  with the same target and options to start a new session. Requests are never
+  replayed automatically after session loss.
   """
   @spec connect(target(), keyword()) :: {:ok, t()} | {:error, Error.t()}
   def connect(target, opts \\ [])
@@ -341,20 +349,14 @@ defmodule Snodo.Client do
   When the server issued a session id, the transport is told to end the
   session first: over HTTP that is a `DELETE` with `Mcp-Session-Id`. Its
   outcome is not reported, so `close/1` waits for it for at most 5,000 ms,
-  or the client's `:timeout` when that is shorter.
+  or the client's `:timeout` when that is shorter. For a session already known
+  to be lost, HTTP closes the connection pool directly.
   """
   @spec close(t()) :: :ok
-  def close(%__MODULE__{transport: {module, state}, session: %Session{id: id}} = client)
-      when is_binary(id) do
-    if function_exported?(module, :delete_session, 2) do
-      timeout = min(client.timeout, @delete_session_timeout)
-      :ok = module.delete_session(state, headers: session_headers(client), timeout: timeout)
-    end
-
+  def close(%__MODULE__{transport: {module, state}} = client) do
+    :ok = end_session(client)
     module.close(state)
   end
-
-  def close(%__MODULE__{transport: {module, state}}), do: module.close(state)
 
   @doc """
   Requests `server/discover`.
@@ -621,7 +623,8 @@ defmodule Snodo.Client do
       raise ArgumentError, ":bypass_cache must be a boolean"
     end
 
-    with :ok <- check_method(client, method) do
+    with :ok <- check_method(client, method),
+         :ok <- Session.check(client.session) do
       if client.cache and not bypass_cache and cacheable?(method, opts) do
         cached_request(client, method, params, opts)
       else
@@ -833,11 +836,13 @@ defmodule Snodo.Client do
 
   defp end_session(%__MODULE__{transport: {module, state}, session: %Session{id: id}} = client)
        when is_binary(id) do
-    if function_exported?(module, :delete_session, 2) do
-      module.delete_session(state,
+    if function_exported?(module, :delete_session, 2) and not Session.lost?(client.session) do
+      opts = [
         headers: session_headers(client),
         timeout: min(client.timeout, @delete_session_timeout)
-      )
+      ]
+
+      :ok = module.delete_session(state, opts ++ http_session(client))
     end
 
     :ok
@@ -1020,10 +1025,17 @@ defmodule Snodo.Client do
   # own requests are answered. Before that, on a stateless connection, only a
   # client with handlers has anything to answer them with.
   defp session_options(%__MODULE__{session: %Session{}} = client),
-    do: [headers: session_headers(client), on_server_request: responder(client)]
+    do:
+      [headers: session_headers(client), on_server_request: responder(client)] ++
+        http_session(client)
 
   defp session_options(%__MODULE__{input_handlers: handlers}) when handlers == %{}, do: []
   defp session_options(%__MODULE__{} = client), do: [on_server_request: responder(client)]
+
+  defp http_session(%__MODULE__{transport: {HTTP, _state}, session: session}),
+    do: [session: session]
+
+  defp http_session(_client), do: []
 
   defp session_headers(%__MODULE__{session: %Session{version: version, id: id}}) do
     [{"mcp-protocol-version", version}] ++ if(id, do: [{"mcp-session-id", id}], else: [])

@@ -504,6 +504,17 @@ defmodule Snodo.ClientHTTPTest do
       refute verified == unverified
     end
 
+    test "a 2026-07-28 404 retains the HTTP status error even with a session header" do
+      url = FakeHTTP.start(self(), fn _headers, _message -> {404, [], "missing"} end)
+      client = connect(url, headers: [{"Mcp-Session-Id", "extra"}])
+
+      assert {:error, %Error{kind: :transport, cause: {:http_status, 404, "missing"}}} =
+               Client.ping(client)
+
+      assert_receive {:fake_http, %{"mcp-session-id" => "extra"}, %{"method" => "ping"}}
+      assert :ok = Client.close(client)
+    end
+
     test "public cache entries respect each client's response size limit" do
       url =
         FakeHTTP.start(self(), fn _headers, message ->
@@ -1170,6 +1181,160 @@ defmodule Snodo.ClientHTTPTest do
       assert_receive {:fake_http, %{":method" => "DELETE"} = headers, nil}, 1_000
       assert headers["mcp-protocol-version"] == "2025-11-25"
       assert headers["mcp-session-id"] == "s-1"
+    end
+
+    test "a session 404 invalidates the client until the caller reconnects" do
+      json_error = fn message ->
+        {404, [@json_type],
+         JSON.encode!(%{
+           "jsonrpc" => "2.0",
+           "id" => message["id"],
+           "error" => %{"code" => -32_001, "message" => "Session not found"}
+         })}
+      end
+
+      for {version, respond} <- [
+            {"2025-11-25", fn _message -> {404, [], ""} end},
+            {"2025-06-18", json_error},
+            {"2025-11-25", fn _message -> {404, [{"content-type", "text/event-stream"}], ""} end}
+          ] do
+        counter = :atomics.new(1, [])
+
+        url =
+          FakeHTTP.start(self(), fn
+            _headers, %{"method" => "initialize"} = message ->
+              id = "session-#{:atomics.add_get(counter, 1, 1)}"
+              result = Map.put(@initialized, "protocolVersion", version)
+              {200, headers, body} = json(message, result)
+              {200, [{"mcp-session-id", id} | headers], body}
+
+            _headers, %{"method" => "notifications/initialized"} ->
+              {202, [], ""}
+
+            %{"mcp-session-id" => "session-1"}, %{"method" => "tools/call"} = message ->
+              respond.(message)
+
+            %{"mcp-session-id" => "session-2"}, %{"method" => "ping"} = message ->
+              json(message, %{})
+
+            _headers, _message ->
+              {500, [], ""}
+          end)
+
+        client = connect(url, protocol: version, timeout: 1_000)
+
+        assert_receive {:fake_http, headers, %{"method" => "initialize"}}
+        refute Map.has_key?(headers, "mcp-session-id")
+
+        assert_receive {:fake_http, %{"mcp-session-id" => "session-1"},
+                        %{"method" => "notifications/initialized"}}
+
+        assert {:error, %Error{kind: :transport, code: -32_000, cause: :session_not_found}} =
+                 Client.call_tool(client, "mutate")
+
+        assert_receive {:fake_http, %{"mcp-session-id" => "session-1"},
+                        %{"method" => "tools/call"}}
+
+        assert {:error, %Error{cause: :session_not_found}} = Client.ping(client)
+        task = Task.async(fn -> Client.ping(client) end)
+        assert {:error, %Error{cause: :session_not_found}} = Task.await(task)
+
+        assert :ok = Client.close(client)
+        refute_received {:fake_http, _, _}
+
+        replacement = connect(url, protocol: version, timeout: 1_000)
+
+        assert_receive {:fake_http, headers, %{"method" => "initialize"}}
+        refute Map.has_key?(headers, "mcp-session-id")
+
+        assert_receive {:fake_http, %{"mcp-session-id" => "session-2"},
+                        %{"method" => "notifications/initialized"}}
+
+        assert {:ok, %{}} = Client.ping(replacement)
+        assert_receive {:fake_http, %{"mcp-session-id" => "session-2"}, %{"method" => "ping"}}
+
+        assert :ok = Client.close(replacement)
+
+        assert_receive {:fake_http, %{":method" => "DELETE", "mcp-session-id" => "session-2"},
+                        nil}
+      end
+    end
+
+    test "session loss takes precedence over a cached result" do
+      url =
+        legacy_server(fn
+          %{"method" => "tools/list"} = message ->
+            json(message, %{"tools" => [], "ttlMs" => 5_000, "cacheScope" => "private"})
+
+          %{"method" => "ping"} ->
+            {404, [], ""}
+        end)
+
+      client = connect(url, protocol: "2025-11-25", cache: true)
+      assert {:ok, []} = Client.list_tools(client)
+      assert_receive {:fake_http, _headers, %{"method" => "tools/list"}}
+      assert {:ok, []} = Client.list_tools(client)
+      refute_received {:fake_http, _, %{"method" => "tools/list"}}
+
+      assert {:error, %Error{cause: :session_not_found}} = Client.ping(client)
+      assert {:error, %Error{cause: :session_not_found}} = Client.list_tools(client)
+      refute_received {:fake_http, _, %{"method" => "tools/list"}}
+      assert :ok = Client.close(client)
+    end
+
+    test "a 404 on the answer to an SSE server request fails the original request with session loss" do
+      server_ping = %{"jsonrpc" => "2.0", "id" => "srv-1", "method" => "ping"}
+
+      url =
+        FakeHTTP.start(self(), fn
+          _headers, %{"method" => "initialize"} = message ->
+            {200, headers, body} = json(message, @initialized)
+            {200, [{"mcp-session-id", "s-1"} | headers], body}
+
+          _headers, %{"method" => "notifications/initialized"} ->
+            {202, [], ""}
+
+          _headers, %{"method" => "tools/call"} ->
+            event = "data: #{JSON.encode!(server_ping)}\n\n"
+            {200, [{"content-type", "text/event-stream"}], {:hold, event}}
+
+          _headers, %{"id" => "srv-1"} ->
+            {404, [], ""}
+        end)
+
+      client = connect(url, protocol: "2025-11-25")
+
+      assert {:error, %Error{kind: :transport, code: -32_000, cause: :session_not_found}} =
+               Client.call_tool(client, "ask")
+
+      assert_receive {:fake_http, %{"mcp-session-id" => "s-1"},
+                      %{"id" => "srv-1", "result" => %{}}}
+
+      assert_receive :fake_http_closed
+      assert {:error, %Error{cause: :session_not_found}} = Client.ping(client)
+      refute_received {:fake_http, _, %{"method" => "ping"}}
+      assert :ok = Client.close(client)
+    end
+
+    test "an initialize-era 404 without a session ID retains the HTTP status error" do
+      url =
+        FakeHTTP.start(self(), fn
+          _headers, %{"method" => "initialize"} = message -> json(message, @initialized)
+          _headers, %{"method" => "notifications/initialized"} -> {202, [], ""}
+          _headers, %{"method" => "ping"} -> {404, [], "missing"}
+        end)
+
+      client = connect(url, protocol: "2025-11-25")
+
+      for _ <- 1..2 do
+        assert {:error, %Error{kind: :transport, cause: {:http_status, 404, "missing"}}} =
+                 Client.ping(client)
+
+        assert_receive {:fake_http, headers, %{"method" => "ping"}}
+        refute Map.has_key?(headers, "mcp-session-id")
+      end
+
+      assert :ok = Client.close(client)
     end
 
     test "a timed-out request is cancelled with notifications/cancelled and the session headers" do

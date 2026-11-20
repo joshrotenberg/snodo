@@ -32,9 +32,11 @@ defmodule Snodo.Client.HTTP do
   server or by the connection, the request in flight fails at once with a
   -32000 transport error whose `cause` is that failure. The time the function takes counts
   against the request's timeout, which is not extended. Other notifications
-  are dropped. A JSON-RPC error body is returned whatever the HTTP status, so
-  `Snodo.Client` decodes it as `{:error, %Snodo.Error{}}`. Anything else is a
-  -32000 transport error with the status and body in `cause`. A timeout closes
+  are dropped. `Snodo.Client` decodes JSON-RPC error bodies as
+  `{:error, %Snodo.Error{}}`. An unexpected body returns a -32000 transport
+  error with the status and body in `cause`. The transport detects session
+  loss from the request's `Mcp-Session-Id` header and the response's 404 status
+  before reading the body. A timeout closes
   the connection, which a 2026-07-28 server treats as cancellation. On an
   initialize-era connection the transport also sends `notifications/cancelled`
   for the request, with the session headers, waiting at most 5,000 ms for it;
@@ -46,7 +48,10 @@ defmodule Snodo.Client.HTTP do
   with `notify/3` (a `POST` answered with a 2xx and no body), and ends the
   session with `delete_session/2`, a `DELETE` with the same headers whose
   outcome is not reported: a server that does not support client-initiated
-  termination answers 405.
+  termination answers 405. An HTTP 404 on an initialize-era request carrying
+  a session ID invalidates the session and returns a -32000 transport error
+  with `cause: :session_not_found`, including when the response advertises SSE
+  or contains a JSON-RPC error body.
 
   A `subscriptions/listen` request opened with `Snodo.Client.listen/3` keeps
   its event-stream response open in a process of its own, which delivers the
@@ -108,6 +113,7 @@ defmodule Snodo.Client.HTTP do
   alias Snodo.Client.Deadline
   alias Snodo.Client.HTTP.Pool
   alias Snodo.Client.HTTP.Stream, as: SubscriptionStream
+  alias Snodo.Client.Session
   alias Snodo.Client.Transport
   alias Snodo.Envelope
   alias Snodo.Extension.Method, as: ExtensionMethod
@@ -224,11 +230,12 @@ defmodule Snodo.Client.HTTP do
           "params" => %{"requestId" => id, "reason" => "Request timed out"}
         }
 
-        notify_opts = [
-          dialect: dialect,
-          headers: Keyword.get(opts, :headers, []),
-          timeout: @cancel_timeout
-        ]
+        notify_opts =
+          [
+            dialect: dialect,
+            headers: Keyword.get(opts, :headers, []),
+            timeout: @cancel_timeout
+          ] ++ Keyword.take(opts, [:session])
 
         notify(state, cancellation, notify_opts)
       end
@@ -631,7 +638,8 @@ defmodule Snodo.Client.HTTP do
   defp exchange(state, method, headers, message, opts) do
     timeout = Keyword.fetch!(opts, :timeout)
 
-    with {:ok, socket, lease} <- checkout_socket(state, timeout) do
+    with :ok <- Session.check(opts[:session]),
+         {:ok, socket, lease} <- checkout_socket(state, timeout) do
       try do
         {result, reusable?} =
           perform_exchange(state, socket, lease, method, headers, message, opts)
@@ -693,15 +701,21 @@ defmodule Snodo.Client.HTTP do
       token: if(on_progress, do: get_in(message, ["params", "_meta", "progressToken"])),
       on_log: Keyword.get(opts, :on_log),
       on_server_request: Keyword.get(opts, :on_server_request),
-      reply: {state, Keyword.get(opts, :headers, []), Keyword.take(opts, [:timeout])},
+      reply:
+        {state, Keyword.get(opts, :headers, []),
+         Keyword.take(opts, [:timeout, :dialect, :session])},
       stream: nil,
       read: 0,
       body: nil,
       extra_bytes?: false
     }
 
-    with :ok <- send_request(socket, state, method, headers, encode(message), "keep-alive"),
-         {:ok, status, response_headers, rest, version} <- read_head(conn, "", 0) do
+    # Another request can discover session loss while this one waits for a socket.
+    # Discard the socket in that case. Closing the expired client drains its pool.
+    with :ok <- Session.check(opts[:session]),
+         :ok <- send_request(socket, state, method, headers, encode(message), "keep-alive"),
+         {:ok, status, response_headers, rest, version} <- read_head(conn, "", 0),
+         :ok <- check_session_response(status, headers, opts) do
       if event_stream?(response_headers), do: Pool.detach(lease)
       conn = %{conn | body: body_state(response_headers)}
 
@@ -712,6 +726,20 @@ defmodule Snodo.Client.HTTP do
       {:error, reason} -> {{:error, reason}, false}
     end
   end
+
+  defp check_session_response(404, headers, opts) do
+    dialect = opts[:dialect]
+
+    if dialect && dialect.era() == :session &&
+         Enum.any?(headers, &owned_header?(&1, ["mcp-session-id"])) do
+      :ok = Session.invalidate(opts[:session])
+      Session.lost_error()
+    else
+      :ok
+    end
+  end
+
+  defp check_session_response(_status, _headers, _opts), do: :ok
 
   defp exchange_body_result({:ok, conn}, status, headers, version) do
     case finish(conn) do
@@ -1317,6 +1345,9 @@ defmodule Snodo.Client.HTTP do
     case deliver(state, message_headers(%Policy{}) ++ session_headers, response, opts) do
       :ok ->
         :ok
+
+      {:error, %Snodo.Error{cause: :session_not_found}} = error ->
+        error
 
       {:error, error} ->
         {:error,
