@@ -42,3 +42,28 @@ jobs:
         run: |
           shellcheck_path=$(command -v shellcheck)
           "$RUNNER_TEMP/actionlint" -color -shellcheck "$shellcheck_path"
+
+  zizmor:
+    name: Audit GitHub Actions workflows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Download and verify zizmor
+        shell: bash
+        env:
+          ZIZMOR_VERSION: "1.30.1"
+          ZIZMOR_SHA256: "e65324f4430c2717591937edcec90ccbefaf14c174f8ec9415e03ca875b46e1a"
+        run: |
+          archive="zizmor-x86_64-unknown-linux-gnu.tar.gz"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$archive" \
+            "https://github.com/zizmorcore/zizmor/releases/download/v${ZIZMOR_VERSION}/$archive"
+          printf '%s  %s\n' "$ZIZMOR_SHA256" "$RUNNER_TEMP/$archive" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" zizmor
+      - name: Audit workflow files offline
+        shell: bash
+        run: '"$RUNNER_TEMP/zizmor" --offline .github/workflows/*.yml'
