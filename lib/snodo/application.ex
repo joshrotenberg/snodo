@@ -12,6 +12,7 @@ defmodule Snodo.Application do
       Snodo.Schema.Validator.Cache,
       Snodo.Client.Cache,
       Snodo.Client.HTTP.Pool,
+      Snodo.Transport.Stdio.LoggerRedirect,
       {Task.Supervisor, name: Snodo.Component.Wrap.Tasks, max_children: 1_024},
       Snodo.Component.Wrap.State
     ]
