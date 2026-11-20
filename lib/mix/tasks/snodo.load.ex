@@ -75,7 +75,7 @@ defmodule Mix.Tasks.Snodo.Load do
       default 5. Samples go through the executor's mailbox, so they report
       sampled maxima that can miss the true peaks, and a shorter interval adds
       load to the process being measured.
-    * `--backlog` - the HTTP listener's listen backlog, default 128 as in
+    * `--backlog` - the HTTP listener's listen backlog, default 1,024 as in
       `Snodo.Transport.StreamableHTTP.Server`.
     * `--no-warmup` - skip the 20 untimed requests sent through each transport
       before measuring, which load code so the first scenario is not slower.

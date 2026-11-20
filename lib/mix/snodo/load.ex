@@ -58,7 +58,7 @@ defmodule Snodo.Load do
     request_timeout: 30_000,
     client_timeout: 60_000,
     sample_ms: 5,
-    backlog: 128,
+    backlog: 1_024,
     warmup: true,
     transports: [:stdio, :http],
     stdio_requests: nil,

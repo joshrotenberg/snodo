@@ -25,10 +25,11 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
       descriptors or buffers run out, the listener logs a warning and retries
       every 100 ms instead of stopping.
     * `:backlog` - the listen socket's queue of connections not yet accepted,
-      default 128. The kernel caps it, on Linux at `net.core.somaxconn`, and
-      decides what happens to connection attempts that overflow it. On one
-      Linux machine, a burst of 1,000 connections against the default had
-      clients retrying after about a second, before any other limit applied.
+      default 1,024, matching `:max_connections`. The kernel caps it, on Linux
+      at `net.core.somaxconn`, and decides what happens to connection attempts
+      that overflow it. On one Linux machine, a burst of 1,000 connections
+      against a backlog of 128 had clients retrying after about a second,
+      before any other limit applied.
     * `:head_timeout` - milliseconds from accept until the request head must be
       complete, default 10,000. `:read_timeout` (default 5,000) still bounds
       each read; this deadline bounds the whole head, so a client that sends it
@@ -136,6 +137,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   @default_subscription_keepalive_ms 15_000
   @default_request_timeout 30_000
   @default_max_connections 1_024
+  @default_backlog 1_024
   @default_head_timeout 10_000
   @default_keepalive_timeout 5_000
   @default_max_keepalive_requests 100
@@ -216,7 +218,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
       send_timeout_close: true,
       reuseaddr: true,
       ip: ip,
-      backlog: Keyword.get(opts, :backlog, 128)
+      backlog: Keyword.get(opts, :backlog, @default_backlog)
     ]
 
     with {:ok, listen_socket} <- :gen_tcp.listen(port, listen_opts),
