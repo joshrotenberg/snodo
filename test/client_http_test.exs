@@ -432,7 +432,7 @@ defmodule Snodo.ClientHTTPTest do
                Client.call_tool(client, "routed", %{"region" => "us-west1"})
     end
 
-    test "encodes each argument type and omits null arguments" do
+    test "encodes each argument type and omits headers for null and out-of-range integers" do
       url = FakeHTTP.start(self(), fn _headers, message -> json(message, %{"content" => []}) end)
       client = connect(url)
 
@@ -442,6 +442,8 @@ defmodule Snodo.ClientHTTPTest do
               {"empty", "string"},
               {"unsafe", "string"},
               {"count", "integer"},
+              {"large", "integer"},
+              {"exponent", "integer"},
               {"flag", "boolean"},
               {"missing", "string"}
             ],
@@ -458,12 +460,16 @@ defmodule Snodo.ClientHTTPTest do
         "empty" => "",
         "unsafe" => "line1\nline2",
         "count" => 42,
+        "large" => 9_007_199_254_740_993,
+        "exponent" => 1.0e21,
         "flag" => true,
         "missing" => nil
       }
 
       assert {:ok, _result} = Client.call_tool(client, tool, arguments)
-      assert_receive {:fake_http, headers, %{"method" => "tools/call"}}
+
+      assert_receive {:fake_http, headers,
+                      %{"method" => "tools/call", "params" => %{"arguments" => ^arguments}}}
 
       assert headers["mcp-param-plain"] == "us west 1"
       assert headers["mcp-param-empty"] == ""
@@ -471,6 +477,8 @@ defmodule Snodo.ClientHTTPTest do
       assert headers["mcp-param-count"] == "42"
       assert headers["mcp-param-flag"] == "true"
       refute Map.has_key?(headers, "mcp-param-missing")
+      refute Map.has_key?(headers, "mcp-param-large")
+      refute Map.has_key?(headers, "mcp-param-exponent")
     end
 
     test "list_tools leaves out and logs tools with invalid annotations" do
