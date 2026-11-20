@@ -47,6 +47,7 @@ the maturity stages listed in the [MCP extension registry](https://modelcontextp
 | Skills (`io.modelcontextprotocol/skills`, SEP-2640) | Beta | `Snodo.Skills` |
 | MCP Apps (`io.modelcontextprotocol/ui`, SEP-1865) | Stable | `Snodo.Apps` |
 | OAuth Client Credentials (SEP-1046) | Stable | `snodo_oauth` client |
+| Server Cards (`io.modelcontextprotocol/server-card`, SEP-2127) | Beta | `Snodo.ServerCard`, opt-in `server_card:` on the HTTP transports |
 
 Experimental extensions can change without notice. Beta extensions can make
 breaking changes, which should be infrequent and must be recorded upstream.
