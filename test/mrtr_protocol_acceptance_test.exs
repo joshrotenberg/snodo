@@ -106,18 +106,18 @@ defmodule Snodo.MRTR.ProtocolAcceptanceTest do
 
   test "malformed retry envelopes fail before callbacks and consumed answers preserve protocol errors" do
     for transport <- @transports, {method, params} <- @targets do
-      for fields <- [
-            %{"requestState" => nil},
-            %{"requestState" => %{}},
-            %{"inputResponses" => nil},
-            %{"inputResponses" => []},
-            %{"inputResponses" => %{"choice" => 1}},
-            %{"inputResponses" => %{"choice" => %{"action" => "unknown"}}},
-            %{"inputResponses" => %{"choice" => accepted(42)}},
-            %{"inputResponses" => %{"choice" => %{"result" => accepted("wrapped")}}}
+      for {fields, http_status} <- [
+            {%{"requestState" => nil}, 400},
+            {%{"requestState" => %{}}, 400},
+            {%{"inputResponses" => nil}, 400},
+            {%{"inputResponses" => []}, 400},
+            {%{"inputResponses" => %{"choice" => 1}}, 400},
+            {%{"inputResponses" => %{"choice" => %{"action" => "unknown"}}}, 200},
+            {%{"inputResponses" => %{"choice" => accepted(42)}}, 200},
+            {%{"inputResponses" => %{"choice" => %{"result" => accepted("wrapped")}}}, 200}
           ] do
         assert %{"error" => %{"code" => -32_602}} =
-                 dispatch(transport, request(5, method, Map.merge(params, fields)))
+                 dispatch(transport, request(5, method, Map.merge(params, fields)), http_status)
       end
     end
   end
@@ -133,7 +133,7 @@ defmodule Snodo.MRTR.ProtocolAcceptanceTest do
     for transport <- @transports, {method, params} <- @targets do
       for caps <- [%{}, %{"elicitation" => %{"url" => %{}}}] do
         assert %{"error" => %{"code" => -32_021, "data" => data}} =
-                 dispatch(transport, request(6, method, params, caps))
+                 dispatch(transport, request(6, method, params, caps), 400)
 
         assert data == %{"requiredCapabilities" => @form_caps}
       end
@@ -145,7 +145,7 @@ defmodule Snodo.MRTR.ProtocolAcceptanceTest do
     end
 
     url_params = %{"name" => "invalid_input", "arguments" => %{"variant" => "url"}}
-    assert dispatch(:http, request(8, "tools/call", url_params))["error"]["code"] == -32_021
+    assert dispatch(:http, request(8, "tools/call", url_params), 400)["error"]["code"] == -32_021
     caps = %{"elicitation" => %{"url" => %{}}}
 
     assert dispatch(:http, request(9, "tools/call", url_params, caps))["result"]["resultType"] ==
@@ -338,14 +338,14 @@ defmodule Snodo.MRTR.ProtocolAcceptanceTest do
 
       for caps <- [%{}, %{"roots" => %{}}, @form_caps] do
         assert %{"error" => %{"code" => -32_021, "data" => data}} =
-                 dispatch(transport, request(40, "tools/call", sample, caps))
+                 dispatch(transport, request(40, "tools/call", sample, caps), 400)
 
         assert data == %{"requiredCapabilities" => %{"sampling" => %{}}}
       end
 
       for caps <- [%{}, %{"sampling" => %{}}] do
         assert %{"error" => %{"code" => -32_021, "data" => data}} =
-                 dispatch(transport, request(41, "tools/call", %{"name" => "roots"}, caps))
+                 dispatch(transport, request(41, "tools/call", %{"name" => "roots"}, caps), 400)
 
         assert data == %{"requiredCapabilities" => %{"roots" => %{}}}
       end
@@ -353,7 +353,7 @@ defmodule Snodo.MRTR.ProtocolAcceptanceTest do
       tools = %{"name" => "sample", "arguments" => %{"tools" => true}}
 
       assert %{"error" => %{"code" => -32_021, "data" => data}} =
-               dispatch(transport, request(42, "tools/call", tools, %{"sampling" => %{}}))
+               dispatch(transport, request(42, "tools/call", tools, %{"sampling" => %{}}), 400)
 
       assert data == %{"requiredCapabilities" => %{"sampling" => %{"tools" => %{}}}}
 
@@ -368,7 +368,7 @@ defmodule Snodo.MRTR.ProtocolAcceptanceTest do
       context = %{"name" => "sample", "arguments" => %{"context" => true, "tools" => true}}
 
       assert %{"error" => %{"code" => -32_021, "data" => data}} =
-               dispatch(transport, request(44, "tools/call", context, tools_caps))
+               dispatch(transport, request(44, "tools/call", context, tools_caps), 400)
 
       assert data == %{
                "requiredCapabilities" => %{"sampling" => %{"tools" => %{}, "context" => %{}}}
@@ -381,7 +381,7 @@ defmodule Snodo.MRTR.ProtocolAcceptanceTest do
 
       # Every unsupported request contributes to one merged ClientCapabilities object.
       assert %{"error" => %{"code" => -32_021, "data" => data}} =
-               dispatch(transport, request(46, "tools/call", %{"name" => "mixed"}, %{}))
+               dispatch(transport, request(46, "tools/call", %{"name" => "mixed"}, %{}), 400)
 
       assert data == %{
                "requiredCapabilities" => %{
@@ -392,7 +392,11 @@ defmodule Snodo.MRTR.ProtocolAcceptanceTest do
              }
 
       assert %{"error" => %{"code" => -32_021, "data" => data}} =
-               dispatch(transport, request(47, "tools/call", %{"name" => "mixed"}, @form_caps))
+               dispatch(
+                 transport,
+                 request(47, "tools/call", %{"name" => "mixed"}, @form_caps),
+                 400
+               )
 
       assert data == %{"requiredCapabilities" => %{"sampling" => %{}, "roots" => %{}}}
     end
@@ -442,14 +446,16 @@ defmodule Snodo.MRTR.ProtocolAcceptanceTest do
     }
   end
 
-  defp dispatch(:direct, raw) do
+  defp dispatch(transport, raw, expected_status \\ 200)
+
+  defp dispatch(:direct, raw, _expected_status) do
     {:ok, response} =
       Server.dispatch(ChoiceServer.runtime(), raw, %TransportContext{transport: :direct})
 
     response
   end
 
-  defp dispatch(:stdio, raw) do
+  defp dispatch(:stdio, raw, _expected_status) do
     {:ok, input} = StringIO.open(JSON.encode!(raw) <> "\n")
     {:ok, output} = StringIO.open("")
 
@@ -463,7 +469,7 @@ defmodule Snodo.MRTR.ProtocolAcceptanceTest do
     end
   end
 
-  defp dispatch(:http, raw) do
+  defp dispatch(:http, raw, expected_status) do
     response =
       StreamableHTTP.handle(ChoiceServer.runtime(), %Request{
         method: "POST",
@@ -479,7 +485,6 @@ defmodule Snodo.MRTR.ProtocolAcceptanceTest do
       })
 
     decoded = JSON.decode!(response.body)
-    expected_status = if Map.has_key?(decoded, "error"), do: 400, else: 200
     assert response.status == expected_status
     assert {"content-type", "application/json"} in response.headers
     decoded

@@ -21,7 +21,7 @@ defmodule Snodo.TasksHTTPAcceptanceTest do
     store = start_supervised!({Memory, scope: :shared})
     runner = start_supervised!({Runner, store: {Memory, store}})
 
-    %{runtime: TasksSupport.runtime(store, runner, self())}
+    %{runtime: TasksSupport.runtime(store, runner, self()), store: store, runner: runner}
   end
 
   test "all task methods require Mcp-Name mirrored from params.taskId", %{runtime: runtime} do
@@ -51,7 +51,7 @@ defmodule Snodo.TasksHTTPAcceptanceTest do
           request(raw, [{"Mcp-Name", "unknown-task"} | base_headers(method)])
         )
 
-      assert admitted.status == 400
+      assert admitted.status == 200
       assert get_in(JSON.decode!(admitted.body), ["error", "code"]) == -32_602
     end
   end
@@ -67,8 +67,46 @@ defmodule Snodo.TasksHTTPAcceptanceTest do
         request(raw, [{"Mcp-Name", encoded} | base_headers("tasks/get")])
       )
 
-    assert response.status == 400
+    assert response.status == 200
     assert get_in(JSON.decode!(response.body), ["error", "code"]) == -32_602
+  end
+
+  test "a missing or oversized taskId fails extension validation", %{runtime: runtime} do
+    oversized = String.duplicate("x", 257)
+
+    for {params, header, message} <- [
+          {%{}, "unknown-task", "A non-empty taskId is required"},
+          {%{"taskId" => oversized}, oversized, "taskId is longer than 256 bytes"}
+        ] do
+      raw = TasksSupport.request("http-invalid-task-id", "tasks/get", params)
+      headers = [{"Mcp-Name", header} | base_headers("tasks/get")]
+
+      assert %{status: 400, body: body} = StreamableHTTP.handle(runtime, request(raw, headers))
+      assert %{"error" => %{"code" => -32_602, "message" => ^message}} = JSON.decode!(body)
+    end
+  end
+
+  test "a required task without client negotiation returns 400", %{runtime: runtime} do
+    params = %{"name" => "failing_job", "arguments" => %{}}
+    raw = TasksSupport.request("http-required-task", "tools/call", params, tasks: false)
+    headers = [{"Mcp-Name", "failing_job"} | base_headers("tools/call")]
+
+    assert %{status: 400, body: body} = StreamableHTTP.handle(runtime, request(raw, headers))
+    assert %{"error" => %{"code" => -32_021}} = JSON.decode!(body)
+  end
+
+  test "the task input size limit is reported during execution", %{store: store, runner: runner} do
+    runtime =
+      TasksSupport.runtime(store, runner, self(), extension_options: [max_work_input_bytes: 1])
+
+    params = %{"name" => "slow_compute", "arguments" => %{"label" => "http"}}
+    raw = TasksSupport.request("http-input-limit", "tools/call", params)
+    headers = [{"Mcp-Name", "slow_compute"} | base_headers("tools/call")]
+
+    assert %{status: 200, body: body} = StreamableHTTP.handle(runtime, request(raw, headers))
+
+    assert %{"error" => %{"code" => -32_602, "message" => "Task input is larger than 1 bytes"}} =
+             JSON.decode!(body)
   end
 
   @tag mcp_contract: ["tasks-extension-subscriptions-http"]

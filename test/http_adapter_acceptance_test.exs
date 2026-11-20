@@ -6,6 +6,8 @@ defmodule Snodo.Transport.StreamableHTTP.AdapterAcceptanceTest do
   alias Snodo.Transport.StreamableHTTP.Request
   alias Snodo.Transport.StreamableHTTP.Response
   alias Snodo.Transport.StreamableHTTP.StreamResponse
+  alias SnodoTest.FutureDialect
+  alias SnodoTest.TestAuthorization.Raising
   alias SnodoTest.TestCompletions.PackagePrompt
   alias SnodoTest.TestExtensions.HTTPPolicy
   alias SnodoTest.TestFixtures
@@ -142,11 +144,11 @@ defmodule Snodo.Transport.StreamableHTTP.AdapterAcceptanceTest do
       arguments = %{"region" => "Hello"}
 
       # Refused and concealed: the same answer as a tool that does not exist.
-      assert {400, refused} = routed_as(runtime, nil, "routed", arguments)
+      assert {200, refused} = routed_as(runtime, nil, "routed", arguments)
       assert_received {:authorize, :invocation, "routed"}
       refute_received {:authorize, _phase, _name}
 
-      assert {400, absent} = routed_as(runtime, nil, "absent", arguments)
+      assert {200, absent} = routed_as(runtime, nil, "absent", arguments)
       assert refused == put_in(absent, ["error", "message"], "Unknown tool: routed")
 
       # Allowed: the header failure is reported, and the handler does not run.
@@ -165,6 +167,28 @@ defmodule Snodo.Transport.StreamableHTTP.AdapterAcceptanceTest do
 
       assert {400, %{"error" => %{"code" => -32_020}}} =
                routed_as(runtime, nil, "routed", arguments)
+    end
+
+    test "a policy fault during dispatch or deferred header validation returns 200" do
+      runtime = TestFixtures.runtime(tools: [Routed], authorization: {Raising, refusal: :conceal})
+      args = %{"region" => "Hello"}
+
+      raw =
+        TestFixtures.request("routed", "tools/call", %{"name" => "routed", "arguments" => args})
+
+      valid_headers = [{"Mcp-Param-Region", "Hello"} | headers(raw)]
+
+      assert {200, deferred} = routed_as(runtime, nil, "routed", args)
+      assert %{"id" => "routed", "error" => %{"code" => -32_603}} = deferred
+
+      assert {:ok, %{deferred_error: nil} = prepared} =
+               StreamableHTTP.prepare(runtime, request(raw, headers: valid_headers))
+
+      assert %{status: 200, body: body} = StreamableHTTP.execute(runtime, prepared)
+
+      assert %{"id" => "routed", "error" => %{"code" => -32_603}} = JSON.decode!(body)
+      refute body =~ "private authorization policy detail"
+      refute JSON.encode!(deferred) =~ "private authorization policy detail"
     end
 
     # As the transports do: admit, attach the caller's identity, then execute.
@@ -554,6 +578,52 @@ defmodule Snodo.Transport.StreamableHTTP.AdapterAcceptanceTest do
       refute response.body =~ "private"
       refute response.body =~ "implementation detail"
     end
+  end
+
+  test "invalid resource params and resource execution errors have different statuses" do
+    runtime = TestFixtures.runtime(resources: [SnodoTest.TestResources.Raising])
+
+    for {uri, status, code} <- [
+          {"relative", 400, -32_602},
+          {"test://missing", 200, -32_602},
+          {"test://errors/raise", 200, -32_603}
+        ] do
+      raw = TestFixtures.request(1, "resources/read", %{"uri" => uri})
+      assert %{status: ^status, body: body} = StreamableHTTP.handle(runtime, request(raw))
+      assert %{"id" => 1, "error" => %{"code" => ^code}} = JSON.decode!(body)
+    end
+  end
+
+  test "a non-string cursor fails validation and a stale cursor fails execution" do
+    runtime = TestFixtures.runtime(tools: [Echo, Structured], pagination: [page_size: 1])
+    reduced_runtime = TestFixtures.runtime(tools: [Echo], pagination: [page_size: 1])
+    raw = TestFixtures.request(1, "tools/list")
+
+    assert %{status: 200, body: body} = StreamableHTTP.handle(runtime, request(raw))
+    assert %{"result" => %{"nextCursor" => cursor}} = JSON.decode!(body)
+
+    for {value, status} <- [{123, 400}, {cursor, 200}] do
+      raw = put_in(raw, ["params", "cursor"], value)
+      assert %{status: ^status, body: body} = StreamableHTTP.handle(reduced_runtime, request(raw))
+      assert %{"id" => 1, "error" => %{"code" => -32_602}} = JSON.decode!(body)
+    end
+  end
+
+  test "an exception escaping dialect result shaping returns a safe error on 200" do
+    runtime = TestFixtures.runtime(protocols: [FutureDialect], tools: [Echo])
+    meta = Map.put(FutureDialect.request_metadata(%{}), "com.acme/raise", true)
+
+    raw =
+      TestFixtures.request(1, "acme/echo", %{"name" => "echo", "arguments" => %{"text" => "hi"}})
+
+    raw = put_in(raw, ["params", "_meta"], meta)
+    headers = replace_header(headers(raw), "mcp-protocol-version", FutureDialect.version())
+
+    assert %{status: 200, body: body} =
+             StreamableHTTP.handle(runtime, request(raw, headers: headers))
+
+    assert %{"id" => 1, "error" => %{"code" => -32_603}} = JSON.decode!(body)
+    refute body =~ "private dialect result detail"
   end
 
   test "applies endpoint security and HTTP status semantics" do

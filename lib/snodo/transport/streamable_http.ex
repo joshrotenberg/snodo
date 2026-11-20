@@ -210,21 +210,21 @@ defmodule Snodo.Transport.StreamableHTTP do
       | metadata: Map.put(prepared.transport.metadata, :cancellation, cancellation)
     }
 
-    case Exchange.dispatch(runtime, prepared.raw, transport) do
-      {:ok, nil} ->
+    case dispatch(runtime, prepared, transport) do
+      {_phase, {:ok, nil}} ->
         _closed = discard_session(prepared)
         %Response{status: 202}
 
-      {:ok, response} when is_map(response) ->
-        prepared.protocol
-        |> execution_status(response)
+      {phase, {:ok, response}} when is_map(response) ->
+        phase
+        |> dispatch_status(response)
         |> json_response(response)
         |> keep_session(prepared, response)
 
-      {:stream, subscription} when prepared.policy.stream_mode == :sse ->
+      {_phase, {:stream, subscription}} when prepared.policy.stream_mode == :sse ->
         %StreamResponse{subscription: subscription}
 
-      {:stream, subscription} ->
+      {_phase, {:stream, subscription}} ->
         :ok = Snodo.Subscription.close(subscription, {:error, :stream_not_allowed})
 
         error_response(
@@ -237,6 +237,17 @@ defmodule Snodo.Transport.StreamableHTTP do
     _exception ->
       _closed = discard_session(prepared)
       error_response(500, Error.internal(), readable_id(prepared.raw))
+  end
+
+  defp dispatch(runtime, %Prepared{protocol: protocol, raw: raw}, transport) do
+    if protocol.era() == :stateless do
+      case Server.dispatch_with_outcome(runtime, raw, transport) do
+        {:executed, _result} = executed -> executed
+        result -> {:validation, result}
+      end
+    else
+      {:legacy, Exchange.dispatch(runtime, raw, transport)}
+    end
   end
 
   @doc """
@@ -676,10 +687,10 @@ defmodule Snodo.Transport.StreamableHTTP do
 
         {:refused, _error} ->
           unknown = Error.invalid_params("Unknown tool: #{name}")
-          error_response(status_for(unknown), unknown, id)
+          error_response(200, unknown, id)
 
         {:fault, %Error{} = fault} ->
-          error_response(status_for(fault), fault, id)
+          error_response(200, fault, id)
       end
     else
       _invalid -> error_response(status, error, id)
@@ -830,22 +841,23 @@ defmodule Snodo.Transport.StreamableHTTP do
     }
   end
 
-  # Initialize-era clients treat any non-2xx answer to a request as a
-  # transport failure, and 404 as an expired session, so their JSON-RPC
-  # errors travel with 200. Admission failures in prepare/3 keep 4xx on
-  # every dialect.
-  defp execution_status(protocol, response) do
-    if protocol.era() == :stateless, do: response_status(response), else: 200
-  end
+  # Initialize-era clients expect dispatch errors on 200 and use 404 for
+  # expired sessions.
+  defp dispatch_status(:legacy, _response), do: 200
 
-  defp response_status(%{"error" => %{"code" => code}}) when is_integer(code) do
-    Map.get(@error_statuses, code, 200)
-  end
+  # Execution has passed route validation. These errors are replies to an
+  # accepted request, so the client receives them in-band on HTTP 200.
+  defp dispatch_status(:executed, %{"error" => %{"code" => code}})
+       when code in [-32_602, -32_603],
+       do: 200
 
-  defp response_status(_response), do: 200
+  defp dispatch_status(_phase, %{"error" => %{"code" => code}}),
+    do: Map.get(@error_statuses, code, 200)
+
+  defp dispatch_status(_phase, _response), do: 200
 
   defp status_for(%Error{code: code}) do
-    response_status(%{"error" => %{"code" => code}})
+    Map.get(@error_statuses, code, 200)
   end
 
   defp json_response(status, value) do

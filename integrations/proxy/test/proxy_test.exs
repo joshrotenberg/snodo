@@ -795,7 +795,7 @@ defmodule Snodo.ProxyTest do
          %{proxy: proxy} do
       runtime = Proxy.runtime(proxy, authorization: {ConcealRegion, refusal: :conceal})
 
-      assert {400, %{"error" => %{"code" => -32_602, "message" => "Unknown tool: h.region"}}} =
+      assert {200, %{"error" => %{"code" => -32_602, "message" => "Unknown tool: h.region"}}} =
                region_call(runtime, [])
     end
   end
