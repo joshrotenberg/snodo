@@ -101,7 +101,8 @@ defmodule Snodo.MixProject do
           Snodo.Compliance.QuietFormatter,
           Mix.Tasks.Examples,
           Mix.Tasks.Snodo.Contract,
-          Mix.Tasks.Snodo.Example
+          Mix.Tasks.Snodo.Example,
+          Mix.Tasks.Snodo.Load
         ]
       end,
       groups_for_modules: [
