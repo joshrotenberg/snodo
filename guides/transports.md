@@ -21,6 +21,11 @@ admission, a bounded queue, deadlines, cancellation tokens, and supervised
 worker tasks, with cleanup when the submitting process dies. The stdio adapter
 and the HTTP listener use it; an application can inject its own executor.
 
+The executor applies global concurrency and queue limits and starts deadlines
+when work begins, with no per-peer fairness, adaptive load shedding, or
+queue-wait deadline of its own. Each executor admits work through one
+coordinator, whose admission throughput has yet to be benchmarked.
+
 ## Limits on message content
 
 Every transport decodes JSON with the same limits. An integer literal longer
@@ -81,6 +86,8 @@ messages. The redirect is VM-wide. The last transport using it restores the
 original handler configuration if the installed configuration is still
 current. If the application changed or removed the handler in the meantime,
 it is left as is. Set `redirect_logger?: false` to skip the redirect.
+With standard output, stdio also routes raw handler IO such as `IO.puts/1` to
+stderr when the standard error device is available.
 
 `sessions: true` makes the connection the session of an initialize-era client;
 see [Initialize-era sessions](#initialize-era-sessions).

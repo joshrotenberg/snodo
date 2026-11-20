@@ -29,7 +29,7 @@ Other directories:
 | `interop/` | Checks against the pinned official TypeScript and Python clients, and AJV validation of emitted messages |
 | `examples/` | Numbered runnable scripts, each checked by `mix examples` |
 | `guides/` | User documentation, published as ExDoc extras |
-| `docs/history/` | Dated design records |
+| `docs/history/` | Dated decision records |
 
 Inside the repository each sibling depends on `snodo` by path. `RELEASING.md` explains how they are published.
 
@@ -91,12 +91,13 @@ Selecting a distributed test by file:line still requires `--include distributed`
 - Every limit has a default, is documented (`guides/transports.md` or the package README), and fails with a defined error.
 - Conformance baselines are reviewed by hand. A newly passing check fails the gate too, until the baseline is updated on purpose ([conformance/AGENTS.md](conformance/AGENTS.md)).
 - release-please owns the versions in the ten `mix.exs` files, `CHANGELOG.md`, and the install snippets between `x-release-please-start-version` and `x-release-please-end` markers. Do not edit them by hand.
-- Records in `docs/history/` stay as written. Add a new dated record rather than editing an old one.
+- Decision records in `docs/history/` stay as written after merge. Use one `YYYY-MM-DD-topic.md` file per decision. Add a new dated record to supersede an old one.
 
 ## Code style
 
 - `mix format`. The formatter adds parentheses to DSL calls such as `argument(...)` and `tool(...)`.
 - No compiler warnings, `credo --strict` clean, Dialyzer clean.
+- If Dialyzer filters are needed, use narrow term-format entries linked to a concrete analyzer limitation or tracked issue. Never ignore an entire module or warning class to pass the build. The `:underspecs` warning class remains advisory and is outside the merge gate.
 - Public modules and functions carry `@moduledoc` and `@doc`; internal ones use `@moduledoc false` or `@doc false`.
 - Match the surrounding code's naming and comment density. Comments explain why, not what.
 - Tests run `async: true` unless they share global state. Each test helper sets `assert_receive_timeout` to 1,000 ms. Give `assert_receive` an explicit timeout when the expected work can take longer. Do not use `Process.sleep` to wait for something to happen.

@@ -72,9 +72,24 @@ that directory.
 
 ## Optional target-application acceptance
 
-`npm run check:hexpm` runs the separate `hexpm-mcp` application over stdio and
-HTTP. It is intentionally excluded from `check` and CI because that application
-is not part of this repository. It needs a compiled sibling checkout, or an
-explicit `HEXPM_MCP_PROJECT`; `HEXPM_MCP_BUILD_PATH` selects its Mix build tree.
-The fixture uses seeded data and redirects upstream service URLs to an unused
-loopback port, so it does not call public Hex.pm services.
+This optional check runs the real `hexpm-mcp` server callbacks with seeded
+cache entries and loopback service URLs. It uses the pinned TypeScript client
+and MCP `2026-07-28` over stdio and native Streamable HTTP. On each transport
+it checks the 24-tool catalog across three pages, successful tool calls,
+domain failures and invalid arguments, six prompt renders, two completions,
+one automatically resumed review prompt, and five resource reads. The HTTP
+check also verifies sessionless operation and fixture shutdown.
+
+Build the target application in the Mix dev environment. The fixture defaults
+to a sibling `hexpm-mcp` checkout. Set `HEXPM_MCP_PROJECT` to select another
+checkout and `HEXPM_MCP_BUILD_PATH` if its build directory differs from
+`_build/dev`. From the snodo repository root, run:
+
+```sh
+npm --prefix interop/official_client ci --ignore-scripts
+npm --prefix interop/official_client run check:hexpm
+```
+
+Pass `-- --stdio` or `-- --http` to run one transport. The check is separate
+from `npm run check` and CI because the application lives in a separate
+repository. Its assertions cover the seeded loopback workflow.

@@ -147,10 +147,8 @@ header.
 
 ## Verification boundaries
 
-The [compatibility matrix](compatibility.md), [protocol evidence](protocol-compliance.md),
-and [application readiness plan](https://github.com/joshrotenberg/snodo/blob/main/docs/history/application-readiness-plan.md) keep unit tests,
-independent schema checks, real-client acceptance, and external conformance separate.
-Local runs do not establish that remote CI has executed. Database deployment,
-operational load/soak, authentication policy, HTTP/2/TLS acceptance, deprecated
-roots/sampling against real hosts (only the frozen runner and literal vectors
-exercise them), and additional MCP hosts require their own evidence.
+See the [compatibility matrix](compatibility.md) and [protocol evidence](protocol-compliance.md)
+for the scope of unit tests, independent schema checks, real-client acceptance,
+and external conformance. Database configuration, operational load,
+authentication policy, and HTTP/2 and TLS need acceptance testing in the chosen
+deployment. Each additional MCP host needs its own compatibility evidence.

@@ -547,7 +547,8 @@ end
 List operations page with opaque cursors (default page size 100, set with
 `pagination: [page_size: n]`). Cursors are scoped to the exact catalog, so a
 changed catalog expires outstanding cursors with -32602. Every list and read
-result carries `ttlMs` and `cacheScope` from the `*_cache:` options.
+result carries `ttlMs` and `cacheScope` from the `*_cache:` options. The core
+defaults are `ttlMs: 0` and `cacheScope: "private"`.
 
 ## Examples
 
