@@ -7,6 +7,7 @@ defmodule Snodo.Skills.Skill do
     * `:name` - the frontmatter `name`.
     * `:uri` - the URI of the skill's SKILL.md, `skill://<path>/SKILL.md`.
     * `:frontmatter` - the SKILL.md frontmatter as a JSON object.
+    * `:metadata` - the optional entry `"_meta"` JSON object.
     * `:files` - every file of the skill, SKILL.md first and the rest sorted
       by path, each a map with `:path` (relative to the skill directory),
       `:uri`, `:digest` (`"sha256:"` and 64 lowercase hex characters of the
@@ -28,20 +29,21 @@ defmodule Snodo.Skills.Skill do
           name: String.t(),
           uri: String.t(),
           frontmatter: map(),
+          metadata: map() | nil,
           files: [file()]
         }
 
   @enforce_keys [:path, :name, :uri, :frontmatter, :files]
-  defstruct [:path, :name, :uri, :frontmatter, :files]
+  defstruct [:path, :name, :uri, :frontmatter, :files, :metadata]
 
   @doc """
   Returns the skill entry `skills/list` and `skills/get` send: `"uri"`,
   `"frontmatter"`, and `"resources"`, one `{"uri", "digest", "size"}` object
-  per file.
+  per file, plus `"_meta"` when supplied.
   """
   @spec entry(t()) :: map()
   def entry(%__MODULE__{} = skill) do
-    %{
+    entry = %{
       "uri" => skill.uri,
       "frontmatter" => skill.frontmatter,
       "resources" =>
@@ -49,6 +51,8 @@ defmodule Snodo.Skills.Skill do
           %{"uri" => file.uri, "digest" => file.digest, "size" => file.size}
         end)
     }
+
+    if is_nil(skill.metadata), do: entry, else: Map.put(entry, "_meta", skill.metadata)
   end
 
   @doc "Returns the `\"sha256:<hex>\"` digest of `bytes`."

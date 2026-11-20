@@ -77,6 +77,16 @@ defmodule Snodo.Skills.ClientTest do
              @skill_md
            ]
 
+    [notes, inline, pdf] = entries
+
+    assert inline["_meta"] == %{
+             "example.com/labels" => [%{"name" => "inline", "enabled" => true}]
+           }
+
+    refute Map.has_key?(notes, "_meta")
+    refute Map.has_key?(pdf, "_meta")
+    assert {:ok, ^inline} = Skills.get(client, "skill://inline-tool/SKILL.md")
+
     assert {:error, %Error{code: -32_000, kind: :transport}} = Skills.list(client, max_pages: 1)
   end
 

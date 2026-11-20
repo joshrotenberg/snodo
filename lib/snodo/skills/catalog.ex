@@ -5,6 +5,7 @@ defmodule Snodo.Skills.Catalog do
   # one Snodo.Resource module per file. The catalog keeps no file contents;
   # those live only in the generated resource modules.
 
+  alias Snodo.JSONValue
   alias Snodo.Resource
   alias Snodo.Resource.Definition
   alias Snodo.Skills.Frontmatter
@@ -39,6 +40,8 @@ defmodule Snodo.Skills.Catalog do
   # reg-name subset for the segments before it.
   @name ~r/\A(?!.*--)[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?\z/
   @segment ~r/\A[A-Za-z0-9._~-]+\z/
+
+  @meta_key ~r/^(?:(?:[A-Za-z](?:[A-Za-z0-9-]*[A-Za-z0-9])?)(?:\.(?:[A-Za-z](?:[A-Za-z0-9-]*[A-Za-z0-9])?))*\/)?(?:[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)?$/
 
   @options [
     :directory,
@@ -477,10 +480,23 @@ defmodule Snodo.Skills.Catalog do
   defp entry_source(entry) when is_list(entry) or is_map(entry) do
     entry = Map.new(entry)
 
+    case Map.keys(entry) -- [:path, :files, :metadata] do
+      [] -> :ok
+      unknown -> raise ArgumentError, "unknown Snodo.Skills entry options: #{inspect(unknown)}"
+    end
+
     with {:ok, path} when is_binary(path) <- Map.fetch(entry, :path),
          {:ok, files} when is_map(files) <- Map.fetch(entry, :files),
          true <- Enum.all?(files, fn {name, bytes} -> is_binary(name) and is_binary(bytes) end) do
-      %{path: path, files: Enum.sort(files), origin: "entry #{inspect(path)}", external: []}
+      origin = "entry #{inspect(path)}"
+
+      %{
+        path: path,
+        files: Enum.sort(files),
+        origin: origin,
+        external: [],
+        metadata: entry_metadata!(Map.fetch(entry, :metadata), origin)
+      }
     else
       _invalid ->
         raise ArgumentError,
@@ -490,6 +506,30 @@ defmodule Snodo.Skills.Catalog do
 
   defp entry_source(_entry),
     do: raise(ArgumentError, "each Snodo.Skills entry must be a keyword list or map")
+
+  defp entry_metadata!(:error, _origin), do: nil
+
+  defp entry_metadata!({:ok, metadata}, origin)
+       when is_map(metadata) and not is_struct(metadata) do
+    valid? =
+      Enum.all?(metadata, fn {key, value} ->
+        is_binary(key) and key != "" and Regex.match?(@meta_key, key) and JSONValue.valid?(value)
+      end)
+
+    unless valid?, do: raise(ArgumentError, "#{origin}: skill _meta contains an invalid entry")
+
+    # JSONValue.valid?/1 accepts binaries. Encoding also checks their UTF-8.
+    _ = JSON.encode_to_iodata!(metadata)
+    metadata
+  rescue
+    _error in [ErlangError, FunctionClauseError] ->
+      reraise ArgumentError,
+              [message: "#{origin}: skill _meta contains an invalid entry"],
+              __STACKTRACE__
+  end
+
+  defp entry_metadata!({:ok, _metadata}, origin),
+    do: raise(ArgumentError, "#{origin}: skill _meta must be a map")
 
   defp skill!(source, parser, limits) do
     %{path: path, files: files, origin: origin} = source
@@ -520,6 +560,7 @@ defmodule Snodo.Skills.Catalog do
       name: name,
       uri: base <> "/SKILL.md",
       frontmatter: frontmatter,
+      metadata: Map.get(source, :metadata),
       files: Enum.map([skill_md_file | rest], &file(base, &1))
     }
   end

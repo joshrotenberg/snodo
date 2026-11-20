@@ -50,6 +50,11 @@ defmodule Snodo.Skills do
           [path: "release-notes", files: %{"SKILL.md" => skill_md, "TEMPLATE.md" => template}]
         ]
 
+  Only skills supplied through `:entries` can set `:metadata`. It supplies the
+  protocol `"_meta"` object in `skills/list` and `skills/get` and is separate
+  from the Agent Skills frontmatter `metadata` field. Invalid metadata raises
+  `ArgumentError` when the module compiles.
+
   The two options can be combined. Skill path segments may not be `.` or
   `..`. The SKILL.md frontmatter is read with
   `Snodo.Skills.Frontmatter` and must have a non-empty `name`, equal to the

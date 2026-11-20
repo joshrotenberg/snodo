@@ -78,6 +78,9 @@ defmodule Snodo.Compliance.SkillsVectorsTest do
                  },
                  %{
                    "uri" => "skill://inline-tool/SKILL.md",
+                   "_meta" => %{
+                     "example.com/labels" => [%{"name" => "inline", "enabled" => true}]
+                   },
                    "frontmatter" => %{
                      "name" => "inline-tool",
                      "description" => "Supplied by the application"
