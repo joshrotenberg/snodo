@@ -66,20 +66,26 @@ status = Snodo.Proxy.health(proxy)
 `add_backend/2` connects and validates the new catalog before publishing it.
 `refresh_backend/2` checks one backend immediately. The proxy also refreshes
 on backend list change notifications and probes every backend every 30 seconds
-by default. A disconnected backend is retried every second. `health/1` gives
-each backend an `:up`, `:degraded`, or `:down` status and its latest error.
+by default. A disconnected backend is retried with exponential backoff.
+`health/1` gives each backend an `:up`, `:degraded`, or `:down` status, its
+latest error, and its `:reconnect_attempt` and `:reconnect_delay_ms`. These
+fields give the most recently scheduled attempt number and its delay in
+milliseconds. They read as `0` and `nil` before the first retry and after a
+stable connection resets the backoff.
 Clients can request an aggregate `proxy/health` status if they negotiate the
 `dev.snodo/proxy` extension; backend IDs and error details stay in the local
 `health/1` API. A failed catalog refresh keeps the last accepted snapshot and
 marks the backend degraded. Initialize-era HTTP session loss takes the backend
 down and removes its entries from the merged catalog. The request that detects
 the loss receives the original session error (JSON-RPC code `-32000`). The proxy
-does not replay that request. Recovery uses the same one-second
-retry as other disconnects and opens a new session with an `initialize`
+does not replay that request. Recovery uses the same
+backoff as other disconnects and opens a new session with an `initialize`
 handshake. The backend serves requests again after its new tools, resources,
 resource templates, and prompts are installed. If the connection or catalog
-load fails, `health/1` reports `:down` with the latest error and the proxy
-keeps retrying. Requests for its unpublished entries receive the usual
+fetch fails during reconnect, `health/1` reports `:down` with the latest error
+and the proxy keeps retrying. If the fetched catalog is rejected during
+installation, the backend stays connected and `health/1` reports the error.
+Requests for its unpublished entries receive the usual
 invalid-params error (JSON-RPC code `-32602`).
 
 The proxy forwards tool progress and multi round-trip input responses in the
@@ -127,6 +133,21 @@ to the backend. A closed connection returns `"backend_unavailable"` in the
 same error field. A queued request starts its separate backend timeout when
 it acquires the connection. Exited callers are removed from the queue, and an
 exited holder releases the connection to the next waiter.
+
+## Reconnect options
+
+Configure these proxy-wide options in `start_link/1`. Each backend tracks its
+own reconnect history.
+
+| Option | Default | Effect |
+| --- | ---: | --- |
+| `reconnect_initial_ms:` | 1,000 | Delay before the first reconnect attempt. |
+| `reconnect_max_ms:` | 30,000 | Cap on the delay. After each failure, the delay doubles up to this cap. |
+| `reconnect_reset_ms:` | 60,000 | Time since the backend's catalog was installed after connecting before the next disconnect starts again at the initial delay. |
+
+All three options must be positive integers in milliseconds, and the maximum
+must be at least the initial delay and at most 4,294,967,295 ms. Invalid
+values raise `ArgumentError` in the manager during startup.
 
 ## Limits and errors
 

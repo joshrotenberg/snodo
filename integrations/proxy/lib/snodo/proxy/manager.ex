@@ -8,8 +8,8 @@ defmodule Snodo.Proxy.Manager do
   alias Snodo.Subscription.Event
   alias Snodo.Subscription.Hub
 
+  @max_timer_ms 4_294_967_295
   @id_pattern ~r/\A[A-Za-z][A-Za-z0-9_-]*\z/
-  @reconnect_ms 1_000
 
   @doc false
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, Keyword.take(opts, [:name]))
@@ -40,6 +40,8 @@ defmodule Snodo.Proxy.Manager do
     max_catalog_items = Keyword.fetch!(opts, :max_catalog_items)
     health_interval_ms = Keyword.fetch!(opts, :health_interval_ms)
     validate_limits!(max_backends, max_catalog_items, health_interval_ms)
+    reconnect = Keyword.fetch!(opts, :reconnect)
+    validate_reconnect!(reconnect)
     catalog_key = {Keyword.fetch!(opts, :proxy), :catalog}
     {:ok, _owner} = Registry.register(Snodo.Proxy.Registry, catalog_key, %Catalog{})
 
@@ -55,6 +57,7 @@ defmodule Snodo.Proxy.Manager do
       backend_supervisor: Keyword.fetch!(opts, :backend_supervisor),
       hub: Keyword.fetch!(opts, :hub),
       health_interval_ms: health_interval_ms,
+      reconnect: reconnect,
       max_backends: max_backends,
       max_catalog_items: max_catalog_items
     }
@@ -77,6 +80,8 @@ defmodule Snodo.Proxy.Manager do
 
   @impl true
   def handle_call(:health, _from, state) do
+    now = System.monotonic_time(:millisecond)
+
     health =
       Map.new(state.backends, fn {id, backend} ->
         status =
@@ -88,7 +93,15 @@ defmodule Snodo.Proxy.Manager do
             true -> :up
           end
 
-        {id, %{status: status, error: backend.error}}
+        {attempt, delay} = reconnect_history(backend, now, state.reconnect.reset_ms)
+
+        {id,
+         %{
+           status: status,
+           error: backend.error,
+           reconnect_attempt: attempt,
+           reconnect_delay_ms: delay
+         }}
       end)
 
     {:reply, health, state}
@@ -109,7 +122,9 @@ defmodule Snodo.Proxy.Manager do
       {nil, _backends} ->
         {:reply, {:error, :not_found}, state}
 
-      {%{pid: pid}, backends} ->
+      {%{pid: pid, reconnect_timer: timer}, backends} ->
+        _ = if is_reference(timer), do: Process.cancel_timer(timer)
+
         _termination =
           if is_pid(pid), do: DynamicSupervisor.terminate_child(state.backend_supervisor, pid)
 
@@ -151,8 +166,12 @@ defmodule Snodo.Proxy.Manager do
     case Map.get(state.backends, id) do
       %{pid: ^pid} ->
         case replace_snapshot(state, id, snapshot) do
-          {:ok, next} -> {:noreply, next}
-          {:error, reason} -> {:noreply, put_error(state, id, reason)}
+          {:ok, next} ->
+            backends = Map.update!(next.backends, id, &mark_ready/1)
+            {:noreply, %{next | backends: backends}}
+
+          {:error, reason} ->
+            {:noreply, put_error(state, id, reason)}
         end
 
       _stale ->
@@ -170,10 +189,8 @@ defmodule Snodo.Proxy.Manager do
 
   def handle_info({:backend_failed, id, pid, reason}, state) do
     case Map.get(state.backends, id) do
-      %{pid: ^pid} = backend ->
-        backends = Map.put(state.backends, id, %{backend | pid: nil, error: reason})
-        Process.send_after(self(), {:reconnect, id}, @reconnect_ms)
-        {:noreply, %{state | backends: backends}}
+      %{pid: ^pid} ->
+        {:noreply, schedule_reconnect(state, id, reason)}
 
       _stale ->
         {:noreply, state}
@@ -261,12 +278,7 @@ defmodule Snodo.Proxy.Manager do
       {id, backend} ->
         error = if reason == :normal, do: backend.error || reason, else: reason
 
-        backends =
-          Map.put(state.backends, id, %{backend | pid: nil, snapshot: nil, error: error})
-
-        {:ok, catalog} = build_catalog(backends, state.max_catalog_items)
-        Process.send_after(self(), {:reconnect, id}, @reconnect_ms)
-        {:noreply, install_catalog(state, backends, catalog)}
+        {:noreply, schedule_reconnect(state, id, error)}
 
       nil ->
         {:noreply, state}
@@ -275,16 +287,16 @@ defmodule Snodo.Proxy.Manager do
 
   # The old snapshot was dropped when the backend went down; the new one is
   # installed when the restarted backend reports it.
-  def handle_info({:reconnect, id}, state) do
+  def handle_info({:timeout, timer, {:reconnect, id}}, state) do
     case Map.get(state.backends, id) do
-      %{pid: nil, config: config} = backend ->
+      %{reconnect_timer: ^timer, config: config} = backend ->
         case start_backend(state, id, config) do
           {:ok, pid} ->
-            {:noreply, %{state | backends: Map.put(state.backends, id, %{backend | pid: pid})}}
+            backend = %{backend | pid: pid, reconnect_timer: nil}
+            {:noreply, %{state | backends: Map.put(state.backends, id, backend)}}
 
           {:error, reason} ->
-            Process.send_after(self(), {:reconnect, id}, @reconnect_ms)
-            {:noreply, put_error(state, id, reason)}
+            {:noreply, schedule_reconnect(state, id, reason)}
         end
 
       _removed_or_up ->
@@ -331,7 +343,17 @@ defmodule Snodo.Proxy.Manager do
   end
 
   defp join_backend(state, id, pid, config, snapshot) do
-    backend = %{pid: pid, snapshot: snapshot, config: config, error: nil}
+    backend = %{
+      pid: pid,
+      snapshot: snapshot,
+      config: config,
+      error: nil,
+      ready_since: System.monotonic_time(:millisecond),
+      reconnect_attempt: 0,
+      reconnect_delay_ms: nil,
+      reconnect_timer: nil
+    }
+
     backends = Map.put(state.backends, id, backend)
 
     case build_catalog(backends, state.max_catalog_items) do
@@ -413,6 +435,57 @@ defmodule Snodo.Proxy.Manager do
              is_integer(health_interval_ms) and health_interval_ms > 0 do
       raise ArgumentError,
             ":max_backends, :max_catalog_items, and :health_interval_ms must be positive integers"
+    end
+  end
+
+  defp validate_reconnect!(%{initial_ms: initial, max_ms: maximum, reset_ms: reset}) do
+    unless is_integer(initial) and initial > 0 and is_integer(maximum) and maximum >= initial and
+             maximum <= @max_timer_ms and is_integer(reset) and reset > 0 do
+      raise ArgumentError,
+            "reconnect delays must satisfy 0 < :reconnect_initial_ms <= :reconnect_max_ms <= #{@max_timer_ms}, " <>
+              "and :reconnect_reset_ms must be positive, with all values in integer milliseconds"
+    end
+  end
+
+  defp mark_ready(backend), do: %{backend | ready_since: System.monotonic_time(:millisecond)}
+
+  @doc false
+  def reconnect_history(%{ready_since: since}, now, reset_ms)
+      when is_integer(since) and now - since >= reset_ms,
+      do: {0, nil}
+
+  def reconnect_history(backend, _now, _reset_ms),
+    do: {backend.reconnect_attempt, backend.reconnect_delay_ms}
+
+  @doc false
+  def reconnect_delay(nil, %{initial_ms: initial}), do: initial
+  def reconnect_delay(previous, %{max_ms: maximum}), do: min(previous * 2, maximum)
+
+  defp schedule_reconnect(state, id, reason) do
+    backend = Map.fetch!(state.backends, id)
+    now = System.monotonic_time(:millisecond)
+    {attempt, previous_delay} = reconnect_history(backend, now, state.reconnect.reset_ms)
+    delay = reconnect_delay(previous_delay, state.reconnect)
+    timer = :erlang.start_timer(delay, self(), {:reconnect, id})
+
+    updated = %{
+      backend
+      | pid: nil,
+        snapshot: nil,
+        error: reason,
+        ready_since: nil,
+        reconnect_attempt: attempt + 1,
+        reconnect_delay_ms: delay,
+        reconnect_timer: timer
+    }
+
+    backends = Map.put(state.backends, id, updated)
+
+    if is_nil(backend.snapshot) do
+      %{state | backends: backends}
+    else
+      {:ok, catalog} = build_catalog(backends, state.max_catalog_items)
+      install_catalog(state, backends, catalog)
     end
   end
 
