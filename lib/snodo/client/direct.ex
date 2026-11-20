@@ -6,7 +6,9 @@ defmodule Snodo.Client.Direct do
   `:direct` transport context, so `:timeout` does not apply. The context
   carries the dialect's version as the `mcp-protocol-version` request header,
   which is how the initialize-era dialects select themselves after
-  `initialize`.
+  `initialize`. On 2025-11-25 it carries a session snapshot with the
+  client's initialized capabilities and identity. These are available to
+  handlers and capability checks.
 
   A request with `progress:` runs the dispatch in a linked task instead, with
   a progress sink owned by the calling process. The caller acknowledges each
@@ -33,6 +35,7 @@ defmodule Snodo.Client.Direct do
   alias Snodo.Progress
   alias Snodo.Server
   alias Snodo.Server.Runtime
+  alias Snodo.Session
   alias Snodo.Transport.Context, as: TransportContext
 
   @type state :: %{runtime: Runtime.t(), auth: term()}
@@ -44,7 +47,7 @@ defmodule Snodo.Client.Direct do
 
   @impl true
   def request(%{runtime: runtime} = state, message, opts) do
-    transport = transport_context(state, Keyword.fetch!(opts, :dialect))
+    transport = transport_context(state, initialize_session(message, opts))
 
     case {Keyword.get(opts, :on_progress), Keyword.get(opts, :on_log)} do
       {nil, nil} ->
@@ -62,7 +65,7 @@ defmodule Snodo.Client.Direct do
   # Anything else from the dispatch is reported rather than raised.
   @impl true
   def notify(%{runtime: runtime} = state, message, opts) do
-    transport = transport_context(state, Keyword.fetch!(opts, :dialect))
+    transport = transport_context(state, opts)
 
     case Server.dispatch(runtime, message, transport) do
       {:ok, nil} ->
@@ -76,18 +79,48 @@ defmodule Snodo.Client.Direct do
 
   @impl true
   def listen(%{runtime: runtime} = state, message, opts) do
-    transport = transport_context(state, Keyword.fetch!(opts, :dialect))
+    transport = transport_context(state, opts)
     SubscriptionStream.open(runtime, message, transport, opts)
   end
 
   @impl true
   def close(_state), do: :ok
 
-  defp transport_context(state, dialect) do
+  @doc false
+  @spec session_snapshot(map() | nil, map()) :: Session.t()
+  def session_snapshot(info, capabilities) do
+    %Session{
+      pid: nil,
+      protocol_version: "2025-11-25",
+      client_info: info,
+      client_capabilities: capabilities
+    }
+  end
+
+  defp initialize_session(%{"method" => "initialize"}, opts) do
+    dialect = Keyword.fetch!(opts, :dialect)
+
+    if dialect.version() == "2025-11-25",
+      do: Keyword.put(opts, :session, session_snapshot(nil, %{})),
+      else: opts
+  end
+
+  defp initialize_session(_message, opts), do: opts
+
+  defp transport_context(state, opts) do
+    dialect = Keyword.fetch!(opts, :dialect)
+
+    metadata =
+      opts
+      |> Keyword.take([:session])
+      |> Map.new()
+
+    metadata = if is_nil(state.auth), do: metadata, else: Map.put(metadata, :auth, state.auth)
+
     %TransportContext{
       transport: :direct,
       request_headers: %{"mcp-protocol-version" => dialect.version()},
-      metadata: if(is_nil(state.auth), do: %{}, else: %{auth: state.auth})
+      metadata: metadata
     }
   end
 

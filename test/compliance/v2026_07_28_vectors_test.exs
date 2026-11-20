@@ -227,6 +227,32 @@ defmodule Snodo.Compliance.V2026_07_28VectorsTest do
   end
 
   @tag mcp_contract: ["direct-stdio-negative-vectors"]
+  test "client extension IDs require a name after the namespace" do
+    runtime = TestFixtures.runtime()
+
+    raw = %{
+      "jsonrpc" => "2.0",
+      "id" => "invalid-extension-id",
+      "method" => "tools/list",
+      "params" => %{
+        "_meta" => %{
+          "io.modelcontextprotocol/protocolVersion" => "2026-07-28",
+          "io.modelcontextprotocol/clientCapabilities" => %{
+            "extensions" => %{"com.example/" => %{}}
+          }
+        }
+      }
+    }
+
+    assert %{
+             "id" => "invalid-extension-id",
+             "error" => %{
+               "code" => -32_602,
+               "message" => "Client extensions must map valid names to objects"
+             }
+           } = dispatch(runtime, raw, :direct)
+  end
+
   test "literal missing required arguments are a tool execution error" do
     runtime = TestFixtures.runtime(tools: [Echo])
     raw = request(24, "tools/call", %{"name" => "echo", "arguments" => %{}})

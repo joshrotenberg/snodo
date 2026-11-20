@@ -4,6 +4,7 @@ defmodule Snodo.Protocol.Legacy do
   alias Snodo.Authorization
 
   alias Snodo.{Context, Envelope, Error, MRTR, Progress, Prompt, Resource, Result, Router, Tool}
+  alias Snodo.Extension.Registry, as: ExtensionRegistry
   alias Snodo.Protocol.Profile
   alias Snodo.Protocol.Profile.Method
   alias Snodo.Protocol.ToolResult
@@ -204,22 +205,32 @@ defmodule Snodo.Protocol.Legacy do
   end
 
   def build_context(envelope, runtime, protocol) do
-    with :ok <- validate_version(envelope, protocol.version()),
+    version = protocol.version()
+
+    with :ok <- validate_version(envelope, version),
+         :ok <- validate_extensions(envelope, version),
          :ok <- validate_progress(envelope.params),
          :ok <- validate_unsupported_params(envelope.params),
          :ok <-
            validate_expressible_tool(
              envelope,
              runtime.router,
-             protocol.version(),
+             version,
              runtime.authorization
            ) do
       initialize? = envelope.method == "initialize"
       metadata = envelope.transport.metadata
       session = session(metadata)
+      server_capabilities = server_capabilities(runtime, session, version)
+      client_capabilities = client_capabilities(envelope, session, initialize?)
+
+      extensions =
+        if is_map(client_capabilities),
+          do: ExtensionRegistry.peer_settings(client_capabilities, server_capabilities),
+          else: %{}
 
       context = %Context{
-        protocol_version: protocol.version(),
+        protocol_version: version,
         protocol: protocol,
         transport: envelope.transport,
         request_id: envelope.id,
@@ -227,11 +238,12 @@ defmodule Snodo.Protocol.Legacy do
         request_params: envelope.params,
         auth: envelope.transport.metadata[:auth],
         cancellation: envelope.transport.metadata[:cancellation],
-        session: session,
-        server_info: implementation(runtime.server_info, protocol.version()),
-        server_capabilities: server_capabilities(runtime, session),
+        session: live_session(session),
+        server_info: implementation(runtime.server_info, version),
+        server_capabilities: server_capabilities,
         client_info: client_info(envelope, session, initialize?),
-        client_capabilities: client_capabilities(envelope, session, initialize?),
+        client_capabilities: client_capabilities,
+        extensions: extensions,
         input_responses: Map.get(metadata, :input_responses) || %{},
         request_state: Map.get(metadata, :request_state),
         metadata: Map.get(envelope.params, "_meta", %{}),
@@ -256,8 +268,24 @@ defmodule Snodo.Protocol.Legacy do
     end
   end
 
+  defp validate_extensions(
+         %Envelope{
+           method: "initialize",
+           params: %{"capabilities" => %{"extensions" => extensions}}
+         },
+         "2025-11-25"
+       ) do
+    ExtensionRegistry.validate_client_extensions(extensions)
+  end
+
+  defp validate_extensions(_envelope, _version), do: :ok
+
   defp session(%{session: %Session{} = session}), do: session
   defp session(_metadata), do: nil
+
+  # A snapshot can carry handshake data without a process to service requests.
+  defp live_session(%Session{pid: pid} = session) when is_pid(pid), do: session
+  defp live_session(_session), do: nil
 
   defp session_log_level(%Session{log_level: level}), do: level
   defp session_log_level(nil), do: nil
@@ -274,18 +302,25 @@ defmodule Snodo.Protocol.Legacy do
 
   defp client_capabilities(_envelope, nil, false), do: %{}
 
+  defp extension_capabilities("2025-11-25", %Session{}), do: ["extensions"]
+  defp extension_capabilities(_version, _session), do: []
+
   # listChanged and subscribe are advertised only on a session with a
   # subscription source, the only place these clients can receive those
-  # notifications. Other capability settings are not part of these revisions'
-  # results.
-  defp server_capabilities(runtime, session) do
-    notifications? = not is_nil(session) and not is_nil(runtime.subscription_source)
+  # notifications. Preserve the settings of open registries and project
+  # extensions to the selected dialect.
+  defp server_capabilities(runtime, session, version) do
+    notifications? = not is_nil(live_session(session)) and not is_nil(runtime.subscription_source)
 
     runtime.capabilities
-    |> Map.take(["tools", "prompts", "resources", "completions", "logging", "experimental"])
+    |> Map.take(
+      ~w(tools prompts resources completions logging experimental) ++
+        extension_capabilities(version, session)
+    )
+    |> then(&ExtensionRegistry.project_capabilities(runtime.extension_registry, version, &1))
     |> Map.new(fn
-      {"experimental", value} ->
-        {"experimental", value}
+      {key, value} when key in ["experimental", "extensions"] ->
+        {key, value}
 
       {key, settings} when notifications? and key in ["tools", "prompts", "resources"] ->
         {key, Map.filter(settings, fn {name, value} -> notification_setting?(name, value) end)}

@@ -61,6 +61,27 @@ using that revision or later get the core behavior without extension negotiation
 Clients that still support earlier revisions should keep advertising the
 extension for those revisions.
 
+## Initialize-era dialects
+
+On 2025-11-25, the client advertises its extension settings in
+`initialize.params.capabilities.extensions`. The server returns its settings
+for installed, advertised extensions compatible with that revision in
+`initialize.result.capabilities.extensions`. When both peers advertise an
+extension, its `negotiate/2` callback decides whether to activate it.
+
+Without sessions, a 2025-11-25 HTTP or stdio server does not advertise
+extensions. The in-process client carries a session snapshot that makes the
+initialized client capabilities available to handlers and capability checks.
+
+Set `:client_capabilities` on `Snodo.Client` and pass the owning module as
+`extension: MyApp.Extension`
+to `Snodo.Client.request/4` for an extension method. The module must declare
+the method for 2025-11-25 and both peers must advertise it. The server
+applies the negotiation callback before running the route.
+
+The 2025-06-18 dialect omits the extensions capability. Tasks and Skills
+declare methods for 2026-07-28.
+
 ## Declared extensions
 
 Some extensions add no methods: the server advertises them, reads what the
@@ -175,8 +196,8 @@ tool's content, so the content should make sense as text. A host that does
 implement it declares the extension with `mimeTypes` in its capabilities;
 `Snodo.Apps.supported?/1` checks for `text/html;profile=mcp-app` there, so a
 handler can return data for the UI to such a host and plain text to any other.
-Negotiation uses `capabilities["extensions"]`, which only the 2026-07-28
-dialect carries, so on the initialize-era dialects `supported?/1` is `false`.
+Negotiation uses `capabilities["extensions"]` on 2026-07-28 and 2025-11-25.
+On 2025-06-18, `supported?/1` returns `false`.
 
 The view's Content Security Policy goes in the content's `_meta`, which
 `html/3` builds from its options. Without `:csp` the host allows no external

@@ -76,6 +76,22 @@ defmodule SnodoTest.TestExtensions.Definition do
   end
 end
 
+defmodule SnodoTest.TestExtensions.LegacyExtension do
+  use SnodoTest.TestExtensions.Definition,
+    id: "com.example/legacy",
+    name: "com.example/legacy",
+    version: "2025-11-25"
+
+  @impl true
+  def negotiate(%{"enabled" => true}, server), do: {:ok, server}
+  def negotiate(_client, _server), do: :not_negotiated
+
+  @impl true
+  def dispatch(_operation, _params, context) do
+    {:ok, Snodo.Result.structured(context.extensions)}
+  end
+end
+
 defmodule SnodoTest.TestExtensions.Echo do
   @moduledoc false
   @behaviour Snodo.Extension

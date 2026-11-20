@@ -31,8 +31,10 @@ defmodule Snodo.Session do
   stream: the `GET` stream over HTTP, or the connection over stdio. An event
   that arrives while no standalone stream is open is dropped.
 
-  The struct is a snapshot that a transport passes to the dialect; it is
-  `Snodo.Context.session` for requests on a session.
+  A transport passes this snapshot to the dialect. On a process-backed
+  session it becomes `Snodo.Context.session`. The in-process client uses a
+  snapshot with a nil `pid` to carry initialize capabilities and client
+  identity.
   """
 
   use GenServer, restart: :temporary
@@ -54,7 +56,7 @@ defmodule Snodo.Session do
 
   @type t :: %__MODULE__{
           id: String.t() | nil,
-          pid: pid(),
+          pid: pid() | nil,
           protocol_version: String.t() | nil,
           client_info: map() | nil,
           client_capabilities: map(),

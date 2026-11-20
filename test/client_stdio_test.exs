@@ -48,6 +48,41 @@ defmodule Snodo.ClientStdioTest do
     end
   end
 
+  test "2025-11-25 stdio extension calls require server sessions" do
+    extension = SnodoTest.TestExtensions.LegacyExtension
+    id = extension.id()
+    fixture = Path.expand("fixtures/client_legacy_extension_server.exs", __DIR__)
+    elixir = System.find_executable("elixir")
+    ebin = Path.expand(Mix.Project.compile_path())
+
+    opts = [
+      protocol: "2025-11-25",
+      client_capabilities: %{"extensions" => %{id => %{"enabled" => true}}}
+    ]
+
+    assert {:ok, client} =
+             Client.connect({:stdio, elixir, ["-pa", ebin, fixture, "--sessions"]}, opts)
+
+    on_exit(fn -> Client.close(client) end)
+
+    assert {:ok, %{"value" => %{^id => %{}}}} =
+             Client.request(client, id, %{}, extension: extension)
+
+    assert {:ok, sessionless} =
+             Client.connect({:stdio, elixir, ["-pa", ebin, fixture]}, opts)
+
+    on_exit(fn -> Client.close(sessionless) end)
+    refute Map.has_key?(sessionless.session.server_capabilities, "extensions")
+
+    assert {:error,
+            %Error{
+              code: -32_601,
+              kind: :protocol,
+              message: "Server did not advertise extension com.example/legacy",
+              data: %{"method" => ^id, "protocolVersion" => "2025-11-25"}
+            }} = Client.request(sessionless, id, %{}, extension: extension)
+  end
+
   test "lists and calls tools over a subprocess's stdin and stdout" do
     client = connect()
     assert %Client{protocol: "2026-07-28", session: nil} = client

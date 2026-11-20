@@ -6,7 +6,8 @@ defmodule Snodo.Extension do
   advertised and their hooks become active where the protocol supports them.
   The optional `server_settings/1` callback receives the installed keyword
   list or map of options (`[]` for a bare module) and returns a JSON object
-  sent to clients in discovery. The default settings are `%{}`.
+  sent to clients in discovery or a 2025-11-25 `initialize` result. The default
+  settings are `%{}`.
 
   An explicit `:capabilities` map supplies module extension settings directly
   and skips `server_settings/1`. To keep a module installed but inert, omit

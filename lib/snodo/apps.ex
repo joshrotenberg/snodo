@@ -39,9 +39,8 @@ defmodule Snodo.Apps do
   whether the client declared the extension, for a handler that returns
   something different to such a client.
 
-  The extension is negotiated through `capabilities["extensions"]`, which
-  only the 2026-07-28 dialect carries. On the initialize-era dialects
-  `supported?/1` is `false`.
+  The extension is negotiated through `capabilities["extensions"]` on
+  2026-07-28 and 2025-11-25. On 2025-06-18, `supported?/1` returns `false`.
   """
 
   alias Snodo.Context

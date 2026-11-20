@@ -2,11 +2,15 @@ defmodule Snodo.ExtensionAcceptanceTest do
   use ExUnit.Case, async: true
 
   alias Snodo.Client
+  alias Snodo.Protocol.V2025_06_18
   alias Snodo.Protocol.V2025_11_25
   alias Snodo.Protocol.V2026_07_28
   alias Snodo.Server
+  alias Snodo.Session
+  alias Snodo.Session.Exchange
   alias Snodo.Transport.Context, as: TransportContext
   alias Snodo.Transport.Stdio
+  alias Snodo.Transport.StreamableHTTP
   alias SnodoTest.ExtensionTestServer
   alias SnodoTest.FutureDialect
   alias SnodoTest.TestCompletions.PackagePrompt
@@ -24,6 +28,7 @@ defmodule Snodo.ExtensionAcceptanceTest do
   alias SnodoTest.TestExtensions.FaultyAround
   alias SnodoTest.TestExtensions.FutureAround
   alias SnodoTest.TestExtensions.IncompleteSubscriptions
+  alias SnodoTest.TestExtensions.LegacyExtension
   alias SnodoTest.TestExtensions.NotNegotiated
   alias SnodoTest.TestExtensions.RequiredCapability
   alias SnodoTest.TestExtensions.UnavailableVersion
@@ -83,27 +88,211 @@ defmodule Snodo.ExtensionAcceptanceTest do
            }
   end
 
-  test "mixed-dialect discovery advertises modules while legacy initialize omits extensions" do
+  test "discovery and initialize advertise only extensions compatible with their version" do
     runtime =
-      TestFixtures.runtime(protocols: [V2026_07_28, V2025_11_25], extensions: [Echo])
+      TestFixtures.runtime(
+        protocols: [V2026_07_28, V2025_11_25],
+        extensions: [Echo, LegacyExtension]
+      )
 
-    assert %{"result" => %{"capabilities" => legacy_capabilities}} =
-             dispatch_direct(runtime, %{
-               "jsonrpc" => "2.0",
-               "id" => "legacy",
-               "method" => "initialize",
-               "params" => %{
-                 "protocolVersion" => "2025-11-25",
-                 "capabilities" => %{},
-                 "clientInfo" => %{"name" => "test", "version" => "1"}
-               }
-             })
+    assert {:ok, legacy} = Client.direct(runtime, protocol: "2025-11-25")
+    legacy_capabilities = legacy.session.server_capabilities
 
-    refute Map.has_key?(legacy_capabilities, "extensions")
+    assert legacy_capabilities["extensions"] == %{LegacyExtension.id() => %{}}
 
     assert {:ok, client} = Client.direct(runtime)
     assert {:ok, %{"capabilities" => %{"extensions" => extensions}}} = Client.discover(client)
     assert extensions == %{Echo.id() => %{}}
+  end
+
+  test "sessionless stdio and HTTP omit 2025-11-25 extensions" do
+    runtime =
+      TestFixtures.runtime(
+        protocols: [V2025_11_25],
+        extensions: [LegacyExtension, Snodo.Apps.extension()]
+      )
+
+    raw = %{
+      "jsonrpc" => "2.0",
+      "id" => 1,
+      "method" => "initialize",
+      "params" => %{
+        "protocolVersion" => "2025-11-25",
+        "capabilities" => %{"extensions" => %{LegacyExtension.id() => %{"enabled" => true}}},
+        "clientInfo" => %{"name" => "test", "version" => "1"}
+      }
+    }
+
+    assert %{"result" => %{"capabilities" => stdio_capabilities}} = dispatch_stdio(runtime, raw)
+    refute Map.has_key?(stdio_capabilities, "extensions")
+
+    assert %{status: 200, body: body} =
+             StreamableHTTP.handle(runtime, %StreamableHTTP.Request{
+               method: "POST",
+               path: "/mcp",
+               headers: [
+                 {"content-type", "application/json"},
+                 {"accept", "application/json, text/event-stream"}
+               ],
+               body: JSON.encode!(raw)
+             })
+
+    assert %{"result" => %{"capabilities" => http_capabilities}} = JSON.decode!(body)
+    refute Map.has_key?(http_capabilities, "extensions")
+  end
+
+  test "a 2025-11-25 direct client negotiates through an in-process session snapshot" do
+    id = LegacyExtension.id()
+
+    runtime =
+      TestFixtures.runtime(
+        protocols: [V2025_11_25],
+        extensions: [LegacyExtension],
+        tools: [SnodoTest.TestTools.ContextEcho]
+      )
+
+    offers = %{"extensions" => %{id => %{"enabled" => true}}, "roots" => %{}}
+
+    assert {:ok, client} = Client.direct(runtime, client_capabilities: offers)
+    assert client.session.server_capabilities["extensions"] == %{id => %{}}
+
+    assert {:ok, %{"value" => %{^id => %{}}}} =
+             Client.request(client, id, %{}, extension: LegacyExtension)
+
+    assert {:ok, %{"structuredContent" => %{"clientCapabilities" => ^offers}}} =
+             Client.call_tool(client, "context_echo")
+  end
+
+  test "2025-11-25 extension routes use the capabilities stored by initialize" do
+    id = LegacyExtension.id()
+    advertised = %{id => %{"mode" => "server"}}
+
+    runtime =
+      TestFixtures.runtime(
+        protocols: [V2025_11_25],
+        extensions: [LegacyExtension],
+        capabilities: %{"extensions" => advertised}
+      )
+
+    for {client_capabilities, expected} <- [
+          {%{"extensions" => %{id => %{"enabled" => true}}}, :ok},
+          {%{"extensions" => %{id => %{"enabled" => false}}}, :method_not_found},
+          {%{}, :method_not_found}
+        ] do
+      {:ok, session} = start_supervised({Session, runtime: runtime})
+
+      transport = %TransportContext{
+        transport: :stdio,
+        metadata: %{session: Session.info(session)}
+      }
+
+      assert {:ok, %{"result" => %{"capabilities" => %{"extensions" => ^advertised}}}} =
+               Exchange.dispatch(
+                 runtime,
+                 %{
+                   "jsonrpc" => "2.0",
+                   "id" => 1,
+                   "method" => "initialize",
+                   "params" => %{
+                     "protocolVersion" => "2025-11-25",
+                     "capabilities" => client_capabilities,
+                     "clientInfo" => %{"name" => "test", "version" => "1"}
+                   }
+                 },
+                 transport
+               )
+
+      transport = %{
+        transport
+        | request_headers: %{"mcp-protocol-version" => "2025-11-25"},
+          metadata: %{session: Session.info(session)}
+      }
+
+      assert {:ok, nil} =
+               Exchange.dispatch(
+                 runtime,
+                 %{
+                   "jsonrpc" => "2.0",
+                   "method" => "notifications/initialized"
+                 },
+                 transport
+               )
+
+      assert {:ok, response} =
+               Exchange.dispatch(
+                 runtime,
+                 %{
+                   "jsonrpc" => "2.0",
+                   "id" => 2,
+                   "method" => id,
+                   "params" => %{}
+                 },
+                 transport
+               )
+
+      case expected do
+        :ok -> assert response["result"] == %{"value" => advertised}
+        :method_not_found -> assert method_not_found?(response)
+      end
+
+      stop_supervised!(Session)
+    end
+  end
+
+  test "the client checks extension ownership, version, and both advertisements on 2025-11-25" do
+    id = LegacyExtension.id()
+    offers = %{"extensions" => %{id => %{"enabled" => true}, Echo.id() => %{}}}
+
+    runtime =
+      TestFixtures.runtime(
+        protocols: [V2026_07_28, V2025_11_25, V2025_06_18],
+        extensions: [LegacyExtension, Echo]
+      )
+
+    assert {:ok, client} =
+             Client.direct(runtime, protocol: "2025-11-25", client_capabilities: offers)
+
+    assert {:ok, %{"value" => %{^id => %{}}}} =
+             Client.request(client, id, %{}, extension: LegacyExtension)
+
+    assert {:error, %Snodo.Error{code: -32_601, kind: :protocol}} =
+             Client.request(client, id)
+
+    assert {:error, %Snodo.Error{code: -32_601, kind: :protocol}} =
+             Client.request(client, Echo.id(), %{}, extension: Echo)
+
+    assert {:ok, no_offer} = Client.direct(runtime, protocol: "2025-11-25")
+
+    assert {:error, %Snodo.Error{code: -32_601, kind: :protocol}} =
+             Client.request(no_offer, id, %{}, extension: LegacyExtension)
+
+    hidden =
+      TestFixtures.runtime(
+        protocols: [V2025_11_25],
+        extensions: [LegacyExtension],
+        capabilities: %{}
+      )
+
+    assert {:ok, unadvertised} = Client.direct(hidden, client_capabilities: offers)
+
+    assert {:error, %Snodo.Error{code: -32_601, kind: :protocol}} =
+             Client.request(unadvertised, id, %{}, extension: LegacyExtension)
+
+    denied_offers = put_in(offers, ["extensions", id, "enabled"], false)
+
+    assert {:ok, denied} =
+             Client.direct(runtime, protocol: "2025-11-25", client_capabilities: denied_offers)
+
+    assert {:error, %Snodo.Error{code: -32_601, message: "Method not found: com.example/legacy"}} =
+             Client.request(denied, id, %{}, extension: LegacyExtension)
+
+    assert {:ok, older} =
+             Client.direct(runtime, protocol: "2025-06-18", client_capabilities: offers)
+
+    refute Map.has_key?(older.session.server_capabilities, "extensions")
+
+    assert {:error, %Snodo.Error{code: -32_601, kind: :protocol}} =
+             Client.request(older, id, %{}, extension: LegacyExtension)
   end
 
   test "a negotiating client can call an automatically advertised route" do
