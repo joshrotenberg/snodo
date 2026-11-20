@@ -5,6 +5,9 @@ defmodule Snodo.Proxy.BackendTest do
   alias Snodo.Client.Subscription
   alias Snodo.Proxy.Backend
 
+  # Allow 30 seconds for a cold external BEAM to boot and compile the fixture under CPU load.
+  @startup_timeout 30_000
+
   setup do
     fixture = Path.expand("../fixtures/stdio_logging_backend.exs", __DIR__)
     snodo_ebin = Path.expand("../../snodo/ebin", Mix.Project.compile_path())
@@ -16,12 +19,12 @@ defmodule Snodo.Proxy.BackendTest do
          prefix: "stdio",
          manager: self(),
          target: {:stdio, System.find_executable("elixir"), ["-pa", snodo_ebin, fixture]},
-         client_options: [on_log: self()],
+         client_options: [on_log: self(), probe_timeout: @startup_timeout],
          health_interval_ms: 60_000,
          queue_timeout_ms: 20}
       )
 
-    assert_receive {:backend_ready, "stdio", ^backend, snapshot}, 5_000
+    assert_receive {:backend_ready, "stdio", ^backend, snapshot}, @startup_timeout
     %{backend: backend, client: snapshot.client}
   end
 
