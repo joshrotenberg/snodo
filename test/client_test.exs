@@ -1327,7 +1327,10 @@ defmodule Snodo.ClientTest do
 
         assert {:ok, %Client{protocol: "2025-11-25", dialect: V2025_11_25} = client} =
                  Client.connect({CannedTransport, self()},
-                   client_capabilities: %{"experimental" => %{}},
+                   client_capabilities: %{
+                     "experimental" => %{},
+                     "extensions" => %{"com.example/chart" => %{"version" => 1}}
+                   },
                    client_info: %{"name" => "app", "version" => "9"}
                  )
 
@@ -1347,7 +1350,10 @@ defmodule Snodo.ClientTest do
 
         assert initialize["params"] == %{
                  "protocolVersion" => "2025-11-25",
-                 "capabilities" => %{"experimental" => %{}},
+                 "capabilities" => %{
+                   "experimental" => %{},
+                   "extensions" => %{"com.example/chart" => %{"version" => 1}}
+                 },
                  "clientInfo" => %{"name" => "app", "version" => "9"}
                }
 

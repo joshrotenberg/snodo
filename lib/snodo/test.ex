@@ -29,7 +29,9 @@ defmodule Snodo.Test do
       A version the runtime does not enable raises `MatchError`. Defaults to
       `nil`, which adds neither.
     * `:client_capabilities` - the client capabilities put in the metadata
-      when `:protocol` is set. Defaults to `%{}`.
+      when `:protocol` is set. Defaults to `%{}`. This option has no effect on
+      2025-11-25, where capabilities come from the initialize session. Use
+      `Snodo.Client.direct/2` to exercise that handshake in process.
     * `:transport_metadata` - the transport context metadata, for example
       `%{auth: principal}`, which handlers read as `context.auth`. Defaults
       to `%{}`.

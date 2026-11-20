@@ -322,7 +322,7 @@ defmodule Snodo.Protocol.V2026_07_28 do
         request_state: Map.get(envelope.params, "requestState"),
         input_responses: Map.get(envelope.params, "inputResponses", %{}),
         cancellation: envelope.transport.metadata[:cancellation],
-        extensions: negotiated_extensions(client_capabilities, runtime.capabilities),
+        extensions: ExtensionRegistry.peer_settings(client_capabilities, runtime.capabilities),
         metadata: metadata,
         trace_context: TraceContext.from_metadata(metadata)
       }
@@ -1110,8 +1110,8 @@ defmodule Snodo.Protocol.V2026_07_28 do
          :ok <- validate_optional_object(capabilities, "roots", "Client roots capability"),
          :ok <- validate_sampling_capability(capabilities),
          :ok <- validate_elicitation_capability(capabilities),
-         :ok <- validate_object_registry(capabilities, "experimental", false),
-         :ok <- validate_object_registry(capabilities, "extensions", true) do
+         :ok <- validate_object_registry(capabilities, "experimental"),
+         :ok <- validate_client_extensions(capabilities) do
       {:ok, capabilities}
     end
   end
@@ -1319,17 +1319,19 @@ defmodule Snodo.Protocol.V2026_07_28 do
     end
   end
 
-  defp validate_object_registry(map, key, require_prefix?) do
+  defp validate_client_extensions(capabilities) do
+    case Map.fetch(capabilities, "extensions") do
+      {:ok, extensions} -> ExtensionRegistry.validate_client_extensions(extensions)
+      :error -> :ok
+    end
+  end
+
+  defp validate_object_registry(map, key) do
     case Map.fetch(map, key) do
       {:ok, registry} when is_map(registry) ->
         valid? =
           Enum.all?(registry, fn {name, settings} ->
-            valid_name? =
-              is_binary(name) and
-                (not require_prefix? or
-                   (Regex.match?(@meta_key, name) and String.contains?(name, "/")))
-
-            valid_name? and json_object?(settings)
+            is_binary(name) and json_object?(settings)
           end)
 
         if valid?,
@@ -1394,28 +1396,6 @@ defmodule Snodo.Protocol.V2026_07_28 do
   defp json_value?(value) when is_list(value), do: Enum.all?(value, &json_value?/1)
   defp json_value?(value) when is_map(value), do: json_object?(value)
   defp json_value?(_value), do: false
-
-  defp negotiated_extensions(client_capabilities, server_capabilities) do
-    client_extensions = Map.get(client_capabilities, "extensions", %{})
-    server_extensions = Map.get(server_capabilities, "extensions", %{})
-
-    intersect_extensions(client_extensions, server_extensions)
-  end
-
-  defp intersect_extensions(client_extensions, server_extensions)
-       when is_map(client_extensions) and is_map(server_extensions) do
-    Enum.reduce(server_extensions, %{}, fn {name, server_settings}, negotiated ->
-      case Map.fetch(client_extensions, name) do
-        {:ok, client_settings} ->
-          Map.put(negotiated, name, %{client: client_settings, server: server_settings})
-
-        :error ->
-          negotiated
-      end
-    end)
-  end
-
-  defp intersect_extensions(_client_extensions, _server_extensions), do: %{}
 
   defp shape_tool_result(%Result{kind: :text, value: text}) do
     %{"content" => [%{"type" => "text", "text" => text}], "isError" => false}

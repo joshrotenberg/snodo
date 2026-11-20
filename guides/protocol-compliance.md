@@ -67,10 +67,17 @@ It records:
 The protocol registry rejects a dialect whose `version/0` or `era/0` drifts from
 its profile. Runtime construction accepts only capability keys implemented by
 every enabled profile plus the explicit open registries. An `extensions`
-advertisement is valid only when each identifier has an installed extension;
-discovery filters installed extensions to those compatible with the selected
-exact protocol version. Nested standard settings are also tied to their
-directional methods. The final profile implements the list-change and resource
+advertisement is valid only when each identifier has an installed extension.
+
+Discovery on 2026-07-28 and session-backed `initialize` on 2025-11-25 filter
+advertised extensions by exact protocol version. Sessionless 2025-11-25
+servers omit the extensions capability. The 2025-11-25 dialect reads the client's extension settings from
+`initialize.params.capabilities.extensions` and uses the stored settings on
+subsequent session requests. Literal compliance vectors cover
+`initialize` with and without extensions. The 2025-06-18 dialect omits the
+extensions capability.
+
+Nested standard settings are also tied to their directional methods. The final profile implements the list-change and resource
 subscription methods, while runtime construction additionally requires an
 application `subscription_source` before any `listChanged: true` or
 `resources.subscribe: true` advertisement is accepted. Discovery projects

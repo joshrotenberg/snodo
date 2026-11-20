@@ -10,7 +10,8 @@ defmodule Snodo.AppsTest do
     use Snodo.Server,
       name: "apps-test",
       version: "1.0.0",
-      extensions: [Snodo.Apps.extension()]
+      extensions: [Snodo.Apps.extension()],
+      protocols: [Snodo.Protocol.V2026_07_28, Snodo.Protocol.V2025_11_25]
 
     tool "forecast", metadata: Snodo.Apps.tool_metadata("ui://weather/forecast") do
       @impl true
@@ -154,13 +155,15 @@ defmodule Snodo.AppsTest do
     end
 
     test "supported?/1 follows the client's mimeTypes" do
-      for {capabilities, expected} <- [
+      for protocol <- ["2026-07-28", "2025-11-25"],
+          {capabilities, expected} <- [
             {Apps.client_capabilities(), "true"},
             {%{}, "false"},
             {%{"extensions" => %{Apps.id() => %{"mimeTypes" => ["text/html"]}}}, "false"},
             {%{"extensions" => %{Apps.id() => %{}}}, "false"}
           ] do
-        {:ok, client} = Client.direct(Server.runtime(), client_capabilities: capabilities)
+        {:ok, client} =
+          Client.direct(Server.runtime(), protocol: protocol, client_capabilities: capabilities)
 
         assert {:ok, %{"content" => [%{"text" => ^expected}]}} =
                  Client.call_tool(client, "forecast")

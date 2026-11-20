@@ -410,7 +410,7 @@ defmodule Snodo.Client.HTTP do
   end
 
   defp extension_policy(extension, version, envelope, base_policy) do
-    if extension_route?(extension, version, envelope.method) do
+    if ExtensionMethod.declared?(extension, version, envelope.method) do
       if function_exported?(extension, :transport_policy, 2) do
         try do
           case extension.transport_policy(envelope, base_policy) do
@@ -429,20 +429,6 @@ defmodule Snodo.Client.HTTP do
       invalid_extension_policy(extension)
     end
   end
-
-  defp extension_route?(extension, version, method) when is_atom(extension) do
-    Code.ensure_loaded?(extension) and function_exported?(extension, :methods, 0) and
-      Enum.any?(extension.methods(), fn
-        %ExtensionMethod{protocol_version: ^version, name: ^method} -> true
-        _other -> false
-      end)
-  rescue
-    _error -> false
-  catch
-    _kind, _reason -> false
-  end
-
-  defp extension_route?(_extension, _version, _method), do: false
 
   defp invalid_extension_policy(extension),
     do: {:error, Transport.connection_error("Invalid extension transport policy", extension)}

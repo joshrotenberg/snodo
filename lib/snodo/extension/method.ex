@@ -93,6 +93,22 @@ defmodule Snodo.Extension.Method do
     method
   end
 
+  @doc false
+  @spec declared?(term(), String.t(), String.t()) :: boolean()
+  def declared?(extension, version, method) when is_atom(extension) do
+    Code.ensure_loaded?(extension) and function_exported?(extension, :methods, 0) and
+      Enum.any?(extension.methods(), fn
+        %__MODULE__{protocol_version: ^version, name: ^method} -> true
+        _other -> false
+      end)
+  rescue
+    _error -> false
+  catch
+    _kind, _reason -> false
+  end
+
+  def declared?(_extension, _version, _method), do: false
+
   defp validate_protocol_version!(version) do
     unless is_binary(version) and version != "" do
       raise ArgumentError, "extension method protocol_version must be a non-empty string"

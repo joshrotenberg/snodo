@@ -132,6 +132,30 @@ defmodule Snodo.Extension.Registry do
   end
 
   @doc false
+  @spec peer_settings(map(), map()) :: map()
+  def peer_settings(client_capabilities, server_capabilities) do
+    client_extensions = Map.get(client_capabilities, "extensions", %{})
+    server_extensions = Map.get(server_capabilities, "extensions", %{})
+
+    intersect_extensions(client_extensions, server_extensions)
+  end
+
+  defp intersect_extensions(client_extensions, server_extensions)
+       when is_map(client_extensions) and is_map(server_extensions) do
+    Enum.reduce(server_extensions, %{}, fn {name, server_settings}, negotiated ->
+      case Map.fetch(client_extensions, name) do
+        {:ok, client_settings} ->
+          Map.put(negotiated, name, %{client: client_settings, server: server_settings})
+
+        :error ->
+          negotiated
+      end
+    end)
+  end
+
+  defp intersect_extensions(_client_extensions, _server_extensions), do: %{}
+
+  @doc false
   @spec negotiate(t(), Context.t()) :: {:ok, Context.t()} | {:error, Error.t()}
   def negotiate(%__MODULE__{} = registry, %Context{} = context) do
     Enum.reduce_while(context.extensions, {:ok, %{}}, fn
@@ -676,8 +700,24 @@ defmodule Snodo.Extension.Registry do
     end
   end
 
+  @doc false
+  @spec validate_client_extensions(term()) :: :ok | {:error, Error.t()}
+  def validate_client_extensions(extensions) do
+    if is_map(extensions) and not is_struct(extensions) and
+         Enum.all?(extensions, fn {id, settings} ->
+           valid_id?(id) and is_map(settings) and not is_struct(settings) and
+             JSONValue.valid?(settings)
+         end),
+       do: :ok,
+       else: {:error, Error.invalid_params("Client extensions must map valid names to objects")}
+  end
+
+  @doc false
+  @spec valid_id?(term()) :: boolean()
+  def valid_id?(id), do: is_binary(id) and Regex.match?(@extension_id, id)
+
   defp validate_id!(id) do
-    unless is_binary(id) and Regex.match?(@extension_id, id) do
+    unless valid_id?(id) do
       raise ArgumentError, "extension id must be a namespaced MCP capability key"
     end
   end

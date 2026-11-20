@@ -92,6 +92,7 @@ defmodule Snodo.Client do
   alias Snodo.Client.Subscription
   alias Snodo.Client.Transport
   alias Snodo.Error
+  alias Snodo.Extension.Method, as: ExtensionMethod
   alias Snodo.Protocol.Profile
   alias Snodo.Server.Runtime
   alias Snodo.TraceContext
@@ -555,7 +556,8 @@ defmodule Snodo.Client do
     * `:timeout` - overrides the client's request timeout.
     * `:extension` - an extension module that owns this request method. Over
       HTTP its `transport_policy/2` supplies routing headers for the exact
-      protocol version. Other transports do not need the policy.
+      protocol version. On 2025-11-25 this option is required on every
+      transport for unlisted methods, as described below.
     * `:answer_input` - when `false`, an `input_required` result is returned
       as `{:input_required, result}` even though the client has
       `:input_handlers`. Defaults to `true`.
@@ -600,12 +602,13 @@ defmodule Snodo.Client do
       `"url"` for a URL, `"messages"` and `"maxTokens"` for sampling; a
       roots request may leave `params` out). No handler has run.
 
-  On an initialize-era connection a method the negotiated dialect's catalog
-  does not define as a client request is refused with -32601 before anything
-  is sent. On 2026-07-28 a method the catalog lists only as a server request
-  or a notification is refused the same way, and a method the catalog does
-  not list is sent as it is, because negotiated extensions add methods the
-  core catalog does not carry.
+  An unlisted method on 2025-11-25 requires the owning module in `:extension`.
+  The module must declare that method for 2025-11-25 and both peers must
+  advertise its ID. The server applies the extension's negotiation callback
+  before running the route. An unlisted method on 2025-06-18 is refused
+  locally with -32601. On 2026-07-28 unlisted methods are sent to the server.
+  Methods listed only as server requests or notifications are refused locally
+  with -32601.
 
   `subscriptions/listen` raises `ArgumentError`: its response is a stream,
   which `listen/3` opens.
@@ -623,7 +626,7 @@ defmodule Snodo.Client do
       raise ArgumentError, ":bypass_cache must be a boolean"
     end
 
-    with :ok <- check_method(client, method),
+    with :ok <- check_method(client, method, opts),
          :ok <- Session.check(client.session) do
       if client.cache and not bypass_cache and cacheable?(method, opts) do
         cached_request(client, method, params, opts)
@@ -704,7 +707,7 @@ defmodule Snodo.Client do
     end
 
     # The initialize-era catalogs do not define subscriptions/listen.
-    with :ok <- check_method(client, "subscriptions/listen") do
+    with :ok <- check_method(client, "subscriptions/listen", []) do
       open_subscription(
         client,
         notifications,
@@ -809,14 +812,16 @@ defmodule Snodo.Client do
              keep_open: true
            ) do
       try do
-        send_request(
-          renegotiated,
-          method,
-          params,
-          Keyword.put(opts, :renegotiated, true),
-          plan,
-          round
-        )
+        with :ok <- check_method(renegotiated, method, opts) do
+          send_request(
+            renegotiated,
+            method,
+            params,
+            Keyword.put(opts, :renegotiated, true),
+            plan,
+            round
+          )
+        end
       after
         end_session(renegotiated)
       end
@@ -991,25 +996,68 @@ defmodule Snodo.Client do
           "#{inspect(option)} must be a positive integer or :infinity, got: #{inspect(timeout)}"
   end
 
-  # The dialect's catalog decides which requests the negotiated version
-  # defines. Extensions add methods the 2026-07-28 catalog does not list, so a
-  # stateless-era client sends an unlisted method as it is, and refuses only a
-  # method the catalog lists as something other than a client request. The
-  # initialize-era dialects implement a fixed slice with no extensions, so
-  # there an unlisted method is refused too. Nothing is sent either way.
-  defp check_method(%__MODULE__{dialect: dialect}, method) do
-    if defined?(dialect, method) or
-         (dialect.era() == :stateless and not listed?(dialect, method)) do
-      :ok
-    else
-      {:error,
-       %Error{
-         code: -32_601,
-         message: "Protocol #{dialect.version()} does not define #{method}",
-         kind: :protocol,
-         data: %{"method" => method, "protocolVersion" => dialect.version()}
-       }}
+  defp check_method(%__MODULE__{dialect: dialect} = client, method, opts) do
+    cond do
+      defined?(dialect, method) ->
+        :ok
+
+      listed?(dialect, method) ->
+        undefined_method(dialect, method)
+
+      dialect.era() == :stateless ->
+        :ok
+
+      true ->
+        check_extension_method(client, method, Keyword.get(opts, :extension))
     end
+  end
+
+  defp check_extension_method(
+         %__MODULE__{session: %Session{version: "2025-11-25"} = session} = client,
+         method,
+         extension
+       ) do
+    with true <- ExtensionMethod.declared?(extension, session.version, method),
+         id when is_binary(id) <- extension_id(extension) do
+      cond do
+        not advertises_extension?(session.server_capabilities, id) ->
+          undefined_method(client.dialect, method, "Server did not advertise extension #{id}")
+
+        not advertises_extension?(client.client_capabilities, id) ->
+          undefined_method(client.dialect, method, "Client did not advertise extension #{id}")
+
+        true ->
+          :ok
+      end
+    else
+      _unknown -> undefined_method(client.dialect, method)
+    end
+  end
+
+  defp check_extension_method(client, method, _extension),
+    do: undefined_method(client.dialect, method)
+
+  defp extension_id(extension) do
+    if function_exported?(extension, :id, 0), do: extension.id()
+  rescue
+    _error -> nil
+  catch
+    _kind, _reason -> nil
+  end
+
+  defp advertises_extension?(%{"extensions" => extensions}, id) when is_map(extensions),
+    do: is_map(Map.get(extensions, id))
+
+  defp advertises_extension?(_capabilities, _id), do: false
+
+  defp undefined_method(dialect, method, message \\ nil) do
+    {:error,
+     %Error{
+       code: -32_601,
+       message: message || "Protocol #{dialect.version()} does not define #{method}",
+       kind: :protocol,
+       data: %{"method" => method, "protocolVersion" => dialect.version()}
+     }}
   end
 
   defp defined?(dialect, method) do
@@ -1024,10 +1072,23 @@ defmodule Snodo.Client do
   # Once a session exists, every message carries its headers and the server's
   # own requests are answered. Before that, on a stateless connection, only a
   # client with handlers has anything to answer them with.
-  defp session_options(%__MODULE__{session: %Session{}} = client),
-    do:
+  defp session_options(%__MODULE__{session: %Session{} = session} = client) do
+    opts =
       [headers: session_headers(client), on_server_request: responder(client)] ++
         http_session(client)
+
+    case {client.transport, session.version} do
+      {{Direct, _state}, "2025-11-25"} ->
+        Keyword.put(
+          opts,
+          :session,
+          Direct.session_snapshot(client.client_info, client.client_capabilities)
+        )
+
+      _other ->
+        opts
+    end
+  end
 
   defp session_options(%__MODULE__{input_handlers: handlers}) when handlers == %{}, do: []
   defp session_options(%__MODULE__{} = client), do: [on_server_request: responder(client)]

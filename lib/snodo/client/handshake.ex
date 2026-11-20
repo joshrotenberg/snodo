@@ -144,9 +144,14 @@ defmodule Snodo.Client.Handshake do
       ref = make_ref()
       owner = self()
 
+      capabilities =
+        if proposed.version() == "2025-06-18",
+          do: Map.delete(client.client_capabilities, "extensions"),
+          else: client.client_capabilities
+
       params = %{
         "protocolVersion" => proposed.version(),
-        "capabilities" => client.client_capabilities,
+        "capabilities" => capabilities,
         "clientInfo" => client.client_info
       }
 
