@@ -465,7 +465,8 @@ defmodule Snodo.Transport.StreamableHTTP do
   # Host checking is opt-in: behind a reverse proxy the Host header commonly
   # carries the public name, so a loopback default would refuse proxied
   # requests. Origin, which browsers send, is checked by default.
-  defp validate_host(%Request{} = request, opts) do
+  @doc false
+  def validate_host(%Request{} = request, opts) do
     case Keyword.get(opts, :allowed_hosts) do
       nil ->
         :ok

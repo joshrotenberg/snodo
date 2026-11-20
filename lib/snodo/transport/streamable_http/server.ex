@@ -46,6 +46,13 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     * `:drain_timeout` - milliseconds the listener waits on shutdown for open
       connections to finish, default 5,000.
 
+  ## Server Cards
+
+  Set `:server_card` to `%{endpoint_url: "https://example.com/mcp"}` to serve
+  public discovery metadata under the MCP path at `/server-card`. The default
+  is `false`. The card route uses wildcard CORS, applies `:allowed_hosts`,
+  and runs before the request gate.
+
   ## Initialize-era sessions
 
   `sessions: true`, or a keyword list of `Snodo.Session.Manager` options
@@ -111,6 +118,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   alias Snodo.Session.Manager, as: SessionManager
   alias Snodo.Subscription
   alias Snodo.Transport.StreamableHTTP
+  alias Snodo.Transport.StreamableHTTP.Card
   alias Snodo.Transport.StreamableHTTP.Request
   alias Snodo.Transport.StreamableHTTP.Response
   alias Snodo.Transport.StreamableHTTP.StreamResponse
@@ -181,6 +189,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     ip = normalize_ip(Keyword.get(opts, :ip, @default_ip))
     port = Keyword.get(opts, :port, 0)
     path = validate_path!(Keyword.get(opts, :path, @default_path))
+    server_card = Card.configure(Keyword.get(opts, :server_card, false), runtime, path)
     request_gate = request_gate!(Keyword.get(opts, :request_gate), path)
     validate_port!(port)
 
@@ -217,6 +226,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
         runtime: runtime,
         executor: executor,
         path: path,
+        server_card: server_card,
         request_gate: request_gate,
         request_gate_timeout: request_gate_timeout,
         server_ref: server_ref,
@@ -787,8 +797,7 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
   defp read_request(socket, peer, connection_ref, buffer, opts) do
     with {:ok, head, rest} <- recv_head(socket, buffer, opts),
          ungated_body_deadline = System.monotonic_time(:millisecond) + opts.body_timeout,
-         {:ok, method, target, headers, content_length} <-
-           parse_request_head(head, opts.max_body_bytes),
+         {:ok, method, target, headers} <- parse_head(head),
          request = %Request{
            method: method,
            path: request_path(target),
@@ -797,6 +806,8 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
            peer: peer,
            connection_ref: connection_ref
          },
+         :ok <- check_card(request, opts),
+         {:ok, content_length} <- content_length(method, headers, opts.max_body_bytes),
          {:ok, auth} <- check_request_gate(request, opts.request_gate, opts.request_gate_timeout),
          body_deadline =
            if(opts.request_gate,
@@ -819,6 +830,11 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
         {:response, basic_error(400, "Failed to read HTTP request")}
     end
   end
+
+  defp check_card(%Request{path: path} = request, %{server_card: %{path: path} = card} = opts),
+    do: {:response, Card.respond(request, card, opts.adapter_opts)}
+
+  defp check_card(_request, _opts), do: :ok
 
   defp check_request_gate(_request, nil, _timeout), do: {:ok, nil}
 
@@ -1076,9 +1092,10 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
     body = response.body
 
     length_header =
-      if response_header_values(response.headers, "content-length") == [],
-        do: [{"content-length", Integer.to_string(byte_size(body))}],
-        else: []
+      if response.status not in [204, 304] and
+           response_header_values(response.headers, "content-length") == [],
+         do: [{"content-length", Integer.to_string(byte_size(body))}],
+         else: []
 
     connection = if keep?, do: "keep-alive", else: "close"
     headers = response.headers ++ length_header ++ [{"connection", connection}]
@@ -1359,6 +1376,8 @@ defmodule Snodo.Transport.StreamableHTTP.Server do
 
   defp reason_phrase(200), do: "OK"
   defp reason_phrase(202), do: "Accepted"
+  defp reason_phrase(204), do: "No Content"
+  defp reason_phrase(304), do: "Not Modified"
   defp reason_phrase(400), do: "Bad Request"
   defp reason_phrase(401), do: "Unauthorized"
   defp reason_phrase(403), do: "Forbidden"

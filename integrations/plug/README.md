@@ -108,6 +108,77 @@ authentication Plug for the endpoint-level decision. See the core
 [application stack notes](https://hexdocs.pm/snodo/application-stack.html) for the policy
 contract.
 
+## MCP Server Cards
+
+Set `server_card: %{endpoint_url: "https://example.com/mcp"}` to publish the
+runtime's public Server Card at `GET <path>/server-card`. The option defaults
+to `false`. Use the externally visible MCP URL without user information, query,
+or fragment. The runtime must have a `namespace/name` of 3 to 200 characters,
+a single version string of at most 255 characters, and a description of 1 to
+100 characters. An optional title must also contain 1 to 100 characters.
+An optional website URL follows the same HTTP(S) URL rules.
+Invalid card settings raise `ArgumentError` in `init/1`.
+
+Use HTTPS for production. The card applies `allowed_hosts` and uses wildcard
+CORS independently of `allowed_origin_hosts`. A GET returns
+`application/mcp-server-card+json` with a one-hour public cache policy and ETag
+validation. HEAD returns the same representation headers with an empty body.
+OPTIONS returns 204, including for browser preflight. Other methods receive
+405.
+
+With `snodo_oauth`, route the exact card path to the transport before calling
+the Bearer plug. For example, use this wrapper in place of
+`Snodo.Transport.Plug` as the mounted plug and pass it the same `runtime` and
+`executor` options. Keep any OAuth metadata plug ahead of this wrapper.
+
+```elixir
+defmodule MyApp.MCPPlug do
+  @behaviour Plug
+
+  alias Snodo.OAuth.ResourceServer.Bearer
+  alias Snodo.OAuth.ResourceServer.Verifier.JWT
+  alias Snodo.Transport.Plug, as: Transport
+
+  @resource "https://mcp.example.com/mcp"
+
+  @impl true
+  def init(opts) do
+    %{
+      transport:
+        Transport.init(
+          Keyword.merge(opts, path: "/mcp", server_card: %{endpoint_url: @resource})
+        ),
+      bearer:
+        Bearer.init(
+          resource: @resource,
+          verifier: {JWT, keys: MyApp.JWKS, issuer: "https://auth.example.com"},
+          required_scopes: ["mcp:read"]
+        )
+    }
+  end
+
+  @impl true
+  def call(%Plug.Conn{request_path: "/mcp/server-card"} = conn, opts) do
+    Transport.call(conn, opts.transport)
+  end
+
+  def call(conn, opts) do
+    conn
+    |> Bearer.call(opts.bearer)
+    |> Transport.call(opts.transport)
+  end
+end
+```
+
+An earlier Bearer plug would halt anonymous GET and OPTIONS requests with a
+401. Mount this wrapper outside that authentication pipeline so it can
+dispatch the public card and authenticate MCP traffic itself.
+
+If the site publishes a domain-wide AI Catalog, mount it in the site's
+router at `/.well-known/ai-catalog.json`. Use `Snodo.ServerCard.catalog/1`
+to build the JSON and serve it as `application/ai-catalog+json`.
+See the [core transport guide](https://hexdocs.pm/snodo/transports.html#mcp-server-cards).
+
 ## Bounds and lifecycle guarantees
 
 | Option | Default | Meaning |

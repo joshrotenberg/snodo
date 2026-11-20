@@ -52,6 +52,13 @@ defmodule Snodo.Transport.Plug do
   HTTP/1.x the response closes the connection, so the adapter does not read the rest of
   the body.
 
+  ## Server Cards
+
+  Set `:server_card` to `%{endpoint_url: "https://example.com/mcp"}` to
+  publish the public card at the MCP path with `/server-card` appended.
+  The default is `false`. Allow anonymous requests to this path through
+  any upstream authentication Plug.
+
   ## Initialize-era sessions
 
   `:sessions` names a `Snodo.Session.Manager` the application supervises,
@@ -82,6 +89,7 @@ defmodule Snodo.Transport.Plug do
   alias Snodo.Transport.Plug.Lease
   alias Snodo.Transport.Plug.Stream
   alias Snodo.Transport.StreamableHTTP
+  alias Snodo.Transport.StreamableHTTP.Card
   alias Snodo.Transport.StreamableHTTP.Request
   alias Snodo.Transport.StreamableHTTP.Response
   alias Snodo.Transport.StreamableHTTP.StreamResponse
@@ -111,6 +119,9 @@ defmodule Snodo.Transport.Plug do
       runtime: runtime,
       executor: executor,
       path: path,
+      # Phoenix forward may call init/1 per request. Encoding and hashing are
+      # deterministic for the same options, so the ETag stays stable.
+      server_card: Card.configure(Keyword.get(opts, :server_card, false), runtime, path),
       # Part of every cancellation key. It must not change between init/1
       # calls, because Phoenix's forward calls init/1 on each request.
       instance: Keyword.get(opts, :instance, {executor, path}),
@@ -140,6 +151,12 @@ defmodule Snodo.Transport.Plug do
       read ->
         admit_read(read, opts)
     end
+  end
+
+  def call(%Conn{request_path: path} = conn, %{server_card: %{path: path} = card} = opts) do
+    request = %Request{method: conn.method, path: path, headers: conn.req_headers, body: ""}
+    response = Card.respond(request, card, opts.adapter_opts)
+    send_response(close_unread_body(conn), response, opts)
   end
 
   def call(%Conn{} = conn, _opts), do: conn |> Conn.send_resp(404, "") |> Conn.halt()
@@ -636,12 +653,20 @@ defmodule Snodo.Transport.Plug do
   # with its own limits. HTTP/2 forbids the header, and Bandit resets an
   # unfinished HTTP/2 stream instead of draining it.
   defp refuse_body(conn, status) do
-    conn =
-      if Conn.get_http_protocol(conn) in @http1,
-        do: Conn.put_resp_header(conn, "connection", "close"),
-        else: conn
+    conn |> close_http1() |> Conn.send_resp(status, "") |> Conn.halt()
+  end
 
-    conn |> Conn.send_resp(status, "") |> Conn.halt()
+  defp close_unread_body(conn) do
+    if Conn.get_req_header(conn, "transfer-encoding") != [] or
+         Conn.get_req_header(conn, "content-length") not in [[], ["0"]],
+       do: close_http1(conn),
+       else: conn
+  end
+
+  defp close_http1(conn) do
+    if Conn.get_http_protocol(conn) in @http1,
+      do: Conn.put_resp_header(conn, "connection", "close"),
+      else: conn
   end
 
   defp positive_option!(opts, key, default) do

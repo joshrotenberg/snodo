@@ -47,6 +47,7 @@ the maturity stages listed in the [MCP extension registry](https://modelcontextp
 | Skills (`io.modelcontextprotocol/skills`, SEP-2640) | Beta | `Snodo.Skills` |
 | MCP Apps (`io.modelcontextprotocol/ui`, SEP-1865) | Stable | `Snodo.Apps` |
 | OAuth Client Credentials (SEP-1046) | Stable | `snodo_oauth` client |
+| Server Cards (`io.modelcontextprotocol/server-card`, SEP-2127) | Beta | `Snodo.ServerCard`, opt-in `server_card:` on the HTTP transports |
 
 Experimental extensions can change without notice. Beta extensions can make
 breaking changes, which should be infrequent and must be recorded upstream.
@@ -100,6 +101,28 @@ end
 For a published extension, attach the `_meta` keys its specification defines.
 A declared extension has no routes, middleware, or negotiation callback; write
 a `Snodo.Extension` module when you need any of those.
+
+## Server Cards
+
+MCP Server Cards (`io.modelcontextprotocol/server-card`, SEP-2127) are at
+the Beta stage under SEP-3392. Clients fetch cards before connecting, so
+enabling the transport route requires no MCP capability negotiation.
+The v1 card describes public server identity, the Streamable HTTP URL,
+and supported protocol versions. Component listings and capabilities are
+available through the live MCP endpoint. See the [MCP extensions overview](https://modelcontextprotocol.io/extensions/overview)
+and [Server Card specification](https://github.com/modelcontextprotocol/ext-server-card/blob/main/docs/discovery.md).
+
+Enable the card with the [transport option](transports.md#mcp-server-cards).
+For optional domain-wide discovery, publish an AI Catalog from your site
+router or reverse proxy at `/.well-known/ai-catalog.json` with media type
+`application/ai-catalog+json`. Use `Snodo.ServerCard.catalog/1` to build the
+document, passing each stable catalog identifier and absolute card URL.
+
+```elixir
+Snodo.ServerCard.catalog([
+  {"urn:air:example.com:mcp:weather", "https://example.com/mcp/server-card"}
+])
+```
 
 ## MCP Apps
 
