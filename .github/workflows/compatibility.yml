@@ -77,7 +77,7 @@ jobs:
   packaging:
     name: Hex packaging dry run
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     env:
       MIX_ENV: dev
     steps:
@@ -92,19 +92,15 @@ jobs:
         run: |
           mix local.hex --force
           mix local.rebar --force
-      - name: Build the core package
-        run: |
-          mix deps.get
-          mix hex.build
-      # Each sibling builds with SNODO_HEX=1, as it is published, and builds
-      # its HexDocs with the in-repository path dependencies.
-      - name: Build each sibling package and its docs
+      - name: Build and smoke test all release archives
+        run: scripts/release_smoke.sh
+      - name: Build each sibling's docs with path dependencies
         run: |
           for dir in extensions/tasks integrations/plug integrations/schema_jsv \
             integrations/oauth integrations/telemetry integrations/proxy integrations/otp \
             extensions/tasks_postgres extensions/tasks_sqlite; do
             echo "::group::$dir"
-            (cd "$dir" && SNODO_HEX=1 mix hex.build && mix deps.get && mix docs --warnings-as-errors)
+            (cd "$dir" && mix deps.get && mix docs --warnings-as-errors)
             echo "::endgroup::"
           done
 
