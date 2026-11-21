@@ -14,7 +14,7 @@ Add `snodo_telemetry` next to `snodo`:
 
 <!-- x-release-please-start-version -->
 ```elixir
-{:snodo_telemetry, "~> 0.4.4"}
+{:snodo_telemetry, "~> 0.5.0"}
 ```
 <!-- x-release-please-end -->
 
