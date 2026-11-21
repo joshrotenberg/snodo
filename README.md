@@ -56,8 +56,8 @@ Add the packages you need to `mix.exs`. Each sibling brings `snodo` with it:
 ```elixir
 def deps do
   [
-    {:snodo, "~> 0.4.4"},
-    {:snodo_plug, "~> 0.4.4"}
+    {:snodo, "~> 0.5.0"},
+    {:snodo_plug, "~> 0.5.0"}
   ]
 end
 ```

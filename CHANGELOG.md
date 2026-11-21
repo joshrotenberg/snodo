@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.5.0](https://github.com/joshrotenberg/snodo/compare/v0.4.4...v0.5.0) (2026-11-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* Stdio request timeouts now include queue wait, and stdio, native HTTP, and Plug each default to a 30,000 ms request timeout even with an injected executor. For direct Executor callers, :default_timeout and per-submit :timeout now count from admission, and callers that match terminal outcomes must handle :queue_timed_out.
+
+### Features
+
+* advertise installed module extensions by default ([#419](https://github.com/joshrotenberg/snodo/issues/419)) ([2cdd06d](https://github.com/joshrotenberg/snodo/commit/2cdd06df8cacad576df5c7f70c7d9e3104426a35))
+* carry capabilities.extensions on initialize-era handshakes ([#446](https://github.com/joshrotenberg/snodo/issues/446)) ([136a5af](https://github.com/joshrotenberg/snodo/commit/136a5afd1207e441f0044d100206b0791f21e5de))
+* count queue wait in every request deadline ([#468](https://github.com/joshrotenberg/snodo/issues/468)) ([59f0225](https://github.com/joshrotenberg/snodo/commit/59f02258c8386eb211ae8d613dcad07dae0a965a))
+* default the HTTP listen backlog to max_connections ([#469](https://github.com/joshrotenberg/snodo/issues/469)) ([eccd508](https://github.com/joshrotenberg/snodo/commit/eccd508e196791aedeba2a8bb271d8751ca2a592))
+* fill content from structuredContent when a raw tool result omits it ([#436](https://github.com/joshrotenberg/snodo/issues/436)) ([e40d830](https://github.com/joshrotenberg/snodo/commit/e40d830f03d980f86852cb1a5da38a54da890b2f))
+* helpers, guide, and an example for the MCP Apps extension (closes [#397](https://github.com/joshrotenberg/snodo/issues/397)) ([#404](https://github.com/joshrotenberg/snodo/issues/404)) ([dd30bea](https://github.com/joshrotenberg/snodo/commit/dd30bea2d007a76e031bf1adf7e88291434f06e2))
+* initialize-era sessions for 2025-11-25 and 2025-06-18 ([#403](https://github.com/joshrotenberg/snodo/issues/403)) ([81d8097](https://github.com/joshrotenberg/snodo/commit/81d80970141cfda1ee7e7d43941075b0c82a27f6))
+* OpenTelemetry spans from snodo_telemetry events ([#411](https://github.com/joshrotenberg/snodo/issues/411)) ([256ffd6](https://github.com/joshrotenberg/snodo/commit/256ffd61f58d5fced94d79d04037004568faaaae))
+* **proxy:** back off reconnects for a backend that keeps failing ([#467](https://github.com/joshrotenberg/snodo/issues/467)) ([3bcdfd9](https://github.com/joshrotenberg/snodo/commit/3bcdfd9829b46064da964329ceac0c486bf13aa6))
+* **proxy:** reconnect a backend after a lost initialize-era HTTP session ([#463](https://github.com/joshrotenberg/snodo/issues/463)) ([bc88a46](https://github.com/joshrotenberg/snodo/commit/bc88a4646713a4b807330b2f392ec3a0bfd65afd))
+* serve an MCP Server Card (SEP-2127) ([#450](https://github.com/joshrotenberg/snodo/issues/450)) ([7baad0f](https://github.com/joshrotenberg/snodo/commit/7baad0f2ad4284fb8c3f2a721559d94af55356ac))
+* ship the :pg subscription bridge as Snodo.Subscription.Bridge ([#414](https://github.com/joshrotenberg/snodo/issues/414)) ([0744e23](https://github.com/joshrotenberg/snodo/commit/0744e23682716ce4b271376ce8c1fc07ebb98bcb))
+* skills extension (SEP-2640) ([#413](https://github.com/joshrotenberg/snodo/issues/413)) ([4404f2a](https://github.com/joshrotenberg/snodo/commit/4404f2aab799cd61615c5e1a2c4b5af1cf0a3029))
+* **skills:** optional _meta on Skill entries ([#437](https://github.com/joshrotenberg/snodo/issues/437)) ([38b2831](https://github.com/joshrotenberg/snodo/commit/38b28315dc7feeecdc48e8ecf4d927aaf2a6ac5c))
+
+
+### Bug Fixes
+
+* **client:** report session_not_found after a 404 on an initialize-era HTTP session ([#445](https://github.com/joshrotenberg/snodo/issues/445)) ([68c0f68](https://github.com/joshrotenberg/snodo/commit/68c0f68fd22e1f8bb95589d5d83d5f6134ba82a3))
+* compare integer Mcp-Param headers exactly ([#433](https://github.com/joshrotenberg/snodo/issues/433)) ([8d949c0](https://github.com/joshrotenberg/snodo/commit/8d949c0b4d70fb92e1fd824a8dfd0f1fff186bd8))
+* **oauth:** build the authorization URL per OAuth 2.1 section 3.1 ([#435](https://github.com/joshrotenberg/snodo/issues/435)) ([de44c52](https://github.com/joshrotenberg/snodo/commit/de44c5290bf616cb52db637acc7044ca15ae1281))
+* **oauth:** reject a fragment in external redirect URIs ([#451](https://github.com/joshrotenberg/snodo/issues/451)) ([9edaf82](https://github.com/joshrotenberg/snodo/commit/9edaf8278125d768a79e780aa11f3f64d8a39e4f))
+* restore the default Logger handler when the stdio transport stops ([#453](https://github.com/joshrotenberg/snodo/issues/453)) ([799d7b9](https://github.com/joshrotenberg/snodo/commit/799d7b9bb457252e0235613a93fe1b041c7c3ce8))
+* return execution-phase JSON-RPC errors on HTTP 200 ([#447](https://github.com/joshrotenberg/snodo/issues/447)) ([defbd0c](https://github.com/joshrotenberg/snodo/commit/defbd0c77ec5feeaccf9ddbf2434010382679f34))
+* track an HTTP request for cancellation before submitting it ([#465](https://github.com/joshrotenberg/snodo/issues/465)) ([d5a75e0](https://github.com/joshrotenberg/snodo/commit/d5a75e0538baec22eec16b89c6c51bcb2a23168d))
+
 ## [0.4.4](https://github.com/joshrotenberg/snodo/compare/v0.4.3...v0.4.4) (2026-10-29)
 
 
