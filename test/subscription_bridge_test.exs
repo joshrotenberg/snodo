@@ -53,12 +53,17 @@ defmodule Snodo.SubscriptionBridgeTest do
   test "leaves an existing scope alive when stopped", config do
     scope = start_supervised!(%{id: :scope, start: {:pg, :start_link, [config.scope]}})
     bridge = start_bridge(config, :bridge, start_scope: false)
-    assert [member] = :pg.get_members(config.scope, config.group)
+    group = config.group
+    assert {membership_monitor, [member]} = :pg.monitor(config.scope, group)
     monitor = Process.monitor(member)
     assert :ok = stop_supervised(:bridge)
     assert_receive {:DOWN, ^monitor, :process, ^member, :shutdown}, 1_000
+
+    # The scope handles its own DOWN independently of the test's monitor.
+    assert_receive {^membership_monitor, :leave, ^group, [^member]}, 1_000
+
     assert Process.alive?(scope)
-    assert :pg.get_members(config.scope, config.group) == []
+    assert :pg.get_members(config.scope, group) == []
     refute Process.alive?(bridge)
   end
 
