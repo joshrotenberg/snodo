@@ -176,12 +176,13 @@ The listener also bounds what clients can hold open:
 
 - `:max_connections` (default 1,024). A connection accepted at the limit is
   closed without being read.
-- `:backlog` (default 128). Connections the kernel holds before the listener
-  accepts them, capped on Linux by `net.core.somaxconn`. The kernel decides
-  what happens to connection attempts that overflow it. In the
+- `:backlog` (default 1,024, matching `:max_connections`). Connections the
+  kernel holds before the listener accepts them, capped on Linux by
+  `net.core.somaxconn`. The kernel decides what happens to connection
+  attempts that overflow it. In the
   [executor load record](https://github.com/joshrotenberg/snodo/blob/main/docs/history/2026-11-20-executor-load.md),
-  a burst of 1,000 connections on Linux had clients retrying after about a
-  second, so consider raising it when clients open many connections at once.
+  a burst of 1,000 connections against a backlog of 128 on Linux had clients
+  retrying after about a second.
 - `:head_timeout` (default 10,000 ms from accept). The request head must be
   complete by then; `:read_timeout` (5,000 ms) still bounds each read.
 - `:keepalive_timeout` (default 5,000 ms). How long an idle connection waits
