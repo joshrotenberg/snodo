@@ -145,11 +145,23 @@ defmodule Snodo.Extensions.Tasks.Store.SQLite.WriterQueueTest do
   end
 
   test "the queue for an anonymous dynamic repo stops with it" do
-    repo = spawn(fn -> Process.sleep(:infinity) end)
+    repo =
+      spawn(fn ->
+        receive do
+          :stop -> :ok
+        end
+      end)
+
+    on_exit(fn -> send(repo, :stop) end)
     key = {__MODULE__, repo}
     assert {:ok, slot} = WriterQueue.acquire(key, deadline(@await_ms), @max_waiters)
     {:ok, queue} = WriterQueue.Registry.lookup(key)
     monitor = Process.monitor(queue)
+
+    # The repo's DOWN can overtake the monitor request because it comes from
+    # another process. Confirm the queue has recorded the monitor before killing the repo.
+    assert {:monitored_by, watchers} = Process.info(queue, :monitored_by)
+    assert self() in watchers
 
     Process.exit(repo, :kill)
 
